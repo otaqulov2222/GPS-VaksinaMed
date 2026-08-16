@@ -291,6 +291,87 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
   </div>
 
   <div class="card" style="margin-top:12px;">
+    <div class="head">
+      <h2>Dorixona geozonalari</h2>
+      <span class="muted" id="ph-count">0</span>
+    </div>
+    <div class="body">
+      <div class="msg" id="msg-ph"></div>
+      <p class="muted" style="margin-bottom:12px;line-height:1.5">
+        Nom majburiy. Kenglik/uzunlik bo‘lsa, GPS to‘xtashi radius ichida bo‘lsa — tashrif hisoblanadi.
+        Bo‘lmasa, joy nomi bilan solishtiriladi. Qolgan 13 haydovchiga shu yerdan dorixona qo‘shing.
+      </p>
+      <div class="grid2" style="margin-bottom:10px">
+        <div class="field" style="margin:0">
+          <label>Haydovchi</label>
+          <select id="ph-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#f7f8fa;font-family:var(--mono);font-size:13px"></select>
+        </div>
+        <div class="field" style="margin:0">
+          <label>Dorixona nomi</label>
+          <input id="ph-name" placeholder="Masalan: Сергели-8 корзинка">
+        </div>
+      </div>
+      <div class="grid2" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
+        <div class="field" style="margin:0">
+          <label>Kenglik (lat)</label>
+          <input id="ph-lat" type="number" step="0.0001" placeholder="41.3111">
+        </div>
+        <div class="field" style="margin:0">
+          <label>Uzunlik (lng)</label>
+          <input id="ph-lng" type="number" step="0.0001" placeholder="69.2797">
+        </div>
+        <div class="field" style="margin:0">
+          <label>Radius, m</label>
+          <input id="ph-radius" type="number" value="120" min="40" max="500">
+        </div>
+      </div>
+      <button class="btn btn-gold" type="button" id="btn-ph-add">Dorixona qo‘shish</button>
+      <div style="margin-top:12px;overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Haydovchi</th><th>Dorixona</th><th>Nuqta</th><th>Radius</th><th></th></tr>
+          </thead>
+          <tbody id="tb-ph"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px;">
+    <div class="head"><h2>Telegram ogohlantirish</h2></div>
+    <div class="body">
+      <div class="msg" id="msg-tg"></div>
+      <p class="muted" style="margin-bottom:12px;line-height:1.5">
+        BotFather dan bot token oling. Chat ID — shaxsiy chat yoki guruh.
+        GPS kun yuklangach, ball/tezlik/muammo qisqacha yuboriladi.
+      </p>
+      <div class="field">
+        <label>Bot token</label>
+        <div class="pw-wrap">
+          <input id="tg-token" type="password" autocomplete="off" placeholder="123456:ABC...">
+          <button type="button" class="pw-eye" data-for="tg-token"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field" style="margin:0">
+          <label>Chat ID</label>
+          <input id="tg-chat" placeholder="-100... yoki shaxsiy ID">
+        </div>
+        <div class="field" style="margin:0">
+          <label>Holat</label>
+          <label style="display:flex;align-items:center;gap:8px;height:42px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600">
+            <input id="tg-on" type="checkbox" style="width:16px;height:16px"> Yoqilgan
+          </label>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-gold" type="button" id="btn-tg-save">Saqlash</button>
+        <button class="btn" type="button" id="btn-tg-test">Sinab ko‘rish</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px;">
     <div class="head"><h2>Jurnal</h2></div>
     <table>
       <thead><tr><th>Vaqt</th><th>Amal</th><th>Kim</th><th>Izoh</th></tr></thead>
@@ -509,6 +590,141 @@ document.getElementById('btn-pw').addEventListener('click', async () => {
 document.getElementById('btn-reload').addEventListener('click', () => loadAll());
 document.getElementById('btn-out').addEventListener('click', () => vmLogout());
 
+const OFFICE_CARS = [
+  ["01 269 KMA","Хасан"],["01 949 AKA","Дилшод"],["01 302 DNA","Йигитали"],
+  ["01 255 HMA","Мухриддин"],["01 205 HMA","Аваз"],["01 043 KMA","Жавохир"],
+  ["01 931 PJA","Тимур"],["01 083 XJA","Зухриддин"],["01 382 NMA","Умид"],
+  ["01 282 BMA","Боймурод"],["01 870 SEA","Сардор Х."],["01 668 UKA","Жасур"],
+  ["01 887 UKA","Комил"],["01 449 UKA","Санжарбек"],["01 646 UKA","Хасан А."],
+  ["01 844 FKA","Гулом"],["01 699 UKA","Сардор Т."],["01 592 YNA","Нурбек"],
+  ["01 849 SNA","Козим"],["01 309 YNA","Акмал"]
+];
+let PHARMS = [];
+
+function carLabel(car) {
+  const hit = OFFICE_CARS.find(x => x[0] === car);
+  return hit ? hit[1] + ' · ' + car : car;
+}
+
+function fillCarSelect() {
+  const sel = document.getElementById('ph-car');
+  sel.innerHTML = OFFICE_CARS.map(([car, name]) =>
+    `<option value="${esc(car)}">${esc(name)} — ${esc(car)}</option>`
+  ).join('');
+}
+
+function renderPharms() {
+  document.getElementById('ph-count').textContent = PHARMS.length + ' ta';
+  const tb = document.getElementById('tb-ph');
+  if (!PHARMS.length) {
+    tb.innerHTML = '<tr><td colspan="5" class="muted" style="padding:14px">Ro‘yxat bo‘sh</td></tr>';
+    return;
+  }
+  const sorted = [...PHARMS].sort((a, b) => String(a.car).localeCompare(b.car) || String(a.name).localeCompare(b.name));
+  tb.innerHTML = sorted.map(p => {
+    const geo = (p.lat != null && p.lng != null) ? (Number(p.lat).toFixed(4) + ', ' + Number(p.lng).toFixed(4)) : '—';
+    return `<tr>
+      <td>${esc(carLabel(p.car))}</td>
+      <td>${esc(p.name)}</td>
+      <td class="mono">${esc(geo)}</td>
+      <td class="mono">${esc(p.radiusM || 120)}</td>
+      <td><button class="btn btn-sm btn-bad" data-ph-del="${esc(p.id)}">O‘chirish</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadOffice() {
+  const d = await vmApi('/api/office/bootstrap');
+  PHARMS = Array.isArray(d.pharmacies) ? d.pharmacies : [];
+  renderPharms();
+  const tg = d.telegram || {};
+  document.getElementById('tg-on').checked = !!tg.enabled;
+  document.getElementById('tg-chat').value = tg.chatId || '';
+  const tok = document.getElementById('tg-token');
+  tok.value = '';
+  tok.placeholder = tg.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : '123456:ABC...';
+}
+
+async function savePharms() {
+  const d = await vmApi('/api/office/pharmacies', {
+    method: 'POST',
+    body: JSON.stringify({ pharmacies: PHARMS })
+  });
+  PHARMS = d.pharmacies || PHARMS;
+  renderPharms();
+}
+
+document.getElementById('btn-ph-add').addEventListener('click', async () => {
+  hide('msg-ph');
+  const name = document.getElementById('ph-name').value.trim();
+  const car = document.getElementById('ph-car').value;
+  if (!name || !car) {
+    show('msg-ph', 'Haydovchi va dorixona nomini kiriting.', false);
+    return;
+  }
+  const latRaw = document.getElementById('ph-lat').value;
+  const lngRaw = document.getElementById('ph-lng').value;
+  PHARMS.push({
+    id: 'ph_' + Date.now().toString(36),
+    car,
+    name,
+    lat: latRaw === '' ? null : Number(latRaw),
+    lng: lngRaw === '' ? null : Number(lngRaw),
+    radiusM: Number(document.getElementById('ph-radius').value) || 120,
+    aliases: []
+  });
+  try {
+    await savePharms();
+    document.getElementById('ph-name').value = '';
+    document.getElementById('ph-lat').value = '';
+    document.getElementById('ph-lng').value = '';
+    show('msg-ph', 'Dorixona saqlandi.', true);
+  } catch (err) {
+    show('msg-ph', err.message, false);
+  }
+});
+
+document.getElementById('tb-ph').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-ph-del]');
+  if (!btn) return;
+  const id = btn.getAttribute('data-ph-del');
+  PHARMS = PHARMS.filter(p => p.id !== id);
+  try {
+    await savePharms();
+    show('msg-ph', 'O‘chirildi.', true);
+  } catch (err) {
+    show('msg-ph', err.message, false);
+  }
+});
+
+document.getElementById('btn-tg-save').addEventListener('click', async () => {
+  hide('msg-tg');
+  try {
+    const body = {
+      enabled: document.getElementById('tg-on').checked,
+      chatId: document.getElementById('tg-chat').value.trim()
+    };
+    const token = document.getElementById('tg-token').value.trim();
+    if (token) body.botToken = token;
+    await vmApi('/api/office/telegram', { method: 'POST', body: JSON.stringify(body) });
+    document.getElementById('tg-token').value = '';
+    show('msg-tg', 'Telegram sozlamasi saqlandi.', true);
+    await loadOffice();
+  } catch (err) {
+    show('msg-tg', err.message, false);
+  }
+});
+
+document.getElementById('btn-tg-test').addEventListener('click', async () => {
+  hide('msg-tg');
+  try {
+    await vmApi('/api/office/telegram/test', { method: 'POST', body: '{}' });
+    show('msg-tg', 'Test xabar yuborildi. Telegramni tekshiring.', true);
+  } catch (err) {
+    show('msg-tg', err.message, false);
+  }
+});
+
 document.querySelectorAll('.pw-eye').forEach(btn => {
   btn.addEventListener('click', () => {
     const el = document.getElementById(btn.getAttribute('data-for'));
@@ -526,10 +742,12 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
   }
   document.getElementById('who').textContent = me.username;
   document.getElementById('s-me').textContent = me.username;
+  fillCarSelect();
   clearAddForm();
   setTimeout(clearAddForm, 400);
   vmStartHeartbeat();
   await loadAll();
+  await loadOffice();
   setInterval(loadAll, 15000);
 })();
 </script>

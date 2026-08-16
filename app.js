@@ -51,7 +51,9 @@ const STATE = {
     gpsConfig:   null,
     map:         null,
     mapMarkers:  [],
-    mapLine:     null
+    mapLine:     null,
+    pharmacies:  [],
+    reviews:     {}
 };
 
 const UZ_MONTHS = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
@@ -133,25 +135,47 @@ function normPh(s) {
 }
 
 let PHARM_INDEX = [];
+function ownPharmacyList(carKey) {
+    if (window.VMOffice && typeof VMOffice.ownNames === 'function') {
+        return VMOffice.ownNames(carKey);
+    }
+    const driver = DRIVERS.find(d => d.car === carKey);
+    if (!driver || !driver.pharmacies) return [];
+    return driver.pharmacies.split(',').map(p => p.trim()).filter(Boolean);
+}
+
 function buildPharmIndex() {
     PHARM_INDEX = [];
+    const pushEntry = (phName, car, shortName) => {
+        const n = normPh(phName);
+        if (!n) return;
+        PHARM_INDEX.push({ norm: n, name: phName, car, driver: shortName });
+        Object.entries(PHARMACY_ALIASES).forEach(([canonical, aliases]) => {
+            if (n.includes(normPh(canonical)) || aliases.some(a => n.includes(normPh(a)))) {
+                aliases.forEach(al => PHARM_INDEX.push({ norm: normPh(al), name: phName, car, driver: shortName }));
+            }
+        });
+    };
+    const fromState = STATE.pharmacies || [];
+    if (fromState.length) {
+        fromState.forEach(ph => {
+            const drv = DRIVERS.find(d => d.car === ph.car);
+            pushEntry(ph.name, ph.car, drv ? drv.shortName : ph.car);
+            (ph.aliases || []).forEach(al => pushEntry(al, ph.car, drv ? drv.shortName : ph.car));
+        });
+        return;
+    }
     DRIVERS.forEach(drv => {
         if (!drv.pharmacies) return;
-        drv.pharmacies.split(',').forEach(ph => {
-            const n = normPh(ph.trim());
-            if (!n) return;
-            PHARM_INDEX.push({ norm: n, name: ph.trim(), car: drv.car, driver: drv.shortName });
-            // Aliaslar
-            Object.entries(PHARMACY_ALIASES).forEach(([canonical, aliases]) => {
-                if (n.includes(normPh(canonical)) || aliases.some(a => n.includes(normPh(a)))) {
-                    aliases.forEach(al => PHARM_INDEX.push({ norm: normPh(al), name: ph.trim(), car: drv.car, driver: drv.shortName }));
-                }
-            });
-        });
+        drv.pharmacies.split(',').forEach(ph => pushEntry(ph.trim(), drv.car, drv.shortName));
     });
 }
 
-function matchPharmacy(place, currentCar) {
+function matchPharmacy(place, currentCar, lat, lng) {
+    if (window.VMOffice && typeof VMOffice.matchGeo === 'function') {
+        const geo = VMOffice.matchGeo(currentCar, lat, lng);
+        if (geo) return geo;
+    }
     const pn = normPh(place);
     if (!pn || pn.length < 3) return { type: 'none', phName: null, owners: [] };
 
@@ -232,7 +256,7 @@ function findDriverByCar(carRaw) {
 function enrichStops(rawStops, carKey) {
     return (rawStops || []).map((s, i) => {
         const place = String(s.place || '').trim();
-        const match = matchPharmacy(place, carKey);
+        const match = matchPharmacy(place, carKey, s.lat, s.lng);
         const durSec = s.durSec || parseTimeStr(s.duration) || 0;
         const stop = {
             num: i + 1,
@@ -277,6 +301,10 @@ async function handleFileDrop(files) {
         renderCalendar();
         renderDriverTabs();
         refreshUI();
+        if (window.VMOffice && STATE.currentDate) {
+            VMOffice.renderFleetBoard();
+            VMOffice.saveReport(STATE.currentDate);
+        }
         showToast(`✅ ${loaded} ta fayl muvaffaqiyatli yuklandi!`, 'success');
     }
 }
@@ -351,7 +379,7 @@ async function processXLSX(file) {
                     date:     dateFound,
                     stats:    stats,
                     stops:    stops,
-                    analysis: analyzeData(stops, driver ? driver.car : '', stats)
+                    analysis: analyzeData(stops, driver ? driver.car : '', stats, dateFound)
                 };
 
                 const carKey = processedData.car;
@@ -416,7 +444,7 @@ function parseChronoRows(rows, carKey) {
         if (benM)  benzin = parseFloat(benM[1].replace(',','.'));
 
         const durSec = parseTimeStr(durRaw) || parseTimeStr(inTimeRaw);
-        const match = matchPharmacy(place, carKey);
+        const match = matchPharmacy(place, carKey, lat, lng);
 
         stops.push({
             num:         i - headerRow,
@@ -494,15 +522,19 @@ function parseStats(rows, stops) {
 }
 
 // ── 5. TAHLIL VA BALL HISOBLASH ─────────────────────────────
-function analyzeData(stops, carKey, stats) {
-    const driver = DRIVERS.find(d => d.car === carKey);
-    const ownPharms = driver && driver.pharmacies
-        ? driver.pharmacies.split(',').map(p => p.trim()).filter(Boolean)
-        : [];
+function analyzeData(stops, carKey, stats, dateVal) {
+    const day = dateVal || STATE.currentDate;
+    const ownPharms = ownPharmacyList(carKey);
+    const problemOf = (s) => {
+        if (window.VMOffice && typeof VMOffice.isProblem === 'function') {
+            return VMOffice.isProblem(day, carKey, s);
+        }
+        return !!s.isProblem;
+    };
 
     const ownVisited    = stops.filter(s => s.matchType === 'own').length;
     const otherDir      = stops.filter(s => s.matchType === 'other').length;
-    const problemStops  = stops.filter(s => s.isProblem).length;
+    const problemStops  = stops.filter(s => problemOf(s)).length;
     const outsideCity   = stops.filter(s => s.isOutside).length;
 
     // Qaysi o'z dorixonalari borilmagan
@@ -551,6 +583,18 @@ function analyzeData(stops, carKey, stats) {
         missedList, ownPharms,
         score: { final: parseFloat(score.toFixed(1)), grade, breakdown, recommendations: recs }
     };
+}
+
+function recomputeCar(dateVal, car) {
+    const rec = STATE.data[dateVal] && STATE.data[dateVal][car];
+    if (!rec) return;
+    rec.analysis = analyzeData(rec.stops || [], car, rec.stats || {}, dateVal);
+}
+
+function recomputeDay(dateVal) {
+    const day = STATE.data[dateVal];
+    if (!day) return;
+    Object.keys(day).forEach(car => recomputeCar(dateVal, car));
 }
 
 // ── 6. XARITA ───────────────────────────────────────────────
@@ -624,6 +668,11 @@ function mapPinIcon(label, color, isEnd) {
 }
 
 function stopColor(st) {
+    const dateVal = STATE.currentDate;
+    const car = STATE.currentCar;
+    const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, st) : null;
+    if (rev && rev.status === 'allowed') return '#1a5c3a';
+    if (rev && rev.status === 'violation') return '#9b1c1c';
     if (st.isOffice) return '#2a303a';
     if (st.isOutside) return '#4a3d73';
     if (st.isProblem) return '#9b1c1c';
@@ -633,6 +682,11 @@ function stopColor(st) {
 }
 
 function stopStatusLabel(st) {
+    const dateVal = STATE.currentDate;
+    const car = STATE.currentCar;
+    const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, st) : null;
+    if (rev && rev.status === 'allowed') return 'Ruxsat';
+    if (rev && rev.status === 'violation') return 'Qoidabuzarlik';
     if (st.isOffice) return 'Ofis / sklad';
     if (st.isOutside) return 'Shahardan tashqari';
     if (st.isProblem) return 'Muammo';
@@ -689,6 +743,7 @@ function refreshMap(stops) {
     const list = Array.isArray(stops) ? stops : [];
     if (!list.length) {
         setMapStats([], 0);
+        if (window.VMOffice) VMOffice.drawGeofences(STATE.map, STATE.currentCar);
         return;
     }
 
@@ -740,6 +795,7 @@ function refreshMap(stops) {
     } else if (latlngs.length === 1) {
         STATE.map.setView(latlngs[0], 14);
     }
+    if (window.VMOffice) VMOffice.drawGeofences(STATE.map, STATE.currentCar);
 }
 
 // ── 7. KALENDAR ─────────────────────────────────────────────
@@ -799,6 +855,7 @@ function selectDate(ds) {
     renderCalendar();
     renderDriverTabs();
     refreshUI();
+    if (window.VMOffice) VMOffice.loadReportIfNeeded(ds);
 }
 
 // ── 8. HAYDOVCHI TABLARI ─────────────────────────────────────
@@ -836,6 +893,8 @@ function refreshUI() {
     // Banner
     renderBanner(driver, dayData);
 
+    if (window.VMOffice) VMOffice.renderFleetBoard();
+
     if (dayData) {
         renderKPI(dayData);
         renderStats(dayData);
@@ -863,7 +922,7 @@ function refreshUI() {
             <div class="empty-desc">Excel yoki GPS orqali kunlik ma'lumotni yuklang.</div></div>`;
 
         const stbEl = document.getElementById('stops-table-body');
-        if (stbEl) stbEl.innerHTML = `<tr><td colspan="6">
+        if (stbEl) stbEl.innerHTML = `<tr><td colspan="7">
             <div class="empty-state">
             <div class="empty-title">To'xtashlar yo'q</div>
             <div class="empty-desc">Ma'lumot yuklangandan so'ng ro'yxat chiqadi.</div></div></td></tr>`;
@@ -994,15 +1053,50 @@ function renderStats(data) {
     set('stat-stoptime', s.totalStop !== '—' ? s.totalStop : '—');
 }
 
+function reviewBtnHtml(idx, rev) {
+    const cur = rev && rev.status;
+    return `<span class="rev-btns">
+        <button type="button" class="rev-btn${cur === 'allowed' ? ' on-ok' : ''}" data-rev="allowed" data-i="${idx}">Ruxsat</button>
+        <button type="button" class="rev-btn${cur === 'violation' ? ' on-bad' : ''}" data-rev="violation" data-i="${idx}">Qoidabuzarlik</button>
+        ${cur ? `<button type="button" class="rev-btn" data-rev="" data-i="${idx}">Bekor</button>` : ''}
+    </span>`;
+}
+
+function bindReviewClicks(root) {
+    if (!root || root.dataset.revBound === '1') return;
+    root.dataset.revBound = '1';
+    root.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-rev]');
+        if (!btn || !window.VMOffice) return;
+        const i = Number(btn.getAttribute('data-i'));
+        const status = btn.getAttribute('data-rev') || '';
+        const rec = STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][STATE.currentCar];
+        const st = rec && rec.stops && rec.stops[i];
+        if (!st) return;
+        VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status);
+    });
+}
+
 // ── 9.4. DORIXONA TAHLILI ───────────────────────────────────
 function renderPharmacy(data) {
     const el = document.getElementById('pharmacy-analysis');
     if (!el) return;
     const a = data.analysis;
+    const dateVal = data.date || STATE.currentDate;
+    const car = data.car || STATE.currentCar;
     const ownStops   = data.stops.filter(s => s.matchType === 'own');
     const otherStops = data.stops.filter(s => s.matchType === 'other');
+    const pct = a.totalOwn > 0 ? Math.round((a.ownVisited / a.totalOwn) * 100) : null;
 
     let html = '<div class="analysis-body">';
+
+    html += `<div class="plan-box">
+        <div class="plan-k">Reja / fakt</div>
+        <div class="plan-v">${a.ownVisited} / ${a.totalOwn}${pct != null ? ' · ' + pct + '%' : ''}</div>
+        <div class="plan-s">${a.totalOwn
+            ? (a.missedList && a.missedList.length ? (a.missedList.length + ' ta o\'tkazib yuborilgan') : 'Reja bajarildi')
+            : 'Bu haydovchiga dorixona belgilanmagan. Boshqaruvda qo\'shing.'}</div>
+    </div>`;
 
     if (a.missedList && a.missedList.length > 0) {
         html += `<div class="ph-block">
@@ -1039,25 +1133,53 @@ function renderPharmacy(data) {
             </div></div>`;
     }
 
-    const problems = data.stops.filter(s => s.isProblem);
-    if (problems.length > 0) {
+    const problemIdx = [];
+    const allowedIdx = [];
+    data.stops.forEach((s, i) => {
+        const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
+        if (rev && rev.status === 'allowed') allowedIdx.push(i);
+        else if ((rev && rev.status === 'violation') || s.isProblem) problemIdx.push(i);
+    });
+
+    if (problemIdx.length > 0) {
         html += `<div class="ph-block">
-            <div class="ph-h bad">Muammoli · ${problems.length}</div>
+            <div class="ph-h bad">Muammoli · ${problemIdx.length}</div>
             <div class="ph-list">
-            ${problems.map(s => `
-            <div class="ph-row">
+            ${problemIdx.map(i => {
+                const s = data.stops[i];
+                const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
+                return `<div class="ph-row ph-rev">
                 <span class="nm">${s.place}</span>
                 <span class="tm">${s.duration || ''}</span>
-            </div>`).join('')}
+                ${reviewBtnHtml(i, rev)}
+            </div>`;
+            }).join('')}
             </div></div>`;
     }
 
-    if (!a.missedList?.length && !ownStops.length && !otherStops.length && !problems.length) {
+    if (allowedIdx.length > 0) {
+        html += `<div class="ph-block">
+            <div class="ph-h ok">Ruxsat etilgan · ${allowedIdx.length}</div>
+            <div class="ph-list">
+            ${allowedIdx.map(i => {
+                const s = data.stops[i];
+                const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
+                return `<div class="ph-row ph-rev">
+                <span class="nm">${s.place}</span>
+                <span class="tm">${s.duration || ''}</span>
+                ${reviewBtnHtml(i, rev)}
+            </div>`;
+            }).join('')}
+            </div></div>`;
+    }
+
+    if (!a.missedList?.length && !ownStops.length && !otherStops.length && !problemIdx.length && !allowedIdx.length) {
         html += '<div class="empty-state"><div class="empty-title">To\'xtash topilmadi</div></div>';
     }
 
     html += '</div>';
     el.innerHTML = html;
+    bindReviewClicks(el);
 }
 
 // ── 9.5. TO'XTASHLAR JADVALI ────────────────────────────────
@@ -1067,14 +1189,23 @@ function renderStops(stops) {
     if (!tbody) return;
     if (cntEl) cntEl.textContent = (stops ? stops.length : 0) + ' ta';
     if (!stops || !stops.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#94a3b8;">To\'xtashlar topilmadi</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;">To\'xtashlar topilmadi</td></tr>';
         return;
     }
 
+    const dateVal = STATE.currentDate;
+    const car = STATE.currentCar;
     let html = '';
     stops.forEach((st, i) => {
+        const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, st) : null;
         let rowCls = '', badge = '';
-        if (st.isOffice) {
+        if (rev && rev.status === 'allowed') {
+            rowCls = 'row-own';
+            badge = '<span class="badge b-own">Ruxsat</span>';
+        } else if (rev && rev.status === 'violation') {
+            rowCls = 'row-problem';
+            badge = '<span class="badge b-problem">Qoidabuzarlik</span>';
+        } else if (st.isOffice) {
             rowCls = 'row-office';
             badge = '<span class="badge b-office">Ofis</span>';
         } else if (st.isOutside) {
@@ -1093,6 +1224,7 @@ function renderStops(stops) {
             badge = '<span class="badge">—</span>';
         }
 
+        const canReview = st.isProblem || (rev && rev.status);
         html += `
         <tr class="${rowCls}">
             <td class="font-mono text-muted">${i+1}</td>
@@ -1105,9 +1237,11 @@ function renderStops(stops) {
             <td class="font-mono">${st.outTime || '—'}</td>
             <td class="font-mono text-muted">${st.duration || '—'}</td>
             <td>${badge}</td>
+            <td>${canReview ? reviewBtnHtml(i, rev) : '—'}</td>
         </tr>`;
     });
     tbody.innerHTML = html;
+    bindReviewClicks(tbody);
 }
 
 // ── 9.6. BAHOLASH ───────────────────────────────────────────
@@ -1232,7 +1366,7 @@ async function syncFromGPS(dateVal, cfg) {
                     gas: 0, benzin: 0, motoChas: '—', totalStop: '—'
                 }, (chrono && chrono.stats) || {});
                 if (!stats.stoyanok) stats.stoyanok = stops.length;
-                const analysis = analyzeData(stops, drv.car, stats);
+                const analysis = analyzeData(stops, drv.car, stats, dateVal);
                 if (!STATE.data[dateVal]) STATE.data[dateVal] = {};
                 STATE.data[dateVal][drv.car] = { car: drv.car, driver: drv, date: dateVal, stats, stops, analysis };
                 if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
@@ -1252,6 +1386,11 @@ async function syncFromGPS(dateVal, cfg) {
         const d = new Date(dateVal); CAL.y = d.getFullYear(); CAL.m = d.getMonth();
         saveAll();
         renderCalendar(); renderDriverTabs(); refreshUI();
+        if (window.VMOffice) {
+            VMOffice.renderFleetBoard();
+            VMOffice.saveReport(dateVal);
+            VMOffice.sendDigest(dateVal);
+        }
 
         if (done > 0) {
             showToast(`GPS dan ${dateVal} uchun ${done} ta mashina yuklandi`, 'success');
@@ -1776,6 +1915,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!STATE.currentCar) STATE.currentCar = DRIVERS[0].car;
     if (!STATE.currentDate) {
         STATE.currentDate = dateStr(new Date());
+    }
+
+    if (window.VMOffice) {
+        await VMOffice.bootstrap();
+        recomputeDay(STATE.currentDate);
     }
 
     // Xaritani ishga tushirish

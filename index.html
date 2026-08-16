@@ -398,6 +398,31 @@ table.gtable tr.row-own td    { background: #f4f8f5; }
 table.gtable tr.row-other td  { background: #f7f4ec; }
 table.gtable tr.row-problem td{ background: #f8f1f1; }
 table.gtable tr.row-office td { background: #f4f5f7; }
+table.gtable tr.rank-row { cursor: pointer; }
+table.gtable tr.rank-row.is-active td { background: #e6edf4; }
+table.gtable tr.rank-row.is-empty td { color: #8b939e; }
+.rk-ok { color: var(--ok); font-weight: 700; font-family: var(--mono); }
+.rk-mid { color: #8a5a12; font-weight: 700; font-family: var(--mono); }
+.rk-bad { color: var(--bad); font-weight: 700; font-family: var(--mono); }
+
+.plan-box {
+  margin: 10px 12px 8px; padding: 10px 12px;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.plan-k { font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.plan-v { font-family: var(--mono); font-size: 18px; font-weight: 600; margin-top: 4px; }
+.plan-s { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+
+.rev-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+.rev-btn {
+  height: 24px; padding: 0 7px; border: 1px solid var(--line);
+  background: #fff; color: var(--ink-2); font: 700 9px/1 var(--sans);
+  letter-spacing: .04em; cursor: pointer;
+}
+.rev-btn:hover { background: #f3f4f6; }
+.rev-btn.on-ok { background: var(--ok); color: #fff; border-color: var(--ok); }
+.rev-btn.on-bad { background: var(--bad); color: #fff; border-color: var(--bad); }
+.ph-row.ph-rev { flex-wrap: wrap; gap: 6px; align-items: center; }
 
 .badge {
   display: inline-flex; align-items: center;
@@ -823,6 +848,33 @@ table.gtable tr.row-office td { background: #f4f5f7; }
       </div>
     </div>
 
+    <div class="card" id="fleet-board">
+      <div class="sec-head">
+        <h3>Barcha mashinalar</h3>
+        <span class="cnt" id="fleet-board-meta">—</span>
+      </div>
+      <div class="table-wrap">
+        <table class="gtable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Haydovchi</th>
+              <th>Raqam</th>
+              <th>Ball</th>
+              <th>Km</th>
+              <th>Reja</th>
+              <th>Boshqa</th>
+              <th>Muammo</th>
+              <th>Tezlik</th>
+            </tr>
+          </thead>
+          <tbody id="fleet-board-body">
+            <tr><td colspan="9" style="text-align:center;padding:22px;color:#8b939e;">GPS yuklangandan so'ng reyting chiqadi.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="kpi-container">
       <div class="kpi-grid">
         <div class="kpi-card c-blue"><div class="kpi-title">Yurilgan masofa</div><div class="kpi-value">—</div><div class="kpi-unit">km</div></div>
@@ -872,7 +924,7 @@ table.gtable tr.row-office td { background: #f4f5f7; }
         </div>
       </div>
       <div class="map-legend">
-        <span class="leg-item"><span class="leg-dot" style="background:#1a5c3a"></span> O'z dorixonasi</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#1a5c3a"></span> O'z dorixonasi / geozona</span>
         <span class="leg-item"><span class="leg-dot" style="background:#1a4a78"></span> Boshqa yo'nalish</span>
         <span class="leg-item"><span class="leg-dot" style="background:#9b1c1c"></span> Muammo</span>
         <span class="leg-item"><span class="leg-dot" style="background:#4a3d73"></span> Shahardan tashqari</span>
@@ -899,11 +951,12 @@ table.gtable tr.row-office td { background: #f4f5f7; }
               <th>Chiqish</th>
               <th>Turgani</th>
               <th>Holat</th>
+              <th>Ofis</th>
             </tr>
           </thead>
           <tbody id="stops-table-body">
             <tr>
-              <td colspan="6">
+              <td colspan="7">
                 <div class="empty-state">
                   <div class="empty-title">To'xtashlar yo'q</div>
                   <div class="empty-desc">Ma'lumot yuklangandan so'ng ro'yxat shu yerda chiqadi.</div>
@@ -1030,7 +1083,8 @@ table.gtable tr.row-office td { background: #f4f5f7; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="wialon-api.js?v=4"></script>
 <script src="auth.js?v=3"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
+<script src="office.js?v=1"></script>
 <script>
 document.querySelectorAll('.modal-bg').forEach(m => {
   m.addEventListener('click', function(e) {

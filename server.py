@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import socketserver
 import sys
@@ -29,7 +30,8 @@ SEED_PASS = "AdminPro@2026"
 PUBLIC_PATHS = {"/login.html", "/favicon.ico"}
 PUBLIC_PREFIX = ("/fonts/", "/logo/")
 BLOCKED_EXT = {".py", ".bat", ".md", ".txt"}
-BLOCKED_NAMES = {"users.json", "server.py", "start.bat"}
+BLOCKED_NAMES = {"users.json", "server.py", "start.bat", "office-seed.json"}
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 ALLOWED_GPS_HOSTS = [
     "bms1.gpsavto.uz",
@@ -345,7 +347,268 @@ class AuthStore:
             return rows[:limit]
 
 
+def valid_date(s):
+    return bool(s and DATE_RE.match(str(s)))
+
+
+def to_float(v):
+    if v is None or v == "":
+        return None
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    if n != n:
+        return None
+    return n
+
+
+def clean_pharmacy(p):
+    if not isinstance(p, dict):
+        return None
+    name = str(p.get("name") or "").strip()[:80]
+    car = str(p.get("car") or "").strip()[:24]
+    if not name or not car:
+        return None
+    rid = str(p.get("id") or "").strip()[:40] or ("ph_" + secrets.token_hex(4))
+    radius = p.get("radiusM")
+    try:
+        radius = int(radius) if radius not in (None, "") else 120
+    except (TypeError, ValueError):
+        radius = 120
+    radius = max(40, min(radius, 500))
+    aliases = p.get("aliases") if isinstance(p.get("aliases"), list) else []
+    aliases = [str(a).strip()[:60] for a in aliases if str(a).strip()][:12]
+    return {
+        "id": rid,
+        "car": car,
+        "name": name,
+        "lat": to_float(p.get("lat")),
+        "lng": to_float(p.get("lng")),
+        "radiusM": radius,
+        "aliases": aliases,
+    }
+
+
+def telegram_send(token, chat_id, text):
+    token = (token or "").strip()
+    chat_id = str(chat_id or "").strip()
+    text = (text or "").strip()
+    if not token or not chat_id or not text:
+        return False, "Token yoki chat ID yo'q"
+    url = "https://api.telegram.org/bot%s/sendMessage" % token
+    body = json.dumps(
+        {
+            "chat_id": chat_id,
+            "text": text[:4000],
+            "disable_web_page_preview": True,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8") or "{}")
+            if data.get("ok"):
+                return True, None
+            return False, str(data.get("description") or "Telegram xato")
+    except Exception as e:
+        return False, str(e)
+
+
+class OfficeStore:
+    def __init__(self, root):
+        self.root = os.path.join(root, "data", "office")
+        self.seed_path = os.path.join(root, "office-seed.json")
+        self.lock = threading.Lock()
+        os.makedirs(os.path.join(self.root, "reports"), exist_ok=True)
+        os.makedirs(os.path.join(self.root, "reviews"), exist_ok=True)
+        self._ensure_pharmacies()
+        self._ensure_settings()
+
+    def _read_json(self, path, default):
+        if not os.path.isfile(path):
+            return default
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return default
+
+    def _write_json(self, path, obj):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+    def _ensure_pharmacies(self):
+        path = os.path.join(self.root, "pharmacies.json")
+        if os.path.isfile(path):
+            return
+        seed = self._read_json(self.seed_path, {})
+        items = seed.get("pharmacies") if isinstance(seed, dict) else []
+        cleaned = [c for c in (clean_pharmacy(p) for p in items or []) if c]
+        self._write_json(path, {"pharmacies": cleaned})
+
+    def _ensure_settings(self):
+        path = os.path.join(self.root, "settings.json")
+        if os.path.isfile(path):
+            return
+        self._write_json(
+            path,
+            {"telegram": {"botToken": "", "chatId": "", "enabled": False}},
+        )
+
+    def pharmacies(self):
+        with self.lock:
+            data = self._read_json(os.path.join(self.root, "pharmacies.json"), {})
+            items = data.get("pharmacies") if isinstance(data, dict) else []
+            return items if isinstance(items, list) else []
+
+    def save_pharmacies(self, items):
+        cleaned = [c for c in (clean_pharmacy(p) for p in items or []) if c]
+        seen = set()
+        unique = []
+        for p in cleaned:
+            if p["id"] in seen:
+                p["id"] = "ph_" + secrets.token_hex(4)
+            seen.add(p["id"])
+            unique.append(p)
+        with self.lock:
+            self._write_json(os.path.join(self.root, "pharmacies.json"), {"pharmacies": unique})
+        return unique
+
+    def reviews(self, date):
+        if not valid_date(date):
+            return {}
+        with self.lock:
+            data = self._read_json(os.path.join(self.root, "reviews", date + ".json"), {})
+            return data if isinstance(data, dict) else {}
+
+    def all_reviews(self):
+        out = {}
+        folder = os.path.join(self.root, "reviews")
+        with self.lock:
+            if not os.path.isdir(folder):
+                return out
+            for name in os.listdir(folder):
+                if not name.endswith(".json"):
+                    continue
+                date = name[:-5]
+                if not valid_date(date):
+                    continue
+                data = self._read_json(os.path.join(folder, name), {})
+                if isinstance(data, dict) and data:
+                    out[date] = data
+        return out
+
+    def set_review(self, date, key, rec):
+        if not valid_date(date) or not key:
+            return None, "Sana yoki kalit noto'g'ri"
+        key = str(key)[:180]
+        with self.lock:
+            path = os.path.join(self.root, "reviews", date + ".json")
+            data = self._read_json(path, {})
+            if not isinstance(data, dict):
+                data = {}
+            status = (rec or {}).get("status")
+            if status in ("allowed", "violation"):
+                data[key] = {
+                    "status": status,
+                    "note": str((rec or {}).get("note") or "")[:200],
+                    "by": str((rec or {}).get("by") or "")[:40],
+                    "at": iso_now(),
+                }
+            else:
+                data.pop(key, None)
+            self._write_json(path, data)
+            return data, None
+
+    def report_dates(self):
+        folder = os.path.join(self.root, "reports")
+        dates = []
+        with self.lock:
+            if not os.path.isdir(folder):
+                return dates
+            for name in os.listdir(folder):
+                if name.endswith(".json") and valid_date(name[:-5]):
+                    dates.append(name[:-5])
+        dates.sort(reverse=True)
+        return dates
+
+    def get_report(self, date):
+        if not valid_date(date):
+            return None
+        with self.lock:
+            data = self._read_json(os.path.join(self.root, "reports", date + ".json"), None)
+            return data if isinstance(data, dict) else None
+
+    def save_report(self, date, cars, saved_by=""):
+        if not valid_date(date):
+            return None, "Sana noto'g'ri"
+        if not isinstance(cars, dict):
+            return None, "Ma'lumot noto'g'ri"
+        payload = {
+            "date": date,
+            "savedAt": iso_now(),
+            "savedBy": str(saved_by or "")[:40],
+            "cars": cars,
+        }
+        with self.lock:
+            self._write_json(os.path.join(self.root, "reports", date + ".json"), payload)
+        return payload, None
+
+    def settings(self):
+        with self.lock:
+            data = self._read_json(os.path.join(self.root, "settings.json"), {})
+            tg = data.get("telegram") if isinstance(data, dict) else {}
+            if not isinstance(tg, dict):
+                tg = {}
+            return {
+                "telegram": {
+                    "botToken": str(tg.get("botToken") or ""),
+                    "chatId": str(tg.get("chatId") or ""),
+                    "enabled": bool(tg.get("enabled")),
+                }
+            }
+
+    def public_telegram(self):
+        tg = self.settings()["telegram"]
+        return {
+            "enabled": bool(tg.get("enabled")),
+            "ready": bool(tg.get("enabled") and tg.get("botToken") and tg.get("chatId")),
+            "hasToken": bool(tg.get("botToken")),
+            "chatId": tg.get("chatId") or "",
+        }
+
+    def save_telegram(self, body):
+        body = body or {}
+        with self.lock:
+            path = os.path.join(self.root, "settings.json")
+            data = self._read_json(path, {})
+            if not isinstance(data, dict):
+                data = {}
+            tg = data.get("telegram") if isinstance(data.get("telegram"), dict) else {}
+            if "chatId" in body:
+                tg["chatId"] = str(body.get("chatId") or "").strip()[:64]
+            if "enabled" in body:
+                tg["enabled"] = bool(body.get("enabled"))
+            token = body.get("botToken")
+            if token is not None and str(token).strip() != "":
+                tg["botToken"] = str(token).strip()[:200]
+            data["telegram"] = tg
+            self._write_json(path, data)
+        return self.public_telegram()
+
+
 STORE = None
+OFFICE = None
 
 
 class VaksinamedHandler(SimpleHTTPRequestHandler):
@@ -548,6 +811,37 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             self.send_json({"ok": True, "audit": STORE.audit()})
             return
+
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        date = (qs.get("date") or [None])[0]
+
+        if path == "/api/office/bootstrap":
+            sess = self.require_user()
+            if not sess:
+                return
+            self.send_json(
+                {
+                    "ok": True,
+                    "pharmacies": OFFICE.pharmacies(),
+                    "reviews": OFFICE.all_reviews(),
+                    "reportDates": OFFICE.report_dates(),
+                    "telegram": OFFICE.public_telegram(),
+                }
+            )
+            return
+
+        if path == "/api/office/report":
+            sess = self.require_user()
+            if not sess:
+                return
+            if not valid_date(date):
+                self.send_json({"ok": False, "error": "Sana noto'g'ri"}, 400)
+                return
+            report = OFFICE.get_report(date)
+            reviews = OFFICE.reviews(date)
+            self.send_json({"ok": True, "report": report, "reviews": reviews})
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_api_post(self, path):
@@ -667,6 +961,89 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True})
             return
 
+        if path == "/api/office/pharmacies":
+            sess = self.require_pro()
+            if not sess:
+                return
+            items = OFFICE.save_pharmacies(body.get("pharmacies") or [])
+            self.send_json({"ok": True, "pharmacies": items})
+            return
+
+        if path == "/api/office/reviews":
+            sess = self.require_user()
+            if not sess:
+                return
+            data, err = OFFICE.set_review(
+                body.get("date"),
+                body.get("key"),
+                {
+                    "status": body.get("status"),
+                    "note": body.get("note"),
+                    "by": sess.get("username"),
+                },
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({"ok": True, "reviews": data})
+            return
+
+        if path == "/api/office/report":
+            sess = self.require_user()
+            if not sess:
+                return
+            payload, err = OFFICE.save_report(
+                body.get("date"), body.get("cars") or {}, sess.get("username")
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({"ok": True, "savedAt": payload.get("savedAt")})
+            return
+
+        if path == "/api/office/telegram":
+            sess = self.require_pro()
+            if not sess:
+                return
+            pub = OFFICE.save_telegram(body)
+            self.send_json({"ok": True, "telegram": pub})
+            return
+
+        if path == "/api/office/telegram/test":
+            sess = self.require_pro()
+            if not sess:
+                return
+            tg = OFFICE.settings()["telegram"]
+            ok, err = telegram_send(
+                tg.get("botToken"),
+                tg.get("chatId"),
+                "VAKSINA MED — Telegram ulanishi ishlayapti.",
+            )
+            if not ok:
+                self.send_json({"ok": False, "error": err or "Yuborilmadi"}, 400)
+                return
+            self.send_json({"ok": True})
+            return
+
+        if path == "/api/office/telegram/digest":
+            sess = self.require_user()
+            if not sess:
+                return
+            tg = OFFICE.settings()["telegram"]
+            if not (tg.get("enabled") and tg.get("botToken") and tg.get("chatId")):
+                self.send_json({"ok": True, "skipped": True})
+                return
+            text = str(body.get("text") or "").strip()
+            if not text:
+                self.send_json({"ok": False, "error": "Matn yo'q"}, 400)
+                return
+            ok, err = telegram_send(tg.get("botToken"), tg.get("chatId"), text)
+            if not ok:
+                self.send_json({"ok": False, "error": err or "Yuborilmadi"}, 400)
+                return
+            self.send_json({"ok": True})
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_gps_proxy(self, parsed):
@@ -740,7 +1117,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
 
 def main():
-    global STORE
+    global STORE, OFFICE
     parser = argparse.ArgumentParser(description="VaksinaMed GPS Monitor Server")
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--dir", type=str, default=DIRECTORY)
@@ -750,6 +1127,7 @@ def main():
 
     os.chdir(args.dir)
     STORE = AuthStore(args.dir)
+    OFFICE = OfficeStore(args.dir)
 
     seed_note = ""
     if STORE.seeded:
