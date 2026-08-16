@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-PORT = 8080
+PORT = int(os.environ.get("PORT", "8080"))
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 COOKIE = "vm_sid"
 SESSION_TTL = 12 * 3600
@@ -745,6 +745,8 @@ def main():
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--dir", type=str, default=DIRECTORY)
     args = parser.parse_args()
+    if os.environ.get("PORT"):
+        args.port = int(os.environ["PORT"])
 
     os.chdir(args.dir)
     STORE = AuthStore(args.dir)
