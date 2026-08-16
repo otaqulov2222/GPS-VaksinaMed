@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boshqaruv — VaksinaMed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #c5cad3;
+  --card: #fff;
+  --ink: #12151c;
+  --muted: #5c6573;
+  --line: #b7bec8;
+  --header: #0c1016;
+  --gold: #c9a227;
+  --ok: #1a5c3a;
+  --bad: #9b1c1c;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 13px; min-height: 100vh; }
+a { color: inherit; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  height: 52px; padding: 0 16px 0 12px;
+  background: var(--header); color: #f4f4f2;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  border-bottom: 2px solid var(--gold);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand img { width: 36px; height: 36px; display: block; flex-shrink: 0; }
+.tb-name {
+  font-size: 14px; font-weight: 700; letter-spacing: .04em;
+  color: #c4a0de; line-height: 1;
+}
+.tb-name span { color: #e8b423; }
+.tb-line {
+  font-size: 8px; font-weight: 600; letter-spacing: .16em;
+  color: #9b7ab3; margin-top: 3px;
+}
+.tb-title { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.tb-sub { font-size: 10px; color: #8b939e; letter-spacing: .12em; text-transform: uppercase; margin-top: 2px; }
+.acts { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.who { font-family: var(--mono); font-size: 11px; color: #9aa3ae; }
+
+.btn {
+  height: 32px; padding: 0 12px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid #3a4450; background: transparent; color: #d5d8dc;
+  font: 700 11px/1 var(--sans); letter-spacing: .06em; cursor: pointer; text-decoration: none;
+}
+.btn:hover { background: #1c232c; color: #fff; }
+.btn-gold { background: var(--gold); color: #0c1016; border-color: var(--gold); }
+.btn-gold:hover { background: #d4b03a; color: #0c1016; }
+.btn-dark { background: #12151c; color: #f4f4f2; border-color: #12151c; }
+.btn-dark:hover { background: #2a303a; }
+.btn-bad { color: #c45a5a; border-color: #6a3030; background: #fff; }
+.btn-bad:hover { background: var(--bad); color: #fff; }
+.btn-sm { height: 28px; padding: 0 9px; font-size: 10px; }
+.btn-lg { height: 44px; width: 100%; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+
+.wrap { max-width: 1240px; margin: 18px auto 40px; padding: 0 14px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+@media (max-width: 720px) { .stats { grid-template-columns: 1fr 1fr; } }
+.stat {
+  background: var(--header); color: #f4f4f2;
+  padding: 12px 14px; border-top: 2px solid var(--gold);
+}
+.stat i { display: block; font-style: normal; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: #8b939e; font-weight: 700; }
+.stat b { display: block; font-family: var(--mono); font-size: 22px; margin-top: 6px; font-weight: 600; }
+
+.layout { display: grid; grid-template-columns: 400px 1fr; gap: 12px; align-items: start; }
+@media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+/* Add-admin window */
+.add-win {
+  background: #fff;
+  border: 1px solid #12151c;
+  box-shadow: 8px 8px 0 rgba(12,16,22,.12);
+}
+.add-win-head {
+  background: #0c1016; color: #f4f4f2;
+  padding: 16px 18px 14px;
+  border-bottom: 2px solid var(--gold);
+}
+.add-win-head .kicker {
+  font-size: 9px; font-weight: 700; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--gold); margin-bottom: 4px;
+}
+.add-win-head h1 { font-size: 18px; letter-spacing: .04em; font-weight: 700; }
+.add-win-head p { font-size: 12px; color: #9aa3ae; margin-top: 6px; line-height: 1.45; }
+.add-win-body { padding: 18px; }
+.field { margin-bottom: 14px; }
+.field label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 10px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+.field label em { font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: #8b939e; }
+.field input {
+  width: 100%; height: 42px; padding: 0 12px;
+  border: 1px solid #9aa3ae; background: #f7f8fa;
+  font-family: var(--mono); font-size: 14px; color: var(--ink);
+}
+.field input:focus { outline: none; border-color: var(--gold); background: #fff; box-shadow: 0 0 0 3px rgba(201,162,39,.18); }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 44px; }
+.pw-eye {
+  position: absolute; right: 4px; top: 4px; width: 34px; height: 34px;
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.pw-eye:hover, .pw-eye.on { color: var(--gold); }
+.pw-eye svg { width: 18px; height: 18px; }
+.rules {
+  background: #f3f4f6; border: 1px solid var(--line);
+  padding: 10px 12px; margin: 0 0 16px;
+  font-size: 12px; color: var(--muted); line-height: 1.55;
+}
+.rules b { color: var(--ink); }
+.msg { display: none; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; border: 1px solid; line-height: 1.4; }
+.msg.show { display: block; }
+.msg.ok { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
+.msg.bad { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
+
+.card { background: var(--card); border: 1px solid #12151c; overflow: hidden; }
+.head {
+  background: #0c1016; color: #f4f4f2; padding: 12px 16px;
+  border-bottom: 2px solid var(--gold);
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+}
+.head h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+.stack { display: grid; gap: 12px; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--line); padding: 9px 12px; background: #f3f4f6;
+}
+td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middle; }
+.mono { font-family: var(--mono); }
+.chip {
+  display: inline-flex; padding: 2px 7px; font-size: 9px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; border: 1px solid;
+}
+.chip-pro { background: var(--gold); color: #0c1016; border-color: var(--gold); }
+.chip-admin { background: #e6edf4; color: #1a4a78; border-color: #c5d0dc; }
+.chip-on { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
+.chip-off { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+.muted { color: var(--muted); font-size: 12px; }
+.body { padding: 14px 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+
+.modal-bg {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(12,16,22,.72);
+  display: none; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  width: 100%; max-width: 420px; background: #fff; border: 1px solid #12151c;
+}
+.modal .head { cursor: default; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img src="/logo/mark.svg?v=3" alt="">
+    <div>
+      <div class="tb-name">VAKSINA <span>MED</span></div>
+      <div class="tb-line">MACHINE CONTROL</div>
+    </div>
+    <div class="tb-title" style="border-left:1px solid #2a323c;padding-left:12px;margin-left:4px;">Boshqaruv</div>
+  </div>
+  <div class="acts">
+    <span class="who" id="who"></span>
+    <a class="btn btn-gold" href="/">← Asosiy oyna</a>
+    <button class="btn" type="button" id="btn-out">Chiqish</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stats">
+    <div class="stat"><i>Adminlar</i><b id="s-users">—</b></div>
+    <div class="stat"><i>Onlayn</i><b id="s-on">—</b></div>
+    <div class="stat"><i>Sessiyalar</i><b id="s-sess">—</b></div>
+    <div class="stat"><i>Sizning login</i><b style="font-size:16px" id="s-me">—</b></div>
+  </div>
+
+  <div class="layout">
+    <aside>
+      <div class="add-win">
+        <div class="add-win-head">
+          <div class="kicker">Yangi hisob</div>
+          <h1>Admin qo‘shish</h1>
+          <p>Bu odam dashboardni ishlatadi. Boshqaruv huquqi faqat sizda qoladi.</p>
+        </div>
+        <form class="add-win-body" id="form-add" autocomplete="off">
+          <input type="text" name="prevent_autofill_user" style="display:none" tabindex="-1" aria-hidden="true">
+          <input type="password" name="prevent_autofill_pass" style="display:none" tabindex="-1" aria-hidden="true">
+          <div class="msg" id="msg-add"></div>
+          <div class="rules">
+            Login kamida <b>3</b> belgi. Parol kamida <b>6</b> belgi. Rol: <b>Admin</b>.
+          </div>
+          <div class="field">
+            <label>To‘liq ism <em>majburiy emas</em></label>
+            <input id="n-name" name="new_admin_fullname" autocomplete="off" placeholder="Masalan: Jasur Karimov">
+          </div>
+          <div class="field">
+            <label>Yangi login <em>kirish uchun</em></label>
+            <input id="n-user" name="new_admin_login" autocomplete="off" spellcheck="false" placeholder="masalan: jasur">
+          </div>
+          <div class="field">
+            <label>Parol</label>
+            <div class="pw-wrap">
+              <input id="n-pass" name="new_admin_secret" type="password" autocomplete="new-password" placeholder="kamida 6 belgi">
+              <button type="button" class="pw-eye" data-for="n-pass" title="Ko‘rsatish">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Parolni takrorlang</label>
+            <div class="pw-wrap">
+              <input id="n-pass2" name="new_admin_secret2" type="password" autocomplete="new-password" placeholder="qayta yozing">
+              <button type="button" class="pw-eye" data-for="n-pass2" title="Ko‘rsatish">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <button class="btn btn-gold btn-lg" type="submit" id="btn-add">Hisobni yaratish</button>
+        </form>
+      </div>
+    </aside>
+
+    <div class="stack">
+      <div class="card">
+        <div class="head">
+          <h2>Foydalanuvchilar</h2>
+          <button class="btn btn-sm" type="button" id="btn-reload">Yangilash</button>
+        </div>
+        <div class="msg" id="msg-users" style="margin:12px 16px 0;"></div>
+        <table>
+          <thead>
+            <tr><th>Ism</th><th>Login</th><th>Rol</th><th>Holat</th><th>Oxirgi kirish</th><th>Amal</th></tr>
+          </thead>
+          <tbody id="tb-users"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="head"><h2>Kim tizimda</h2></div>
+        <table>
+          <thead>
+            <tr><th>Foydalanuvchi</th><th>IP</th><th>Kirgan</th><th>Oxirgi</th><th>Holat</th><th></th></tr>
+          </thead>
+          <tbody id="tb-sess"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px;">
+    <div class="head"><h2>O‘z parolingizni almashtirish</h2></div>
+    <div class="body">
+      <div class="msg" id="msg-pw"></div>
+      <div class="grid2">
+        <div class="field" style="margin:0">
+          <label>Eski parol</label>
+          <div class="pw-wrap">
+            <input id="pw-old" type="password" autocomplete="current-password">
+            <button type="button" class="pw-eye" data-for="pw-old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+        <div class="field" style="margin:0">
+          <label>Yangi parol</label>
+          <div class="pw-wrap">
+            <input id="pw-new" type="password" autocomplete="new-password">
+            <button type="button" class="pw-eye" data-for="pw-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-gold" type="button" id="btn-pw" style="margin-top:12px;">Parolni saqlash</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px;">
+    <div class="head"><h2>Jurnal</h2></div>
+    <table>
+      <thead><tr><th>Vaqt</th><th>Amal</th><th>Kim</th><th>Izoh</th></tr></thead>
+      <tbody id="tb-audit"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-reset">
+  <div class="modal">
+    <div class="head">
+      <h2>Parolni yangilash</h2>
+      <button class="btn btn-sm" type="button" id="reset-close">Yopish</button>
+    </div>
+    <div class="body">
+      <p class="muted" id="reset-who" style="margin-bottom:12px"></p>
+      <div class="field">
+        <label>Yangi parol</label>
+        <div class="pw-wrap">
+          <input id="reset-pass" type="password" autocomplete="new-password">
+          <button type="button" class="pw-eye" data-for="reset-pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+      <button class="btn btn-gold btn-lg" type="button" id="reset-ok">Saqlash</button>
+    </div>
+  </div>
+</div>
+
+<script src="auth.js?v=3"></script>
+<script>
+function show(id, text, ok) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg show ' + (ok ? 'ok' : 'bad');
+}
+function hide(id) {
+  document.getElementById(id).className = 'msg';
+}
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let resetId = null;
+
+async function loadAll() {
+  const [users, sess, audit] = await Promise.all([
+    vmApi('/api/users'),
+    vmApi('/api/sessions'),
+    vmApi('/api/audit')
+  ]);
+  document.getElementById('s-users').textContent = users.users.length;
+  document.getElementById('s-sess').textContent = sess.sessions.length;
+  document.getElementById('s-on').textContent = sess.sessions.filter(s => s.online).length;
+
+  document.getElementById('tb-users').innerHTML = users.users.map(u => {
+    const role = u.role === 'admin_pro'
+      ? '<span class="chip chip-pro">Pro</span>'
+      : '<span class="chip chip-admin">Admin</span>';
+    const st = u.active
+      ? '<span class="chip chip-on">Faol</span>'
+      : '<span class="chip chip-off">Blok</span>';
+    const locked = u.protected || u.role === 'admin_pro';
+    const acts = locked
+      ? '<span class="muted">Himoyalangan</span>'
+      : `<div class="row-btns">
+          <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Bloklash' : 'Yoqish'}</button>
+          <button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
+          <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}">O‘chirish</button>
+        </div>`;
+    return `<tr>
+      <td>${esc(u.name)}</td>
+      <td class="mono">${esc(u.username)}</td>
+      <td>${role}</td>
+      <td>${st}</td>
+      <td class="mono">${esc(u.last_login || '—')}</td>
+      <td>${acts}</td>
+    </tr>`;
+  }).join('');
+
+  const tbS = document.getElementById('tb-sess');
+  if (!sess.sessions.length) {
+    tbS.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Hozir sessiya yo‘q</td></tr>';
+  } else {
+    tbS.innerHTML = sess.sessions.map(s => {
+      const mine = s.id === sess.me;
+      return `<tr>
+        <td>${esc(s.name)} <span class="mono">@${esc(s.username)}</span></td>
+        <td class="mono">${esc(s.ip)}</td>
+        <td class="mono">${esc(s.created)}</td>
+        <td class="mono">${esc(s.last_seen)}</td>
+        <td>${s.online ? '<span class="chip chip-on">Onlayn</span>' : '<span class="chip chip-off">Idle</span>'}${mine ? ' <span class="chip chip-pro">Siz</span>' : ''}</td>
+        <td>${mine ? '' : `<button class="btn btn-sm btn-bad" data-act="kick" data-id="${s.id}">Chiqarish</button>`}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('tb-audit').innerHTML = audit.audit.map(a => `<tr>
+    <td class="mono">${esc(a.t)}</td>
+    <td class="mono">${esc(a.act)}</td>
+    <td>${esc(a.who)}</td>
+    <td>${esc(a.detail || '')}</td>
+  </tr>`).join('');
+}
+
+function clearAddForm() {
+  document.getElementById('n-name').value = '';
+  document.getElementById('n-user').value = '';
+  document.getElementById('n-pass').value = '';
+  document.getElementById('n-pass2').value = '';
+}
+
+document.getElementById('tb-users').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = btn.getAttribute('data-id');
+  const act = btn.getAttribute('data-act');
+  hide('msg-users');
+  try {
+    if (act === 'toggle') {
+      await vmApi('/api/users/toggle', { method: 'POST', body: JSON.stringify({ id, active: btn.getAttribute('data-on') === '1' }) });
+    } else if (act === 'del') {
+      if (!confirm('Adminni tizimdan o‘chirish?')) return;
+      await vmApi('/api/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
+    } else if (act === 'reset') {
+      resetId = id;
+      document.getElementById('reset-who').textContent = 'Login: ' + (btn.getAttribute('data-name') || '');
+      document.getElementById('reset-pass').value = '';
+      document.getElementById('modal-reset').classList.add('open');
+      return;
+    }
+    await loadAll();
+  } catch (err) {
+    show('msg-users', err.message, false);
+  }
+});
+
+document.getElementById('reset-close').addEventListener('click', () => {
+  document.getElementById('modal-reset').classList.remove('open');
+  resetId = null;
+});
+document.getElementById('modal-reset').addEventListener('click', (e) => {
+  if (e.target.id === 'modal-reset') {
+    document.getElementById('modal-reset').classList.remove('open');
+    resetId = null;
+  }
+});
+document.getElementById('reset-ok').addEventListener('click', async () => {
+  if (!resetId) return;
+  try {
+    await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: resetId, password: document.getElementById('reset-pass').value }) });
+    document.getElementById('modal-reset').classList.remove('open');
+    show('msg-users', 'Parol yangilandi. Eski sessiya yopildi.', true);
+    await loadAll();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById('tb-sess').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act="kick"]');
+  if (!btn) return;
+  if (!confirm('Bu foydalanuvchini tizimdan chiqarish?')) return;
+  try {
+    await vmApi('/api/sessions/kick', { method: 'POST', body: JSON.stringify({ id: btn.getAttribute('data-id') }) });
+    await loadAll();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.getElementById('form-add').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hide('msg-add');
+  const pass = document.getElementById('n-pass').value;
+  const pass2 = document.getElementById('n-pass2').value;
+  if (pass !== pass2) {
+    show('msg-add', 'Parollar mos kelmadi.', false);
+    return;
+  }
+  try {
+    await vmApi('/api/users/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: document.getElementById('n-name').value.trim(),
+        username: document.getElementById('n-user').value.trim(),
+        password: pass
+      })
+    });
+    show('msg-add', 'Admin qo‘shildi. U yangi login/parol bilan asosiy oynaga kiradi.', true);
+    clearAddForm();
+    await loadAll();
+  } catch (err) {
+    show('msg-add', err.message, false);
+  }
+});
+
+document.getElementById('btn-pw').addEventListener('click', async () => {
+  hide('msg-pw');
+  try {
+    await vmApi('/api/password', {
+      method: 'POST',
+      body: JSON.stringify({
+        old_password: document.getElementById('pw-old').value,
+        new_password: document.getElementById('pw-new').value
+      })
+    });
+    show('msg-pw', 'Parol yangilandi.', true);
+    document.getElementById('pw-old').value = '';
+    document.getElementById('pw-new').value = '';
+  } catch (err) {
+    show('msg-pw', err.message, false);
+  }
+});
+
+document.getElementById('btn-reload').addEventListener('click', () => loadAll());
+document.getElementById('btn-out').addEventListener('click', () => vmLogout());
+
+document.querySelectorAll('.pw-eye').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const el = document.getElementById(btn.getAttribute('data-for'));
+    if (!el) return;
+    el.type = el.type === 'password' ? 'text' : 'password';
+    btn.classList.toggle('on', el.type === 'text');
+  });
+});
+
+(async () => {
+  const me = await vmMe();
+  if (me.role !== 'admin_pro') {
+    location.replace('/');
+    return;
+  }
+  document.getElementById('who').textContent = me.username;
+  document.getElementById('s-me').textContent = me.username;
+  clearAddForm();
+  setTimeout(clearAddForm, 400);
+  vmStartHeartbeat();
+  await loadAll();
+  setInterval(loadAll, 15000);
+})();
+</script>
+</body>
+</html>

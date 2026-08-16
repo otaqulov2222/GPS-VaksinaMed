@@ -1,0 +1,9 @@
+data/
+__pycache__/
+*.pyc
+*.tmp
+.DS_Store
+Thumbs.db
+*.jfif
+check_*.py
+templates.txt
