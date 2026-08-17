@@ -219,6 +219,75 @@ function recForPlate(map, plate) {
   return null;
 }
 
+function carHasContent(car) {
+  if (!car) return false;
+  if (n(car.odoStart) || n(car.gasStart) || n(car.benzinStart)) return true;
+  if ((car.changes && car.changes.length) || (car.driverChanges && car.driverChanges.length)) return true;
+  const days = car.days || {};
+  return Object.keys(days).some(d => {
+    const r = days[d] || {};
+    return n(r.km) || n(r.odo) || n(r.gasIn) || n(r.benzinIn) || n(r.extra) || r.note || r.station;
+  });
+}
+
+function adoptCars(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const out = {};
+  fleet().forEach(f => {
+    const rec = recForPlate(src, f.car);
+    if (rec) out[f.car] = Object.assign({}, rec, { _fromServer: true });
+  });
+  Object.keys(src).forEach(k => {
+    if (out[k]) return;
+    if (recForPlate(out, k)) return;
+    out[k] = Object.assign({}, src[k], { _fromServer: true });
+  });
+  return out;
+}
+
+function localMonthKey(ym) {
+  return 'vm_fuel_month_' + ym;
+}
+
+function writeLocalMonth() {
+  try {
+    localStorage.setItem(localMonthKey(STATE.month), JSON.stringify({
+      month: STATE.month,
+      savedAt: new Date().toISOString(),
+      cars: carsToSave(),
+      meta: STATE.meta
+    }));
+  } catch (e) {}
+}
+
+function readLocalMonth(ym) {
+  try {
+    const raw = localStorage.getItem(localMonthKey(ym));
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function mergeCarMaps(primary, secondary) {
+  const out = {};
+  Object.keys(primary || {}).forEach(k => {
+    out[k] = Object.assign({}, primary[k], { _fromServer: true });
+  });
+  Object.keys(secondary || {}).forEach(k => {
+    const rec = secondary[k];
+    if (!carHasContent(rec)) return;
+    const hit = recForPlate(out, k);
+    if (!hit) {
+      out[k] = Object.assign({}, rec, { _fromServer: true });
+      return;
+    }
+    const plate = Object.keys(out).find(p => out[p] === hit) || k;
+    out[plate].days = Object.assign({}, rec.days || {}, hit.days || {});
+  });
+  return out;
+}
+
 function getCar(plate) {
   if (!STATE.cars[plate]) STATE.cars[plate] = blankCar(vehicleInfo(plate));
   if (!STATE.cars[plate].days) STATE.cars[plate].days = {};
@@ -347,18 +416,31 @@ async function loadAll() {
     vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(STATE.month)).catch(() => ({ days: {} }))
   ]);
   STATE.meta = normalizeMeta(meta.meta);
-  STATE.cars = (month.data && month.data.cars) || {};
+  const serverCars = (month.data && month.data.cars) || {};
+  const local = readLocalMonth(STATE.month);
+  const adopted = adoptCars(serverCars);
+  const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
+  const localCars = (local && local.cars) || {};
+  const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
+  if (localN > serverN) {
+    STATE.cars = mergeCarMaps(adoptCars(localCars), adopted);
+    STATE.dirty = true;
+  } else {
+    STATE.cars = mergeCarMaps(adopted, localCars);
+  }
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.gpsKm = gps.days || {};
   STATE.dayRep = Math.min(now.getDate(), daysInMonth(STATE.month));
   if (!STATE.car) STATE.car = fleet()[0].car;
   setMonthLabel();
   await autoChainMonth();
+  if (STATE.dirty) await saveMonth();
   renderAll();
 }
 
 async function changeMonth(ym) {
   if (!ym) return;
+  flushFormToState();
   if (STATE.dirty) await saveMonth();
   STATE.month = ym;
   document.getElementById('month-input').value = ym;
@@ -366,18 +448,39 @@ async function changeMonth(ym) {
     vmApi('/api/office/fuel/month?month=' + encodeURIComponent(ym)),
     vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(ym)).catch(() => ({ days: {} }))
   ]);
-  STATE.cars = (month.data && month.data.cars) || {};
+  const serverCars = (month.data && month.data.cars) || {};
+  const local = readLocalMonth(ym);
+  const adopted = adoptCars(serverCars);
+  const localCars = (local && local.cars) || {};
+  const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
+  const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
+  STATE.cars = localN > serverN ? mergeCarMaps(adoptCars(localCars), adopted) : mergeCarMaps(adopted, localCars);
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.gpsKm = gps.days || {};
-  STATE.dirty = false;
+  STATE.dirty = localN > serverN;
   STATE.dayRep = 1;
   setMonthLabel();
   await autoChainMonth();
+  if (STATE.dirty) await saveMonth();
   renderAll();
 }
 
 function setMonthLabel() {
   document.getElementById('month-label').textContent = monthTitle(STATE.month);
+}
+
+function flushFormToState() {
+  if (STATE.car) readParamsIntoCar();
+  document.querySelectorAll('#daily-body [data-d][data-f]').forEach(el => {
+    const d = el.getAttribute('data-d');
+    const f = el.getAttribute('data-f');
+    if (!d || !f || !STATE.car) return;
+    const row = ensureDay(getCar(STATE.car), d);
+    row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
+    if ((f === 'km' || f === 'odo') && n(el.value) && row.kmSrc !== 'gps' && row.kmSrc !== 'odo') {
+      row.kmSrc = 'user';
+    }
+  });
 }
 
 function stripLocalFlags(car) {
@@ -397,7 +500,7 @@ function syncParamsToMeta(plate, car) {
 }
 
 function carsToSave() {
-  if (STATE.car) readParamsIntoCar();
+  flushFormToState();
   const out = {};
   Object.keys(STATE.cars || {}).forEach(k => {
     out[k] = stripLocalFlags(STATE.cars[k]);
@@ -408,21 +511,23 @@ function carsToSave() {
 
 async function saveMonth() {
   try {
-    if (STATE.car) {
-      readParamsIntoCar();
-    }
+    flushFormToState();
     Object.keys(STATE.cars || {}).forEach(k => syncParamsToMeta(k, STATE.cars[k]));
+    const payload = { month: STATE.month, cars: carsToSave() };
+    writeLocalMonth();
     const d = await vmApi('/api/office/fuel/month', {
       method: 'POST',
-      body: JSON.stringify({ month: STATE.month, cars: carsToSave() })
+      body: JSON.stringify(payload)
     });
-    saveMeta().catch(() => {});
+    try { await saveMeta(); } catch (e) {}
     Object.keys(STATE.cars || {}).forEach(k => { STATE.cars[k]._fromServer = true; });
     STATE.dirty = false;
     STATE.yearMonths = {};
+    writeLocalMonth();
     const st = document.getElementById('save-st');
     if (st) st.textContent = 'Saqlandi ' + (d.savedAt || '');
   } catch (e) {
+    writeLocalMonth();
     const st = document.getElementById('save-st');
     if (st) st.textContent = e.message || 'Saqlanmadi';
     toast(e.message || 'Saqlanmadi');
@@ -1156,6 +1261,8 @@ function renderAll() {
 }
 
 function setTab(tab) {
+  flushFormToState();
+  if (STATE.dirty) saveMonth();
   STATE.tab = tab;
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.getAttribute('data-tab') === tab));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
@@ -1451,9 +1558,19 @@ function bind() {
   };
   document.getElementById('btn-reload').onclick = () => reloadOriginal().catch(err => toast(err.message));
   document.getElementById('docs-badge').onclick = () => setTab('docs');
-  document.getElementById('btn-logout').onclick = () => vmLogout();
+  document.getElementById('btn-logout').onclick = async () => {
+    flushFormToState();
+    if (STATE.dirty) await saveMonth();
+    vmLogout();
+  };
   window.addEventListener('beforeunload', e => {
-    if (STATE.dirty) { e.preventDefault(); e.returnValue = ''; }
+    flushFormToState();
+    writeLocalMonth();
+    if (STATE.dirty) {
+      e.preventDefault();
+      e.returnValue = '';
+      saveMonth();
+    }
   });
 }
 

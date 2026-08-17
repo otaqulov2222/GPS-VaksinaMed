@@ -928,19 +928,25 @@ class OfficeStore:
             if ft not in ("mixed", "gaz", "benzin", "dizel"):
                 ft = "mixed"
             plate = self._existing_plate_key(cars, plate)
+            old = cars.get(plate) if isinstance(cars.get(plate), dict) else {}
+            old_days = old.get("days") if isinstance(old.get("days"), dict) else {}
+            merged_days = dict(old_days)
+            merged_days.update(days)
+            old_changes = old.get("changes") if isinstance(old.get("changes"), list) else []
+            old_dch = old.get("driverChanges") if isinstance(old.get("driverChanges"), list) else []
             cars[plate] = {
-                "gasNorm": as_num(rec.get("gasNorm"), 12),
-                "benzinNorm": as_num(rec.get("benzinNorm"), 4),
-                "odoStart": as_num(rec.get("odoStart")),
-                "gasStart": as_num(rec.get("gasStart")),
-                "benzinStart": as_num(rec.get("benzinStart")),
-                "gasPrice": as_num(rec.get("gasPrice"), 5200),
-                "benzinPrice": as_num(rec.get("benzinPrice"), 11000),
-                "mixPct": as_num(rec.get("mixPct"), 70),
+                "gasNorm": as_num(rec.get("gasNorm"), old.get("gasNorm", 12)),
+                "benzinNorm": as_num(rec.get("benzinNorm"), old.get("benzinNorm", 4)),
+                "odoStart": as_num(rec.get("odoStart"), old.get("odoStart", 0)),
+                "gasStart": as_num(rec.get("gasStart"), old.get("gasStart", 0)),
+                "benzinStart": as_num(rec.get("benzinStart"), old.get("benzinStart", 0)),
+                "gasPrice": as_num(rec.get("gasPrice"), old.get("gasPrice", 5200)),
+                "benzinPrice": as_num(rec.get("benzinPrice"), old.get("benzinPrice", 11000)),
+                "mixPct": as_num(rec.get("mixPct"), old.get("mixPct", 70)),
                 "fuelType": ft,
-                "changes": changes,
-                "driverChanges": dch,
-                "days": days,
+                "changes": changes or old_changes,
+                "driverChanges": dch or old_dch,
+                "days": merged_days,
             }
         payload = {"month": month, "savedAt": iso_now(), "cars": cars}
         self._save("fuel:month:" + month, payload)
