@@ -72,11 +72,12 @@ function r2(v) {
 }
 function vin(v) {
   const x = n(v);
-  return x ? String(v) : '';
+  if (!x) return '';
+  return String(Math.round(x * 10000) / 10000);
 }
 function fmt(v, d) {
   const x = n(v);
-  const p = d == null ? (Math.abs(x) >= 100 ? 0 : 2) : d;
+  const p = d == null ? 2 : d;
   return x.toLocaleString('uz-UZ', { maximumFractionDigits: p, minimumFractionDigits: 0 });
 }
 function money(v) {

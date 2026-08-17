@@ -293,14 +293,14 @@ const VMOffice = {
         if (low.length) {
             lines.push('Ball < 7:');
             low.slice(0, 8).forEach(r => {
-                lines.push(`• ${r.drv.shortName} ${Number(r.score).toFixed(1)} · muammo ${r.problem} · ${r.speed} km/soat`);
+                lines.push(`• ${r.drv.shortName} ${Number(r.score).toFixed(1)} · muammo ${r.problem} · ${typeof fmtSpd === 'function' ? fmtSpd(r.speed, 'km/soat') : (r.speed + ' km/soat')}`);
             });
             lines.push('');
         }
         const fast = rows.filter(r => r.speed > 90);
         if (fast.length) {
             lines.push('Tezlik > 90:');
-            fast.forEach(r => lines.push(`• ${r.drv.shortName} ${r.speed} km/soat`));
+            fast.forEach(r => lines.push(`• ${r.drv.shortName} ${typeof fmtSpd === 'function' ? fmtSpd(r.speed, 'km/soat') : (r.speed + ' km/soat')}`));
             lines.push('');
         }
         const messy = [...rows].sort((a, b) => b.problem - a.problem).filter(r => r.problem > 0).slice(0, 6);

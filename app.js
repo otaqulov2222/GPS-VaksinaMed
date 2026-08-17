@@ -121,18 +121,37 @@ function roundKm(v) {
 function roundSpd(v) {
     const x = Number(v);
     if (!Number.isFinite(x) || x <= 0) return 0;
-    return Math.round(x * 10) / 10;
+    return Math.round(x * 100) / 100;
+}
+function roundFuel(v) {
+    const x = Number(v);
+    if (!Number.isFinite(x) || x <= 0) return 0;
+    return Math.round(x * 10000) / 10000;
+}
+function fmtDec(v, maxDec) {
+    const x = Number(v);
+    if (!Number.isFinite(x)) return '';
+    if (x === 0) return '0';
+    let s = x.toFixed(maxDec);
+    if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, '');
+    return s;
 }
 function fmtKm(v, unit) {
     const x = roundKm(v);
     if (!x) return '—';
-    const s = (Math.round(x * 100) % 100 === 0) ? String(Math.round(x)) : x.toFixed(2);
+    const s = x.toFixed(2);
     return unit ? s + ' ' + unit : s;
 }
 function fmtSpd(v, unit) {
     const x = roundSpd(v);
     if (!x) return '—';
-    const s = Number.isInteger(x) ? String(x) : x.toFixed(1);
+    const s = x.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    return unit ? s + ' ' + unit : s;
+}
+function fmtFuel(v, unit) {
+    const x = roundFuel(v);
+    if (!x) return '—';
+    const s = fmtDec(x, 4);
     return unit ? s + ' ' + unit : s;
 }
 
@@ -460,10 +479,10 @@ function parseChronoRows(rows, carKey) {
         // Yoqilg'i
         let gas = 0, benzin = 0;
         const allText = row.join(' ').toLowerCase();
-        const gasM = allText.match(/(\d+[.,]\d+)\s*(м3|m3|куб|газ)/i);
-        const benM = allText.match(/(\d+[.,]\d+)\s*(л|l|литр|бензин)/i);
-        if (gasM)  gas    = parseFloat(gasM[1].replace(',','.'));
-        if (benM)  benzin = parseFloat(benM[1].replace(',','.'));
+        const gasM = allText.match(/(\d+(?:[.,]\d+)?)\s*(м3|m3|куб|газ)/i);
+        const benM = allText.match(/(\d+(?:[.,]\d+)?)\s*(л|l|литр|бензин)/i);
+        if (gasM)  gas    = roundFuel(parseFloat(gasM[1].replace(',','.')));
+        if (benM)  benzin = roundFuel(parseFloat(benM[1].replace(',','.')));
 
         const durSec = parseTimeStr(durRaw) || parseTimeStr(inTimeRaw);
         const match = matchPharmacy(place, carKey, lat, lng);
@@ -502,7 +521,7 @@ function parseStats(rows, stops) {
     const totalGas    = stops.reduce((s, r) => s + (r.gas || 0), 0);
     const totalBenzin = stops.reduce((s, r) => s + (r.benzin || 0), 0);
 
-    let probeg = 0, maxSpeed = 0, poezdok = 0, stoyanok = 0;
+    let probeg = 0, maxSpeed = 0, avgSpeed = 0, poezdok = 0, stoyanok = 0;
     let motoChasStr = '—', totalStopStr = '—';
 
     for (let i = 0; i < Math.min(30, rows.length); i++) {
@@ -510,20 +529,24 @@ function parseStats(rows, stops) {
         row.forEach((cell, ci) => {
             const s = String(cell).toLowerCase();
             const next = String(row[ci+1] || '');
-            if (s.includes('пробег') || s.includes('masofa') || s.includes('км')) {
+            if (s.includes('пробег') || s.includes('masofa') || (s.includes('км') && !s.includes('км/ч') && !s.includes('km/h'))) {
                 const v = parseFloat(String(next).replace(',','.'));
                 if (v > 0 && v < 2000) probeg = roundKm(v);
             }
-            if (s.includes('макс') || s.includes('max') || s.includes('тезлик')) {
+            if ((s.includes('средн') || s.includes('avg') || s.includes("o'rtacha")) && (s.includes('скорост') || s.includes('tezlik') || s.includes('speed') || s.includes('тезлик'))) {
+                const v = parseFloat(String(next).replace(',','.'));
+                if (v > 0 && v < 300) avgSpeed = roundSpd(v);
+            }
+            if ((s.includes('макс') || s.includes('max')) && (s.includes('скорост') || s.includes('tezlik') || s.includes('speed') || s.includes('тезлик'))) {
                 const v = parseFloat(String(next).replace(',','.'));
                 if (v > 0 && v < 300) maxSpeed = roundSpd(v);
             }
             if (s.includes('поезд') || s.includes('trip') || s.includes('рейс')) {
-                const v = parseInt(next);
+                const v = parseInt(next, 10);
                 if (v > 0 && v < 200) poezdok = v;
             }
             if ((s.includes('стоянк') || s.includes('stop')) && !s.includes('общ')) {
-                const v = parseInt(next);
+                const v = parseInt(next, 10);
                 if (v > 0 && v < 200) stoyanok = v;
             }
             if (s.includes('мото') || s.includes('motochas') || s.includes('движ')) {
@@ -537,8 +560,8 @@ function parseStats(rows, stops) {
     if (!stoyanok) stoyanok = stops.length;
 
     return {
-        probeg, maxSpeed, poezdok, stoyanok,
-        gas: totalGas, benzin: totalBenzin,
+        probeg, maxSpeed, avgSpeed, poezdok, stoyanok,
+        gas: roundFuel(totalGas), benzin: roundFuel(totalBenzin),
         motoChas: motoChasStr, totalStop: totalStopStr
     };
 }
@@ -587,7 +610,7 @@ function analyzeData(stops, carKey, stats, dateVal) {
     }
     if (stats.maxSpeed > 90) {
         score -= 0.5;
-        breakdown.push(`-0.5: Tezlik normasi oshirildi (${stats.maxSpeed} km/s)`);
+        breakdown.push(`-0.5: Tezlik normasi oshirildi (${fmtSpd(stats.maxSpeed, 'km/s')})`);
         recs.push('Tezlikni nazorat qiling');
     }
     if (missedList.length === 0 && ownPharms.length > 0) {
@@ -1013,8 +1036,8 @@ function renderKPI(data) {
     if (!el || !data) return;
     const s = data.stats, a = data.analysis;
     const fuelTxt = [
-        s.gas    > 0 ? s.gas.toFixed(1)    + ' m³' : '',
-        s.benzin > 0 ? s.benzin.toFixed(1) + ' L'  : ''
+        s.gas    > 0 ? fmtFuel(s.gas, 'm³') : '',
+        s.benzin > 0 ? fmtFuel(s.benzin, 'L')  : ''
     ].filter(Boolean).join(' + ') || '—';
 
     el.innerHTML = `
@@ -1056,13 +1079,15 @@ function renderKPI(data) {
 function renderStats(data) {
     const s = data.stats, a = data.analysis;
     const fuelTxt = [
-        s.gas    > 0 ? s.gas.toFixed(1)    + ' m³ gaz' : '',
-        s.benzin > 0 ? s.benzin.toFixed(1) + ' L benzin' : ''
+        s.gas    > 0 ? fmtFuel(s.gas, 'm³ gaz') : '',
+        s.benzin > 0 ? fmtFuel(s.benzin, 'L benzin') : ''
     ].filter(Boolean).join(' + ') || '—';
 
-    const avgSpd = s.probeg && s.motoChas && s.motoChas !== '—'
-        ? roundSpd(s.probeg / Math.max(parseTimeStr(s.motoChas)/3600, 0.1)).toFixed(1) + ' km/s'
-        : '—';
+    const avgSpd = s.avgSpeed
+        ? fmtSpd(s.avgSpeed, 'km/s')
+        : (s.probeg && s.motoChas && s.motoChas !== '—'
+            ? fmtSpd(s.probeg / Math.max(parseTimeStr(s.motoChas)/3600, 0.1), 'km/s')
+            : '—');
 
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
     set('stat-probeg',   s.probeg ? fmtKm(s.probeg, 'км') : '—');
@@ -1108,13 +1133,13 @@ function renderPharmacy(data) {
     const car = data.car || STATE.currentCar;
     const ownStops   = data.stops.filter(s => s.matchType === 'own');
     const otherStops = data.stops.filter(s => s.matchType === 'other');
-    const pct = a.totalOwn > 0 ? Math.round((a.ownVisited / a.totalOwn) * 100) : null;
+    const pct = a.totalOwn > 0 ? Math.round((a.ownVisited / a.totalOwn) * 1000) / 10 : null;
 
     let html = '<div class="analysis-body">';
 
     html += `<div class="plan-box">
         <div class="plan-k">Reja / fakt</div>
-        <div class="plan-v">${a.ownVisited} / ${a.totalOwn}${pct != null ? ' · ' + pct + '%' : ''}</div>
+        <div class="plan-v">${a.ownVisited} / ${a.totalOwn}${pct != null ? ' · ' + fmtDec(pct, 1) + '%' : ''}</div>
         <div class="plan-s">${a.totalOwn
             ? (a.missedList && a.missedList.length ? (a.missedList.length + ' ta o\'tkazib yuborilgan') : 'Reja bajarildi')
             : 'Bu haydovchiga dorixona belgilanmagan. Boshqaruvda qo\'shing.'}</div>
@@ -1252,8 +1277,8 @@ function renderStops(stops) {
             <td class="font-mono text-muted">${i+1}</td>
             <td><strong>${st.place}</strong>
                 ${st.phName && st.phName !== st.place ? `<br><small class="text-muted">${st.phName}</small>` : ''}
-                ${st.gas > 0 ? `<br><small class="text-muted">${st.gas} m³ gaz</small>` : ''}
-                ${st.benzin > 0 ? `<br><small class="text-muted">${st.benzin} L benzin</small>` : ''}
+                ${st.gas > 0 ? `<br><small class="text-muted">${fmtFuel(st.gas, 'm³ gaz')}</small>` : ''}
+                ${st.benzin > 0 ? `<br><small class="text-muted">${fmtFuel(st.benzin, 'L benzin')}</small>` : ''}
             </td>
             <td class="font-mono">${st.inTime || '—'}</td>
             <td class="font-mono">${st.outTime || '—'}</td>
@@ -1384,7 +1409,7 @@ async function syncFromGPS(dateVal, cfg) {
                 const rawStops = (chrono && chrono.stops) ? chrono.stops : [];
                 const stops = enrichStops(rawStops, drv.car);
                 const stats = Object.assign({
-                    probeg: 0, maxSpeed: 0, poezdok: 0, stoyanok: stops.length,
+                    probeg: 0, maxSpeed: 0, avgSpeed: 0, poezdok: 0, stoyanok: stops.length,
                     gas: 0, benzin: 0, motoChas: '—', totalStop: '—'
                 }, (chrono && chrono.stats) || {});
                 if (!stats.stoyanok) stats.stoyanok = stops.length;
@@ -1752,8 +1777,8 @@ async function downloadPdfReport() {
             const s = d.stats || {};
             const stops = Array.isArray(d.stops) ? d.stops : [];
             const fuel = [
-                s.gas > 0 ? Number(s.gas).toFixed(1) + ' m3' : '',
-                s.benzin > 0 ? Number(s.benzin).toFixed(1) + ' L' : ''
+                s.gas > 0 ? fmtFuel(s.gas, 'm3') : '',
+                s.benzin > 0 ? fmtFuel(s.benzin, 'L') : ''
             ].filter(Boolean).join(' + ') || '—';
 
             doc.addPage();
@@ -1810,7 +1835,9 @@ async function downloadPdfReport() {
             y = pdfTable(doc, dateLabel, {
                 startY: y,
                 body: [
+                    ['Yurilgan masofa', fmtKm(s.probeg, 'km')],
                     ['Ish vaqti / motochas', s.motoChas || '—'],
+                    ["O'rtacha tezlik", s.avgSpeed ? fmtSpd(s.avgSpeed, 'km/h') : (s.probeg && s.motoChas && s.motoChas !== '—' ? fmtSpd(s.probeg / Math.max(parseTimeStr(s.motoChas)/3600, 0.1), 'km/h') : '—')],
                     ['Poezdka soni', String(s.poezdok || 0)],
                     ["To'xtash soni", String(s.stoyanok || stops.length || 0)],
                     ["To'xtab turgan vaqt", s.totalStop || '—'],

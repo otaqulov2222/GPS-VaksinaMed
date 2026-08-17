@@ -220,7 +220,7 @@ class WialonGPSClient {
 
     emptyChronology() {
         return {
-            stats: { probeg: 0, poezdok: 0, stoyanok: 0, maxSpeed: 0, motoChas: '—', totalStop: '—', gas: 0, benzin: 0 },
+            stats: { probeg: 0, poezdok: 0, stoyanok: 0, maxSpeed: 0, avgSpeed: 0, motoChas: '—', totalStop: '—', gas: 0, benzin: 0 },
             stops: [],
             trips: [],
             points: []
@@ -265,6 +265,11 @@ class WialonGPSClient {
         return all;
     }
 
+    parseLooseNum(v) {
+        const m = String(v || '').replace(/\s/g, '').replace(',', '.').match(/-?\d+(?:\.\d+)?/);
+        return m ? parseFloat(m[0]) : NaN;
+    }
+
     roundKm(v) {
         const x = Number(v);
         if (!Number.isFinite(x) || x <= 0) return 0;
@@ -274,7 +279,13 @@ class WialonGPSClient {
     roundSpd(v) {
         const x = Number(v);
         if (!Number.isFinite(x) || x <= 0) return 0;
-        return Math.round(x * 10) / 10;
+        return Math.round(x * 100) / 100;
+    }
+
+    roundFuel(v) {
+        const x = Number(v);
+        if (!Number.isFinite(x) || x <= 0) return 0;
+        return Math.round(x * 10000) / 10000;
     }
 
     parseReportStats(statsPairs, chronology) {
@@ -282,25 +293,33 @@ class WialonGPSClient {
             if (!Array.isArray(pair) || pair.length < 2) return;
             const k = String(pair[0] || '').toLowerCase();
             const v = String(pair[1] || '');
-            const num = parseFloat(v.replace(',', '.').replace(/[^\d.]/g, ''));
-            if ((k.includes('пробег') || k.includes('mileage')) && /km|км/i.test(v) && num > 0) {
+            const num = this.parseLooseNum(v);
+            const blob = k + ' ' + v;
+            if ((k.includes('пробег') || k.includes('mileage') || k.includes('masofa')) && !k.includes('время') && num > 0) {
                 chronology.stats.probeg = this.roundKm(num);
             }
-            if ((k.includes('макс') || k.includes('max')) && (k.includes('скорост') || k.includes('speed') || /km\/h|км\/ч/i.test(v))) {
+            if ((k.includes('средн') || k.includes('avg') || k.includes('average') || k.includes("o'rtacha") || k.includes('ortacha')) && (k.includes('скорост') || k.includes('speed') || k.includes('tezlik'))) {
+                if (num > 0) chronology.stats.avgSpeed = this.roundSpd(num);
+            }
+            if ((k.includes('макс') || k.includes('max')) && (k.includes('скорост') || k.includes('speed') || k.includes('tezlik') || /km\/h|км\/ч/i.test(v))) {
                 if (num > 0) chronology.stats.maxSpeed = this.roundSpd(num);
             }
             if (k.includes('поезд') && !k.includes('пробег') && !k.includes('скорост')) {
-                if (num > 0) chronology.stats.poezdok = parseInt(v, 10) || num;
+                if (num > 0) chronology.stats.poezdok = Math.round(num);
             }
             if (k.includes('стоян') || k.includes('parking') || k.includes('stay')) {
                 if (k.includes('длитель') || k.includes('duration') || k.includes('время')) {
                     if (v.match(/\d+:\d+/)) chronology.stats.totalStop = v.trim();
                 } else if (num > 0) {
-                    chronology.stats.stoyanok = parseInt(v, 10) || num;
+                    chronology.stats.stoyanok = Math.round(num);
                 }
             }
             if (k.includes('движен') || k.includes('мото') || k.includes('moto')) {
                 if (v.match(/\d+:\d+/)) chronology.stats.motoChas = v.trim();
+            }
+            if ((k.includes('расход') || k.includes('потрач') || k.includes('fuel') || k.includes('топлив') || k.includes('sarf')) && num > 0) {
+                if (/м³|m3|куб|газ|метан|cнг|cng/i.test(blob)) chronology.stats.gas = this.roundFuel(num);
+                else if (/л\b|литр|бензин|дизел|diesel|petrol/i.test(blob)) chronology.stats.benzin = this.roundFuel(num);
             }
         });
     }
@@ -332,7 +351,7 @@ class WialonGPSClient {
     formatClock(s) {
         if (!s) return '';
         const m = String(s).match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-        return m ? m[1] : String(s);
+        return m ? m[1] : String(s).trim();
     }
 
     /**
@@ -558,7 +577,7 @@ class WialonGPSClient {
         if (!seconds || seconds <= 0) return "0:00:00";
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
-        const s = seconds % 60;
+        const s = Math.round(seconds % 60);
         return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
 
