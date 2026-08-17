@@ -183,6 +183,28 @@ table.dtable .out {
 }
 table.dtable input.w-note { font-family: var(--sans); font-weight: 500; }
 .neg { color: var(--bad); font-weight: 700; }
+.pos { color: var(--ok); font-weight: 600; }
+.row-gaz td { background: #eef6f0 !important; }
+.row-ben td { background: #f8f1e8 !important; }
+.day-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.day-pill {
+  width: 32px; height: 28px; border: 1px solid var(--line); background: #fff;
+  font: 700 11px/1 var(--mono); cursor: pointer;
+}
+.day-pill.on { background: #163d64; color: #fff; border-color: #163d64; }
+.warn-box { background: #f4ecd8; border: 1px solid #e0d4b8; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; line-height: 1.5; }
+.alert-box { background: #f3e4e4; border: 1px solid #ddc8c8; padding: 10px 12px; margin-bottom: 12px; }
+.st-ok { background: #e8f0eb; color: var(--ok); }
+.st-mid { background: #f4ecd8; color: var(--warn); }
+.st-hot { background: #f3e4e4; color: var(--bad); }
+.st-dead { background: #9b1c1c; color: #fff; }
+.subtabs { display: flex; gap: 0; margin-bottom: 10px; }
+.subtab {
+  height: 30px; padding: 0 12px; border: 1px solid var(--line); background: #fff;
+  font: 700 11px/1 var(--sans); cursor: pointer;
+}
+.subtab.on { background: #163d64; color: #fff; border-color: #163d64; }
+.hint { background: #fff8d6; border: 1px solid #ead98a; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; }
 
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
 @media (max-width: 800px) { .kpis { grid-template-columns: 1fr 1fr; } }
@@ -199,6 +221,11 @@ table.gtable th {
 }
 table.gtable td.num { font-family: var(--mono); text-align: right; }
 table.gtable tr:hover td { background: #f3f4f6; }
+table.gtable input, table.gtable select {
+  width: 100%; min-width: 72px; height: 28px; padding: 0 6px;
+  border: 1px solid var(--line); background: var(--in);
+  font: 600 12px/1 var(--sans); color: var(--ink);
+}
 
 .muted { color: var(--muted); }
 .note { font-size: 12px; color: var(--muted); line-height: 1.5; }
@@ -238,11 +265,14 @@ table.gtable tr:hover td { background: #f3f4f6; }
   </div>
   <div class="acts">
     <span class="tb-month" id="month-label">—</span>
-    <span class="badge badge-ok">v1 · avto zanjir</span>
+    <span class="badge badge-ok">v3.7 · avto zanjir (bexato)</span>
     <span class="badge badge-bad" id="docs-badge" style="display:none">0 hujjat muddati</span>
     <input type="month" id="month-input" class="btn btn-sm" style="width:148px;color:#f4f4f2;background:#161c24;">
     <button class="btn btn-sm" type="button" id="btn-excel">Excel yuklash</button>
     <button class="btn btn-sm" type="button" id="btn-backup">Zaxira saqlash</button>
+    <button class="btn btn-sm" type="button" id="btn-restore">Zaxiradan tiklash</button>
+    <button class="btn btn-sm" type="button" id="btn-reload">Asl ma'lumot</button>
+    <input type="file" id="restore-file" accept=".json" style="display:none">
     <div class="tb-user">
       <span class="tb-user-name" id="tb-user-name">—</span>
       <span class="tb-role" id="tb-user-role" hidden></span>
@@ -280,18 +310,28 @@ table.gtable tr:hover td { background: #f3f4f6; }
         <div class="params">
           <div class="fld"><label>Gaz normasi (100 km)</label><input id="p-gasNorm" data-p="gasNorm" type="number" step="0.1"></div>
           <div class="fld"><label>Benzin / dizel normasi (100 km)</label><input id="p-benzinNorm" data-p="benzinNorm" type="number" step="0.1"></div>
-          <div class="fld"><label>Spidometr oy boshi</label><input id="p-odoStart" data-p="odoStart" type="number" step="1"></div>
-          <div class="fld"><label>Gaz oy boshi qoldiq (m³)</label><input id="p-gasStart" data-p="gasStart" type="number" step="0.1"></div>
-          <div class="fld"><label>Benzin oy boshi qoldiq (l)</label><input id="p-benzinStart" data-p="benzinStart" type="number" step="0.1"></div>
+          <div class="fld"><label>Spidometr oy boshi</label><input id="p-odoStart" data-p="odoStart" type="number" step="0.1"></div>
+          <div class="fld"><label>Gaz oy boshi qoldiq (m³)</label><input id="p-gasStart" data-p="gasStart" type="number" step="0.0001"></div>
+          <div class="fld"><label>Benzin oy boshi qoldiq (l)</label><input id="p-benzinStart" data-p="benzinStart" type="number" step="0.0001"></div>
           <div class="fld"><label>1 m³ gaz narxi (so'm)</label><input id="p-gasPrice" data-p="gasPrice" type="number" step="1"></div>
           <div class="fld"><label>1 l benzin / dizel narxi (so'm)</label><input id="p-benzinPrice" data-p="benzinPrice" type="number" step="1"></div>
           <div class="fld"><label>Aralashda gaz foizi (%)</label><input id="p-mixPct" data-p="mixPct" type="number" step="1" min="0" max="100"></div>
+          <div class="fld"><label>Yoqilg'i turi</label>
+            <select id="p-fuelType" data-p="fuelType">
+              <option value="mixed">Gaz + benzin</option>
+              <option value="gaz">Faqat gaz</option>
+              <option value="benzin">Faqat benzin</option>
+              <option value="dizel">Dizel</option>
+            </select>
+          </div>
         </div>
         <div class="row-btns">
-          <button class="btn btn-ink btn-sm" type="button" id="btn-prev-bal">Oldingi oydan qoldiq</button>
-          <button class="btn btn-ink btn-sm" type="button" id="btn-fill-odo">Kunlarni spidometr bo'yicha</button>
+          <button class="btn btn-ink btn-sm" type="button" id="btn-prev-bal">Oldingi oydan qoldiqni yig'ish</button>
+          <button class="btn btn-ink btn-sm" type="button" id="btn-recalc">Barchasini yangilash</button>
+          <button class="btn btn-ink btn-sm" type="button" id="btn-fill-odo">Spidometr bo'yicha kunlarni to'ldirish</button>
           <button class="btn btn-ok btn-sm" type="button" id="btn-gps-km">GPS dan km</button>
-          <button class="btn btn-ink btn-sm" type="button" id="btn-add-change">O'zgarish qo'shish</button>
+          <button class="btn btn-ink btn-sm" type="button" id="btn-add-change">Norma/narx o'zgarishi</button>
+          <button class="btn btn-ink btn-sm" type="button" id="btn-drv-change">Haydovchini kun belgilab almashtirish</button>
           <button class="btn btn-gold btn-sm" type="button" id="btn-save">Saqlash</button>
         </div>
         <div id="changes-box" class="note" style="margin-top:10px;"></div>
@@ -303,7 +343,7 @@ table.gtable tr:hover td { background: #f3f4f6; }
           <tr>
             <th>Kun</th>
             <th>Yurgan masofa (km)</th>
-            <th>Spidometr</th>
+            <th>Spidometr (km)</th>
             <th>Nimada yurdi</th>
             <th>Zapravka nomi</th>
             <th>Olingan gaz (m³)</th>
@@ -341,6 +381,6 @@ table.gtable tr:hover td { background: #f3f4f6; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="auth.js?v=3"></script>
-<script src="fuel.js?v=1"></script>
+<script src="fuel.js?v=2"></script>
 </body>
 </html>

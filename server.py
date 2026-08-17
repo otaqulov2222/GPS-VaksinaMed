@@ -764,29 +764,71 @@ class OfficeStore:
             data = {}
         data.setdefault("vehicles", {})
         data.setdefault("stations", [])
-        data.setdefault("docs", [])
+        data.setdefault("docs", {})
+        data.setdefault(
+            "firm",
+            {
+                "name": "VAKSINA HEALTHCARE MChJ",
+                "director": "",
+                "mechanic": "",
+            },
+        )
+        if isinstance(data.get("docs"), list):
+            data["docs"] = {}
         return data
 
     def save_fuel_meta(self, body):
         cur = self.fuel_meta()
         if isinstance(body.get("vehicles"), dict):
-            cur["vehicles"] = body["vehicles"]
+            vehicles = {}
+            for i, (plate, rec) in enumerate(body["vehicles"].items()):
+                if i >= 50:
+                    break
+                p = str(plate).strip()[:24]
+                if not p or not isinstance(rec, dict):
+                    continue
+                ft = str(rec.get("fuelType") or "mixed")[:12]
+                if ft not in ("mixed", "gaz", "benzin", "dizel"):
+                    ft = "mixed"
+                vehicles[p] = {
+                    "name": str(rec.get("name") or "")[:80],
+                    "short": str(rec.get("short") or "")[:40],
+                    "brand": str(rec.get("brand") or "")[:40],
+                    "card": str(rec.get("card") or "")[:40],
+                    "fuelType": ft,
+                    "gasNorm": as_num(rec.get("gasNorm"), 12),
+                    "benzinNorm": as_num(rec.get("benzinNorm"), 4),
+                    "gasPrice": as_num(rec.get("gasPrice"), 5200),
+                    "benzinPrice": as_num(rec.get("benzinPrice"), 11000),
+                    "hidden": bool(rec.get("hidden")),
+                }
+            cur["vehicles"] = vehicles
         if isinstance(body.get("stations"), list):
             cur["stations"] = [str(s).strip()[:80] for s in body["stations"] if str(s).strip()][:80]
-        if isinstance(body.get("docs"), list):
-            docs = []
-            for d in body["docs"][:80]:
-                if not isinstance(d, dict):
+        if isinstance(body.get("firm"), dict):
+            cur["firm"] = {
+                "name": str(body["firm"].get("name") or "VAKSINA HEALTHCARE MChJ")[:80],
+                "director": str(body["firm"].get("director") or "")[:80],
+                "mechanic": str(body["firm"].get("mechanic") or "")[:80],
+            }
+        if isinstance(body.get("docs"), dict):
+            docs = {}
+            for i, (plate, rec) in enumerate(body["docs"].items()):
+                if i >= 50 or not isinstance(rec, dict):
                     continue
-                docs.append(
-                    {
-                        "id": str(d.get("id") or new_id("doc"))[:40],
-                        "title": str(d.get("title") or "")[:80],
+                item = {}
+                for key in ("insurance", "tech", "ads", "cylinder"):
+                    d = rec.get(key) if isinstance(rec.get(key), dict) else {}
+                    months = int(as_num(d.get("months"), 12))
+                    if months < 1:
+                        months = 1
+                    if months > 60:
+                        months = 60
+                    item[key] = {
                         "due": str(d.get("due") or "")[:10],
-                        "car": str(d.get("car") or "")[:24],
-                        "note": str(d.get("note") or "")[:120],
+                        "months": months,
                     }
-                )
+                docs[str(plate).strip()[:24]] = item
             cur["docs"] = docs
         self._save("fuel:meta", cur)
         return cur
@@ -808,7 +850,7 @@ class OfficeStore:
             return None, "Ma'lumot noto'g'ri"
         cars = {}
         for i, (car, rec) in enumerate(cars_in.items()):
-            if i >= 40:
+            if i >= 50:
                 break
             plate = str(car).strip()[:24]
             if not plate or not isinstance(rec, dict):
@@ -857,6 +899,20 @@ class OfficeStore:
                         "note": str(ch.get("note") or "")[:80],
                     }
                 )
+            dch = []
+            for ch in (rec.get("driverChanges") or [])[:12]:
+                if not isinstance(ch, dict):
+                    continue
+                try:
+                    dday = int(ch.get("day") or 0)
+                except (TypeError, ValueError):
+                    dday = 0
+                if dday < 1 or dday > 31:
+                    continue
+                dch.append({"day": dday, "name": str(ch.get("name") or "")[:80]})
+            ft = str(rec.get("fuelType") or "mixed")[:12]
+            if ft not in ("mixed", "gaz", "benzin", "dizel"):
+                ft = "mixed"
             cars[plate] = {
                 "gasNorm": as_num(rec.get("gasNorm"), 12),
                 "benzinNorm": as_num(rec.get("benzinNorm"), 4),
@@ -866,8 +922,9 @@ class OfficeStore:
                 "gasPrice": as_num(rec.get("gasPrice"), 5200),
                 "benzinPrice": as_num(rec.get("benzinPrice"), 11000),
                 "mixPct": as_num(rec.get("mixPct"), 70),
-                "fuelType": str(rec.get("fuelType") or "gaz")[:12],
+                "fuelType": ft,
                 "changes": changes,
+                "driverChanges": dch,
                 "days": days,
             }
         payload = {"month": month, "savedAt": iso_now(), "cars": cars}
