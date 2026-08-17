@@ -900,7 +900,58 @@ function selectDate(ds) {
     renderCalendar();
     renderDriverTabs();
     refreshUI();
-    if (window.VMOffice) VMOffice.loadReportIfNeeded(ds);
+    if (window.VMOffice) {
+        VMOffice.loadReportIfNeeded(ds).then(() => refreshDayKm(ds));
+    } else {
+        refreshDayKm(ds);
+    }
+}
+
+async function refreshDayKm(dateVal) {
+    if (!dateVal || !hasGpsConfig() || !window.wialonGPS) return;
+    if (STATE.kmFixBusy) return;
+    STATE.kmFixed = STATE.kmFixed || {};
+    const day = STATE.data[dateVal];
+    if (!day || !Object.keys(day).length) return;
+    const needs = Object.keys(day).some(car => {
+        const km = (day[car] && day[car].stats && day[car].stats.probeg) || 0;
+        return km > 0 && Math.abs(km - Math.round(km)) < 0.009;
+    });
+    if (!needs || STATE.kmFixed[dateVal]) return;
+    STATE.kmFixBusy = true;
+    try {
+        await wialonGPS.login(STATE.gpsConfig);
+        const units = await wialonGPS.getUnits();
+        const { timeFrom, timeTo } = wialonGPS.dayBoundsTashkent(dateVal);
+        let nFix = 0;
+        for (const unit of units) {
+            const drv = findDriverByCar(unit.name) || findDriverByCar(unit.carNumber);
+            if (!drv || !day[drv.car] || !day[drv.car].stats) continue;
+            const st = day[drv.car].stats;
+            const oldKm = Number(st.probeg) || 0;
+            if (oldKm && Math.abs(oldKm - Math.round(oldKm)) >= 0.009) continue;
+            let metrics = null;
+            try {
+                metrics = await wialonGPS.getTripMetrics(unit.id, timeFrom, timeTo);
+            } catch (e) {}
+            if (!metrics || !metrics.km) continue;
+            st.probeg = wialonGPS.preferKm(st.probeg, metrics.km);
+            if (metrics.maxSpeed) st.maxSpeed = Math.max(Number(st.maxSpeed) || 0, metrics.maxSpeed);
+            if (metrics.avgSpeed) st.avgSpeed = metrics.avgSpeed;
+            if (Math.abs((st.probeg || 0) - oldKm) >= 0.01) nFix += 1;
+        }
+        STATE.kmFixed[dateVal] = true;
+        if (nFix) {
+            saveAll();
+            if (window.VMOffice) VMOffice.saveReport(dateVal);
+            if (STATE.currentDate === dateVal) refreshUI();
+            showToast('GPS km aniqlandi: ' + nFix + ' ta mashina', 'success');
+        }
+    } catch (e) {
+        console.warn('km refresh:', e);
+    } finally {
+        STATE.kmFixBusy = false;
+    }
 }
 
 // ── 8. HAYDOVCHI TABLARI ─────────────────────────────────────
@@ -1979,6 +2030,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderDriverTabs();
     refreshUI();
     setGpsUi(hasGpsConfig() ? 'on' : 'off');
+    refreshDayKm(STATE.currentDate);
     
     // ── Avtomatik GPS tortish (Auto-sync) ─────────────────
     setTimeout(() => {

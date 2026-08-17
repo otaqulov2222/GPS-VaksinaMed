@@ -211,6 +211,28 @@ class WialonGPSClient {
         return String(c);
     }
 
+    cellNum(c) {
+        if (c == null || c === '') return NaN;
+        if (typeof c === 'number' && Number.isFinite(c)) return c;
+        if (typeof c === 'object') {
+            if (typeof c.v === 'number' && Number.isFinite(c.v)) return c.v;
+            return this.parseLooseNum(c.t != null ? c.t : c.v);
+        }
+        return this.parseLooseNum(c);
+    }
+
+    preferKm(oldVal, newVal) {
+        const a = this.roundKm(oldVal);
+        const b = this.roundKm(newVal);
+        if (!b) return a;
+        if (!a) return b;
+        const aFrac = Math.abs(a - Math.round(a));
+        const bFrac = Math.abs(b - Math.round(b));
+        if (bFrac >= 0.01 && aFrac < 0.01) return b;
+        if (aFrac >= 0.01 && bFrac < 0.01) return a;
+        return b;
+    }
+
     cellCoord(c) {
         if (c && typeof c === 'object' && typeof c.y === 'number') {
             return { lat: c.y, lng: c.x };
@@ -240,13 +262,16 @@ class WialonGPSClient {
         try {
             const chrono = await this.execChronologyReport(unitId, timeFrom, timeTo);
             if (chrono && (chrono.stops.length || chrono.stats.probeg)) {
+                await this.applyTripMetrics(unitId, timeFrom, timeTo, chrono);
                 return chrono;
             }
         } catch (e) {
             console.warn('Hisobot xatosi, xabarlar orqali uriniladi:', e);
         }
 
-        return await this.buildChronologyFromMessages(unitId, timeFrom, timeTo);
+        const fromMsgs = await this.buildChronologyFromMessages(unitId, timeFrom, timeTo);
+        await this.applyTripMetrics(unitId, timeFrom, timeTo, fromMsgs);
+        return fromMsgs;
     }
 
     async fetchReportRows(tableIndex, rowCount) {
@@ -288,15 +313,100 @@ class WialonGPSClient {
         return Math.round(x * 10000) / 10000;
     }
 
+    tripDistanceKm(tr) {
+        const raw = Number(tr && (tr.distance != null ? tr.distance : tr.mileage));
+        if (!Number.isFinite(raw) || raw <= 0) return 0;
+        return raw;
+    }
+
+    async getTripMetrics(unitId, timeFrom, timeTo) {
+        try {
+            const trips = await this.sendRequest('unit/get_trips', { itemId: unitId, timeFrom, timeTo });
+            const list = Array.isArray(trips) ? trips : (trips && Array.isArray(trips.trips) ? trips.trips : []);
+            if (list.length) {
+                let rawSum = 0, maxSpeed = 0, avgAcc = 0, avgN = 0;
+                list.forEach(tr => {
+                    rawSum += this.tripDistanceKm(tr);
+                    const ms = Number(tr.max_speed || tr.maxSpeed || 0);
+                    if (ms > maxSpeed) maxSpeed = ms;
+                    const as = Number(tr.avg_speed || tr.avgSpeed || 0);
+                    if (as > 0) { avgAcc += as; avgN += 1; }
+                });
+                const km = this.roundKm(rawSum >= 500 ? rawSum / 1000 : rawSum);
+                if (km) {
+                    return {
+                        km,
+                        maxSpeed: this.roundSpd(maxSpeed),
+                        avgSpeed: avgN ? this.roundSpd(avgAcc / avgN) : 0,
+                        trips: list.length
+                    };
+                }
+            }
+        } catch (e) {
+            console.warn('get_trips:', e);
+        }
+        return await this.mileageFromMessages(unitId, timeFrom, timeTo);
+    }
+
+    async mileageFromMessages(unitId, timeFrom, timeTo) {
+        const resp = await this.sendRequest('messages/load_interval', {
+            itemId: unitId,
+            timeFrom,
+            timeTo,
+            flags: 1,
+            flagsMask: 65281,
+            loadCount: 20000
+        });
+        const msgs = (resp && resp.messages) || [];
+        if (msgs.length < 2) return null;
+        const pick = (m) => {
+            const p = (m && m.p) || {};
+            for (const k of Object.keys(p)) {
+                if (/mileage|odometr|odometer|probeg|пробег/i.test(k)) {
+                    const n = Number(p[k]);
+                    if (n > 0) return n;
+                }
+            }
+            return 0;
+        };
+        const first = pick(msgs[0]);
+        const last = pick(msgs[msgs.length - 1]);
+        if (first && last && last > first) {
+            let d = last - first;
+            if (d >= 500) d = d / 1000;
+            const km = this.roundKm(d);
+            if (km > 0 && km < 2000) return { km, maxSpeed: 0, avgSpeed: 0, trips: 0 };
+        }
+        return null;
+    }
+
+    async applyTripMetrics(unitId, timeFrom, timeTo, chronology) {
+        if (!chronology || !chronology.stats) return chronology;
+        try {
+            const m = await this.getTripMetrics(unitId, timeFrom, timeTo);
+            if (!m) return chronology;
+            chronology.stats.probeg = this.preferKm(chronology.stats.probeg, m.km);
+            if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(Math.max(chronology.stats.maxSpeed || 0, m.maxSpeed));
+            if (m.avgSpeed) chronology.stats.avgSpeed = m.avgSpeed;
+            if (m.trips && !chronology.stats.poezdok) chronology.stats.poezdok = m.trips;
+        } catch (e) {
+            console.warn('get_trips:', e);
+        }
+        return chronology;
+    }
+
     parseReportStats(statsPairs, chronology) {
         (statsPairs || []).forEach(pair => {
             if (!Array.isArray(pair) || pair.length < 2) return;
-            const k = String(pair[0] || '').toLowerCase();
-            const v = String(pair[1] || '');
-            const num = this.parseLooseNum(v);
+            const k = String(this.cellText(pair[0]) || pair[0] || '').toLowerCase();
+            const raw = pair[1];
+            const v = this.cellText(raw);
+            const num = this.cellNum(raw);
             const blob = k + ' ' + v;
             if ((k.includes('пробег') || k.includes('mileage') || k.includes('masofa')) && !k.includes('время') && num > 0) {
-                chronology.stats.probeg = this.roundKm(num);
+                let km = num;
+                if (num > 500 && /m\b|метр/i.test(v)) km = num / 1000;
+                chronology.stats.probeg = this.preferKm(chronology.stats.probeg, this.roundKm(km));
             }
             if ((k.includes('средн') || k.includes('avg') || k.includes('average') || k.includes("o'rtacha") || k.includes('ortacha')) && (k.includes('скорост') || k.includes('speed') || k.includes('tezlik'))) {
                 if (num > 0) chronology.stats.avgSpeed = this.roundSpd(num);
@@ -469,9 +579,31 @@ class WialonGPSClient {
 
         loaded.forEach(block => {
             const isTripTbl = block.tbl.name === 'unit_trips' || (block.tblName.includes('поезд') && !block.tblName.includes('хронолог') && block.tbl.name !== 'unit_chronology');
-            if (isTripTbl && !chronology.stats.poezdok) {
+            if (!isTripTbl) return;
+            if (!chronology.stats.poezdok) {
                 const nested = block.rows.reduce((s, r) => s + (r.d || 1), 0);
                 chronology.stats.poezdok = nested || block.rows.length;
+            }
+            const headers = (block.tbl.header || []).map(h => this.cellText(h).toLowerCase());
+            let kmIdx = headers.findIndex(h => (h.includes('пробег') || h.includes('mileage') || h.includes('masofa')) && !h.includes('скорост') && !h.includes('speed'));
+            if (kmIdx < 0) kmIdx = headers.findIndex(h => /км|km/.test(h) && !h.includes('скорост') && !h.includes('speed') && !h.includes('ч') && !h.includes('h'));
+            if (kmIdx < 0) return;
+            let sum = 0;
+            block.rows.forEach(r => {
+                const cell = (r.c || [])[kmIdx];
+                const n = this.cellNum(cell);
+                const t = this.cellText(cell);
+                if (!n || n <= 0) return;
+                let km = n;
+                if (n > 500 && /m\b|метр/i.test(t)) km = n / 1000;
+                if (km > 0 && km < 800) sum += km;
+            });
+            if (sum > 0) chronology.stats.probeg = this.preferKm(chronology.stats.probeg, this.roundKm(sum));
+            const tot = block.tbl.total;
+            const totCells = Array.isArray(tot) ? tot : (tot && tot.c) || [];
+            if (totCells[kmIdx] != null) {
+                const tn = this.cellNum(totCells[kmIdx]);
+                if (tn > 0 && tn < 800) chronology.stats.probeg = this.preferKm(chronology.stats.probeg, this.roundKm(tn > 500 ? tn / 1000 : tn));
             }
         });
 
