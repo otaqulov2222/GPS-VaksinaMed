@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Yoqilg'i hisoboti — VaksinaMed</title>
+<title>Boshqaruv — VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -259,9 +259,10 @@ table.gtable input, table.gtable select {
       <div class="tb-line">MACHINE CONTROL</div>
     </div>
     <div style="border-left:1px solid #2a323c;padding-left:12px;margin-left:4px;">
-      <div class="tb-title">Yoqilg'i hisoboti</div>
-      <div class="tb-sub">VHK · GPS bilan bir joyda</div>
+      <div class="tb-title">Boshqaruv</div>
+      <div class="tb-sub">Park · hisobot · hujjat · narx</div>
     </div>
+    <a class="btn btn-gold" href="/" title="VHK dashboardga qaytish" style="flex-shrink:0;margin-left:8px;">← VHK</a>
   </div>
   <div class="acts">
     <span class="tb-month" id="month-label">—</span>
@@ -276,8 +277,7 @@ table.gtable input, table.gtable select {
     <div class="tb-user">
       <span class="tb-user-name" id="tb-user-name">—</span>
       <span class="tb-role" id="tb-user-role" hidden></span>
-      <a class="btn btn-sm" href="/">GPS</a>
-      <a class="btn btn-sm" id="btn-admin-panel" href="/admin.html" style="display:none">Boshqaruv</a>
+      <a class="btn btn-sm" id="btn-admin-panel" href="/admin.html" style="display:none">Admin</a>
       <button class="btn btn-sm" type="button" id="btn-logout">Chiqish</button>
     </div>
   </div>
@@ -380,7 +380,7 @@ table.gtable input, table.gtable select {
 <datalist id="station-list"></datalist>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="auth.js?v=3"></script>
+<script src="auth.js?v=4"></script>
 <script src="fuel.js?v=2"></script>
 </body>
 </html>

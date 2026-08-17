@@ -36,7 +36,7 @@ function vmApplyChrome(user) {
     if (panel) {
         const isPro = user.role === 'admin_pro';
         panel.style.display = isPro ? 'inline-flex' : 'none';
-        panel.textContent = 'Boshqaruv';
+        panel.textContent = 'Admin';
         panel.setAttribute('href', '/admin.html');
     }
 }
