@@ -176,13 +176,25 @@ function normPh(s) {
 }
 
 let PHARM_INDEX = [];
+function uniquePhNames(list) {
+    const seen = new Set();
+    const out = [];
+    (list || []).forEach(ph => {
+        const k = normPh(ph);
+        if (!k || seen.has(k)) return;
+        seen.add(k);
+        out.push(ph);
+    });
+    return out;
+}
+
 function ownPharmacyList(carKey) {
     if (window.VMOffice && typeof VMOffice.ownNames === 'function') {
-        return VMOffice.ownNames(carKey);
+        return uniquePhNames(VMOffice.ownNames(carKey));
     }
     const driver = DRIVERS.find(d => d.car === carKey);
     if (!driver || !driver.pharmacies) return [];
-    return driver.pharmacies.split(',').map(p => p.trim()).filter(Boolean);
+    return uniquePhNames(driver.pharmacies.split(',').map(p => p.trim()).filter(Boolean));
 }
 
 function buildPharmIndex() {
@@ -569,7 +581,7 @@ function parseStats(rows, stops) {
 // ── 5. TAHLIL VA BALL HISOBLASH ─────────────────────────────
 function analyzeData(stops, carKey, stats, dateVal) {
     const day = dateVal || STATE.currentDate;
-    const ownPharms = ownPharmacyList(carKey);
+    const ownPharms = uniquePhNames(ownPharmacyList(carKey));
     const problemOf = (s) => {
         if (window.VMOffice && typeof VMOffice.isProblem === 'function') {
             return VMOffice.isProblem(day, carKey, s);
@@ -577,14 +589,14 @@ function analyzeData(stops, carKey, stats, dateVal) {
         return !!s.isProblem;
     };
 
-    const ownVisited    = stops.filter(s => s.matchType === 'own').length;
+    const visitedNorms = new Set(
+        stops.filter(s => s.matchType === 'own').map(s => normPh(s.phName || s.place || '')).filter(Boolean)
+    );
+    const missedList = ownPharms.filter(ph => !visitedNorms.has(normPh(ph)));
+    const ownVisited = ownPharms.length ? (ownPharms.length - missedList.length) : visitedNorms.size;
     const otherDir      = stops.filter(s => s.matchType === 'other').length;
     const problemStops  = stops.filter(s => problemOf(s)).length;
     const outsideCity   = stops.filter(s => s.isOutside).length;
-
-    // Qaysi o'z dorixonalari borilmagan
-    const visitedNames = stops.filter(s => s.matchType === 'own').map(s => normPh(s.phName || ''));
-    const missedList   = ownPharms.filter(ph => !visitedNames.includes(normPh(ph)));
 
     // Ball hisoblash
     let score = 10.0;
@@ -910,14 +922,8 @@ function selectDate(ds) {
 async function refreshDayKm(dateVal) {
     if (!dateVal || !hasGpsConfig() || !window.wialonGPS) return;
     if (STATE.kmFixBusy) return;
-    STATE.kmFixed = STATE.kmFixed || {};
     const day = STATE.data[dateVal];
     if (!day || !Object.keys(day).length) return;
-    const needs = Object.keys(day).some(car => {
-        const km = (day[car] && day[car].stats && day[car].stats.probeg) || 0;
-        return km > 0 && Math.abs(km - Math.round(km)) < 0.009;
-    });
-    if (!needs || STATE.kmFixed[dateVal]) return;
     STATE.kmFixBusy = true;
     try {
         await wialonGPS.login(STATE.gpsConfig);
@@ -929,23 +935,22 @@ async function refreshDayKm(dateVal) {
             if (!drv || !day[drv.car] || !day[drv.car].stats) continue;
             const st = day[drv.car].stats;
             const oldKm = Number(st.probeg) || 0;
-            if (oldKm && Math.abs(oldKm - Math.round(oldKm)) >= 0.009) continue;
             let metrics = null;
             try {
                 metrics = await wialonGPS.getTripMetrics(unit.id, timeFrom, timeTo);
             } catch (e) {}
             if (!metrics || !metrics.km) continue;
-            st.probeg = wialonGPS.bestKm(st.probeg, [metrics.km]);
+            st.probeg = metrics.km;
             if (metrics.maxSpeed) st.maxSpeed = Math.max(Number(st.maxSpeed) || 0, metrics.maxSpeed);
             if (metrics.avgSpeed) st.avgSpeed = metrics.avgSpeed;
+            if (metrics.trips) st.poezdok = metrics.trips;
             if (Math.abs((st.probeg || 0) - oldKm) >= 0.01) nFix += 1;
         }
         if (nFix) {
-            STATE.kmFixed[dateVal] = true;
             saveAll();
             if (window.VMOffice) VMOffice.saveReport(dateVal);
             if (STATE.currentDate === dateVal) refreshUI();
-            showToast('GPS km aniqlandi: ' + nFix + ' ta mashina', 'success');
+            showToast('GPS km yangilandi: ' + nFix + ' ta mashina', 'success');
         }
     } catch (e) {
         console.warn('km refresh:', e);
@@ -2104,8 +2109,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-gps-sync')?.addEventListener('click',   () => openGpsModal());
     document.getElementById('btn-gps-sync-2')?.addEventListener('click', () => {
         if (hasGpsConfig() && STATE.gpsConfig && STATE.currentDate) {
-            STATE.kmFixed = STATE.kmFixed || {};
-            delete STATE.kmFixed[STATE.currentDate];
             showToast('GPS dan aniq km yuklanmoqda...', 'info');
             syncFromGPS(STATE.currentDate, STATE.gpsConfig);
             return;

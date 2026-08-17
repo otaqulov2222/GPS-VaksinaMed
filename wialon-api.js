@@ -221,18 +221,6 @@ class WialonGPSClient {
         return this.parseLooseNum(c);
     }
 
-    preferKm(oldVal, newVal) {
-        const a = this.roundKm(oldVal);
-        const b = this.roundKm(newVal);
-        if (!b) return a;
-        if (!a) return b;
-        const aFrac = Math.abs(a - Math.round(a));
-        const bFrac = Math.abs(b - Math.round(b));
-        if (bFrac >= 0.01 && aFrac < 0.01) return b;
-        if (aFrac >= 0.01 && bFrac < 0.01) return a;
-        return b;
-    }
-
     cellCoord(c) {
         if (c && typeof c === 'object' && typeof c.y === 'number') {
             return { lat: c.y, lng: c.x };
@@ -313,124 +301,65 @@ class WialonGPSClient {
         return Math.round(x * 10000) / 10000;
     }
 
-    tripDistanceKm(tr) {
-        const raw = Number(tr && (tr.distance != null ? tr.distance : tr.mileage));
-        if (!Number.isFinite(raw) || raw <= 0) return 0;
-        return raw;
+    tripDistanceMeters(tr) {
+        return Number(tr && (tr.distance != null ? tr.distance : tr.mileage)) || 0;
     }
 
-    haversineKm(a, b) {
-        const R = 6371;
-        const dLat = (b.y - a.y) * Math.PI / 180;
-        const dLng = (b.x - a.x) * Math.PI / 180;
-        const s = Math.sin(dLat / 2) ** 2 + Math.cos(a.y * Math.PI / 180) * Math.cos(b.y * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-        return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
-    }
-
-    bestKm(base, cands) {
-        const b = this.roundKm(base);
-        const xs = (cands || []).map(v => this.roundKm(v)).filter(v => v > 0 && v < 2000);
-        const frac = xs.filter(v => Math.abs(v - Math.round(v)) >= 0.01);
-        const pool = frac.length ? frac : xs;
-        if (!pool.length) return b;
-        if (!b) return pool[0];
-        pool.sort((a, c) => Math.abs(a - b) - Math.abs(c - b));
-        return pool[0];
-    }
-
-    trackKmFromMsgs(msgs) {
-        let km = 0, maxSpd = 0, prev = null;
-        (msgs || []).forEach(m => {
-            const pos = m && m.pos;
-            if (!pos || typeof pos.y !== 'number' || typeof pos.x !== 'number') return;
-            if ((pos.s || 0) > maxSpd) maxSpd = pos.s;
-            if (prev) {
-                const d = this.haversineKm(prev, pos);
-                if (d >= 0.001 && d < 2) km += d;
-            }
-            prev = pos;
+    kmFromTripList(list) {
+        if (!list || !list.length) return 0;
+        let rawSum = 0;
+        let maxD = 0;
+        list.forEach(tr => {
+            const d = this.tripDistanceMeters(tr);
+            rawSum += d;
+            if (d > maxD) maxD = d;
         });
-        return { km: this.roundKm(km), maxSpeed: this.roundSpd(maxSpd) };
+        if (!rawSum) return 0;
+        const allWhole = list.every(tr => Number.isInteger(this.tripDistanceMeters(tr)));
+        const inMeters = maxD >= 1000 || (rawSum >= 300 && allWhole);
+        return this.roundKm(inMeters ? rawSum / 1000 : rawSum);
     }
 
-    odoKmFromMsgs(msgs) {
-        const pick = (m) => {
-            const p = (m && m.p) || {};
-            for (const k of Object.keys(p)) {
-                if (/mileage|odometr|odometer|probeg|пробег/i.test(k)) {
-                    const n = Number(p[k]);
-                    if (n > 0) return n;
-                }
-            }
-            return 0;
+    async officialDayMetrics(unitId, timeFrom, timeTo) {
+        const tripsResp = await this.sendRequest('unit/get_trips', { itemId: unitId, timeFrom, timeTo });
+        const list = Array.isArray(tripsResp) ? tripsResp : (tripsResp && Array.isArray(tripsResp.trips) ? tripsResp.trips : []);
+        if (!list.length) return null;
+        let maxSpeed = 0, avgAcc = 0, avgN = 0;
+        list.forEach(tr => {
+            const ms = Number(tr.max_speed || tr.maxSpeed || 0);
+            if (ms > maxSpeed) maxSpeed = ms;
+            const as = Number(tr.avg_speed || tr.avgSpeed || 0);
+            if (as > 0) { avgAcc += as; avgN += 1; }
+        });
+        const km = this.kmFromTripList(list);
+        if (!km) return null;
+        return {
+            km,
+            maxSpeed: this.roundSpd(maxSpeed),
+            avgSpeed: avgN ? this.roundSpd(avgAcc / avgN) : 0,
+            trips: list.length
         };
-        if (!msgs || msgs.length < 2) return 0;
-        const first = pick(msgs[0]);
-        const last = pick(msgs[msgs.length - 1]);
-        if (!(first && last && last > first)) return 0;
-        let d = last - first;
-        if (d >= 500) d = d / 1000;
-        const km = this.roundKm(d);
-        return (km > 0 && km < 2000) ? km : 0;
     }
 
     async getTripMetrics(unitId, timeFrom, timeTo) {
-        const cands = [];
-        let maxSpeed = 0, avgSpeed = 0, trips = 0;
         try {
-            const tripsResp = await this.sendRequest('unit/get_trips', { itemId: unitId, timeFrom, timeTo });
-            const list = Array.isArray(tripsResp) ? tripsResp : (tripsResp && Array.isArray(tripsResp.trips) ? tripsResp.trips : []);
-            if (list.length) {
-                let rawSum = 0, avgAcc = 0, avgN = 0;
-                list.forEach(tr => {
-                    rawSum += this.tripDistanceKm(tr);
-                    const ms = Number(tr.max_speed || tr.maxSpeed || 0);
-                    if (ms > maxSpeed) maxSpeed = ms;
-                    const as = Number(tr.avg_speed || tr.avgSpeed || 0);
-                    if (as > 0) { avgAcc += as; avgN += 1; }
-                });
-                const km = this.roundKm(rawSum >= 500 ? rawSum / 1000 : rawSum);
-                if (km) cands.push(km);
-                trips = list.length;
-                if (avgN) avgSpeed = this.roundSpd(avgAcc / avgN);
-            }
+            return await this.officialDayMetrics(unitId, timeFrom, timeTo);
         } catch (e) {
             console.warn('get_trips:', e);
+            return null;
         }
-        try {
-            const resp = await this.sendRequest('messages/load_interval', {
-                itemId: unitId,
-                timeFrom,
-                timeTo,
-                flags: 1,
-                flagsMask: 65281,
-                loadCount: 20000
-            });
-            const msgs = (resp && resp.messages) || [];
-            if (msgs.length >= 2) {
-                const odo = this.odoKmFromMsgs(msgs);
-                const track = this.trackKmFromMsgs(msgs);
-                if (odo) cands.push(odo);
-                if (track.km) cands.push(track.km);
-                if (track.maxSpeed) maxSpeed = Math.max(maxSpeed, track.maxSpeed);
-            }
-        } catch (e) {
-            console.warn('messages mileage:', e);
-        }
-        const km = this.bestKm(0, cands);
-        if (!km) return null;
-        return { km, maxSpeed: this.roundSpd(maxSpeed), avgSpeed, trips };
     }
 
     async applyTripMetrics(unitId, timeFrom, timeTo, chronology) {
         if (!chronology || !chronology.stats) return chronology;
         try {
-            const m = await this.getTripMetrics(unitId, timeFrom, timeTo);
-            if (!m) return chronology;
-            chronology.stats.probeg = this.bestKm(chronology.stats.probeg, [m.km]);
-            if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(Math.max(chronology.stats.maxSpeed || 0, m.maxSpeed));
-            if (m.avgSpeed) chronology.stats.avgSpeed = m.avgSpeed;
-            if (m.trips && !chronology.stats.poezdok) chronology.stats.poezdok = m.trips;
+            const m = await this.officialDayMetrics(unitId, timeFrom, timeTo);
+            if (m && m.km) {
+                chronology.stats.probeg = m.km;
+                if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(Math.max(chronology.stats.maxSpeed || 0, m.maxSpeed));
+                if (m.avgSpeed) chronology.stats.avgSpeed = m.avgSpeed;
+                if (m.trips) chronology.stats.poezdok = m.trips;
+            }
         } catch (e) {
             console.warn('get_trips:', e);
         }
@@ -448,7 +377,7 @@ class WialonGPSClient {
             if ((k.includes('пробег') || k.includes('mileage') || k.includes('masofa')) && !k.includes('время') && num > 0) {
                 let km = num;
                 if (num > 500 && /m\b|метр/i.test(v)) km = num / 1000;
-                chronology.stats.probeg = this.preferKm(chronology.stats.probeg, this.roundKm(km));
+                chronology.stats.probeg = this.roundKm(km);
             }
             if ((k.includes('средн') || k.includes('avg') || k.includes('average') || k.includes("o'rtacha") || k.includes('ortacha')) && (k.includes('скорост') || k.includes('speed') || k.includes('tezlik'))) {
                 if (num > 0) chronology.stats.avgSpeed = this.roundSpd(num);
@@ -640,12 +569,12 @@ class WialonGPSClient {
                 if (n > 500 && /m\b|метр/i.test(t)) km = n / 1000;
                 if (km > 0 && km < 800) sum += km;
             });
-            if (sum > 0) chronology.stats.probeg = this.preferKm(chronology.stats.probeg, this.roundKm(sum));
+            if (sum > 0) chronology.stats.probeg = this.roundKm(sum);
             const tot = block.tbl.total;
             const totCells = Array.isArray(tot) ? tot : (tot && tot.c) || [];
             if (totCells[kmIdx] != null) {
                 const tn = this.cellNum(totCells[kmIdx]);
-                if (tn > 0 && tn < 800) chronology.stats.probeg = this.preferKm(chronology.stats.probeg, this.roundKm(tn > 500 ? tn / 1000 : tn));
+                if (tn > 0 && tn < 800) chronology.stats.probeg = this.roundKm(tn > 500 ? tn / 1000 : tn);
             }
         });
 

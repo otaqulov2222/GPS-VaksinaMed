@@ -145,12 +145,35 @@ const VMOffice = {
         this.saveReport(dateVal);
     },
 
+    recForPlate(day, plate) {
+        if (!day || !plate) return null;
+        if (day[plate]) return day[plate];
+        const compact = String(plate).replace(/\s+/g, '');
+        for (const k of Object.keys(day)) {
+            if (String(k).replace(/\s+/g, '') === compact) return day[k];
+        }
+        return null;
+    },
+
     ownNames(car) {
         const fromState = (STATE.pharmacies || []).filter(p => p.car === car).map(p => p.name).filter(Boolean);
-        if (fromState.length) return fromState;
-        const drv = (window.DRIVERS || []).find(d => d.car === car);
-        if (!drv || !drv.pharmacies) return [];
-        return String(drv.pharmacies).split(',').map(s => s.trim()).filter(Boolean);
+        const raw = fromState.length
+            ? fromState
+            : (() => {
+                const drv = (window.DRIVERS || []).find(d => d.car === car);
+                if (!drv || !drv.pharmacies) return [];
+                return String(drv.pharmacies).split(',').map(s => s.trim()).filter(Boolean);
+            })();
+        const fold = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-яўқғҳ]/gi, '');
+        const seen = new Set();
+        const out = [];
+        raw.forEach(n => {
+            const k = fold(n);
+            if (!k || seen.has(k)) return;
+            seen.add(k);
+            out.push(n);
+        });
+        return out;
     },
 
     matchGeo(currentCar, lat, lng) {
@@ -215,7 +238,7 @@ const VMOffice = {
     fleetRows(dateVal) {
         const day = (dateVal && STATE.data[dateVal]) ? STATE.data[dateVal] : {};
         return (window.DRIVERS || []).map(drv => {
-            const rec = day[drv.car];
+            const rec = this.recForPlate(day, drv.car);
             if (!rec) {
                 return { drv, rec: null, score: null, km: 0, own: 0, total: this.ownNames(drv.car).length, other: 0, problem: 0, speed: 0, work: '—' };
             }
