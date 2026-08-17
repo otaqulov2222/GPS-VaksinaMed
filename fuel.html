@@ -205,6 +205,22 @@ table.dtable input.w-note { font-family: var(--sans); font-weight: 500; }
 }
 .subtab.on { background: #163d64; color: #fff; border-color: #163d64; }
 .hint { background: #fff8d6; border: 1px solid #ead98a; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; }
+.jl { display: grid; grid-template-columns: 340px 1fr; gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .jl { grid-template-columns: 1fr; } }
+.tog { display: flex; gap: 0; margin-bottom: 8px; }
+.tog button {
+  flex: 1; height: 34px; border: 1px solid var(--line); background: #fff;
+  font: 700 11px/1 var(--sans); letter-spacing: .04em; cursor: pointer;
+}
+.tog button.on-bad { background: #9b1c1c; color: #fff; border-color: #9b1c1c; }
+.tog button.on-good { background: #0c1016; color: #fff; border-color: #0c1016; }
+.tog button.on { background: #163d64; color: #fff; border-color: #163d64; }
+.jl-car {
+  font-family: var(--mono); font-weight: 700; font-size: 16px;
+  padding: 8px 10px; background: #eef1f5; border: 1px solid var(--line);
+}
+.tag-bad { background: #f3e4e4; color: #9b1c1c; font-weight: 700; padding: 2px 6px; font-size: 10px; }
+.tag-good { background: #e8f0eb; color: #1a5c3a; font-weight: 700; padding: 2px 6px; font-size: 10px; }
 
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
 @media (max-width: 800px) { .kpis { grid-template-columns: 1fr 1fr; } }
@@ -293,6 +309,7 @@ table.gtable input, table.gtable select {
   <button class="tab" type="button" data-tab="gasact">Gaz akti</button>
   <button class="tab" type="button" data-tab="year">Yillik jamlanma</button>
   <button class="tab" type="button" data-tab="docs">Hujjat muddatlari</button>
+  <button class="tab" type="button" data-tab="journal">Haydovchilar jurnali</button>
   <button class="tab" type="button" data-tab="cars">Mashina va narx</button>
 </nav>
 
@@ -373,6 +390,7 @@ table.gtable input, table.gtable select {
   <section class="panel" id="panel-gasact"></section>
   <section class="panel" id="panel-year"></section>
   <section class="panel" id="panel-docs"></section>
+  <section class="panel" id="panel-journal"></section>
   <section class="panel" id="panel-cars"></section>
 </div>
 
@@ -381,6 +399,7 @@ table.gtable input, table.gtable select {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="auth.js?v=4"></script>
-<script src="fuel.js?v=2"></script>
+<script src="fuel.js?v=3"></script>
+<script src="journal.js?v=1"></script>
 </body>
 </html>

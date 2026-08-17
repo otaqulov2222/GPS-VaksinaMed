@@ -1117,6 +1117,7 @@ function renderAll() {
   if (STATE.tab === 'gasact') renderGasAct();
   if (STATE.tab === 'year') renderYear();
   if (STATE.tab === 'docs') renderDocs();
+  if (STATE.tab === 'journal' && window.VMJournal) window.VMJournal.render();
   if (STATE.tab === 'cars') renderCars();
 }
 

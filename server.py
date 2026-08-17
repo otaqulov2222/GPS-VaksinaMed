@@ -968,6 +968,87 @@ class OfficeStore:
                 out[date] = day
         return out
 
+    def gps_totals_month(self, month):
+        days = self.gps_km_month(month)
+        totals = {}
+        for _date, cars in days.items():
+            if not isinstance(cars, dict):
+                continue
+            for plate, km in cars.items():
+                rec = totals.setdefault(str(plate), {"km": 0, "days": 0})
+                rec["km"] += int(km or 0)
+                rec["days"] += 1
+        return {"days": days, "totals": totals}
+
+    def journal_items(self):
+        data = self._load("journal:entries", {})
+        items = data.get("items") if isinstance(data, dict) else []
+        if not isinstance(items, list):
+            items = []
+        return items
+
+    def _clean_journal_entry(self, body, user=""):
+        if not isinstance(body, dict):
+            return None, "Ma'lumot noto'g'ri"
+        kind = "good" if str(body.get("kind") or "") == "good" else "bad"
+        cat = "pharmacy" if str(body.get("category") or "") == "pharmacy" else "driver"
+        start = str(body.get("start") or "")[:19].replace(" ", "T")
+        end = str(body.get("end") or "")[:19].replace(" ", "T")
+        if start and not re.match(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?", start):
+            return None, "Sana noto'g'ri"
+        if end and not re.match(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?", end):
+            end = ""
+        eid = str(body.get("id") or new_id("jr"))[:40]
+        level = str(body.get("level") or "orta")[:12]
+        if level not in ("past", "orta", "yuqori"):
+            level = "orta"
+        return {
+            "id": eid,
+            "kind": kind,
+            "category": cat,
+            "car": str(body.get("car") or "")[:24],
+            "driver": str(body.get("driver") or "")[:80],
+            "pharmacy": str(body.get("pharmacy") or "")[:80],
+            "reason": str(body.get("reason") or "")[:60],
+            "level": level,
+            "start": start,
+            "end": end,
+            "note": str(body.get("note") or "")[:400],
+            "createdBy": str(body.get("createdBy") or user or "")[:40],
+            "createdAt": str(body.get("createdAt") or iso_now())[:19],
+            "updatedAt": iso_now(),
+        }, None
+
+    def upsert_journal(self, body, user=""):
+        entry, err = self._clean_journal_entry(body, user)
+        if err:
+            return None, err
+        if entry["category"] == "driver" and not entry["car"]:
+            return None, "Mashina raqami majburiy"
+        items = self.journal_items()
+        found = False
+        for i, it in enumerate(items):
+            if isinstance(it, dict) and it.get("id") == entry["id"]:
+                entry["createdAt"] = it.get("createdAt") or entry["createdAt"]
+                entry["createdBy"] = it.get("createdBy") or entry["createdBy"]
+                items[i] = entry
+                found = True
+                break
+        if not found:
+            items.append(entry)
+        if len(items) > 1500:
+            items = items[-1500:]
+        self._save("journal:entries", {"items": items, "savedAt": iso_now()})
+        return entry, None
+
+    def delete_journal(self, eid):
+        eid = str(eid or "").strip()[:40]
+        if not eid:
+            return False, "ID yo'q"
+        items = [it for it in self.journal_items() if not (isinstance(it, dict) and it.get("id") == eid)]
+        self._save("journal:entries", {"items": items, "savedAt": iso_now()})
+        return True, None
+
 
 STORE = None
 OFFICE = None
@@ -1246,6 +1327,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "year": str(year), "months": data})
             return
 
+        if path == "/api/office/journal":
+            sess = self.require_user()
+            if not sess:
+                return
+            gps = {}
+            if month and MONTH_RE.match(str(month)):
+                gps = OFFICE.gps_totals_month(month)
+            self.send_json(
+                {
+                    "ok": True,
+                    "items": OFFICE.journal_items(),
+                    "pharmacies": OFFICE.pharmacies(),
+                    "gps": gps,
+                }
+            )
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_api_post(self, path):
@@ -1465,6 +1563,24 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": err}, 400)
                 return
             self.send_json({"ok": True, "savedAt": payload.get("savedAt")})
+            return
+
+        if path == "/api/office/journal":
+            sess = self.require_user()
+            if not sess:
+                return
+            if body.get("deleteId"):
+                ok, err = OFFICE.delete_journal(body.get("deleteId"))
+                if err:
+                    self.send_json({"ok": False, "error": err}, 400)
+                    return
+                self.send_json({"ok": True, "items": OFFICE.journal_items()})
+                return
+            entry, err = OFFICE.upsert_journal(body.get("entry") or body, sess.get("username"))
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({"ok": True, "entry": entry, "items": OFFICE.journal_items()})
             return
 
         self.send_json({"ok": False, "error": "Not found"}, 404)
