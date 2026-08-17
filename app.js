@@ -935,13 +935,13 @@ async function refreshDayKm(dateVal) {
                 metrics = await wialonGPS.getTripMetrics(unit.id, timeFrom, timeTo);
             } catch (e) {}
             if (!metrics || !metrics.km) continue;
-            st.probeg = wialonGPS.preferKm(st.probeg, metrics.km);
+            st.probeg = wialonGPS.bestKm(st.probeg, [metrics.km]);
             if (metrics.maxSpeed) st.maxSpeed = Math.max(Number(st.maxSpeed) || 0, metrics.maxSpeed);
             if (metrics.avgSpeed) st.avgSpeed = metrics.avgSpeed;
             if (Math.abs((st.probeg || 0) - oldKm) >= 0.01) nFix += 1;
         }
-        STATE.kmFixed[dateVal] = true;
         if (nFix) {
+            STATE.kmFixed[dateVal] = true;
             saveAll();
             if (window.VMOffice) VMOffice.saveReport(dateVal);
             if (STATE.currentDate === dateVal) refreshUI();
@@ -2102,7 +2102,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('modal-gps').classList.add('open');
     };
     document.getElementById('btn-gps-sync')?.addEventListener('click',   () => openGpsModal());
-    document.getElementById('btn-gps-sync-2')?.addEventListener('click', () => openGpsModal());
+    document.getElementById('btn-gps-sync-2')?.addEventListener('click', () => {
+        if (hasGpsConfig() && STATE.gpsConfig && STATE.currentDate) {
+            STATE.kmFixed = STATE.kmFixed || {};
+            delete STATE.kmFixed[STATE.currentDate];
+            showToast('GPS dan aniq km yuklanmoqda...', 'info');
+            syncFromGPS(STATE.currentDate, STATE.gpsConfig);
+            return;
+        }
+        openGpsModal();
+    });
 
     const yday = () => {
         const d = new Date();

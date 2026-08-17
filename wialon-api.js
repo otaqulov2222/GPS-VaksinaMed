@@ -319,46 +319,41 @@ class WialonGPSClient {
         return raw;
     }
 
-    async getTripMetrics(unitId, timeFrom, timeTo) {
-        try {
-            const trips = await this.sendRequest('unit/get_trips', { itemId: unitId, timeFrom, timeTo });
-            const list = Array.isArray(trips) ? trips : (trips && Array.isArray(trips.trips) ? trips.trips : []);
-            if (list.length) {
-                let rawSum = 0, maxSpeed = 0, avgAcc = 0, avgN = 0;
-                list.forEach(tr => {
-                    rawSum += this.tripDistanceKm(tr);
-                    const ms = Number(tr.max_speed || tr.maxSpeed || 0);
-                    if (ms > maxSpeed) maxSpeed = ms;
-                    const as = Number(tr.avg_speed || tr.avgSpeed || 0);
-                    if (as > 0) { avgAcc += as; avgN += 1; }
-                });
-                const km = this.roundKm(rawSum >= 500 ? rawSum / 1000 : rawSum);
-                if (km) {
-                    return {
-                        km,
-                        maxSpeed: this.roundSpd(maxSpeed),
-                        avgSpeed: avgN ? this.roundSpd(avgAcc / avgN) : 0,
-                        trips: list.length
-                    };
-                }
-            }
-        } catch (e) {
-            console.warn('get_trips:', e);
-        }
-        return await this.mileageFromMessages(unitId, timeFrom, timeTo);
+    haversineKm(a, b) {
+        const R = 6371;
+        const dLat = (b.y - a.y) * Math.PI / 180;
+        const dLng = (b.x - a.x) * Math.PI / 180;
+        const s = Math.sin(dLat / 2) ** 2 + Math.cos(a.y * Math.PI / 180) * Math.cos(b.y * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
     }
 
-    async mileageFromMessages(unitId, timeFrom, timeTo) {
-        const resp = await this.sendRequest('messages/load_interval', {
-            itemId: unitId,
-            timeFrom,
-            timeTo,
-            flags: 1,
-            flagsMask: 65281,
-            loadCount: 20000
+    bestKm(base, cands) {
+        const b = this.roundKm(base);
+        const xs = (cands || []).map(v => this.roundKm(v)).filter(v => v > 0 && v < 2000);
+        const frac = xs.filter(v => Math.abs(v - Math.round(v)) >= 0.01);
+        const pool = frac.length ? frac : xs;
+        if (!pool.length) return b;
+        if (!b) return pool[0];
+        pool.sort((a, c) => Math.abs(a - b) - Math.abs(c - b));
+        return pool[0];
+    }
+
+    trackKmFromMsgs(msgs) {
+        let km = 0, maxSpd = 0, prev = null;
+        (msgs || []).forEach(m => {
+            const pos = m && m.pos;
+            if (!pos || typeof pos.y !== 'number' || typeof pos.x !== 'number') return;
+            if ((pos.s || 0) > maxSpd) maxSpd = pos.s;
+            if (prev) {
+                const d = this.haversineKm(prev, pos);
+                if (d >= 0.001 && d < 2) km += d;
+            }
+            prev = pos;
         });
-        const msgs = (resp && resp.messages) || [];
-        if (msgs.length < 2) return null;
+        return { km: this.roundKm(km), maxSpeed: this.roundSpd(maxSpd) };
+    }
+
+    odoKmFromMsgs(msgs) {
         const pick = (m) => {
             const p = (m && m.p) || {};
             for (const k of Object.keys(p)) {
@@ -369,15 +364,62 @@ class WialonGPSClient {
             }
             return 0;
         };
+        if (!msgs || msgs.length < 2) return 0;
         const first = pick(msgs[0]);
         const last = pick(msgs[msgs.length - 1]);
-        if (first && last && last > first) {
-            let d = last - first;
-            if (d >= 500) d = d / 1000;
-            const km = this.roundKm(d);
-            if (km > 0 && km < 2000) return { km, maxSpeed: 0, avgSpeed: 0, trips: 0 };
+        if (!(first && last && last > first)) return 0;
+        let d = last - first;
+        if (d >= 500) d = d / 1000;
+        const km = this.roundKm(d);
+        return (km > 0 && km < 2000) ? km : 0;
+    }
+
+    async getTripMetrics(unitId, timeFrom, timeTo) {
+        const cands = [];
+        let maxSpeed = 0, avgSpeed = 0, trips = 0;
+        try {
+            const tripsResp = await this.sendRequest('unit/get_trips', { itemId: unitId, timeFrom, timeTo });
+            const list = Array.isArray(tripsResp) ? tripsResp : (tripsResp && Array.isArray(tripsResp.trips) ? tripsResp.trips : []);
+            if (list.length) {
+                let rawSum = 0, avgAcc = 0, avgN = 0;
+                list.forEach(tr => {
+                    rawSum += this.tripDistanceKm(tr);
+                    const ms = Number(tr.max_speed || tr.maxSpeed || 0);
+                    if (ms > maxSpeed) maxSpeed = ms;
+                    const as = Number(tr.avg_speed || tr.avgSpeed || 0);
+                    if (as > 0) { avgAcc += as; avgN += 1; }
+                });
+                const km = this.roundKm(rawSum >= 500 ? rawSum / 1000 : rawSum);
+                if (km) cands.push(km);
+                trips = list.length;
+                if (avgN) avgSpeed = this.roundSpd(avgAcc / avgN);
+            }
+        } catch (e) {
+            console.warn('get_trips:', e);
         }
-        return null;
+        try {
+            const resp = await this.sendRequest('messages/load_interval', {
+                itemId: unitId,
+                timeFrom,
+                timeTo,
+                flags: 1,
+                flagsMask: 65281,
+                loadCount: 20000
+            });
+            const msgs = (resp && resp.messages) || [];
+            if (msgs.length >= 2) {
+                const odo = this.odoKmFromMsgs(msgs);
+                const track = this.trackKmFromMsgs(msgs);
+                if (odo) cands.push(odo);
+                if (track.km) cands.push(track.km);
+                if (track.maxSpeed) maxSpeed = Math.max(maxSpeed, track.maxSpeed);
+            }
+        } catch (e) {
+            console.warn('messages mileage:', e);
+        }
+        const km = this.bestKm(0, cands);
+        if (!km) return null;
+        return { km, maxSpeed: this.roundSpd(maxSpeed), avgSpeed, trips };
     }
 
     async applyTripMetrics(unitId, timeFrom, timeTo, chronology) {
@@ -385,7 +427,7 @@ class WialonGPSClient {
         try {
             const m = await this.getTripMetrics(unitId, timeFrom, timeTo);
             if (!m) return chronology;
-            chronology.stats.probeg = this.preferKm(chronology.stats.probeg, m.km);
+            chronology.stats.probeg = this.bestKm(chronology.stats.probeg, [m.km]);
             if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(Math.max(chronology.stats.maxSpeed || 0, m.maxSpeed));
             if (m.avgSpeed) chronology.stats.avgSpeed = m.avgSpeed;
             if (m.trips && !chronology.stats.poezdok) chronology.stats.poezdok = m.trips;
