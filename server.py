@@ -32,6 +32,18 @@ PUBLIC_PREFIX = ("/fonts/", "/logo/")
 BLOCKED_EXT = {".py", ".bat", ".md", ".txt"}
 BLOCKED_NAMES = {"users.json", "server.py", "start.bat", "office-seed.json"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
+YEAR_RE = re.compile(r"^\d{4}$")
+
+
+def as_num(v, default=0.0):
+    try:
+        x = float(str(v).replace(",", ".").strip() or default)
+    except (TypeError, ValueError):
+        return float(default)
+    if x != x or abs(x) > 1e10:
+        return float(default)
+    return x
 
 ALLOWED_GPS_HOSTS = [
     "bms1.gpsavto.uz",
@@ -746,6 +758,159 @@ class OfficeStore:
             self._save("office:settings", data)
         return self.public_telegram()
 
+    def fuel_meta(self):
+        data = self._load("fuel:meta", {})
+        if not isinstance(data, dict):
+            data = {}
+        data.setdefault("vehicles", {})
+        data.setdefault("stations", [])
+        data.setdefault("docs", [])
+        return data
+
+    def save_fuel_meta(self, body):
+        cur = self.fuel_meta()
+        if isinstance(body.get("vehicles"), dict):
+            cur["vehicles"] = body["vehicles"]
+        if isinstance(body.get("stations"), list):
+            cur["stations"] = [str(s).strip()[:80] for s in body["stations"] if str(s).strip()][:80]
+        if isinstance(body.get("docs"), list):
+            docs = []
+            for d in body["docs"][:80]:
+                if not isinstance(d, dict):
+                    continue
+                docs.append(
+                    {
+                        "id": str(d.get("id") or new_id("doc"))[:40],
+                        "title": str(d.get("title") or "")[:80],
+                        "due": str(d.get("due") or "")[:10],
+                        "car": str(d.get("car") or "")[:24],
+                        "note": str(d.get("note") or "")[:120],
+                    }
+                )
+            cur["docs"] = docs
+        self._save("fuel:meta", cur)
+        return cur
+
+    def fuel_month(self, month):
+        if not month or not MONTH_RE.match(str(month)):
+            return None
+        data = self._load("fuel:month:" + month, {})
+        if not isinstance(data, dict):
+            data = {}
+        data.setdefault("cars", {})
+        return data
+
+    def save_fuel_month(self, month, body):
+        if not month or not MONTH_RE.match(str(month)):
+            return None, "Oy noto'g'ri"
+        cars_in = (body or {}).get("cars")
+        if not isinstance(cars_in, dict):
+            return None, "Ma'lumot noto'g'ri"
+        cars = {}
+        for i, (car, rec) in enumerate(cars_in.items()):
+            if i >= 40:
+                break
+            plate = str(car).strip()[:24]
+            if not plate or not isinstance(rec, dict):
+                continue
+            days_in = rec.get("days") if isinstance(rec.get("days"), dict) else {}
+            days = {}
+            for d, row in days_in.items():
+                try:
+                    di = int(d)
+                except (TypeError, ValueError):
+                    continue
+                if di < 1 or di > 31 or not isinstance(row, dict):
+                    continue
+                mode = str(row.get("mode") or "gaz")[:12]
+                if mode not in ("gaz", "benzin", "aralash", "dizel"):
+                    mode = "gaz"
+                days[str(di)] = {
+                    "km": as_num(row.get("km")),
+                    "odo": as_num(row.get("odo")),
+                    "mode": mode,
+                    "station": str(row.get("station") or "")[:80],
+                    "gasIn": as_num(row.get("gasIn")),
+                    "gasPrice": as_num(row.get("gasPrice")),
+                    "benzinIn": as_num(row.get("benzinIn")),
+                    "benzinPrice": as_num(row.get("benzinPrice")),
+                    "extra": as_num(row.get("extra")),
+                    "extraWhy": str(row.get("extraWhy") or "")[:80],
+                    "note": str(row.get("note") or "")[:120],
+                }
+            changes = []
+            raw_ch = rec.get("changes") if isinstance(rec.get("changes"), list) else []
+            for ch in raw_ch[:40]:
+                if not isinstance(ch, dict):
+                    continue
+                try:
+                    day = int(ch.get("day") or 0)
+                except (TypeError, ValueError):
+                    day = 0
+                if day < 1 or day > 31:
+                    continue
+                changes.append(
+                    {
+                        "day": day,
+                        "field": str(ch.get("field") or "")[:24],
+                        "value": as_num(ch.get("value")),
+                        "note": str(ch.get("note") or "")[:80],
+                    }
+                )
+            cars[plate] = {
+                "gasNorm": as_num(rec.get("gasNorm"), 12),
+                "benzinNorm": as_num(rec.get("benzinNorm"), 4),
+                "odoStart": as_num(rec.get("odoStart")),
+                "gasStart": as_num(rec.get("gasStart")),
+                "benzinStart": as_num(rec.get("benzinStart")),
+                "gasPrice": as_num(rec.get("gasPrice"), 5200),
+                "benzinPrice": as_num(rec.get("benzinPrice"), 11000),
+                "mixPct": as_num(rec.get("mixPct"), 70),
+                "fuelType": str(rec.get("fuelType") or "gaz")[:12],
+                "changes": changes,
+                "days": days,
+            }
+        payload = {"month": month, "savedAt": iso_now(), "cars": cars}
+        self._save("fuel:month:" + month, payload)
+        return payload, None
+
+    def fuel_year(self, year):
+        if not year or not YEAR_RE.match(str(year)):
+            return None
+        out = {}
+        for m in range(1, 13):
+            month = "%s-%02d" % (year, m)
+            data = self._load("fuel:month:" + month, None)
+            if isinstance(data, dict) and data.get("cars"):
+                out[month] = data
+        return out
+
+    def gps_km_month(self, month):
+        if not month or not MONTH_RE.match(str(month)):
+            return {}
+        out = {}
+        for key in self.persist.keys("office:report:"):
+            date = key.split(":")[-1]
+            if not date.startswith(month + "-"):
+                continue
+            rep = self.get_report(date)
+            cars = (rep or {}).get("cars") if isinstance(rep, dict) else None
+            if not isinstance(cars, dict):
+                continue
+            day = {}
+            for car, rec in cars.items():
+                stats = (rec or {}).get("stats") if isinstance(rec, dict) else {}
+                km = (stats or {}).get("probeg")
+                try:
+                    km = float(km)
+                except (TypeError, ValueError):
+                    continue
+                if km > 0:
+                    day[str(car)] = round(km)
+            if day:
+                out[date] = day
+        return out
+
 
 STORE = None
 OFFICE = None
@@ -878,7 +1043,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             return super().do_GET()
 
-        if path in ("/", "/index.html"):
+        if path in ("/", "/index.html", "/fuel.html"):
             if not sess:
                 self.redirect("/login.html")
                 return
@@ -954,6 +1119,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
         qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         date = (qs.get("date") or [None])[0]
+        month = (qs.get("month") or [None])[0]
+        year = (qs.get("year") or [None])[0]
 
         if path == "/api/office/bootstrap":
             sess = self.require_user()
@@ -981,6 +1148,45 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             report = OFFICE.get_report(date)
             reviews = OFFICE.reviews(date)
             self.send_json({"ok": True, "report": report, "reviews": reviews})
+            return
+
+        if path == "/api/office/fuel/meta":
+            sess = self.require_user()
+            if not sess:
+                return
+            self.send_json({"ok": True, "meta": OFFICE.fuel_meta()})
+            return
+
+        if path == "/api/office/fuel/month":
+            sess = self.require_user()
+            if not sess:
+                return
+            data = OFFICE.fuel_month(month)
+            if data is None:
+                self.send_json({"ok": False, "error": "Oy noto'g'ri"}, 400)
+                return
+            self.send_json({"ok": True, "month": month, "data": data})
+            return
+
+        if path == "/api/office/fuel/gps-km":
+            sess = self.require_user()
+            if not sess:
+                return
+            if not month or not MONTH_RE.match(str(month)):
+                self.send_json({"ok": False, "error": "Oy noto'g'ri"}, 400)
+                return
+            self.send_json({"ok": True, "days": OFFICE.gps_km_month(month)})
+            return
+
+        if path == "/api/office/fuel/year":
+            sess = self.require_user()
+            if not sess:
+                return
+            data = OFFICE.fuel_year(year)
+            if data is None:
+                self.send_json({"ok": False, "error": "Yil noto'g'ri"}, 400)
+                return
+            self.send_json({"ok": True, "year": str(year), "months": data})
             return
 
         self.send_json({"ok": False, "error": "Not found"}, 404)
@@ -1183,6 +1389,25 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": err or "Yuborilmadi"}, 400)
                 return
             self.send_json({"ok": True})
+            return
+
+        if path == "/api/office/fuel/meta":
+            sess = self.require_user()
+            if not sess:
+                return
+            meta = OFFICE.save_fuel_meta(body)
+            self.send_json({"ok": True, "meta": meta})
+            return
+
+        if path == "/api/office/fuel/month":
+            sess = self.require_user()
+            if not sess:
+                return
+            payload, err = OFFICE.save_fuel_month(body.get("month"), body)
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({"ok": True, "savedAt": payload.get("savedAt")})
             return
 
         self.send_json({"ok": False, "error": "Not found"}, 404)

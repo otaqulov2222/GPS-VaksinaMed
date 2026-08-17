@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yoqilg'i hisoboti — VaksinaMed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #c9ced6;
+  --surface: #f3f4f6;
+  --card: #fff;
+  --ink: #12151c;
+  --ink-2: #2a303a;
+  --muted: #5c6573;
+  --faint: #8b939e;
+  --line: #b7bec8;
+  --header: #0c1016;
+  --header-2: #161c24;
+  --accent: #1a4a78;
+  --ok: #1a5c3a;
+  --warn: #8a5a12;
+  --bad: #9b1c1c;
+  --gold: #c9a227;
+  --in: #fff4c4;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+html { scroll-behavior: auto; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 100vh;
+}
+a { color: inherit; text-decoration: none; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 80;
+  height: 52px; padding: 0 16px 0 12px;
+  background: var(--header); color: #f4f4f2;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border-bottom: 2px solid var(--gold);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand img { width: 36px; height: 36px; display: block; }
+.tb-name { font-size: 14px; font-weight: 700; letter-spacing: .04em; color: #c4a0de; line-height: 1; }
+.tb-name span { color: #e8b423; }
+.tb-line { font-size: 8px; font-weight: 600; letter-spacing: .16em; color: #9b7ab3; margin-top: 3px; }
+.tb-title { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.tb-sub { font-size: 10px; color: #8b939e; letter-spacing: .12em; text-transform: uppercase; margin-top: 1px; }
+.tb-month {
+  font-family: var(--mono); font-size: 13px; font-weight: 600; color: #f4f4f2;
+  letter-spacing: .08em; padding: 4px 10px; border: 1px solid #3a4450;
+}
+.badge {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 8px;
+  font: 700 10px/1 var(--mono); letter-spacing: .06em; border: 1px solid;
+  white-space: nowrap;
+}
+.badge-ok { background: #1a5c3a; color: #fff; border-color: #1a5c3a; }
+.badge-bad { background: #9b1c1c; color: #fff; border-color: #9b1c1c; cursor: pointer; }
+.acts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tb-user { display: flex; align-items: center; gap: 8px; margin-left: 4px; padding-left: 10px; border-left: 1px solid #2a323c; }
+.tb-user-name { font-size: 12px; font-weight: 600; color: #f4f4f2; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.btn {
+  height: 32px; padding: 0 11px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid #3a4450; background: transparent; color: #d5d8dc;
+  font: 700 11px/1 var(--sans); letter-spacing: .05em; cursor: pointer;
+}
+.btn:hover { background: #1c232c; color: #fff; }
+.btn-gold { background: var(--gold); color: #0c1016; border-color: var(--gold); }
+.btn-gold:hover { background: #d4b03a; color: #0c1016; }
+.btn-ok { background: var(--ok); color: #fff; border-color: var(--ok); }
+.btn-ok:hover { background: #154d31; }
+.btn-sm { height: 28px; padding: 0 9px; font-size: 10px; }
+.btn-ink { background: #fff; color: var(--ink); border-color: var(--line); }
+.btn-ink:hover { background: #f3f4f6; color: var(--ink); }
+.btn-bad { color: #c45a5a; border-color: #6a3030; }
+
+.tabs {
+  display: flex; gap: 0; overflow-x: auto;
+  background: var(--header-2); border-bottom: 1px solid #2a323c;
+  scrollbar-width: thin;
+}
+.tab {
+  flex: 0 0 auto; height: 40px; padding: 0 14px;
+  border: 0; border-right: 1px solid #2a323c; border-bottom: 2px solid transparent;
+  background: transparent; color: #9aa3ae;
+  font: 700 11px/1 var(--sans); letter-spacing: .06em; text-transform: uppercase;
+  cursor: pointer; white-space: nowrap;
+}
+.tab:hover { color: #f4f4f2; background: #1c232c; }
+.tab.on { color: #f4f4f2; border-bottom-color: var(--gold); background: #12181f; }
+
+.wrap { padding: 12px 14px 40px; }
+.panel { display: none; }
+.panel.on { display: block; }
+
+.chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 12px;
+}
+.chip-car {
+  min-width: 96px; padding: 7px 8px;
+  background: #fff; border: 1px solid var(--line);
+  cursor: pointer; text-align: center; user-select: none;
+}
+.chip-car:hover { border-color: var(--accent); }
+.chip-car.on { background: #163d64; color: #fff; border-color: #163d64; }
+.chip-car.warn { border-color: #9b1c1c; box-shadow: inset 0 0 0 1px #9b1c1c; }
+.chip-car b { display: block; font-family: var(--mono); font-size: 13px; font-weight: 600; }
+.chip-car i { display: block; font-style: normal; font-size: 10px; opacity: .8; margin-top: 1px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.card-h {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.card-h h3 { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.card-b { padding: 12px; }
+
+.params {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 8px;
+}
+@media (max-width: 900px) { .params { grid-template-columns: 1fr 1fr; } }
+.fld label {
+  display: block; font-size: 9px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+}
+.fld input, .fld select, .fld textarea {
+  width: 100%; height: 32px; padding: 0 8px;
+  border: 1px solid var(--line); background: var(--in);
+  font: 600 13px/1 var(--mono); color: var(--ink);
+}
+.fld textarea { height: 64px; padding: 8px; font-family: var(--sans); font-weight: 500; resize: vertical; }
+.fld input:read-only, .out {
+  background: #f3f4f6; font-weight: 500;
+}
+
+.row-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.save-st { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+.table-wrap { overflow: auto; max-height: calc(100vh - 280px); border: 1px solid var(--line); background: #fff; }
+table.dtable { border-collapse: collapse; min-width: 1780px; width: 100%; }
+table.dtable th, table.dtable td {
+  border: 1px solid #d5dae2; padding: 3px 4px; font-size: 11px; vertical-align: middle;
+}
+table.dtable th {
+  position: sticky; top: 0; z-index: 2;
+  background: #0c1016; color: #f4f4f2;
+  font: 700 9px/1.25 var(--sans); letter-spacing: .04em; text-transform: uppercase;
+  white-space: normal; min-width: 72px;
+}
+table.dtable td.day {
+  position: sticky; left: 0; z-index: 1;
+  background: #eef1f5; text-align: center;
+  font-family: var(--mono); font-weight: 700; width: 36px;
+}
+table.dtable tr:nth-child(even) td { background: #f7f8fa; }
+table.dtable tr:nth-child(even) td.day { background: #e8ebf0; }
+table.dtable input, table.dtable select {
+  width: 100%; height: 26px; border: 0; background: var(--in);
+  font: 600 11px/1 var(--mono); padding: 0 4px; color: var(--ink);
+}
+table.dtable select { font-family: var(--sans); font-size: 10px; }
+table.dtable .out {
+  display: block; min-height: 26px; line-height: 26px; padding: 0 4px;
+  background: #f3f4f6; font-family: var(--mono); font-size: 11px;
+}
+table.dtable input.w-note { font-family: var(--sans); font-weight: 500; }
+.neg { color: var(--bad); font-weight: 700; }
+
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+@media (max-width: 800px) { .kpis { grid-template-columns: 1fr 1fr; } }
+.kpi { background: var(--header); color: #f4f4f2; padding: 12px 14px; border-top: 2px solid var(--gold); }
+.kpi i { display: block; font-style: normal; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: #8b939e; font-weight: 700; }
+.kpi b { display: block; font-family: var(--mono); font-size: 20px; margin-top: 6px; font-weight: 600; }
+.kpi s { display: block; text-decoration: none; font-size: 11px; color: #9aa3ae; margin-top: 4px; }
+
+table.gtable { width: 100%; border-collapse: collapse; background: #fff; }
+table.gtable th, table.gtable td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+table.gtable th {
+  background: #0c1016; color: #f4f4f2;
+  font: 700 9px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase;
+}
+table.gtable td.num { font-family: var(--mono); text-align: right; }
+table.gtable tr:hover td { background: #f3f4f6; }
+
+.muted { color: var(--muted); }
+.note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+.print-only { display: none; }
+@media print {
+  .topbar, .tabs, .chips, .row-btns, .no-print, .acts { display: none !important; }
+  .panel { display: none !important; }
+  .panel.on, .panel.print-on { display: block !important; }
+  .print-only { display: block; }
+  body { background: #fff; }
+  .wrap { padding: 0; }
+  .card { border: 0; }
+  .table-wrap { max-height: none; overflow: visible; }
+}
+
+.toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 90;
+  padding: 10px 14px; background: #0c1016; color: #fff;
+  font-size: 12px; font-weight: 600; display: none;
+}
+.toast.on { display: block; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img src="/logo/mark.svg?v=3" alt="">
+    <div>
+      <div class="tb-name">VAKSINA <span>MED</span></div>
+      <div class="tb-line">MACHINE CONTROL</div>
+    </div>
+    <div style="border-left:1px solid #2a323c;padding-left:12px;margin-left:4px;">
+      <div class="tb-title">Yoqilg'i hisoboti</div>
+      <div class="tb-sub">VHK · GPS bilan bir joyda</div>
+    </div>
+  </div>
+  <div class="acts">
+    <span class="tb-month" id="month-label">—</span>
+    <span class="badge badge-ok">v1 · avto zanjir</span>
+    <span class="badge badge-bad" id="docs-badge" style="display:none">0 hujjat muddati</span>
+    <input type="month" id="month-input" class="btn btn-sm" style="width:148px;color:#f4f4f2;background:#161c24;">
+    <button class="btn btn-sm" type="button" id="btn-excel">Excel yuklash</button>
+    <button class="btn btn-sm" type="button" id="btn-backup">Zaxira saqlash</button>
+    <div class="tb-user">
+      <span class="tb-user-name" id="tb-user-name">—</span>
+      <span class="tb-role" id="tb-user-role" hidden></span>
+      <a class="btn btn-sm" href="/">GPS</a>
+      <a class="btn btn-sm" id="btn-admin-panel" href="/admin.html" style="display:none">Boshqaruv</a>
+      <button class="btn btn-sm" type="button" id="btn-logout">Chiqish</button>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab" type="button" data-tab="home">Bosh sahifa</button>
+  <button class="tab on" type="button" data-tab="daily">Kunlik kiritish</button>
+  <button class="tab" type="button" data-tab="dayrep">Kun hisoboti</button>
+  <button class="tab" type="button" data-tab="month">Oylik hisobot</button>
+  <button class="tab" type="button" data-tab="official">Rasmiy hisobot</button>
+  <button class="tab" type="button" data-tab="stations">Zapravka reestri</button>
+  <button class="tab" type="button" data-tab="gasact">Gaz akti</button>
+  <button class="tab" type="button" data-tab="year">Yillik jamlanma</button>
+  <button class="tab" type="button" data-tab="docs">Hujjat muddatlari</button>
+  <button class="tab" type="button" data-tab="cars">Mashina va narx</button>
+</nav>
+
+<div class="wrap">
+  <section class="panel" id="panel-home"></section>
+
+  <section class="panel on" id="panel-daily">
+    <div class="chips" id="chips"></div>
+    <div class="card">
+      <div class="card-h">
+        <h3 id="car-title">Mashina tanlang</h3>
+        <span class="save-st" id="save-st">—</span>
+      </div>
+      <div class="card-b">
+        <div class="params">
+          <div class="fld"><label>Gaz normasi (100 km)</label><input id="p-gasNorm" data-p="gasNorm" type="number" step="0.1"></div>
+          <div class="fld"><label>Benzin / dizel normasi (100 km)</label><input id="p-benzinNorm" data-p="benzinNorm" type="number" step="0.1"></div>
+          <div class="fld"><label>Spidometr oy boshi</label><input id="p-odoStart" data-p="odoStart" type="number" step="1"></div>
+          <div class="fld"><label>Gaz oy boshi qoldiq (m³)</label><input id="p-gasStart" data-p="gasStart" type="number" step="0.1"></div>
+          <div class="fld"><label>Benzin oy boshi qoldiq (l)</label><input id="p-benzinStart" data-p="benzinStart" type="number" step="0.1"></div>
+          <div class="fld"><label>1 m³ gaz narxi (so'm)</label><input id="p-gasPrice" data-p="gasPrice" type="number" step="1"></div>
+          <div class="fld"><label>1 l benzin / dizel narxi (so'm)</label><input id="p-benzinPrice" data-p="benzinPrice" type="number" step="1"></div>
+          <div class="fld"><label>Aralashda gaz foizi (%)</label><input id="p-mixPct" data-p="mixPct" type="number" step="1" min="0" max="100"></div>
+        </div>
+        <div class="row-btns">
+          <button class="btn btn-ink btn-sm" type="button" id="btn-prev-bal">Oldingi oydan qoldiq</button>
+          <button class="btn btn-ink btn-sm" type="button" id="btn-fill-odo">Kunlarni spidometr bo'yicha</button>
+          <button class="btn btn-ok btn-sm" type="button" id="btn-gps-km">GPS dan km</button>
+          <button class="btn btn-ink btn-sm" type="button" id="btn-add-change">O'zgarish qo'shish</button>
+          <button class="btn btn-gold btn-sm" type="button" id="btn-save">Saqlash</button>
+        </div>
+        <div id="changes-box" class="note" style="margin-top:10px;"></div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="dtable" id="daily-table">
+        <thead>
+          <tr>
+            <th>Kun</th>
+            <th>Yurgan masofa (km)</th>
+            <th>Spidometr</th>
+            <th>Nimada yurdi</th>
+            <th>Zapravka nomi</th>
+            <th>Olingan gaz (m³)</th>
+            <th>1 m³ gaz narxi</th>
+            <th>Gaz summa</th>
+            <th>Olingan benzin (l)</th>
+            <th>1 l narxi</th>
+            <th>Benzin summa</th>
+            <th>Sarf gaz</th>
+            <th>Sarf benzin</th>
+            <th>Gaz qoldiq</th>
+            <th>Benzin qoldiq</th>
+            <th>Qo'shimcha (so'm)</th>
+            <th>Nimaga sarflandi</th>
+            <th>Izoh</th>
+          </tr>
+        </thead>
+        <tbody id="daily-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-dayrep"></section>
+  <section class="panel" id="panel-month"></section>
+  <section class="panel" id="panel-official"></section>
+  <section class="panel" id="panel-stations"></section>
+  <section class="panel" id="panel-gasact"></section>
+  <section class="panel" id="panel-year"></section>
+  <section class="panel" id="panel-docs"></section>
+  <section class="panel" id="panel-cars"></section>
+</div>
+
+<div class="toast" id="toast"></div>
+<datalist id="station-list"></datalist>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="auth.js?v=3"></script>
+<script src="fuel.js?v=1"></script>
+</body>
+</html>
