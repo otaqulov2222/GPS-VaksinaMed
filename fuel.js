@@ -339,6 +339,7 @@ async function loadAll() {
   STATE.dayRep = Math.min(now.getDate(), daysInMonth(STATE.month));
   if (!STATE.car) STATE.car = fleet()[0].car;
   setMonthLabel();
+  await autoChainMonth();
   renderAll();
 }
 
@@ -356,6 +357,7 @@ async function changeMonth(ym) {
   STATE.dirty = false;
   STATE.dayRep = 1;
   setMonthLabel();
+  await autoChainMonth();
   renderAll();
 }
 
@@ -566,14 +568,14 @@ function renderHome() {
       <div class="kpi"><i>Gaz sarfi / olingan</i><b>${fmt(t.gasUsed, 2)} m³</b><s>olingan ${fmt(t.gasIn, 2)} m³</s></div>
       <div class="kpi"><i>Benzin sarfi / olingan</i><b>${fmt(t.benUsed, 2)} l</b><s>olingan ${fmt(t.benzinIn, 2)} l</s></div>
       <div class="kpi"><i>Yoqilg'i xarajati</i><b>${money(t.cost)}</b><s>qo'shimcha ${money(t.extra)}</s></div>
-      <div class="kpi"><i>GPS dan bo'sh kunlar</i><b>${missing.length}</b><s>km bor, yoqilg'i yo'q</s></div>
+      <div class="kpi"><i>GPS km tushmagan</i><b>${missing.length}</b><s>hisobot bor, kunlik yo'q</s></div>
       <div class="kpi"><i>Hujjat muddati</i><b>${alerts.length}</b><s>45 kun ichida</s></div>
       <div class="kpi"><i>Zapravka</i><b>${(STATE.meta.stations || []).length}</b><s>reestr</s></div>
     </div>
-    <div class="card"><div class="card-h"><h3>GPS bor — kunlik km kiritilmagan</h3></div>
+    <div class="card"><div class="card-h"><h3>GPS bor — kunlik km tushmagan</h3></div>
       <div class="card-b">${missing.length ? `<table class="gtable"><thead><tr><th>Sana</th><th>Mashina</th><th>GPS km</th></tr></thead><tbody>
         ${missing.slice(0, 80).map(m => `<tr><td>${esc(m.dt)}</td><td>${esc(plateDisp(m.car))} ${esc(m.short)}</td><td class="num">${m.km}</td></tr>`).join('')}
-      </tbody></table>` : '<p class="note">Hamma GPS km lar kiritilgan yoki bu oyda GPS hisobot yo\'q.</p>'}
+      </tbody></table>` : '<p class="note">Oy ochilganda GPS km avtomatik tushadi. Sariq katakni tahrirlash mumkin. Zapravka qo\'lda.</p>'}
       </div></div>`;
 }
 
@@ -1137,6 +1139,75 @@ function ensureDay(car, d) {
   return car.days[k];
 }
 
+function kmLocked(row) {
+  const src = row.kmSrc || (n(row.km) ? 'user' : '');
+  return src === 'user' || src === 'odo';
+}
+
+function fillGpsPlate(plate, refreshGps) {
+  let nFill = 0;
+  Object.keys(STATE.gpsKm || {}).forEach(dt => {
+    if (!dt.startsWith(STATE.month + '-')) return;
+    const km = gpsKmLookup(STATE.gpsKm[dt], plate);
+    if (!km) return;
+    const day = Number(dt.slice(-2));
+    const row = ensureDay(getCar(plate), day);
+    if (kmLocked(row)) return;
+    if (n(row.km) && !(refreshGps && row.kmSrc === 'gps')) return;
+    row.km = km;
+    row.kmSrc = 'gps';
+    nFill += 1;
+  });
+  return nFill;
+}
+
+function applyPrevBalanceSilent(plate, prevRec, prevYm) {
+  if (!prevRec) return false;
+  const car = getCar(plate);
+  if (n(car.odoStart) || n(car.gasStart) || n(car.benzinStart)) return false;
+  const hold = STATE.month;
+  STATE.month = prevYm;
+  const rows = calcCar(prevRec);
+  STATE.month = hold;
+  const last = rows[rows.length - 1];
+  if (!last) return false;
+  car.gasStart = last.gasR;
+  car.benzinStart = last.benR;
+  let lastOdo = n(prevRec.odoStart);
+  rows.forEach(r => { if (r.odo > 0) lastOdo = r.odo; });
+  if (lastOdo) car.odoStart = lastOdo;
+  if (n(prevRec.gasNorm)) car.gasNorm = n(prevRec.gasNorm);
+  if (n(prevRec.benzinNorm)) car.benzinNorm = n(prevRec.benzinNorm);
+  if (n(prevRec.gasPrice)) car.gasPrice = n(prevRec.gasPrice);
+  if (n(prevRec.benzinPrice)) car.benzinPrice = n(prevRec.benzinPrice);
+  return true;
+}
+
+async function autoChainMonth() {
+  const [y, m] = STATE.month.split('-').map(Number);
+  if (!y || !m) return;
+  const prev = new Date(y, m - 2, 1);
+  const prevYm = prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
+  let prevCars = {};
+  try {
+    const d = await vmApi('/api/office/fuel/month?month=' + encodeURIComponent(prevYm));
+    prevCars = (d.data && d.data.cars) || {};
+  } catch (e) {}
+  let gpsN = 0, balN = 0;
+  fleet().forEach(f => {
+    if (applyPrevBalanceSilent(f.car, prevCars[f.car], prevYm)) balN += 1;
+    gpsN += fillGpsPlate(f.car, false);
+  });
+  const st = document.getElementById('save-st');
+  const gpsDays = Object.keys(STATE.gpsKm || {}).filter(dt => dt.startsWith(STATE.month + '-')).length;
+  if (gpsN || balN) {
+    await saveMonth();
+    if (st) st.textContent = 'Avto: GPS ' + gpsN + ' kun' + (balN ? ', qoldiq ' + balN + ' mashina' : '');
+  } else if (st && !gpsDays) {
+    st.textContent = 'GPS hisobot yo\'q — VHK da kun ochilsa km o\'zi tushadi';
+  }
+}
+
 function fillFromOdo() {
   const car = getCar(STATE.car);
   const dim = daysInMonth(STATE.month);
@@ -1144,7 +1215,10 @@ function fillFromOdo() {
   for (let d = 1; d <= dim; d++) {
     const row = ensureDay(car, d);
     const odo = n(row.odo);
-    if (odo > 0 && prev > 0 && odo + 0.0001 >= prev) row.km = r4(odo - prev);
+    if (odo > 0 && prev > 0 && odo + 0.0001 >= prev) {
+      row.km = r4(odo - prev);
+      row.kmSrc = 'odo';
+    }
     if (odo > 0) prev = odo;
   }
   markDirty();
@@ -1153,19 +1227,10 @@ function fillFromOdo() {
 }
 
 function fillFromGps() {
-  const plate = STATE.car;
-  let nFill = 0;
-  Object.keys(STATE.gpsKm).forEach(dt => {
-    if (!dt.startsWith(STATE.month + '-')) return;
-    const km = gpsKmLookup(STATE.gpsKm[dt], plate);
-    if (!km) return;
-    const day = Number(dt.slice(-2));
-    const row = ensureDay(getCar(plate), day);
-    if (!n(row.km)) { row.km = km; nFill += 1; }
-  });
+  const nFill = fillGpsPlate(STATE.car, true);
   markDirty();
   renderDailyTable();
-  toast(nFill ? (nFill + ' kun GPS dan to\'ldirildi') : 'GPS km topilmadi yoki allaqachon kiritilgan');
+  toast(nFill ? (nFill + ' kun GPS dan yangilandi') : 'GPS km topilmadi yoki siz yozgan km saqlanadi');
 }
 
 async function fillPrevBalance() {
@@ -1316,6 +1381,7 @@ function bind() {
     if (!d || !f) return;
     const row = ensureDay(getCar(STATE.car), d);
     row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
+    if (f === 'km' || f === 'odo') row.kmSrc = 'user';
     if (f === 'station' && el.value) {
       STATE.meta.stations = STATE.meta.stations || [];
       if (!STATE.meta.stations.includes(el.value)) {

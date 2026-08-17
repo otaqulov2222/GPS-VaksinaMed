@@ -879,6 +879,7 @@ class OfficeStore:
                     "extra": as_num(row.get("extra")),
                     "extraWhy": str(row.get("extraWhy") or "")[:80],
                     "note": str(row.get("note") or "")[:120],
+                    "kmSrc": str(row.get("kmSrc") or "")[:8],
                 }
             changes = []
             raw_ch = rec.get("changes") if isinstance(rec.get("changes"), list) else []
