@@ -216,7 +216,7 @@ function onCarChange() {
   if (drv && plate && !J.editId) drv.value = currentDriver(plate);
   if (gps) {
     const g = gpsForPlate(plate);
-    gps.textContent = plate ? ('GPS ' + (STATE.month || '') + ': ' + (g.km || 0) + ' km / ' + (g.days || 0) + ' kun') : 'GPS mashina raqami bo\'yicha';
+    gps.textContent = plate ? ('GPS ' + (STATE.month || '') + ': ' + (typeof fmt === 'function' ? fmt(g.km, 2) : (g.km || 0)) + ' km / ' + (g.days || 0) + ' kun') : 'GPS mashina raqami bo\'yicha';
   }
 }
 
@@ -366,7 +366,7 @@ function renderJournal() {
                     <td>${it.kind==='good'?'<span class="tag-good">Maktov</span>':'<span class="tag-bad">Kamchilik</span>'}</td>
                     <td>${esc(who)}${changed ? `<div class="muted">qayd: ${esc(it.driver)} · hozir: ${esc(nowDrv)}</div>` : ''}</td>
                     <td>${esc(it.car ? (typeof plateDisp==='function'?plateDisp(it.car):it.car) : '')}</td>
-                    <td class="num">${it.car ? (g.km || 0) : ''}</td>
+                    <td class="num">${it.car ? (typeof fmt === 'function' ? fmt(g.km, 2) : (g.km || 0)) : ''}</td>
                     <td>${esc(dtShow(it.start))}${it.end ? ' — ' + esc(dtShow(it.end)) : ''}</td>
                     <td>${esc(it.reason)}</td>
                     <td>${esc(it.level)}</td>
@@ -391,7 +391,7 @@ function renderJournal() {
                   const g = gpsForPlate(x.k);
                   return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);">
                     <span>${esc(info.name || x.k)} <span class="muted">${esc(x.k)}</span></span>
-                    <span><b>${x.n}</b> <span class="muted">${g.km||0} km</span></span></div>`;
+                    <span><b>${x.n}</b> <span class="muted">${typeof fmt === 'function' ? fmt(g.km, 2) : (g.km||0)} km</span></span></div>`;
                 }).join('') || '<p class="muted">—</p>'}
               </div>
               <div>

@@ -113,6 +113,28 @@ function secsToHHMM(secs) {
     const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60);
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 }
+function roundKm(v) {
+    const x = Number(v);
+    if (!Number.isFinite(x) || x <= 0) return 0;
+    return Math.round(x * 100) / 100;
+}
+function roundSpd(v) {
+    const x = Number(v);
+    if (!Number.isFinite(x) || x <= 0) return 0;
+    return Math.round(x * 10) / 10;
+}
+function fmtKm(v, unit) {
+    const x = roundKm(v);
+    if (!x) return '—';
+    const s = (Math.round(x * 100) % 100 === 0) ? String(Math.round(x)) : x.toFixed(2);
+    return unit ? s + ' ' + unit : s;
+}
+function fmtSpd(v, unit) {
+    const x = roundSpd(v);
+    if (!x) return '—';
+    const s = Number.isInteger(x) ? String(x) : x.toFixed(1);
+    return unit ? s + ' ' + unit : s;
+}
 
 // ── 3. DORIXONA TAHLILI ─────────────────────────────────────
 const PHARMACY_ALIASES = {
@@ -489,12 +511,12 @@ function parseStats(rows, stops) {
             const s = String(cell).toLowerCase();
             const next = String(row[ci+1] || '');
             if (s.includes('пробег') || s.includes('masofa') || s.includes('км')) {
-                const v = parseFloat(next.replace(',','.'));
-                if (v > 0 && v < 2000) probeg = Math.round(v);
+                const v = parseFloat(String(next).replace(',','.'));
+                if (v > 0 && v < 2000) probeg = roundKm(v);
             }
             if (s.includes('макс') || s.includes('max') || s.includes('тезлик')) {
-                const v = parseFloat(next.replace(',','.'));
-                if (v > 0 && v < 300) maxSpeed = Math.round(v);
+                const v = parseFloat(String(next).replace(',','.'));
+                if (v > 0 && v < 300) maxSpeed = roundSpd(v);
             }
             if (s.includes('поезд') || s.includes('trip') || s.includes('рейс')) {
                 const v = parseInt(next);
@@ -999,7 +1021,7 @@ function renderKPI(data) {
     <div class="kpi-grid">
         <div class="kpi-card c-blue">
             <div class="kpi-title">Yurilgan masofa</div>
-            <div class="kpi-value">${s.probeg || '—'}</div>
+            <div class="kpi-value">${fmtKm(s.probeg)}</div>
             <div class="kpi-unit">км</div>
         </div>
         <div class="kpi-card c-green">
@@ -1019,7 +1041,7 @@ function renderKPI(data) {
         </div>
         <div class="kpi-card c-orange">
             <div class="kpi-title">Maks. tezlik</div>
-            <div class="kpi-value">${s.maxSpeed || '—'}</div>
+            <div class="kpi-value">${fmtSpd(s.maxSpeed)}</div>
             <div class="kpi-unit">км/soat</div>
         </div>
         <div class="kpi-card c-teal">
@@ -1039,11 +1061,11 @@ function renderStats(data) {
     ].filter(Boolean).join(' + ') || '—';
 
     const avgSpd = s.probeg && s.motoChas && s.motoChas !== '—'
-        ? (s.probeg / Math.max(parseTimeStr(s.motoChas)/3600, 0.1)).toFixed(1) + ' km/s'
+        ? roundSpd(s.probeg / Math.max(parseTimeStr(s.motoChas)/3600, 0.1)).toFixed(1) + ' km/s'
         : '—';
 
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-    set('stat-probeg',   s.probeg ? s.probeg + ' км' : '—');
+    set('stat-probeg',   s.probeg ? fmtKm(s.probeg, 'км') : '—');
     set('stat-worktime', s.motoChas !== '—' ? s.motoChas : '—');
     set('stat-avgspeed', avgSpd);
     set('stat-motochas', s.motoChas !== '—' ? s.motoChas : '—');
@@ -1370,7 +1392,7 @@ async function syncFromGPS(dateVal, cfg) {
                 if (!STATE.data[dateVal]) STATE.data[dateVal] = {};
                 STATE.data[dateVal][drv.car] = { car: drv.car, driver: drv, date: dateVal, stats, stops, analysis };
                 if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
-                updateProg(0, '', `✅ ${unit.name}: ${stops.length} ta to'xtash, ${stats.probeg || 0} km`);
+                updateProg(0, '', `✅ ${unit.name}: ${stops.length} ta to'xtash, ${fmtKm(stats.probeg, 'km')}`);
                 done++;
             } catch(e) {
                 console.error("Xato:", e);
@@ -1644,7 +1666,7 @@ async function downloadPdfReport() {
         applyPdfFont(doc, fonts);
 
         const dateLabel = pdfDateLabel(dateVal);
-        const totalKm = entries.reduce((s, x) => s + ((x.data.stats && x.data.stats.probeg) || 0), 0);
+        const totalKm = roundKm(entries.reduce((s, x) => s + ((x.data.stats && x.data.stats.probeg) || 0), 0));
         const avgScore = entries.length
             ? (entries.reduce((s, x) => s + pdfAnalysis(x.data).score.final, 0) / entries.length)
             : 0;
@@ -1671,7 +1693,7 @@ async function downloadPdfReport() {
 
         const boxes = [
             ['MASHINA', String(entries.length)],
-            ['JAMI MASOFA', totalKm + ' km'],
+            ['JAMI MASOFA', fmtKm(totalKm, 'km')],
             ["O'RTACHA BALL", avgScore.toFixed(1) + ' / 10'],
             ['MUAMMO', String(problems)]
         ];
@@ -1706,7 +1728,7 @@ async function downloadPdfReport() {
                     String(i + 1),
                     x.drv.fullName || x.drv.shortName || '—',
                     x.drv.car || '—',
-                    String(st.probeg || 0),
+                    fmtKm(st.probeg),
                     a.ownVisited + '/' + a.totalOwn,
                     String(a.problemStops),
                     a.score.final.toFixed(1),
@@ -1760,11 +1782,11 @@ async function downloadPdfReport() {
             doc.text('BALL / 10  ·  ' + a.score.grade, 190, 48, { align: 'right' });
 
             const kpis = [
-                ['MASOFA', (s.probeg || 0) + ' km'],
+                ['MASOFA', fmtKm(s.probeg, 'km')],
                 ['DORIXONA', a.ownVisited + '/' + a.totalOwn],
                 ['BOSHQA YONALISH', String(a.otherDirection)],
                 ['MUAMMO', String(a.problemStops)],
-                ['MAKS. TEZLIK', (s.maxSpeed || 0) + ' km/h'],
+                ['MAKS. TEZLIK', fmtSpd(s.maxSpeed, 'km/h')],
                 ["YOQILG'I", fuel]
             ];
             kpis.forEach((k, i) => {
@@ -1792,7 +1814,7 @@ async function downloadPdfReport() {
                     ['Poezdka soni', String(s.poezdok || 0)],
                     ["To'xtash soni", String(s.stoyanok || stops.length || 0)],
                     ["To'xtab turgan vaqt", s.totalStop || '—'],
-                    ['Maksimal tezlik', (s.maxSpeed || 0) + ' km/h'],
+                    ['Maksimal tezlik', fmtSpd(s.maxSpeed, 'km/h')],
                     ["Yoqilg'i", fuel]
                 ],
                 head: [['Kursatkich', 'Qiymat']],

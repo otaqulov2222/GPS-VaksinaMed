@@ -265,6 +265,18 @@ class WialonGPSClient {
         return all;
     }
 
+    roundKm(v) {
+        const x = Number(v);
+        if (!Number.isFinite(x) || x <= 0) return 0;
+        return Math.round(x * 100) / 100;
+    }
+
+    roundSpd(v) {
+        const x = Number(v);
+        if (!Number.isFinite(x) || x <= 0) return 0;
+        return Math.round(x * 10) / 10;
+    }
+
     parseReportStats(statsPairs, chronology) {
         (statsPairs || []).forEach(pair => {
             if (!Array.isArray(pair) || pair.length < 2) return;
@@ -272,10 +284,10 @@ class WialonGPSClient {
             const v = String(pair[1] || '');
             const num = parseFloat(v.replace(',', '.').replace(/[^\d.]/g, ''));
             if ((k.includes('пробег') || k.includes('mileage')) && /km|км/i.test(v) && num > 0) {
-                chronology.stats.probeg = Math.round(num);
+                chronology.stats.probeg = this.roundKm(num);
             }
             if ((k.includes('макс') || k.includes('max')) && (k.includes('скорост') || k.includes('speed') || /km\/h|км\/ч/i.test(v))) {
-                if (num > 0) chronology.stats.maxSpeed = Math.round(num);
+                if (num > 0) chronology.stats.maxSpeed = this.roundSpd(num);
             }
             if (k.includes('поезд') && !k.includes('пробег') && !k.includes('скорост')) {
                 if (num > 0) chronology.stats.poezdok = parseInt(v, 10) || num;
@@ -514,8 +526,8 @@ class WialonGPSClient {
             i = Math.max(j, i + 1);
         }
 
-        chronology.stats.probeg = Math.round(mileage);
-        chronology.stats.maxSpeed = Math.round(maxSpd);
+        chronology.stats.probeg = this.roundKm(mileage);
+        chronology.stats.maxSpeed = this.roundSpd(maxSpd);
         chronology.stats.stoyanok = chronology.stops.length;
         chronology.stats.motoChas = this.formatDuration(driveSec);
         chronology.stats.poezdok = Math.max(0, chronology.stops.length - 1);

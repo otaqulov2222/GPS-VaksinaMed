@@ -469,7 +469,7 @@ function renderDailyTable() {
     const src = dayRow(car, r.d);
     return `<tr>
       <td class="day">${r.d}</td>
-      <td><input data-d="${r.d}" data-f="km" type="number" step="0.1" value="${vin(src.km)}"></td>
+      <td><input data-d="${r.d}" data-f="km" type="number" step="0.01" value="${vin(src.km)}"></td>
       <td><input data-d="${r.d}" data-f="odo" type="number" step="0.1" value="${vin(src.odo)}"></td>
       <td>${modeSelect(r.d, src.mode)}</td>
       <td>${stationSelect(r.d, src.station)}</td>
@@ -564,7 +564,7 @@ function renderHome() {
   document.getElementById('panel-home').innerHTML = `
     <div class="kpis">
       <div class="kpi"><i>Mashina kiritilgan</i><b>${t.cars}</b><s>${fleet().length} ta park</s></div>
-      <div class="kpi"><i>Jami km</i><b>${fmt(t.km, 0)}</b><s>${esc(monthTitle(STATE.month))}</s></div>
+      <div class="kpi"><i>Jami km</i><b>${fmt(t.km, 2)}</b><s>${esc(monthTitle(STATE.month))}</s></div>
       <div class="kpi"><i>Gaz sarfi / olingan</i><b>${fmt(t.gasUsed, 2)} m³</b><s>olingan ${fmt(t.gasIn, 2)} m³</s></div>
       <div class="kpi"><i>Benzin sarfi / olingan</i><b>${fmt(t.benUsed, 2)} l</b><s>olingan ${fmt(t.benzinIn, 2)} l</s></div>
       <div class="kpi"><i>Yoqilg'i xarajati</i><b>${money(t.cost)}</b><s>qo'shimcha ${money(t.extra)}</s></div>
@@ -608,7 +608,7 @@ function renderDayRep() {
         <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Yurdi (km)</th><th>Nimada</th><th>Zapravka</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Sarf gaz</th><th>Sarf benzin</th><th>Qo'shimcha</th><th>Izoh</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
           <td>${r.n}</td><td>${esc(plateDisp(r.plate))}</td><td>${esc(r.name)}</td>
-          <td class="num">${r.km ? fmt(r.km, 1) : ''}</td><td>${esc(r.mode || '')}</td><td>${esc(r.station || '')}</td>
+          <td class="num">${r.km ? fmt(r.km, 2) : ''}</td><td>${esc(r.mode || '')}</td><td>${esc(r.station || '')}</td>
           <td class="num">${r.gasIn ? fmt(r.gasIn, 4) : ''}</td><td class="num">${r.gasIn ? money(r.gasSum) : ''}</td>
           <td class="num">${r.benzinIn ? fmt(r.benzinIn, 4) : ''}</td><td class="num">${r.benzinIn ? money(r.benzinSum) : ''}</td>
           <td class="num">${r.gasUsed ? r.gasUsed.toFixed(4) : ''}</td>
@@ -616,7 +616,7 @@ function renderDayRep() {
           <td class="num">${r.extra ? money(r.extra) : ''}</td><td>${esc(r.note || r.extraWhy || '')}</td>
         </tr>`).join('')}
         <tr><td colspan="3"><b>JAMI</b></td>
-          <td class="num"><b>${fmt(sum.km, 0)}</b></td><td></td><td></td>
+          <td class="num"><b>${fmt(sum.km, 2)}</b></td><td></td><td></td>
           <td class="num"><b>${fmt(sum.gasIn, 2)}</b></td><td class="num"><b>${money(sum.gasSum)}</b></td>
           <td class="num"><b>${fmt(sum.benzinIn, 2)}</b></td><td class="num"><b>${money(sum.benzinSum)}</b></td>
           <td class="num"><b>${fmt(sum.gasUsed, 2)}</b></td><td class="num"><b>${fmt(sum.benUsed, 2)}</b></td>
@@ -648,7 +648,7 @@ function renderMonth() {
         <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
           <td>${r.n}</td><td>${esc(plateDisp(r.plate))}</td><td>${esc(r.name)}</td>
-          <td class="num">${fmt(r.km, 0)}</td>
+          <td class="num">${fmt(r.km, 2)}</td>
           <td class="num">${fmt(r.gasIn, 4)}</td><td class="num">${money(r.gasSum)}</td>
           <td class="num">${fmt(r.benzinIn, 4)}</td><td class="num">${money(r.benzinSum)}</td>
           <td class="num">${money(r.extra)}</td><td class="num">${money(r.cost)}</td>
@@ -656,7 +656,7 @@ function renderMonth() {
           <td class="num ${remainClass(r.benR)}">${fmt(r.benR, 4)}</td>
         </tr>`).join('')}
         <tr><td colspan="3"><b>JAMI</b></td>
-          <td class="num"><b>${fmt(sum.km, 0)}</b></td>
+          <td class="num"><b>${fmt(sum.km, 2)}</b></td>
           <td class="num"><b>${fmt(sum.gasIn, 2)}</b></td><td class="num"><b>${money(sum.gasSum)}</b></td>
           <td class="num"><b>${fmt(sum.benzinIn, 2)}</b></td><td class="num"><b>${money(sum.benzinSum)}</b></td>
           <td class="num"><b>${money(sum.extra)}</b></td><td class="num"><b>${money(sum.cost)}</b></td>
@@ -718,7 +718,7 @@ function renderOfficial() {
               <td class="num">${fmt(x.car.gasStart, 4)}</td>
               <td class="num">${fmt(x.t.gasIn, 4)}</td>
               <td class="num">${money(x.t.gasSum)}</td>
-              <td class="num" rowspan="2">${fmt(x.t.km, 0)}</td>
+              <td class="num" rowspan="2">${fmt(x.t.km, 2)}</td>
               <td class="num">${fmt(x.t.gasUsed, 4)}</td>
               <td class="num ${gNeg}">${fmt(x.t.gasR, 4)}</td>
               <td class="num" rowspan="2">${money(x.t.cost)}</td>
@@ -867,14 +867,14 @@ function renderGasAct() {
             <td class="num">${fmt(r.car.gasStart, 4)}</td>
             <td class="num">${fmt(r.t.gasIn, 4)}</td>
             <td class="num">${fmt(r.car.gasNorm, 2)}</td>
-            <td class="num">${fmt(r.t.km, 0)}</td>
+            <td class="num">${fmt(r.t.km, 2)}</td>
             <td class="num">${fmt(r.t.gasUsed, 4)}</td>
             <td class="num ${remainClass(r.t.gasR)}">${fmt(r.t.gasR, 4)}</td>
           </tr>`).join('')}
           <tr><td colspan="4"><b>JAMI</b></td>
             <td class="num"><b>${fmt(sum.start, 3)}</b></td>
             <td class="num"><b>${fmt(sum.in, 3)}</b></td><td></td>
-            <td class="num"><b>${fmt(sum.km, 0)}</b></td>
+            <td class="num"><b>${fmt(sum.km, 2)}</b></td>
             <td class="num"><b>${fmt(sum.used, 3)}</b></td>
             <td class="num"><b>${fmt(sum.end, 3)}</b></td></tr>
           </tbody>
@@ -921,7 +921,7 @@ async function renderYear() {
       <div class="kpi"><i>Yillik gaz</i><b>${fmt(ysum.gasIn, 1)} m³</b><s>xarajat ${money(ysum.gasSum)}</s></div>
       <div class="kpi"><i>Yillik benzin</i><b>${fmt(ysum.benzinIn, 1)} l</b><s>xarajat ${money(ysum.benzinSum)}</s></div>
       <div class="kpi"><i>Umumiy xarajat</i><b>${money(ysum.cost)}</b><s>${esc(year)} yil</s></div>
-      <div class="kpi"><i>Yillik km</i><b>${fmt(ysum.km, 0)}</b><s>probeg</s></div>
+      <div class="kpi"><i>Yillik km</i><b>${fmt(ysum.km, 2)}</b><s>probeg</s></div>
     </div>
     <div class="card"><div class="card-h"><h3>${esc(year)} yil — oyma-oy jamlanma</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" onclick="window.print()">PDF chiqarish</button></div>
@@ -930,7 +930,7 @@ async function renderYear() {
         <thead><tr><th>Oy</th><th>Probeg (km)</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Jami (so'm)</th></tr></thead>
         <tbody>${perMonth.map(r => `<tr>
           <td>${esc(UZ_M[Number(r.ym.slice(5))-1])}</td>
-          <td class="num">${r.km ? fmt(r.km, 0) : ''}</td>
+          <td class="num">${r.km ? fmt(r.km, 2) : ''}</td>
           <td class="num">${r.gasIn ? fmt(r.gasIn, 2) : ''}</td>
           <td class="num">${r.gasSum ? money(r.gasSum) : ''}</td>
           <td class="num">${r.benzinIn ? fmt(r.benzinIn, 2) : ''}</td>
@@ -938,7 +938,7 @@ async function renderYear() {
           <td class="num">${r.cost ? money(r.cost) : ''}</td>
         </tr>`).join('')}
         <tr><td><b>JAMI</b></td>
-          <td class="num"><b>${fmt(ysum.km, 0)}</b></td>
+          <td class="num"><b>${fmt(ysum.km, 2)}</b></td>
           <td class="num"><b>${fmt(ysum.gasIn, 2)}</b></td>
           <td class="num"><b>${money(ysum.gasSum)}</b></td>
           <td class="num"><b>${fmt(ysum.benzinIn, 2)}</b></td>

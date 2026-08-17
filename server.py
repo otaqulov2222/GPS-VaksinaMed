@@ -964,7 +964,7 @@ class OfficeStore:
                 except (TypeError, ValueError):
                     continue
                 if km > 0:
-                    day[str(car)] = round(km)
+                    day[str(car)] = round(km, 2)
             if day:
                 out[date] = day
         return out
@@ -977,7 +977,7 @@ class OfficeStore:
                 continue
             for plate, km in cars.items():
                 rec = totals.setdefault(str(plate), {"km": 0, "days": 0})
-                rec["km"] += int(km or 0)
+                rec["km"] = round(rec["km"] + float(km or 0), 2)
                 rec["days"] += 1
         return {"days": days, "totals": totals}
 

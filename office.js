@@ -270,11 +270,11 @@ const VMOffice = {
                 <td><strong>${vmEsc(r.drv.shortName)}</strong></td>
                 <td class="font-mono">${vmEsc(r.drv.car)}</td>
                 <td class="${scoreCls}">${scoreTxt}</td>
-                <td class="font-mono">${empty ? '—' : r.km}</td>
+                <td class="font-mono">${empty ? '—' : (typeof fmtKm === 'function' ? fmtKm(r.km) : r.km)}</td>
                 <td class="font-mono">${empty ? '—' : plan}</td>
                 <td class="font-mono">${empty ? '—' : r.other}</td>
                 <td class="font-mono">${empty ? '—' : r.problem}</td>
-                <td class="font-mono">${empty ? '—' : (r.speed || '—')}</td>
+                <td class="font-mono">${empty ? '—' : (typeof fmtSpd === 'function' ? fmtSpd(r.speed) : (r.speed || '—'))}</td>
             </tr>`;
         }).join('');
         el.querySelectorAll('tr[data-car]').forEach(tr => {
