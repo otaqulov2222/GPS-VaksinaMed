@@ -842,13 +842,26 @@ class OfficeStore:
         data.setdefault("cars", {})
         return data
 
+    def _plate_compact(self, plate):
+        return re.sub(r"\s+", "", str(plate or "").upper())
+
+    def _existing_plate_key(self, existing, plate):
+        if plate in existing:
+            return plate
+        compact = self._plate_compact(plate)
+        for key in existing:
+            if self._plate_compact(key) == compact:
+                return key
+        return plate
+
     def save_fuel_month(self, month, body):
         if not month or not MONTH_RE.match(str(month)):
             return None, "Oy noto'g'ri"
         cars_in = (body or {}).get("cars")
         if not isinstance(cars_in, dict):
             return None, "Ma'lumot noto'g'ri"
-        cars = {}
+        cur = self.fuel_month(month) or {}
+        cars = dict(cur.get("cars") or {}) if isinstance(cur.get("cars"), dict) else {}
         for i, (car, rec) in enumerate(cars_in.items()):
             if i >= 50:
                 break
@@ -914,6 +927,7 @@ class OfficeStore:
             ft = str(rec.get("fuelType") or "mixed")[:12]
             if ft not in ("mixed", "gaz", "benzin", "dizel"):
                 ft = "mixed"
+            plate = self._existing_plate_key(cars, plate)
             cars[plate] = {
                 "gasNorm": as_num(rec.get("gasNorm"), 12),
                 "benzinNorm": as_num(rec.get("benzinNorm"), 4),

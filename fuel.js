@@ -207,6 +207,18 @@ function blankCar(info) {
   };
 }
 
+function recForPlate(map, plate) {
+  if (!map || !plate) return null;
+  if (map[plate]) return map[plate];
+  const compact = String(plate).replace(/\s+/g, '');
+  const code = plateCode(plate);
+  for (const k of Object.keys(map)) {
+    if (String(k).replace(/\s+/g, '') === compact) return map[k];
+    if (code && plateCode(k) === code) return map[k];
+  }
+  return null;
+}
+
 function getCar(plate) {
   if (!STATE.cars[plate]) STATE.cars[plate] = blankCar(vehicleInfo(plate));
   if (!STATE.cars[plate].days) STATE.cars[plate].days = {};
@@ -336,6 +348,7 @@ async function loadAll() {
   ]);
   STATE.meta = normalizeMeta(meta.meta);
   STATE.cars = (month.data && month.data.cars) || {};
+  Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.gpsKm = gps.days || {};
   STATE.dayRep = Math.min(now.getDate(), daysInMonth(STATE.month));
   if (!STATE.car) STATE.car = fleet()[0].car;
@@ -354,6 +367,7 @@ async function changeMonth(ym) {
     vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(ym)).catch(() => ({ days: {} }))
   ]);
   STATE.cars = (month.data && month.data.cars) || {};
+  Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.gpsKm = gps.days || {};
   STATE.dirty = false;
   STATE.dayRep = 1;
@@ -366,27 +380,44 @@ function setMonthLabel() {
   document.getElementById('month-label').textContent = monthTitle(STATE.month);
 }
 
+function stripLocalFlags(car) {
+  const out = Object.assign({}, car);
+  delete out._fromServer;
+  return out;
+}
+
+function syncParamsToMeta(plate, car) {
+  if (!plate || !car) return;
+  const rec = ensureVehicleMeta(plate);
+  rec.gasNorm = n(car.gasNorm);
+  rec.benzinNorm = n(car.benzinNorm);
+  rec.gasPrice = n(car.gasPrice);
+  rec.benzinPrice = n(car.benzinPrice);
+  if (car.fuelType) rec.fuelType = car.fuelType;
+}
+
 function carsToSave() {
+  if (STATE.car) readParamsIntoCar();
   const out = {};
-  Object.keys(STATE.cars).forEach(k => {
-    const c = STATE.cars[k];
-    const hasDays = c.days && Object.keys(c.days).some(d => {
-      const r = c.days[d] || {};
-      return n(r.km) || n(r.odo) || n(r.gasIn) || n(r.benzinIn) || n(r.extra) || r.note || r.station;
-    });
-    const touched = n(c.odoStart) || n(c.gasStart) || n(c.benzinStart) || (c.changes && c.changes.length) || (c.driverChanges && c.driverChanges.length) || hasDays;
-    if (touched) out[k] = c;
+  Object.keys(STATE.cars || {}).forEach(k => {
+    out[k] = stripLocalFlags(STATE.cars[k]);
   });
-  if (STATE.car) out[STATE.car] = getCar(STATE.car);
+  if (STATE.car) out[STATE.car] = stripLocalFlags(getCar(STATE.car));
   return out;
 }
 
 async function saveMonth() {
   try {
+    if (STATE.car) {
+      readParamsIntoCar();
+    }
+    Object.keys(STATE.cars || {}).forEach(k => syncParamsToMeta(k, STATE.cars[k]));
     const d = await vmApi('/api/office/fuel/month', {
       method: 'POST',
       body: JSON.stringify({ month: STATE.month, cars: carsToSave() })
     });
+    saveMeta().catch(() => {});
+    Object.keys(STATE.cars || {}).forEach(k => { STATE.cars[k]._fromServer = true; });
     STATE.dirty = false;
     STATE.yearMonths = {};
     const st = document.getElementById('save-st');
@@ -1165,6 +1196,7 @@ function fillGpsPlate(plate, refreshGps) {
 function applyPrevBalanceSilent(plate, prevRec, prevYm) {
   if (!prevRec) return false;
   const car = getCar(plate);
+  if (car._fromServer) return false;
   if (n(car.odoStart) || n(car.gasStart) || n(car.benzinStart)) return false;
   const hold = STATE.month;
   STATE.month = prevYm;
@@ -1177,10 +1209,6 @@ function applyPrevBalanceSilent(plate, prevRec, prevYm) {
   let lastOdo = n(prevRec.odoStart);
   rows.forEach(r => { if (r.odo > 0) lastOdo = r.odo; });
   if (lastOdo) car.odoStart = lastOdo;
-  if (n(prevRec.gasNorm)) car.gasNorm = n(prevRec.gasNorm);
-  if (n(prevRec.benzinNorm)) car.benzinNorm = n(prevRec.benzinNorm);
-  if (n(prevRec.gasPrice)) car.gasPrice = n(prevRec.gasPrice);
-  if (n(prevRec.benzinPrice)) car.benzinPrice = n(prevRec.benzinPrice);
   return true;
 }
 
@@ -1196,7 +1224,7 @@ async function autoChainMonth() {
   } catch (e) {}
   let gpsN = 0, balN = 0;
   fleet().forEach(f => {
-    if (applyPrevBalanceSilent(f.car, prevCars[f.car], prevYm)) balN += 1;
+    if (applyPrevBalanceSilent(f.car, recForPlate(prevCars, f.car), prevYm)) balN += 1;
     gpsN += fillGpsPlate(f.car, false);
   });
   const st = document.getElementById('save-st');
@@ -1353,6 +1381,7 @@ async function reloadOriginal() {
   ]);
   STATE.meta = normalizeMeta(meta.meta);
   STATE.cars = (month.data && month.data.cars) || {};
+  Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.dirty = false;
   renderAll();
   toast('Serverdagi asl ma\'lumot yuklandi');
@@ -1367,13 +1396,20 @@ function bind() {
     const c = e.target.closest('.chip-car');
     if (!c) return;
     readParamsIntoCar();
+    syncParamsToMeta(STATE.car, getCar(STATE.car));
+    markDirty();
     STATE.car = c.getAttribute('data-car');
     writeParams();
     renderChips();
     renderDailyTable();
   });
   document.querySelectorAll('[data-p]').forEach(el => {
-    el.addEventListener('input', () => { readParamsIntoCar(); paintCalc(); markDirty(); });
+    el.addEventListener('input', () => {
+      readParamsIntoCar();
+      syncParamsToMeta(STATE.car, getCar(STATE.car));
+      paintCalc();
+      markDirty();
+    });
   });
   document.getElementById('daily-body').addEventListener('input', e => {
     const el = e.target;
