@@ -9,6 +9,7 @@ class WialonGPSClient {
         this.sessionId = null;
         this.units = []; // [{ id, name, carNumber }]
         this.isLoggedIn = false;
+        this._reportTpl = null;
     }
 
     /**
@@ -320,48 +321,128 @@ class WialonGPSClient {
         return this.roundKm(inMeters ? rawSum / 1000 : rawSum);
     }
 
-    async officialDayMetrics(unitId, timeFrom, timeTo) {
-        const tripsResp = await this.sendRequest('unit/get_trips', { itemId: unitId, timeFrom, timeTo });
-        const list = Array.isArray(tripsResp) ? tripsResp : (tripsResp && Array.isArray(tripsResp.trips) ? tripsResp.trips : []);
-        if (!list.length) return null;
-        let maxSpeed = 0, avgAcc = 0, avgN = 0;
-        list.forEach(tr => {
-            const ms = Number(tr.max_speed || tr.maxSpeed || 0);
-            if (ms > maxSpeed) maxSpeed = ms;
-            const as = Number(tr.avg_speed || tr.avgSpeed || 0);
-            if (as > 0) { avgAcc += as; avgN += 1; }
-        });
-        const km = this.kmFromTripList(list);
-        if (!km) return null;
-        return {
-            km,
-            maxSpeed: this.roundSpd(maxSpeed),
-            avgSpeed: avgN ? this.roundSpd(avgAcc / avgN) : 0,
-            trips: list.length
+    async resolveReportTemplate() {
+        if (this._reportTpl) return this._reportTpl;
+        const reportParams = {
+            spec: {
+                itemsType: "avl_resource",
+                propName: "sys_name",
+                propValueMask: "*",
+                sortType: "sys_name"
+            },
+            force: 1,
+            flags: 8193,
+            from: 0,
+            to: 0
         };
+        const resResp = await this.sendRequest('core/search_items', reportParams);
+        let resourceId = null;
+        let templateId = null;
+        if (resResp && resResp.items && resResp.items.length > 0) {
+            for (const res of resResp.items) {
+                if (res.rep) {
+                    for (const tid in res.rep) {
+                        const repName = (res.rep[tid].n || '').toLowerCase();
+                        if (repName.includes('поездк') || repName.includes('хронолог') || repName.includes('xronologiya') || repName.includes('trip')) {
+                            resourceId = res.id;
+                            templateId = tid;
+                            break;
+                        }
+                    }
+                }
+                if (resourceId) break;
+            }
+            if (!resourceId && resResp.items[0].rep) {
+                resourceId = resResp.items[0].id;
+                templateId = Object.keys(resResp.items[0].rep)[0];
+            }
+        }
+        if (!resourceId || !templateId) {
+            throw new Error("Wialon tizimida 'Поездки' hisobot shabloni topilmadi.");
+        }
+        this._reportTpl = { resourceId, templateId: parseInt(templateId, 10) };
+        return this._reportTpl;
     }
 
-    async getTripMetrics(unitId, timeFrom, timeTo) {
+    async officialDayMetrics(unitId, timeFrom, timeTo) {
         try {
-            return await this.officialDayMetrics(unitId, timeFrom, timeTo);
+            const tripsResp = await this.sendRequest('unit/get_trips', { itemId: unitId, timeFrom, timeTo });
+            const list = Array.isArray(tripsResp) ? tripsResp : (tripsResp && Array.isArray(tripsResp.trips) ? tripsResp.trips : []);
+            if (!list.length) return null;
+            let maxSpeed = 0, avgAcc = 0, avgN = 0;
+            list.forEach(tr => {
+                const ms = Number(tr.max_speed || tr.maxSpeed || 0);
+                if (ms > maxSpeed) maxSpeed = ms;
+                const as = Number(tr.avg_speed || tr.avgSpeed || 0);
+                if (as > 0) { avgAcc += as; avgN += 1; }
+            });
+            const km = this.kmFromTripList(list);
+            if (!km) return null;
+            return {
+                km,
+                maxSpeed: this.roundSpd(maxSpeed),
+                avgSpeed: avgN ? this.roundSpd(avgAcc / avgN) : 0,
+                trips: list.length
+            };
         } catch (e) {
-            console.warn('get_trips:', e);
             return null;
         }
     }
 
+    async reportDayMetrics(unitId, timeFrom, timeTo) {
+        const { resourceId, templateId } = await this.resolveReportTemplate();
+        const execResp = await this.sendRequest('report/exec_report', {
+            reportResourceId: resourceId,
+            reportTemplateId: templateId,
+            reportObjectId: unitId,
+            reportObjectSecId: 0,
+            interval: { flags: 0, from: timeFrom, to: timeTo }
+        });
+        const rr = (execResp && execResp.reportResult) || {};
+        const stats = this.emptyChronology().stats;
+        this.parseReportStats(rr.stats, { stats });
+        try { await this.sendRequest('report/cleanup_result', {}); } catch (e) {}
+        const km = this.roundKm(stats.probeg);
+        if (!km) return null;
+        return {
+            km,
+            maxSpeed: stats.maxSpeed || 0,
+            avgSpeed: stats.avgSpeed || 0,
+            trips: stats.poezdok || 0
+        };
+    }
+
+    async dayMetrics(unitId, timeFrom, timeTo) {
+        const fromTrips = await this.officialDayMetrics(unitId, timeFrom, timeTo);
+        if (fromTrips && fromTrips.km) return fromTrips;
+        try {
+            return await this.reportDayMetrics(unitId, timeFrom, timeTo);
+        } catch (e) {
+            console.warn('report km:', e);
+            return null;
+        }
+    }
+
+    async getTripMetrics(unitId, timeFrom, timeTo) {
+        return this.dayMetrics(unitId, timeFrom, timeTo);
+    }
+
     async applyTripMetrics(unitId, timeFrom, timeTo, chronology) {
         if (!chronology || !chronology.stats) return chronology;
+        const reportKm = this.roundKm(chronology.stats.probeg);
         try {
-            const m = await this.officialDayMetrics(unitId, timeFrom, timeTo);
+            const m = await this.dayMetrics(unitId, timeFrom, timeTo);
             if (m && m.km) {
                 chronology.stats.probeg = m.km;
                 if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(Math.max(chronology.stats.maxSpeed || 0, m.maxSpeed));
                 if (m.avgSpeed) chronology.stats.avgSpeed = m.avgSpeed;
                 if (m.trips) chronology.stats.poezdok = m.trips;
+            } else if (reportKm) {
+                chronology.stats.probeg = reportKm;
             }
         } catch (e) {
-            console.warn('get_trips:', e);
+            console.warn('day metrics:', e);
+            if (reportKm) chronology.stats.probeg = reportKm;
         }
         return chronology;
     }
@@ -439,50 +520,11 @@ class WialonGPSClient {
      * Wialon Hisoboti orqali Xronologiyani olish
      */
     async execChronologyReport(unitId, timeFrom, timeTo) {
-        const reportParams = {
-            spec: {
-                itemsType: "avl_resource",
-                propName: "sys_name",
-                propValueMask: "*",
-                sortType: "sys_name"
-            },
-            force: 1,
-            flags: 8193,
-            from: 0,
-            to: 0
-        };
-
-        const resResp = await this.sendRequest('core/search_items', reportParams);
-        let resourceId = null;
-        let templateId = null;
-
-        if (resResp && resResp.items && resResp.items.length > 0) {
-            for (const res of resResp.items) {
-                if (res.rep) {
-                    for (const tid in res.rep) {
-                        const repName = (res.rep[tid].n || '').toLowerCase();
-                        if (repName.includes('поездк') || repName.includes('хронолог') || repName.includes('xronologiya') || repName.includes('trip')) {
-                            resourceId = res.id;
-                            templateId = tid;
-                            break;
-                        }
-                    }
-                }
-                if (resourceId) break;
-            }
-            if (!resourceId && resResp.items[0].rep) {
-                resourceId = resResp.items[0].id;
-                templateId = Object.keys(resResp.items[0].rep)[0];
-            }
-        }
-
-        if (!resourceId || !templateId) {
-            throw new Error("Wialon tizimida 'Поездки' hisobot shabloni topilmadi.");
-        }
+        const { resourceId, templateId } = await this.resolveReportTemplate();
 
         const execResp = await this.sendRequest('report/exec_report', {
             reportResourceId: resourceId,
-            reportTemplateId: parseInt(templateId, 10),
+            reportTemplateId: templateId,
             reportObjectId: unitId,
             reportObjectSecId: 0,
             interval: { flags: 0, from: timeFrom, to: timeTo }
