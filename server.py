@@ -67,18 +67,169 @@ def new_id(prefix):
     return prefix + "_" + secrets.token_hex(6)
 
 
-class AuthStore:
+try:
+    import psycopg
+except ImportError:
+    psycopg = None
+
+
+def normalize_dsn(url):
+    url = (url or "").strip()
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    return url
+
+
+class FilePersist:
+    kind = "file"
+    durable = False
+
     def __init__(self, root):
-        self.root = root
-        self.path = os.path.join(root, "data", "users.json")
+        self.root = os.path.join(root, "data", "kv")
+        os.makedirs(self.root, exist_ok=True)
+        self.lock = threading.Lock()
+
+    def _path(self, key):
+        if not re.match(r"^[A-Za-z0-9:._-]+$", key or ""):
+            raise ValueError("Noto'g'ri kalit")
+        return os.path.join(self.root, key.replace(":", "__") + ".json")
+
+    def get(self, key, default=None):
+        path = self._path(key)
+        if not os.path.isfile(path):
+            return default
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return default
+
+    def put(self, key, value):
+        path = self._path(key)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(value, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+    def keys(self, prefix=""):
+        out = []
+        with self.lock:
+            for name in os.listdir(self.root):
+                if not name.endswith(".json"):
+                    continue
+                key = name[:-5].replace("__", ":")
+                if key.startswith(prefix):
+                    out.append(key)
+        return out
+
+
+class PgPersist:
+    kind = "postgres"
+    durable = True
+
+    def __init__(self, dsn):
+        if psycopg is None:
+            raise RuntimeError("psycopg o'rnatilmagan. pip install -r requirements.txt")
+        self.dsn = normalize_dsn(dsn)
+        self.lock = threading.Lock()
+        self.conn = None
+        self._connect()
+        self._init()
+
+    def _connect(self):
+        if self.conn is not None:
+            try:
+                self.conn.close()
+            except Exception:
+                pass
+        self.conn = psycopg.connect(self.dsn, autocommit=True, connect_timeout=15)
+
+    def _init(self):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)"
+            )
+
+    def _with_conn(self, fn):
+        with self.lock:
+            try:
+                return fn(self.conn)
+            except Exception:
+                self._connect()
+                self._init()
+                return fn(self.conn)
+
+    def get(self, key, default=None):
+        def run(conn):
+            with conn.cursor() as cur:
+                cur.execute("SELECT v FROM kv WHERE k = %s", (key,))
+                row = cur.fetchone()
+                if not row:
+                    return default
+                try:
+                    return json.loads(row[0])
+                except json.JSONDecodeError:
+                    return default
+
+        return self._with_conn(run)
+
+    def put(self, key, value):
+        raw = json.dumps(value, ensure_ascii=False)
+
+        def run(conn):
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO kv (k, v) VALUES (%s, %s)
+                    ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v
+                    """,
+                    (key, raw),
+                )
+
+        self._with_conn(run)
+
+    def keys(self, prefix=""):
+        like = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+        def run(conn):
+            with conn.cursor() as cur:
+                cur.execute("SELECT k FROM kv WHERE k LIKE %s ESCAPE '\\'", (like,))
+                return [r[0] for r in cur.fetchall()]
+
+        return self._with_conn(run)
+
+
+def make_persist(root):
+    url = (os.environ.get("DATABASE_URL") or "").strip()
+    if url:
+        persist = PgPersist(url)
+        users_file = os.path.join(root, "data", "users.json")
+        if persist.get("users") is None and os.path.isfile(users_file):
+            try:
+                with open(users_file, "r", encoding="utf-8") as f:
+                    persist.put("users", json.load(f))
+                print("[OK] users.json bazaga ko'chirildi")
+            except (OSError, json.JSONDecodeError):
+                pass
+        print("[OK] Saqlash: PostgreSQL — adminlar deploydan keyin qoladi")
+        return persist
+    print("[OK] Saqlash: lokal fayl (Render Free da yo'qoladi, DATABASE_URL qo'ying)")
+    return FilePersist(root)
+
+
+class AuthStore:
+    def __init__(self, persist):
+        self.persist = persist
         self.lock = threading.Lock()
         self.sessions = {}
         self.seeded = False
         self._ensure()
 
+    def persist_info(self):
+        return {"kind": self.persist.kind, "durable": bool(self.persist.durable)}
+
     def _ensure(self):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        if os.path.exists(self.path):
+        if self.persist.get("users") is not None:
             return
         salt, pw_hash = hash_pw(SEED_PASS)
         data = {
@@ -109,14 +260,15 @@ class AuthStore:
         self.seeded = True
 
     def _read(self):
-        with open(self.path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        data = self.persist.get("users")
+        if not isinstance(data, dict):
+            return {"users": [], "audit": []}
+        data.setdefault("users", [])
+        data.setdefault("audit", [])
+        return data
 
     def _write(self, data):
-        tmp = self.path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, self.path)
+        self.persist.put("users", data)
 
     def _audit(self, data, act, who, detail=""):
         data.setdefault("audit", [])
@@ -422,52 +574,48 @@ def telegram_send(token, chat_id, text):
 
 
 class OfficeStore:
-    def __init__(self, root):
-        self.root = os.path.join(root, "data", "office")
-        self.seed_path = os.path.join(root, "office-seed.json")
+    def __init__(self, persist, seed_path):
+        self.persist = persist
+        self.seed_path = seed_path
         self.lock = threading.Lock()
-        os.makedirs(os.path.join(self.root, "reports"), exist_ok=True)
-        os.makedirs(os.path.join(self.root, "reviews"), exist_ok=True)
         self._ensure_pharmacies()
         self._ensure_settings()
 
-    def _read_json(self, path, default):
-        if not os.path.isfile(path):
-            return default
+    def _load(self, key, default):
+        v = self.persist.get(key)
+        return default if v is None else v
+
+    def _save(self, key, obj):
+        self.persist.put(key, obj)
+
+    def _read_seed(self):
+        if not os.path.isfile(self.seed_path):
+            return {}
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(self.seed_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
-            return default
-
-    def _write_json(self, path, obj):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(obj, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+            return {}
 
     def _ensure_pharmacies(self):
-        path = os.path.join(self.root, "pharmacies.json")
-        if os.path.isfile(path):
+        if self.persist.get("office:pharmacies") is not None:
             return
-        seed = self._read_json(self.seed_path, {})
+        seed = self._read_seed()
         items = seed.get("pharmacies") if isinstance(seed, dict) else []
         cleaned = [c for c in (clean_pharmacy(p) for p in items or []) if c]
-        self._write_json(path, {"pharmacies": cleaned})
+        self._save("office:pharmacies", {"pharmacies": cleaned})
 
     def _ensure_settings(self):
-        path = os.path.join(self.root, "settings.json")
-        if os.path.isfile(path):
+        if self.persist.get("office:settings") is not None:
             return
-        self._write_json(
-            path,
+        self._save(
+            "office:settings",
             {"telegram": {"botToken": "", "chatId": "", "enabled": False}},
         )
 
     def pharmacies(self):
         with self.lock:
-            data = self._read_json(os.path.join(self.root, "pharmacies.json"), {})
+            data = self._load("office:pharmacies", {})
             items = data.get("pharmacies") if isinstance(data, dict) else []
             return items if isinstance(items, list) else []
 
@@ -481,29 +629,24 @@ class OfficeStore:
             seen.add(p["id"])
             unique.append(p)
         with self.lock:
-            self._write_json(os.path.join(self.root, "pharmacies.json"), {"pharmacies": unique})
+            self._save("office:pharmacies", {"pharmacies": unique})
         return unique
 
     def reviews(self, date):
         if not valid_date(date):
             return {}
         with self.lock:
-            data = self._read_json(os.path.join(self.root, "reviews", date + ".json"), {})
+            data = self._load("office:reviews:" + date, {})
             return data if isinstance(data, dict) else {}
 
     def all_reviews(self):
         out = {}
-        folder = os.path.join(self.root, "reviews")
         with self.lock:
-            if not os.path.isdir(folder):
-                return out
-            for name in os.listdir(folder):
-                if not name.endswith(".json"):
-                    continue
-                date = name[:-5]
+            for key in self.persist.keys("office:reviews:"):
+                date = key.split(":")[-1]
                 if not valid_date(date):
                     continue
-                data = self._read_json(os.path.join(folder, name), {})
+                data = self._load(key, {})
                 if isinstance(data, dict) and data:
                     out[date] = data
         return out
@@ -513,8 +656,8 @@ class OfficeStore:
             return None, "Sana yoki kalit noto'g'ri"
         key = str(key)[:180]
         with self.lock:
-            path = os.path.join(self.root, "reviews", date + ".json")
-            data = self._read_json(path, {})
+            store_key = "office:reviews:" + date
+            data = self._load(store_key, {})
             if not isinstance(data, dict):
                 data = {}
             status = (rec or {}).get("status")
@@ -527,18 +670,16 @@ class OfficeStore:
                 }
             else:
                 data.pop(key, None)
-            self._write_json(path, data)
+            self._save(store_key, data)
             return data, None
 
     def report_dates(self):
-        folder = os.path.join(self.root, "reports")
         dates = []
         with self.lock:
-            if not os.path.isdir(folder):
-                return dates
-            for name in os.listdir(folder):
-                if name.endswith(".json") and valid_date(name[:-5]):
-                    dates.append(name[:-5])
+            for key in self.persist.keys("office:report:"):
+                date = key.split(":")[-1]
+                if valid_date(date):
+                    dates.append(date)
         dates.sort(reverse=True)
         return dates
 
@@ -546,7 +687,7 @@ class OfficeStore:
         if not valid_date(date):
             return None
         with self.lock:
-            data = self._read_json(os.path.join(self.root, "reports", date + ".json"), None)
+            data = self._load("office:report:" + date, None)
             return data if isinstance(data, dict) else None
 
     def save_report(self, date, cars, saved_by=""):
@@ -561,12 +702,12 @@ class OfficeStore:
             "cars": cars,
         }
         with self.lock:
-            self._write_json(os.path.join(self.root, "reports", date + ".json"), payload)
+            self._save("office:report:" + date, payload)
         return payload, None
 
     def settings(self):
         with self.lock:
-            data = self._read_json(os.path.join(self.root, "settings.json"), {})
+            data = self._load("office:settings", {})
             tg = data.get("telegram") if isinstance(data, dict) else {}
             if not isinstance(tg, dict):
                 tg = {}
@@ -590,8 +731,7 @@ class OfficeStore:
     def save_telegram(self, body):
         body = body or {}
         with self.lock:
-            path = os.path.join(self.root, "settings.json")
-            data = self._read_json(path, {})
+            data = self._load("office:settings", {})
             if not isinstance(data, dict):
                 data = {}
             tg = data.get("telegram") if isinstance(data.get("telegram"), dict) else {}
@@ -603,13 +743,12 @@ class OfficeStore:
             if token is not None and str(token).strip() != "":
                 tg["botToken"] = str(token).strip()[:200]
             data["telegram"] = tg
-            self._write_json(path, data)
+            self._save("office:settings", data)
         return self.public_telegram()
 
 
 STORE = None
 OFFICE = None
-
 
 class VaksinamedHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -790,6 +929,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         "name": sess["name"],
                         "role": sess["role"],
                     },
+                    "persist": STORE.persist_info(),
                 }
             )
             return
@@ -826,6 +966,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "reviews": OFFICE.all_reviews(),
                     "reportDates": OFFICE.report_dates(),
                     "telegram": OFFICE.public_telegram(),
+                    "persist": STORE.persist_info(),
                 }
             )
             return
@@ -1126,8 +1267,9 @@ def main():
         args.port = int(os.environ["PORT"])
 
     os.chdir(args.dir)
-    STORE = AuthStore(args.dir)
-    OFFICE = OfficeStore(args.dir)
+    persist = make_persist(args.dir)
+    STORE = AuthStore(persist)
+    OFFICE = OfficeStore(persist, os.path.join(args.dir, "office-seed.json"))
 
     seed_note = ""
     if STORE.seeded:
@@ -1136,12 +1278,15 @@ def main():
   |  Parol           : {SEED_PASS:<22} |
   |  Parolni panelda o'zgartiring!     |"""
 
+    persist_line = "PostgreSQL (qoladi)" if persist.durable else "lokal fayl (Render da yo'qoladi)"
+
     print(f"""
   +==========================================+
   |   VaksinaMed Fleet Control — Server      |
   +==========================================+
   |  Manzil: http://localhost:{args.port:<14}  |
-  |  Kirish: login + parol majburiy          |{seed_note}
+  |  Kirish: login + parol majburiy          |
+  |  Saqlash: {persist_line:<29} |{seed_note}
   +==========================================+
   Toxtatish: Ctrl+C
 """)

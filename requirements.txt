@@ -1,1 +1,1 @@
-# Python stdlib yetarli — qo'shimcha paket yo'q
+psycopg[binary]>=3.1,<4

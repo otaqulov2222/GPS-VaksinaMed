@@ -17,6 +17,7 @@
   --header: #0c1016;
   --gold: #c9a227;
   --ok: #1a5c3a;
+  --warn: #8a5a12;
   --bad: #9b1c1c;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
@@ -64,6 +65,11 @@ a { color: inherit; }
 .btn-lg { height: 44px; width: 100%; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
 
 .wrap { max-width: 1240px; margin: 18px auto 40px; padding: 0 14px; }
+.persist-note {
+  margin-bottom: 12px; padding: 10px 12px; font-size: 12px; line-height: 1.45; border: 1px solid;
+}
+.persist-note.ok { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
+.persist-note.bad { background: #f4ecd8; color: var(--warn); border-color: #e0d4b8; }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
 @media (max-width: 720px) { .stats { grid-template-columns: 1fr 1fr; } }
 .stat {
@@ -186,6 +192,7 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
 </header>
 
 <div class="wrap">
+  <div class="persist-note bad" id="persist-note">Saqlash holati yuklanmoqda...</div>
   <div class="stats">
     <div class="stat"><i>Adminlar</i><b id="s-users">—</b></div>
     <div class="stat"><i>Onlayn</i><b id="s-on">—</b></div>
@@ -735,10 +742,22 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
 });
 
 (async () => {
-  const me = await vmMe();
-  if (me.role !== 'admin_pro') {
+  const d = await vmApi('/api/me');
+  const me = d.user;
+  window.VM_USER = me;
+  if (!me || me.role !== 'admin_pro') {
     location.replace('/');
     return;
+  }
+  const note = document.getElementById('persist-note');
+  if (note) {
+    if (d.persist && d.persist.durable) {
+      note.className = 'persist-note ok';
+      note.textContent = 'Adminlar bazada saqlanadi. Kod yangilanganda ham yo‘qolmaydi.';
+    } else {
+      note.className = 'persist-note bad';
+      note.textContent = 'Hozir vaqtinchalik disk. Render Environment ga DATABASE_URL qo‘ying — aks holda yangi deployda adminlar o‘chadi.';
+    }
   }
   document.getElementById('who').textContent = me.username;
   document.getElementById('s-me').textContent = me.username;
