@@ -790,6 +790,19 @@ body {
   color: var(--primary);
 }
 
+@media (max-width: 900px) {
+  .app-header { padding: 10px 12px; gap: 8px; }
+  .dashboard-content { padding: 12px 10px 40px; }
+  .header-actions { width: 100%; flex-wrap: wrap; }
+}
+
+@media (max-width: 640px) {
+  .kpi-grid { grid-template-columns: 1fr 1fr !important; }
+  .stats-analysis-grid { grid-template-columns: 1fr !important; }
+  .eval-grid { grid-template-columns: 1fr !important; }
+  input, select, textarea { font-size: 16px; }
+}
+
 /* ======= PRINT ======= */
 @media print {
   body { background: #fff !important; font-size: 11px; }

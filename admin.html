@@ -2,7 +2,7 @@
 <html lang="uz">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Admin — VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -172,6 +172,33 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
   width: 100%; max-width: 420px; background: #fff; border: 1px solid #12151c;
 }
 .modal .head { cursor: default; }
+
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: clip; }
+.table-scroll { overflow: auto; -webkit-overflow-scrolling: touch; }
+.btn { touch-action: manipulation; }
+
+@media (max-width: 900px) {
+  .topbar {
+    height: auto; min-height: 52px; flex-wrap: wrap; gap: 8px;
+    padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+  }
+  .brand { min-width: 0; flex-wrap: wrap; }
+  .acts { width: 100%; flex-wrap: wrap; }
+  .wrap { padding: 12px max(10px, env(safe-area-inset-right)) 28px max(10px, env(safe-area-inset-left)); margin: 12px auto 28px; }
+  table { min-width: 640px; }
+  .modal-bg { padding: 8px; align-items: flex-end; }
+  .modal { max-width: 100%; }
+  .btn-lg { min-height: 44px; }
+}
+
+@media (max-width: 640px) {
+  .tb-line { display: none; }
+  .who { width: 100%; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .field input { font-size: 16px; min-height: 44px; }
+  .btn { min-height: 36px; }
+}
 </style>
 </head>
 <body>
@@ -254,22 +281,26 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
           <button class="btn btn-sm" type="button" id="btn-reload">Yangilash</button>
         </div>
         <div class="msg" id="msg-users" style="margin:12px 16px 0;"></div>
+        <div class="table-scroll">
         <table>
           <thead>
             <tr><th>Ism</th><th>Login</th><th>Rol</th><th>Holat</th><th>Oxirgi kirish</th><th>Amal</th></tr>
           </thead>
           <tbody id="tb-users"></tbody>
         </table>
+        </div>
       </div>
 
       <div class="card">
         <div class="head"><h2>Kim tizimda</h2></div>
+        <div class="table-scroll">
         <table>
           <thead>
             <tr><th>Foydalanuvchi</th><th>IP</th><th>Kirgan</th><th>Oxirgi</th><th>Holat</th><th></th></tr>
           </thead>
           <tbody id="tb-sess"></tbody>
         </table>
+        </div>
       </div>
     </div>
   </div>

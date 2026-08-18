@@ -2,7 +2,7 @@
 <html lang="uz">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Kirish — VaksinaMed Fleet Control</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -122,6 +122,17 @@ input:focus { outline: none; border-color: #c9a227; }
 }
 .btn-go:hover { background: #d4b03a; }
 .btn-go:disabled { opacity: .55; cursor: default; }
+
+html { -webkit-text-size-adjust: 100%; }
+@media (max-width: 640px) {
+  body { padding: max(16px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)); align-items: flex-start; }
+  .wrap { max-width: 100%; }
+  .brand-lockup { gap: 10px; }
+  .brand-lockup img, .brand-lockup svg { width: 44px; height: 44px; }
+  .brand-name { font-size: 18px; }
+  input, .btn-go { font-size: 16px; min-height: 44px; }
+  .form, .top { padding: 16px; }
+}
 </style>
 </head>
 <body>

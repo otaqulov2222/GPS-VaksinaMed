@@ -341,14 +341,14 @@ function renderJournal() {
             </div>
             <div class="row-btns" style="margin:0 0 10px;" id="j-range-row">
               ${J.period==='range' ? `<input id="j-from" type="date" value="${esc(J.from||r.from)}"><input id="j-to" type="date" value="${esc(J.to||r.to)}">` : ''}
-              <input id="j-q" placeholder="Qidirish..." value="${esc(J.q)}" style="height:32px;padding:0 8px;border:1px solid var(--line);min-width:160px;">
+              <input id="j-q" class="j-search" placeholder="Qidirish..." value="${esc(J.q)}">
             </div>
             <div class="subtabs" id="j-filt">
               ${[['all','Hammasi'],['bad','Faqat kamchilik'],['good','Faqat maktov'],['driver','Haydovchilar'],['pharmacy','Dorixonalar']].map(([v,t]) =>
                 `<button type="button" class="subtab${J.filter===v?' on':''}" data-f="${v}">${t}</button>`
               ).join('')}
             </div>
-            <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin-top:10px;">
+            <div class="kpis" style="margin-top:10px;">
               <div class="kpi"><i>Kamchilik (davr)</i><b>${badN}</b></div>
               <div class="kpi"><i>Maktov (davr)</i><b>${goodN}</b></div>
               <div class="kpi"><i>Obyektlar</i><b>${objects}</b></div>
@@ -383,7 +383,7 @@ function renderJournal() {
           <div class="card-h"><h3>Tahlil</h3></div>
           <div class="card-b">
             <div class="hint">${rows.length ? ('Davrda ' + badN + ' kamchilik, ' + goodN + ' maktov. GPS km mashina raqami bo\'yicha.') : 'Tanlangan davrda ma\'lumot yo\'q.'}</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="jl-two">
               <div>
                 <b>Kamchilik bo'yicha (kim ko'p)</b>
                 ${topBad.slice(0,8).map(x => {

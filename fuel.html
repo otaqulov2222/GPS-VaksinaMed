@@ -2,7 +2,7 @@
 <html lang="uz">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Boshqaruv — VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -264,6 +264,58 @@ table.gtable input, table.gtable select {
   font-size: 12px; font-weight: 600; display: none;
 }
 .toast.on { display: block; }
+
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: clip; }
+.tb-page { border-left: 1px solid #2a323c; padding-left: 12px; margin-left: 4px; }
+.btn, .tab, .chip-car, .day-pill, .subtab { touch-action: manipulation; }
+.table-wrap, .tabs { -webkit-overflow-scrolling: touch; }
+.jl-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.j-search { height: 32px; padding: 0 8px; border: 1px solid var(--line); min-width: 160px; flex: 1; }
+
+@media (max-width: 900px) {
+  .topbar {
+    height: auto; min-height: 52px;
+    flex-wrap: wrap; gap: 8px;
+    padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+  }
+  .brand { width: 100%; flex-wrap: wrap; }
+  .acts { width: 100%; }
+  .tb-user { margin-left: 0; padding-left: 0; border-left: 0; flex-wrap: wrap; }
+  .tabs {
+    padding: 0 max(4px, env(safe-area-inset-left));
+    scrollbar-width: thin;
+  }
+  .tab { height: 44px; padding: 0 12px; }
+  .wrap { padding: 10px max(10px, env(safe-area-inset-right)) 28px max(10px, env(safe-area-inset-left)); }
+  .params { grid-template-columns: 1fr 1fr; }
+  .table-wrap { max-height: none; }
+  table.gtable { min-width: 720px; }
+  .row-btns .btn { min-height: 40px; }
+  .toast { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 640px) {
+  .tb-line, .tb-sub { display: none; }
+  .tb-page { border-left: 0; padding-left: 0; margin-left: 0; }
+  .brand img { width: 30px; height: 30px; }
+  .params { grid-template-columns: 1fr; }
+  .kpis, .kpis[style] { grid-template-columns: 1fr 1fr !important; }
+  .chip-car { flex: 1 1 calc(50% - 6px); min-width: calc(50% - 6px); padding: 10px 6px; }
+  .chips { display: flex; }
+  .fld input, .fld select, .fld textarea,
+  table.dtable input, table.dtable select,
+  table.gtable input, table.gtable select { font-size: 16px !important; min-height: 40px; }
+  table.dtable .out { min-height: 40px; line-height: 40px; }
+  .jl-split, .jl-two { grid-template-columns: 1fr !important; }
+  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
+  .subtab { flex: 0 0 auto; min-height: 36px; }
+  #st-new, .j-search, #month-input { min-width: 0 !important; width: 100%; max-width: 100%; }
+}
+
+@media (max-width: 420px) {
+  .kpis, .kpis[style] { grid-template-columns: 1fr !important; }
+}
 </style>
 </head>
 <body>
@@ -274,7 +326,7 @@ table.gtable input, table.gtable select {
       <div class="tb-name">VAKSINA <span>MED</span></div>
       <div class="tb-line">MACHINE CONTROL</div>
     </div>
-    <div style="border-left:1px solid #2a323c;padding-left:12px;margin-left:4px;">
+    <div class="tb-page">
       <div class="tb-title">Boshqaruv</div>
       <div class="tb-sub">Park · hisobot · hujjat · narx</div>
     </div>
@@ -400,6 +452,6 @@ table.gtable input, table.gtable select {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="auth.js?v=4"></script>
 <script src="fuel.js?v=8"></script>
-<script src="journal.js?v=2"></script>
+<script src="journal.js?v=3"></script>
 </body>
 </html>

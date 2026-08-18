@@ -2,7 +2,7 @@
 <html lang="uz">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>VaksinaMed — Fleet Control</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -736,6 +736,61 @@ table.gtable tr.rank-row.is-empty td { color: #8b939e; }
   font-family: var(--sans);
 }
 
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: clip; }
+.table-wrap { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+input, select, textarea { max-width: 100%; }
+.btn, .dtab, .cal-day, .rev-btn { touch-action: manipulation; }
+
+@media (max-width: 900px) {
+  .topbar {
+    height: auto; min-height: 52px;
+    flex-wrap: wrap; align-items: center;
+    padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+    gap: 8px;
+  }
+  .tb-actions { width: 100%; justify-content: flex-start; gap: 6px; }
+  .tb-user {
+    margin-left: 0; padding-left: 0; border-left: 0;
+    width: 100%; flex-wrap: wrap;
+  }
+  .tb-user-name { max-width: 40vw; }
+  .page-wrap {
+    margin: 8px auto 20px;
+    padding: 0 max(10px, env(safe-area-inset-right)) 16px max(10px, env(safe-area-inset-left));
+    gap: 10px;
+  }
+  .driver-strip-wrap { padding: 0 max(8px, env(safe-area-inset-left)); -webkit-overflow-scrolling: touch; }
+  .dtab { padding: 12px 12px; min-height: 44px; }
+  .driver-banner { padding: 12px; gap: 10px; }
+  .db-score { width: 100%; align-items: flex-start; min-width: 0; }
+  .db-name { font-size: 16px; }
+  .kpi-value { font-size: 18px; }
+  .map-head { flex-direction: column; align-items: flex-start; padding: 10px 12px; }
+  .map-head-meta { width: 100%; }
+  #leaflet-map { height: 280px; min-height: 240px; }
+  .modal-bg { padding: 8px; align-items: flex-end; }
+  .modal-box { max-height: min(92dvh, 92vh); max-width: 100%; }
+  .modal-footer { flex-wrap: wrap; }
+  .modal-footer .btn { flex: 1 1 auto; min-height: 40px; justify-content: center; }
+  .toast { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: none; }
+  table.gtable { min-width: 640px; }
+}
+
+@media (max-width: 640px) {
+  .tb-line { display: none; }
+  .tb-brand img { width: 30px; height: 30px; }
+  .tb-name { font-size: 13px; }
+  .btn { height: 36px; padding: 0 10px; }
+  .btn-sm { height: 32px; }
+  #kpi-container .kpi-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .kpi-card { padding: 10px 8px 8px; }
+  .eval-final { margin: 0 8px 10px; }
+  .eval-score-box { min-width: 0; width: 100%; }
+  input, select, textarea { font-size: 16px !important; }
+  .form-row input, .form-row select { font-size: 16px; min-height: 42px; }
+}
+
 @media print {
   body { background: #fff; }
   .topbar, .driver-strip-wrap, .btn, .modal-bg,
@@ -1084,7 +1139,7 @@ table.gtable tr.rank-row.is-empty td { color: #8b939e; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="wialon-api.js?v=11"></script>
 <script src="auth.js?v=4"></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 <script src="office.js?v=4"></script>
 <script>
 document.querySelectorAll('.modal-bg').forEach(m => {

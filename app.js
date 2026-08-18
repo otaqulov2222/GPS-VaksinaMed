@@ -660,6 +660,11 @@ function mapInvalidate() {
     setTimeout(() => { try { STATE.map.invalidateSize(); } catch (e) {} }, 80);
     setTimeout(() => { try { STATE.map.invalidateSize(); } catch (e) {} }, 400);
 }
+let mapResizeTimer = 0;
+window.addEventListener('resize', () => {
+    clearTimeout(mapResizeTimer);
+    mapResizeTimer = setTimeout(mapInvalidate, 200);
+});
 
 function setMapLockState(active) {
     const frame = document.getElementById('map-frame');
