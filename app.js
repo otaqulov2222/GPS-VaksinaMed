@@ -40,6 +40,7 @@ const DRIVERS = [
     { car:"01 849 SNA", fullName:"Абдурахимов Козим",      shortName:"Козим",      color:"#27ae60", routes:"—", pharmacies:"" },
     { car:"01 309 YNA", fullName:"Абдусатторов Акмал",     shortName:"Акмал",      color:"#e84393", routes:"—", pharmacies:"" }
 ];
+window.DRIVERS = DRIVERS;
 
 // ── 2. HOLAT VA SAQLASH ─────────────────────────────────────
 const STATE = {

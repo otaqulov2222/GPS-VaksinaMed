@@ -32,7 +32,7 @@ const VMOffice = {
 
     seedFromDrivers() {
         const list = [];
-        (window.DRIVERS || []).forEach(d => {
+        this.driversList().forEach(d => {
             if (!d.pharmacies) return;
             String(d.pharmacies).split(',').forEach((name, i) => {
                 name = name.trim();
@@ -160,7 +160,7 @@ const VMOffice = {
         const raw = fromState.length
             ? fromState
             : (() => {
-                const drv = (window.DRIVERS || []).find(d => d.car === car);
+                const drv = this.driversList().find(d => d.car === car);
                 if (!drv || !drv.pharmacies) return [];
                 return String(drv.pharmacies).split(',').map(s => s.trim()).filter(Boolean);
             })();
@@ -195,7 +195,7 @@ const VMOffice = {
         const owners = (STATE.pharmacies || [])
             .filter(p => p.name === best.name || (p.lat === best.lat && p.lng === best.lng))
             .map(p => {
-                const drv = (window.DRIVERS || []).find(d => d.car === p.car);
+                const drv = this.driversList().find(d => d.car === p.car);
                 return drv ? drv.shortName : p.car;
             });
         const uniq = [...new Set(owners)];
@@ -235,28 +235,51 @@ const VMOffice = {
         });
     },
 
+    driversList() {
+        if (typeof DRIVERS !== 'undefined' && Array.isArray(DRIVERS) && DRIVERS.length) return DRIVERS;
+        return window.DRIVERS || [];
+    },
+
+    rowOf(drv, rec) {
+        if (!rec) {
+            return { drv, rec: null, score: null, km: 0, own: 0, total: this.ownNames(drv.car).length, other: 0, problem: 0, speed: 0, work: '—' };
+        }
+        const a = rec.analysis || {};
+        const sc = a.score || {};
+        return {
+            drv,
+            rec,
+            score: sc.final,
+            km: (rec.stats && rec.stats.probeg) || 0,
+            own: a.ownVisited || 0,
+            total: a.totalOwn || this.ownNames(drv.car).length,
+            other: a.otherDirection || 0,
+            problem: a.problemStops || 0,
+            speed: (rec.stats && rec.stats.maxSpeed) || 0,
+            work: (rec.stats && rec.stats.motoChas) || '—'
+        };
+    },
+
     fleetRows(dateVal) {
         const day = (dateVal && STATE.data[dateVal]) ? STATE.data[dateVal] : {};
-        return (window.DRIVERS || []).map(drv => {
+        const drivers = this.driversList();
+        const used = new Set();
+        const rows = drivers.map(drv => {
             const rec = this.recForPlate(day, drv.car);
-            if (!rec) {
-                return { drv, rec: null, score: null, km: 0, own: 0, total: this.ownNames(drv.car).length, other: 0, problem: 0, speed: 0, work: '—' };
+            if (rec) {
+                used.add(drv.car);
+                Object.keys(day).forEach(k => { if (day[k] === rec) used.add(k); });
             }
-            const a = rec.analysis || {};
-            const sc = a.score || {};
-            return {
-                drv,
-                rec,
-                score: sc.final,
-                km: (rec.stats && rec.stats.probeg) || 0,
-                own: a.ownVisited || 0,
-                total: a.totalOwn || this.ownNames(drv.car).length,
-                other: a.otherDirection || 0,
-                problem: a.problemStops || 0,
-                speed: (rec.stats && rec.stats.maxSpeed) || 0,
-                work: (rec.stats && rec.stats.motoChas) || '—'
-            };
-        }).sort((a, b) => {
+            return this.rowOf(drv, rec);
+        });
+        Object.keys(day).forEach(car => {
+            if (used.has(car)) return;
+            const rec = day[car];
+            const drv = (rec && rec.driver) || { fullName: car, shortName: car, car, routes: '—' };
+            used.add(car);
+            rows.push(this.rowOf(drv, rec));
+        });
+        return rows.sort((a, b) => {
             const as = a.rec ? (a.score == null ? -1 : a.score) : -2;
             const bs = b.rec ? (b.score == null ? -1 : b.score) : -2;
             return bs - as;
@@ -278,8 +301,8 @@ const VMOffice = {
                 ? `${loaded} mashina · o'rtacha ${avgN.toFixed(1)} ball · ${probs} muammo`
                 : 'Bu kunda ma\'lumot yo\'q';
         }
-        if (!loaded) {
-            el.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:22px;color:#8b939e;">GPS yuklangandan so'ng barcha mashina shu yerda chiqadi.</td></tr>`;
+        if (!rows.length) {
+            el.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:22px;color:#8b939e;">Haydovchilar ro'yxati topilmadi.</td></tr>`;
             return;
         }
         el.innerHTML = rows.map((r, i) => {
