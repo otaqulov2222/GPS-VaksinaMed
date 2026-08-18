@@ -280,8 +280,8 @@ function renderJournal() {
           <div class="fld" style="margin-bottom:8px;${J.category==='pharmacy'?'display:none':''}">
             <label>Hozirgi haydovchi (admin o'zgartira oladi)</label>
             <input id="j-driver" value="${esc(editing ? (editing.driver||'') : '')}" placeholder="F.I.Sh.">
-            <label style="display:flex;gap:6px;align-items:center;margin-top:6px;text-transform:none;letter-spacing:0;font-size:11px;">
-              <input id="j-assign" type="checkbox" checked style="width:16px;height:16px;"> Shu mashinaga haydovchini yangilash
+            <label class="chk" style="margin-top:6px;">
+              <input id="j-assign" type="checkbox" checked> Shu mashinaga haydovchini yangilash
             </label>
           </div>
           <div class="fld" style="margin-bottom:8px;${J.category==='driver'?'display:none':''}">
@@ -299,14 +299,14 @@ function renderJournal() {
           </div>
           <div class="fld" style="margin-bottom:8px;">
             <label>Boshlanish</label>
-            <div style="display:flex;gap:6px;">
+            <div class="now-row">
               <input id="j-start" type="datetime-local" value="${esc(editing ? dtVal(editing.start) : nowLocal())}">
               <button type="button" class="btn btn-ink btn-sm" id="j-start-now">Hozir</button>
             </div>
           </div>
           <div class="fld" style="margin-bottom:8px;">
             <label>Tugash (ixtiyoriy)</label>
-            <div style="display:flex;gap:6px;">
+            <div class="now-row">
               <input id="j-end" type="datetime-local" value="${esc(editing ? dtVal(editing.end) : '')}">
               <button type="button" class="btn btn-ink btn-sm" id="j-end-now">Hozir</button>
             </div>
@@ -354,7 +354,7 @@ function renderJournal() {
               <div class="kpi"><i>Obyektlar</i><b>${objects}</b></div>
               <div class="kpi"><i>Jami (hammasi)</i><b>${all.length}</b></div>
             </div>
-            <div style="overflow:auto;">
+            <div class="scroll-x">
               <table class="gtable">
                 <thead><tr><th>Turi</th><th>Kim / nima</th><th>Mashina</th><th>GPS km</th><th>Vaqt</th><th>Sabab</th><th>Baho</th><th>Izoh</th><th></th></tr></thead>
                 <tbody>${rows.length ? rows.map(it => {
@@ -389,7 +389,7 @@ function renderJournal() {
                 ${topBad.slice(0,8).map(x => {
                   const info = (typeof vehicleInfo==='function' && x.k) ? vehicleInfo(x.k) : { name: x.k };
                   const g = gpsForPlate(x.k);
-                  return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);">
+                  return `<div class="jl-stat">
                     <span>${esc(info.name || x.k)} <span class="muted">${esc(x.k)}</span></span>
                     <span><b>${x.n}</b> <span class="muted">${typeof fmt === 'function' ? fmt(g.km, 2) : (g.km||0)} km</span></span></div>`;
                 }).join('') || '<p class="muted">—</p>'}
@@ -398,7 +398,7 @@ function renderJournal() {
                 <b>Maktov bo'yicha (kim ko'p)</b>
                 ${topGood.slice(0,8).map(x => {
                   const info = (typeof vehicleInfo==='function' && x.k) ? vehicleInfo(x.k) : { name: x.k };
-                  return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);">
+                  return `<div class="jl-stat">
                     <span>${esc(info.name || x.k)} <span class="muted">${esc(x.k)}</span></span><b>${x.n}</b></div>`;
                 }).join('') || '<p class="muted">—</p>'}
               </div>

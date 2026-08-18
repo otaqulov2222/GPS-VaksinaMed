@@ -710,7 +710,7 @@ function renderHome() {
       <div class="kpi"><i>Zapravka</i><b>${(STATE.meta.stations || []).length}</b><s>reestr</s></div>
     </div>
     <div class="card"><div class="card-h"><h3>GPS bor — kunlik km tushmagan</h3></div>
-      <div class="card-b">${missing.length ? `<table class="gtable"><thead><tr><th>Sana</th><th>Mashina</th><th>GPS km</th></tr></thead><tbody>
+      <div class="card-b scroll-x">${missing.length ? `<table class="gtable"><thead><tr><th>Sana</th><th>Mashina</th><th>GPS km</th></tr></thead><tbody>
         ${missing.slice(0, 80).map(m => `<tr><td>${esc(m.dt)}</td><td>${esc(plateDisp(m.car))} ${esc(m.short)}</td><td class="num">${m.km}</td></tr>`).join('')}
       </tbody></table>` : '<p class="note">Oy ochilganda GPS km avtomatik tushadi. Sariq katakni tahrirlash mumkin. Zapravka qo\'lda.</p>'}
       </div></div>`;
@@ -740,7 +740,8 @@ function renderDayRep() {
       <div class="day-pills no-print">${Array.from({length: dim}, (_, i) => i + 1).map(d =>
         `<button type="button" class="day-pill${d === day ? ' on' : ''}" data-day="${d}">${d}</button>`
       ).join('')}</div>
-      <div style="overflow:auto;margin-top:10px;">
+      <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+      <div class="scroll-x" style="margin-top:10px;">
       <table class="gtable">
         <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Yurdi (km)</th><th>Nimada</th><th>Zapravka</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Sarf gaz</th><th>Sarf benzin</th><th>Qo'shimcha</th><th>Izoh</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
@@ -780,7 +781,7 @@ function renderMonth() {
   document.getElementById('panel-month').innerHTML = `
     <div class="card"><div class="card-h"><h3>Oylik jamlanma — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" onclick="window.print()">PDF chiqarish</button></div>
-    <div class="card-b" style="overflow:auto;">
+    <div class="card-b scroll-x">
       <table class="gtable">
         <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
@@ -835,7 +836,8 @@ function renderOfficial() {
           ОТЧЕТ об израсходовании топлива автотранспортными средствами<br>
           ${esc(firm.name || 'VAKSINA HEALTHCARE MChJ')} за ${esc(titleM)} ${y} г.
         </div>
-        <div style="overflow:auto;">
+        <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+        <div class="scroll-x">
         <table class="gtable">
           <thead><tr>
             <th>№</th><th>Marka</th><th>Gos №</th><th>F.I.O. voditelya</th><th>Yoqilg'i</th>
@@ -919,8 +921,8 @@ function renderStations() {
       <button class="btn btn-ink btn-sm no-print" type="button" onclick="window.print()">PDF chiqarish</button></div>
       <div class="card-b">
         <div class="hint">Bu reestr kunlik kiritishdan avtomatik yig'iladi. Admin zapravka nomini kunlik jadvalda yoki pastda qo'lda o'zgartiradi.</div>
-        <div class="row-btns no-print" style="margin:0 0 10px;">
-          <input id="st-new" placeholder="Yangi zapravka nomi" style="height:32px;padding:0 8px;border:1px solid var(--line);min-width:220px;">
+        <div class="row-btns add-row no-print" style="margin:0 0 10px;">
+          <input id="st-new" class="j-search" placeholder="Yangi zapravka nomi">
           <button class="btn btn-gold btn-sm" type="button" id="st-add">Qo'shish</button>
         </div>
         <div class="subtabs no-print">
@@ -932,7 +934,7 @@ function renderStations() {
           const g = groups[p];
           return `<div style="margin-bottom:14px;">
             <div style="font-weight:700;margin:6px 0;">${esc(plateDisp(g.plate))} — ${esc(g.name)}</div>
-            <table class="gtable"><thead><tr><th>Kun</th><th>Zapravka</th><th>Tur</th><th>Miqdor</th><th>Narx</th><th>Summa</th></tr></thead>
+            <div class="scroll-x"><table class="gtable"><thead><tr><th>Kun</th><th>Zapravka</th><th>Tur</th><th>Miqdor</th><th>Narx</th><th>Summa</th></tr></thead>
             <tbody>${g.rows.map(r => `<tr>
               <td>${r.d}</td><td>${esc(r.station)}</td><td>${esc(r.type)}</td>
               <td class="num">${fmt(r.qty, 4)}</td><td class="num">${money(r.price)}</td><td class="num">${money(r.sum)}</td>
@@ -940,7 +942,7 @@ function renderStations() {
             <tr><td colspan="3"><b>Jami</b></td>
               <td class="num"><b>${g.gas ? fmt(g.gas, 3) + ' m³' : ''} ${g.ben ? fmt(g.ben, 3) + ' l' : ''}</b></td>
               <td></td><td class="num"><b>${money(g.sum)}</b></td></tr>
-            </tbody></table>
+            </tbody></table></div>
           </div>`;
         }).join('') || '<p class="note">Bu oyda quyish yo\'q.</p>'}
         <h3 style="margin:16px 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;">Zapravka nomlari</h3>
@@ -992,7 +994,8 @@ function renderGasAct() {
         <button class="btn btn-gold btn-sm" type="button" onclick="window.print()">PDF chiqarish</button></div>
       <div class="card-b">
         <div style="text-align:center;font-weight:700;margin-bottom:12px;">GAZ DALOLATNOMASI</div>
-        <div style="overflow:auto;">
+        <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+        <div class="scroll-x">
         <table class="gtable">
           <thead><tr>
             <th>№</th><th>Mas'ul haydovchi F.I.Sh.</th><th>Avtomobil markasi</th><th>Davlat raqami</th>
@@ -1062,7 +1065,7 @@ async function renderYear() {
     </div>
     <div class="card"><div class="card-h"><h3>${esc(year)} yil — oyma-oy jamlanma</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" onclick="window.print()">PDF chiqarish</button></div>
-    <div class="card-b" style="overflow:auto;">
+    <div class="card-b scroll-x">
       <table class="gtable">
         <thead><tr><th>Oy</th><th>Probeg (km)</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Jami (so'm)</th></tr></thead>
         <tbody>${perMonth.map(r => `<tr>
@@ -1099,7 +1102,7 @@ function docCell(car, key, rec) {
   }
   return `<td>
     <input type="date" data-doc="${esc(car)}" data-k="${key}" data-f="due" value="${esc(d.due || '')}">
-    <div style="display:flex;gap:4px;align-items:center;margin-top:4px;">
+    <div class="doc-row">
       <input type="number" min="1" max="60" data-doc="${esc(car)}" data-k="${key}" data-f="months" value="${d.months || 12}" style="width:56px;height:26px;">
       <span class="muted">oy</span>
       <button type="button" class="btn btn-ink btn-sm doc-renew" data-doc="${esc(car)}" data-k="${key}">Yangilash</button>
@@ -1118,7 +1121,8 @@ function renderDocs() {
         ${alerts.length ? `<div class="alert-box">${alerts.slice(0, 12).map(a =>
           `<div><b>${esc(plateDisp(a.car))}</b> ${esc(a.name)} — ${esc(a.title)} → ${a.left < 0 ? 'muddati o\'tgan' : (a.left + ' kun qoldi')}</div>`
         ).join('')}</div>` : ''}
-        <div style="overflow:auto;">
+        <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+        <div class="scroll-x">
           <table class="gtable">
             <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th>${DOC_KEYS.map(d => `<th>${esc(d.t)}</th>`).join('')}</tr></thead>
             <tbody>${fleet().map((f, i) => {
@@ -1170,13 +1174,14 @@ function renderCars() {
     <div class="card"><div class="card-h"><h3>Mashina va narx — qo'lda tahrirlash</h3></div>
       <div class="card-b">
         <div class="hint">Butun oy uchun haydovchi/marka/norma/narx shu yerda o'zgaradi. Oy o'rtasida haydovchi almashtirish uchun kunlik kiritishdagi <b>Haydovchini kun belgilab almashtirish</b> tugmasini bosing — zanjir buzilmaydi.</div>
-        <div class="row-btns" style="margin:0 0 12px;">
-          <input id="nv-car" placeholder="01 000 AAA" style="height:32px;padding:0 8px;border:1px solid var(--line);width:130px;">
-          <input id="nv-name" placeholder="Haydovchi F.I.O." style="height:32px;padding:0 8px;border:1px solid var(--line);width:200px;">
-          <input id="nv-brand" placeholder="Marka" style="height:32px;padding:0 8px;border:1px solid var(--line);width:140px;">
+        <div class="row-btns add-row" style="margin:0 0 12px;">
+          <input id="nv-car" class="j-search" placeholder="01 000 AAA">
+          <input id="nv-name" class="j-search" placeholder="Haydovchi F.I.O.">
+          <input id="nv-brand" class="j-search" placeholder="Marka">
           <button class="btn btn-gold btn-sm" type="button" id="nv-add">Mashina qo'shish</button>
         </div>
-        <div style="overflow:auto;">
+        <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+        <div class="scroll-x">
           <table class="gtable">
             <thead><tr><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin/DT norma</th><th>Gaz narxi</th><th>Benzin/DT narxi</th><th></th></tr></thead>
             <tbody>${list.map((f, i) => `<tr data-plate="${esc(f.car)}">

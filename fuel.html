@@ -47,6 +47,7 @@ a { color: inherit; text-decoration: none; }
   border-bottom: 2px solid var(--gold);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand > div { min-width: 0; }
 .brand img { width: 36px; height: 36px; display: block; }
 .tb-name { font-size: 14px; font-weight: 700; letter-spacing: .04em; color: #c4a0de; line-height: 1; }
 .tb-name span { color: #e8b423; }
@@ -128,7 +129,7 @@ a { color: inherit; text-decoration: none; }
   padding: 10px 12px; border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
-.card-h h3 { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.card-h h3 { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; overflow-wrap: anywhere; }
 .card-b { padding: 12px; }
 
 .params {
@@ -266,55 +267,106 @@ table.gtable input, table.gtable select {
 .toast.on { display: block; }
 
 html { -webkit-text-size-adjust: 100%; }
-body { overflow-x: clip; }
+html, body { overflow-x: hidden; max-width: 100%; }
 .tb-page { border-left: 1px solid #2a323c; padding-left: 12px; margin-left: 4px; }
-.btn, .tab, .chip-car, .day-pill, .subtab { touch-action: manipulation; }
-.table-wrap, .tabs { -webkit-overflow-scrolling: touch; }
+.btn-vhk { flex-shrink: 0; margin-left: auto; }
+.month-pick { width: 148px; color: #f4f4f2; background: #161c24; }
+.btn, .tab, .chip-car, .day-pill, .subtab, .tog button { touch-action: manipulation; }
+.table-wrap, .tabs, .subtabs, .scroll-x { -webkit-overflow-scrolling: touch; }
 .jl-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .j-search { height: 32px; padding: 0 8px; border: 1px solid var(--line); min-width: 160px; flex: 1; }
+.now-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: stretch; }
+.now-row input { flex: 1 1 180px; min-width: 0; }
+.now-row .btn { flex: 0 0 auto; }
+.fld label { white-space: normal; line-height: 1.35; overflow-wrap: anywhere; }
+.fld label.chk { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--ink); margin-bottom: 0; font-weight: 600; }
+.chk { display: flex; gap: 8px; align-items: flex-start; white-space: normal; text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--ink); }
+.chk input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+.scroll-x { overflow: auto; max-width: 100%; }
+.scroll-x > table.gtable { width: max-content; min-width: 100%; }
+.wrap, .card, .panel, .jl, .card-b { min-width: 0; max-width: 100%; }
+.jl-stat { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.add-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.doc-row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.swipe-hint { display: none; font-size: 11px; color: var(--muted); margin: 0 0 6px; }
 
 @media (max-width: 900px) {
+  .swipe-hint { display: block; }
   .topbar {
     height: auto; min-height: 52px;
-    flex-wrap: wrap; gap: 8px;
-    padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+    flex-direction: column; align-items: stretch;
+    gap: 8px;
+    padding: 8px max(10px, env(safe-area-inset-right)) 10px max(10px, env(safe-area-inset-left));
   }
-  .brand { width: 100%; flex-wrap: wrap; }
-  .acts { width: 100%; }
-  .tb-user { margin-left: 0; padding-left: 0; border-left: 0; flex-wrap: wrap; }
+  .brand { width: 100%; flex-wrap: nowrap; align-items: center; gap: 8px; }
+  .tb-page { display: none; }
+  .acts {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .acts .tb-month,
+  .acts .month-pick,
+  .acts .badge,
+  .acts .tb-user { grid-column: 1 / -1; width: 100%; max-width: 100%; }
+  .acts > .btn, .acts > .month-pick {
+    width: 100%; justify-content: center;
+    height: auto; min-height: 40px;
+    white-space: normal; text-align: center; line-height: 1.25; padding: 8px 6px;
+  }
+  .tb-user { margin-left: 0; padding-left: 0; border-left: 0; justify-content: space-between; flex-wrap: wrap; }
+  .tb-user .btn { min-height: 40px; flex: 1; }
+  .tb-user-name { max-width: none; }
   .tabs {
     padding: 0 max(4px, env(safe-area-inset-left));
     scrollbar-width: thin;
   }
   .tab { height: 44px; padding: 0 12px; }
-  .wrap { padding: 10px max(10px, env(safe-area-inset-right)) 28px max(10px, env(safe-area-inset-left)); }
+  .wrap { padding: 8px max(8px, env(safe-area-inset-right)) 28px max(8px, env(safe-area-inset-left)); }
+  .card-b { padding: 10px; }
   .params { grid-template-columns: 1fr 1fr; }
-  .table-wrap { max-height: none; }
-  table.gtable { min-width: 720px; }
-  .row-btns .btn { min-height: 40px; }
+  .table-wrap { max-height: min(70vh, 560px); width: 100%; }
+  .row-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .row-btns .btn { width: 100%; min-height: 40px; white-space: normal; height: auto; padding: 8px 6px; line-height: 1.25; }
+  .card-h { align-items: flex-start; }
+  .card-h .row-btns { width: 100%; }
+  .jl { grid-template-columns: 1fr; }
+  .add-row { display: grid; grid-template-columns: 1fr; }
+  .add-row input, .add-row .btn, #st-new, #nv-car, #nv-name, #nv-brand {
+    width: 100% !important; min-width: 0 !important; max-width: 100%;
+  }
   .toast { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 640px) {
   .tb-line, .tb-sub { display: none; }
-  .tb-page { border-left: 0; padding-left: 0; margin-left: 0; }
   .brand img { width: 30px; height: 30px; }
   .params { grid-template-columns: 1fr; }
   .kpis, .kpis[style] { grid-template-columns: 1fr 1fr !important; }
   .chip-car { flex: 1 1 calc(50% - 6px); min-width: calc(50% - 6px); padding: 10px 6px; }
-  .chips { display: flex; }
   .fld input, .fld select, .fld textarea,
   table.dtable input, table.dtable select,
-  table.gtable input, table.gtable select { font-size: 16px !important; min-height: 40px; }
+  table.gtable input, table.gtable select,
+  .now-row input, .j-search, #j-from, #j-to, #st-new,
+  #nv-car, #nv-name, #nv-brand { font-size: 16px !important; min-height: 42px; }
   table.dtable .out { min-height: 40px; line-height: 40px; }
-  .jl-split, .jl-two { grid-template-columns: 1fr !important; }
-  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
+  .jl-two { grid-template-columns: 1fr !important; }
+  .subtabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
   .subtab { flex: 0 0 auto; min-height: 36px; }
-  #st-new, .j-search, #month-input { min-width: 0 !important; width: 100%; max-width: 100%; }
+  .month-pick, .j-search, #st-new { min-width: 0 !important; width: 100%; max-width: 100%; }
+  .tog { width: 100%; }
+  .tog button { min-height: 40px; padding: 0 8px; white-space: normal; }
+  .now-row { flex-direction: column; }
+  .now-row input, .now-row .btn { width: 100%; flex: 1 1 auto; }
+  #j-range-row { grid-template-columns: 1fr; }
+  #j-range-row input { width: 100%; }
+  .day-pill { width: 36px; height: 36px; }
 }
 
 @media (max-width: 420px) {
   .kpis, .kpis[style] { grid-template-columns: 1fr !important; }
+  .acts, .row-btns { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -330,12 +382,12 @@ body { overflow-x: clip; }
       <div class="tb-title">Boshqaruv</div>
       <div class="tb-sub">Park · hisobot · hujjat · narx</div>
     </div>
-    <a class="btn btn-gold" href="/" title="VHK dashboardga qaytish" style="flex-shrink:0;margin-left:8px;">← VHK</a>
+    <a class="btn btn-gold btn-vhk" href="/" title="VHK dashboardga qaytish">← VHK</a>
   </div>
   <div class="acts">
     <span class="tb-month" id="month-label">—</span>
     <span class="badge badge-bad" id="docs-badge" style="display:none">0 hujjat muddati</span>
-    <input type="month" id="month-input" class="btn btn-sm" style="width:148px;color:#f4f4f2;background:#161c24;">
+    <input type="month" id="month-input" class="btn btn-sm month-pick">
     <button class="btn btn-sm" type="button" id="btn-excel">Excel yuklash</button>
     <button class="btn btn-sm" type="button" id="btn-backup">Zaxira saqlash</button>
     <button class="btn btn-sm" type="button" id="btn-restore">Zaxiradan tiklash</button>
@@ -406,6 +458,7 @@ body { overflow-x: clip; }
         <div id="changes-box" class="note" style="margin-top:8px;"></div>
       </div>
     </div>
+    <p class="swipe-hint">Keng jadval — barmoq bilan chap-o‘ng suring.</p>
     <div class="table-wrap">
       <table class="dtable" id="daily-table">
         <thead>
@@ -451,7 +504,7 @@ body { overflow-x: clip; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="auth.js?v=4"></script>
-<script src="fuel.js?v=8"></script>
-<script src="journal.js?v=3"></script>
+<script src="fuel.js?v=9"></script>
+<script src="journal.js?v=4"></script>
 </body>
 </html>
