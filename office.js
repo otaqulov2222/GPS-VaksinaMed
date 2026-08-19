@@ -63,6 +63,9 @@ const VMOffice = {
             STATE.reviews = d.reviews && typeof d.reviews === 'object' ? d.reviews : {};
             this.reportDates = d.reportDates || [];
             this.telegram = d.telegram || this.telegram;
+            if (d.gps && typeof d.gps === 'object') {
+                this.gpsStatus = d.gps;
+            }
             if (!STATE.pharmacies.length) {
                 STATE.pharmacies = this.seedFromDrivers();
             }

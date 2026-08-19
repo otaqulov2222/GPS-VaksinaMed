@@ -2099,6 +2099,28 @@ function bind() {
   });
 }
 
+async function refreshGpsKmAuto() {
+  const now = new Date();
+  const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  if (STATE.month !== ym) return;
+  try {
+    const gps = await vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(ym)).catch(() => ({ days: {} }));
+    STATE.gpsKm = gps.days || {};
+    let n = 0;
+    fleet().forEach(f => { n += fillGpsPlate(f.car, false); });
+    if (n) {
+      STATE.dirty = true;
+      clearTimeout(STATE.saveTimer);
+      await saveMonth();
+      renderAll();
+      const st = document.getElementById('save-st');
+      if (st) st.textContent = 'GPS avto: ' + n + ' kun yangilandi';
+    }
+  } catch (e) {
+    console.warn('fuel gps auto:', e);
+  }
+}
+
 (async function init() {
   const user = await vmMe();
   vmApplyChrome(user);
@@ -2106,6 +2128,7 @@ function bind() {
   vmStartHeartbeat();
   bind();
   await loadAll();
+  setInterval(() => refreshGpsKmAuto().catch(() => {}), 5 * 60 * 1000);
 })().catch(err => {
   toast(err.message || 'Yuklanmadi');
 });

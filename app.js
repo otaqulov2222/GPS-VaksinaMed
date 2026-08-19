@@ -1467,21 +1467,22 @@ function updateGpsLastSyncUi(iso, running) {
     el.textContent = 'Hali yangilanmagan';
 }
 
-async function pollServerGpsStatus() {
+async function pollServerGpsStatus(forceToday) {
     try {
         const d = await vmApi('/api/office/gps/status');
         updateGpsLastSyncUi(d.lastSync, d.running);
         if (d.running) setGpsUi('sync');
         else if (hasGpsConfig() || d.configured) setGpsUi('on');
-        if (!d.lastSync) return;
-        const ts = new Date(d.lastSync).getTime();
-        if (ts <= (STATE.serverGpsSyncTs || 0)) return;
-        STATE.serverGpsSyncTs = ts;
         const today = dateStr(new Date());
+        const ts = d.lastSync ? new Date(d.lastSync).getTime() : 0;
+        const newer = ts > (STATE.serverGpsSyncTs || 0);
+        if (!forceToday && !newer) return;
+        if (ts) STATE.serverGpsSyncTs = ts;
         if (window.VMOffice) {
             delete STATE.data[today];
             await VMOffice.loadReportIfNeeded(today);
-            if (STATE.currentDate === today) {
+            if (STATE.currentDate === today || forceToday) {
+                STATE.currentDate = STATE.currentDate || today;
                 renderCalendar();
                 renderDriverTabs();
                 refreshUI();
@@ -2192,16 +2193,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     setGpsUi(hasGpsConfig() ? 'on' : 'off');
     refreshDayKm(STATE.currentDate);
     
-    // ── Avtomatik GPS (saqlangan sozlamada kun davomida yangilanadi) ──
-    setTimeout(() => {
+    // ── Avtomatik GPS (server + brauzer, kun davomida) ───────────────
+    setTimeout(async () => {
         const todayStr = dateStr(new Date());
-        setGpsUi(hasGpsConfig() ? 'on' : 'off');
-        pollServerGpsStatus();
-        setInterval(pollServerGpsStatus, 2 * 60 * 1000);
+        let serverGps = false;
+        try {
+            const st = await vmApi('/api/office/gps/status');
+            serverGps = !!st.configured;
+            updateGpsLastSyncUi(st.lastSync, st.running);
+            if (serverGps || hasGpsConfig()) setGpsUi('on');
+        } catch (e) {}
+        await pollServerGpsStatus(true);
+        setInterval(() => pollServerGpsStatus(false), 90 * 1000);
         if (hasGpsConfig()) {
             const silent = STATE.history.includes(todayStr);
             syncFromGPS(todayStr, STATE.gpsConfig, { silent, skipDigest: silent });
             startGpsAutoSync();
+        } else if (serverGps) {
+            showToast('Server GPS avtomatik yangilayapti — brauzer yopiq bo\'lsa ham ishlaydi', 'info');
         }
     }, 1500);
 

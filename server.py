@@ -1469,12 +1469,15 @@ class OfficeStore:
                 }
             )
         drv = rec.get("driver") if isinstance(rec.get("driver"), dict) else {}
+        rep = self.get_report(date)
+        updated_at = str((rep or {}).get("savedAt") or "")
         return {
             "date": date,
             "car": key or plate,
             "name": drv.get("fullName") or drv.get("name") or "",
             "routes": drv.get("routes") or "",
             "hasGps": bool(rec),
+            "updatedAt": updated_at,
             "stats": {
                 "km": as_num(stats.get("probeg")),
                 "maxSpeed": as_num(stats.get("maxSpeed")),
@@ -1774,6 +1777,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "reviews": OFFICE.all_reviews(),
                     "reportDates": OFFICE.report_dates(),
                     "telegram": OFFICE.public_telegram(),
+                    "gps": OFFICE.gps_status_public(),
                     "persist": STORE.persist_info(),
                 }
             )
@@ -2097,6 +2101,18 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 return
             pub = OFFICE.save_gps_config(body, sess.get("username"))
+
+            def run_sync():
+                if not _gps_sync_lock.acquire(blocking=False):
+                    return
+                try:
+                    import gps_sync
+
+                    gps_sync.sync_today(OFFICE, DIRECTORY, saved_by=sess.get("username"))
+                finally:
+                    _gps_sync_lock.release()
+
+            threading.Thread(target=run_sync, daemon=True).start()
             self.send_json({"ok": True, **pub})
             return
 
@@ -2302,26 +2318,49 @@ _gps_worker_started = False
 _gps_sync_lock = threading.Lock()
 
 
+def seed_gps_from_env(office):
+    token = os.environ.get("GPS_TOKEN", "").strip()
+    user = os.environ.get("GPS_USER", "").strip()
+    password = os.environ.get("GPS_PASSWORD", "").strip()
+    host = os.environ.get("GPS_HOST", "http://bms1.gpsavto.uz").strip()
+    if not token and not user:
+        return
+    office.save_gps_config(
+        {"host": host or "http://bms1.gpsavto.uz", "token": token, "user": user, "password": password},
+        "env",
+    )
+
+
 def start_gps_worker(office, base_dir):
     global _gps_worker_started
     if _gps_worker_started:
         return
     _gps_worker_started = True
 
+    def run_sync_once():
+        if not office.gps_config_internal().get("configured"):
+            return
+        if not _gps_sync_lock.acquire(blocking=False):
+            return
+        try:
+            import gps_sync
+
+            gps_sync.sync_today(office, base_dir)
+        except Exception as e:
+            print("[gps-sync]", e)
+        finally:
+            _gps_sync_lock.release()
+
+    threading.Thread(target=run_sync_once, daemon=True).start()
+
     def loop():
         while True:
+            time.sleep(max(60, GPS_SYNC_INTERVAL))
             try:
                 if office.gps_config_internal().get("configured"):
-                    if _gps_sync_lock.acquire(blocking=False):
-                        try:
-                            import gps_sync
-
-                            gps_sync.sync_today(office, base_dir)
-                        finally:
-                            _gps_sync_lock.release()
+                    run_sync_once()
             except Exception as e:
-                print("[gps-sync]", e)
-            time.sleep(max(60, GPS_SYNC_INTERVAL))
+                print("[gps-sync loop]", e)
 
     threading.Thread(target=loop, daemon=True, name="gps-sync").start()
 
@@ -2339,6 +2378,7 @@ def main():
     persist = make_persist(args.dir)
     STORE = AuthStore(persist)
     OFFICE = OfficeStore(persist, os.path.join(args.dir, "office-seed.json"))
+    seed_gps_from_env(OFFICE)
     start_gps_worker(OFFICE, args.dir)
 
     seed_note = ""

@@ -164,12 +164,16 @@ async function loadDay() {
   const d = await vmApi('/api/driver/day?' + q.toString());
   paint(d.day || {});
   const upd = document.getElementById('day-updated');
-  if (upd) upd.textContent = 'Yangilandi: ' + new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+  if (upd) {
+    let txt = 'Yangilandi: ' + new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+    if (day.updatedAt) txt += ' · GPS: ' + day.updatedAt.slice(11, 16);
+    upd.textContent = txt;
+  }
 }
 
 function startDayAutoRefresh() {
   if (dayTimer) clearInterval(dayTimer);
-  dayTimer = setInterval(() => loadDay().catch(() => {}), 3 * 60 * 1000);
+  dayTimer = setInterval(() => loadDay().catch(() => {}), 2 * 60 * 1000);
 }
 
 function paint(day) {
