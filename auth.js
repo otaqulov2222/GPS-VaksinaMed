@@ -26,16 +26,33 @@ async function vmLogout() {
     location.replace('/login.html');
 }
 
+function vmNormLabel(s) {
+    return String(s || '').toLowerCase().replace(/[\s._-]+/g, '');
+}
+
+function vmSameLabel(a, b) {
+    const x = vmNormLabel(a);
+    const y = vmNormLabel(b);
+    return !!x && x === y;
+}
+
 function vmApplyChrome(user) {
     if (!user) return;
     const name = document.getElementById('tb-user-name');
     const role = document.getElementById('tb-user-role');
     const panel = document.getElementById('btn-admin-panel');
-    if (name) name.textContent = user.username || '—';
+    if (name) name.textContent = user.username || user.name || '—';
     if (role) {
-        role.hidden = false;
-        role.textContent = user.role === 'admin_pro' ? 'Admin Pro' : 'Admin';
-        role.className = 'tb-role tb-role-' + (user.role === 'admin_pro' ? 'pro' : 'admin');
+        const roleLabel = user.role === 'admin_pro' ? 'Admin Pro' : '';
+        const shown = name ? name.textContent : (user.username || '');
+        if (roleLabel && !vmSameLabel(shown, roleLabel) && !vmSameLabel(shown, 'admin')) {
+            role.hidden = false;
+            role.textContent = roleLabel;
+            role.className = 'tb-role tb-role-pro';
+        } else {
+            role.hidden = true;
+            role.textContent = '';
+        }
     }
     if (panel) {
         const isPro = user.role === 'admin_pro';

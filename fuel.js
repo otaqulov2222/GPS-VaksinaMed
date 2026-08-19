@@ -444,7 +444,10 @@ async function changeMonth(ym) {
 }
 
 function setMonthLabel() {
-  document.getElementById('month-label').textContent = monthTitle(STATE.month);
+  const el = document.getElementById('month-label');
+  if (el) el.textContent = monthTitle(STATE.month);
+  const mi = document.getElementById('month-input');
+  if (mi) mi.title = monthTitle(STATE.month);
 }
 
 function flushFormToState() {
