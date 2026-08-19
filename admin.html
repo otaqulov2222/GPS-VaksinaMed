@@ -439,7 +439,8 @@ body { overflow-x: clip; }
   </div>
 </div>
 
-<script src="auth.js?v=4"></script>
+<script src="fleet-data.js?v=1"></script>
+<script src="auth.js?v=5"></script>
 <script>
 function show(id, text, ok) {
   const el = document.getElementById(id);
@@ -629,15 +630,7 @@ document.getElementById('btn-pw').addEventListener('click', async () => {
 document.getElementById('btn-reload').addEventListener('click', () => loadAll());
 document.getElementById('btn-out').addEventListener('click', () => vmLogout());
 
-const OFFICE_CARS = [
-  ["01 269 KMA","Хасан"],["01 949 AKA","Дилшод"],["01 302 DNA","Йигитали"],
-  ["01 255 HMA","Мухриддин"],["01 205 HMA","Аваз"],["01 043 KMA","Жавохир"],
-  ["01 931 PJA","Тимур"],["01 083 XJA","Зухриддин"],["01 382 NMA","Умид"],
-  ["01 282 BMA","Боймурод"],["01 870 SEA","Сардор Х."],["01 668 UKA","Жасур"],
-  ["01 887 UKA","Комил"],["01 449 UKA","Санжарбек"],["01 646 UKA","Хасан А."],
-  ["01 844 FKA","Гулом"],["01 699 UKA","Сардор Т."],["01 592 YNA","Нурбек"],
-  ["01 849 SNA","Козим"],["01 309 YNA","Акмал"]
-];
+const OFFICE_CARS = (window.DRIVERS || []).map(d => [d.car, d.shortName]);
 let PHARMS = [];
 
 function carLabel(car) {

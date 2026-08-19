@@ -3,44 +3,8 @@
    VaksinaMed GPS Monitor — app.js (To'liq versiya)
    ========================================================= */
 
-// ── 1. HAYDOVCHILAR MA'LUMOTLAR BAZASI ─────────────────────
-const DRIVERS = [
-    { car:"01 269 KMA", fullName:"Хўжамов Хасан",         shortName:"Хасан",      color:"#3498db",
-      routes:"Чиланзор, Учтепа",
-      pharmacies:"Ширин,Алгоритм,Алгоритм-Гулистон,Катта-қани,Андалус,Чилонзор-19,Оқтепа,Новза,Чилонзор Торговий,Гор Больница-16,Ал Хоразмий,Парламент" },
-    { car:"01 949 AKA", fullName:"Ибрагимов Дилшод",      shortName:"Дилшод",     color:"#e67e22",
-      routes:"Мирабад, Юнусобод",
-      pharmacies:"Саракулка,Алфраганус,Баку,Узбум,Фуркат боги,Госпитальний,Ц-1,Полевой,Кумарик,Аския,Бобур,Кушбеги" },
-    { car:"01 302 DNA", fullName:"Абдумаликов Йигитали",  shortName:"Йигитали",   color:"#34495e",
-      routes:"Юнусобод, Алмазар",
-      pharmacies:"16-Йиллик,Ахмад Дониш,Кара Камыш,Кара Камыш Тансикбоев,Мега Планет,Чинобод,Шахристанский,Юнусабад-15,Юнусабад-18,Юнусабад-4,Юнусабад-7,Юнусобод Петушок,Юнусобод Хуросон" },
-    { car:"01 255 HMA", fullName:"Мустафақулов Мухриддин", shortName:"Мухриддин",  color:"#e74c3c",
-      routes:"Сергели, Янгихаёт",
-      pharmacies:"Серили-1,Дўстлик-1,Спутник-5,9-худуд,Янги дархон,Сергили-7,Элет маркет,Сергили-7 бозорчаси,Сергели-8,Спутник-7,Сергели-8 корзинка,Серили-4" },
-    { car:"01 205 HMA", fullName:"Туробов Аваз",           shortName:"Аваз",       color:"#27ae60",
-      routes:"М.Улугбек, Яккасарой",
-      pharmacies:"Учхоз,Учхоз макро,Кибрай фарход мадад,Поселка,Салар,М.Улугбек Налоговый,Ит Парк,Дархон,Кардиология,Алайский Ардус,Паркент" },
-    { car:"01 043 KMA", fullName:"Саидов Жавохир",         shortName:"Жавохир",    color:"#9b59b6",
-      routes:"Яшнабад, Янгихаёт",
-      pharmacies:"Панельный,Авиясозлар-2,Кадешева бозори,Тапович,Антей,Тузел,Лисунова,Дубовий,Циалковиский,40-Лет,Карзинка лисунова,Тасселмаш" },
-    { car:"01 931 PJA", fullName:"Нуралиев Тимур",         shortName:"Тимур",      color:"#16a085",
-      routes:"Шайхантахур, Учтепа",
-      pharmacies:"Гор-1,Гор-2,Фарм люкс,Беш қайроғоч,Летературний,Тош-1,Тош-2,Белтепа,Ибнсино,Назарбек,Тарнов,Урикзор" },
-    { car:"01 083 XJA", fullName:"Қозоқов Зухриддин",     shortName:"Зухриддин",  color:"#e67e22", routes:"—", pharmacies:"" },
-    { car:"01 382 NMA", fullName:"Наханбоев Умид",         shortName:"Умид",       color:"#1abc9c", routes:"—", pharmacies:"" },
-    { car:"01 282 BMA", fullName:"Ахтамов Боймурод",       shortName:"Боймурод",   color:"#d35400", routes:"—", pharmacies:"" },
-    { car:"01 870 SEA", fullName:"Хомидов Сардор",         shortName:"Сардор Х.",  color:"#8e44ad", routes:"—", pharmacies:"" },
-    { car:"01 668 UKA", fullName:"Маматқулов Жасур",       shortName:"Жасур",      color:"#2980b9", routes:"—", pharmacies:"" },
-    { car:"01 887 UKA", fullName:"Ахмадов Комил",          shortName:"Комил",      color:"#c0392b", routes:"—", pharmacies:"" },
-    { car:"01 449 UKA", fullName:"Абдурахмонов Санжарбек", shortName:"Санжарбек",  color:"#7f8c8d", routes:"—", pharmacies:"" },
-    { car:"01 646 UKA", fullName:"Абдусаломов Хасан",      shortName:"Хасан А.",   color:"#95a5a6", routes:"—", pharmacies:"" },
-    { car:"01 844 FKA", fullName:"Норқулов Гулом",         shortName:"Гулом",      color:"#16a085", routes:"—", fuelType:"diesel", pharmacies:"" },
-    { car:"01 699 UKA", fullName:"Турдиев Сардор",         shortName:"Сардор Т.",  color:"#f39c12", routes:"—", pharmacies:"" },
-    { car:"01 592 YNA", fullName:"Турсунқулов Нурбек",     shortName:"Нурбек",     color:"#2c3e50", routes:"—", pharmacies:"" },
-    { car:"01 849 SNA", fullName:"Абдурахимов Козим",      shortName:"Козим",      color:"#27ae60", routes:"—", pharmacies:"" },
-    { car:"01 309 YNA", fullName:"Абдусатторов Акмал",     shortName:"Акмал",      color:"#e84393", routes:"—", pharmacies:"" }
-];
-window.DRIVERS = DRIVERS;
+// Haydovchilar: fleet-data.js (window.DRIVERS)
+const DRIVERS = window.DRIVERS || [];
 
 // ── 2. HOLAT VA SAQLASH ─────────────────────────────────────
 const STATE = {
@@ -1044,6 +1008,27 @@ function refreshUI() {
 
         refreshMap(null);
     }
+    renderSidebarStats();
+}
+
+function renderSidebarStats() {
+    const card = document.getElementById('sidebar-stats-card');
+    const el = document.getElementById('sidebar-stats');
+    if (!card || !el) return;
+    const dateVal = STATE.currentDate;
+    if (!dateVal || !DRIVERS.length) {
+        card.style.display = 'none';
+        return;
+    }
+    const day = STATE.data[dateVal] || {};
+    const loaded = Object.keys(day).length;
+    const totalKm = Object.values(day).reduce((s, r) => s + ((r.stats && r.stats.probeg) || 0), 0);
+    card.style.display = '';
+    el.innerHTML = `
+        <div><b>${loaded}</b> / ${DRIVERS.length} mashina yuklangan</div>
+        <div>Jami km: <b>${typeof fmtKm === 'function' ? fmtKm(totalKm, 'km') : totalKm.toFixed(2)}</b></div>
+        <div>Sana: ${dateVal}</div>
+        <div>Saqlangan kunlar: ${STATE.history.length}</div>`;
 }
 
 // ── 9.1. BANNER ─────────────────────────────────────────────
@@ -1724,6 +1709,74 @@ function pdfTable(doc, dateLabel, opts) {
     return y;
 }
 
+async function syncReportsToServer(dates) {
+    const list = dates || STATE.history || Object.keys(STATE.data);
+    let ok = 0, fail = 0;
+    for (const dateVal of list) {
+        const cars = STATE.data[dateVal];
+        if (!cars || !Object.keys(cars).length) continue;
+        try {
+            await vmApi('/api/office/report', {
+                method: 'POST',
+                body: JSON.stringify({ date: dateVal, cars })
+            });
+            ok++;
+        } catch (e) {
+            fail++;
+            console.warn('server sync', dateVal, e);
+        }
+    }
+    return { ok, fail };
+}
+
+function exportDayExcel() {
+    const dateVal = STATE.currentDate;
+    const dayData = dateVal && STATE.data[dateVal];
+    if (!dayData || !Object.keys(dayData).length) {
+        showToast('Avval GPS yoki Excel orqali kun ma\'lumotini yuklang', 'warn');
+        return;
+    }
+    if (typeof XLSX === 'undefined') {
+        showToast('Excel kutubxonasi yuklanmadi', 'error');
+        return;
+    }
+    const wb = XLSX.utils.book_new();
+    const summary = [['Haydovchi', 'Raqam', 'Km', 'Max tezlik', 'Ball', 'Dorixona', 'Muammo', 'Ish vaqti']];
+    const entries = collectDayEntries(dayData);
+    entries.forEach(({ drv, data }) => {
+        const a = data.analysis || {};
+        const sc = a.score || {};
+        const st = data.stats || {};
+        summary.push([
+            drv.shortName || drv.fullName,
+            drv.car,
+            st.probeg || 0,
+            st.maxSpeed || 0,
+            sc.final != null ? sc.final : '',
+            `${a.ownVisited || 0}/${a.totalOwn || 0}`,
+            a.problemStops || 0,
+            st.motoChas || ''
+        ]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'Jamlanma');
+    entries.forEach(({ drv, data }, idx) => {
+        const rows = [['Vaqt', 'Joy', 'Davomiylik', 'Turi', 'Muammo']];
+        (data.stops || []).forEach(st => {
+            rows.push([
+                st.inTime || '',
+                st.place || '',
+                st.duration || '',
+                st.matchType || '',
+                st.isProblem ? 'ha' : ''
+            ]);
+        });
+        let sheetName = String(drv.car || ('m' + idx)).replace(/\s+/g, '_').slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName);
+    });
+    XLSX.writeFile(wb, 'vhk_' + dateVal + '.xlsx');
+    showToast('Excel yuklab olindi', 'success');
+}
+
 async function downloadPdfReport() {
     const dateVal = STATE.currentDate;
     const dayData = dateVal && STATE.data[dateVal];
@@ -2043,24 +2096,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     setGpsUi(hasGpsConfig() ? 'on' : 'off');
     refreshDayKm(STATE.currentDate);
     
-    // ── Avtomatik GPS tortish (Auto-sync) ─────────────────
+    // ── Avtomatik GPS (faqat saqlangan sozlamada) ─────────
     setTimeout(() => {
         const todayStr = dateStr(new Date());
-        
-        // Agar birinchi marta kirayotgan bo'lsa yoki token yo'q bo'lsa, default config o'rnatamiz
-        if (!STATE.gpsConfig || !STATE.gpsConfig.token || STATE.gpsConfig.token.trim() === '') {
-            STATE.gpsConfig = {
-                host: 'http://bms1.gpsavto.uz',
-                user: 'vaksina1',
-                password: 'vaksina1@A',
-                token: '386b804c73cc4f06a54697cf7abbe41bEEF78FA3834855C59341507D5BBFED0355073C58'
-            };
-            saveAll();
-        }
         setGpsUi(hasGpsConfig() ? 'on' : 'off');
-
         if (!STATE.history.includes(todayStr) && hasGpsConfig()) {
-            showToast('🔄 Bugungi kun ma\'lumotlari avtomatik yuklanmoqda...', 'info');
+            showToast('Bugungi kun ma\'lumotlari avtomatik yuklanmoqda...', 'info');
             syncFromGPS(todayStr, STATE.gpsConfig);
         }
     }, 1500);
@@ -2085,24 +2126,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Excel tugmalari ───────────────────────────────────
     document.getElementById('btn-excel-upload')?.addEventListener('click',   () => fileInput?.click());
     document.getElementById('btn-excel-upload-2')?.addEventListener('click', () => fileInput?.click());
+    document.getElementById('btn-excel-export')?.addEventListener('click', () => exportDayExcel());
 
     // ── GPS modal ─────────────────────────────────────────
-    const openGpsModal = (forceOpen = false) => {
+    const openGpsModal = () => {
         const host = document.getElementById('gps-host');
         const user = document.getElementById('gps-user');
         const tok  = document.getElementById('gps-token');
         const dt   = document.getElementById('gps-date');
         const pass = document.getElementById('gps-password');
-        
-        if (!STATE.gpsConfig || !STATE.gpsConfig.token || STATE.gpsConfig.token.trim() === '') {
-            STATE.gpsConfig = { host: 'http://bms1.gpsavto.uz', user: 'vaksina1', password: 'vaksina1@A', token: '386b804c73cc4f06a54697cf7abbe41bEEF78FA3834855C59341507D5BBFED0355073C58' };
-            saveAll();
-        }
-        
-        if (host) host.value = STATE.gpsConfig.host || 'http://bms1.gpsavto.uz';
-        if (user) user.value = STATE.gpsConfig.user || 'vaksina1';
-        if (tok)  tok.value  = STATE.gpsConfig.token || '';
-        if (pass) pass.value = STATE.gpsConfig.password || 'vaksina1@A';
+        const cfg = STATE.gpsConfig || {};
+
+        if (host) host.value = cfg.host || 'http://bms1.gpsavto.uz';
+        if (user) user.value = cfg.user || '';
+        if (tok)  tok.value  = cfg.token || '';
+        if (pass) pass.value = cfg.password || '';
         
         const todayStr = dateStr(new Date());
         if (dt) dt.value = STATE.currentDate || todayStr;
@@ -2183,7 +2221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Export JSON ───────────────────────────────────────
     document.getElementById('btn-export-json')?.addEventListener('click', () => {
-        const payload = JSON.stringify({ data: STATE.data, history: STATE.history, fuelNorms: STATE.fuelNorms }, null, 2);
+        const payload = JSON.stringify({ data: STATE.data, history: STATE.history, fuelNorms: STATE.fuelNorms, gpsConfig: STATE.gpsConfig }, null, 2);
         const blob = new Blob([payload], { type: 'application/json' });
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement('a');
@@ -2199,19 +2237,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     importInput?.addEventListener('change', e => {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
-        reader.onload = ev => {
+        reader.onload = async ev => {
             try {
                 const p = JSON.parse(ev.target.result);
                 if (p.data || p.driverData) {
                     const d = p.data || p.driverData || {};
                     Object.assign(STATE.data, d);
-                    (p.history || Object.keys(d)).forEach(dt => {
+                    const dates = p.history || Object.keys(d);
+                    dates.forEach(dt => {
                         if (!STATE.history.includes(dt)) STATE.history.push(dt);
                     });
-                    saveAll(); renderCalendar(); renderDriverTabs(); refreshUI();
-                    showToast(`✅ Zaxiradan ${(p.history||[]).length} kun yuklandi!`, 'success');
-                } else { showToast('❌ Fayl formati noto\'g\'ri!', 'error'); }
-            } catch(err) { showToast('❌ JSON o\'qib bo\'lmadi: ' + err.message, 'error'); }
+                    if (p.fuelNorms) STATE.fuelNorms = p.fuelNorms;
+                    if (p.gpsConfig) STATE.gpsConfig = p.gpsConfig;
+                    saveAll();
+                    renderCalendar();
+                    renderDriverTabs();
+                    refreshUI();
+                    showToast('Zaxira yuklandi, serverga sinxronlanmoqda...', 'info');
+                    const sync = await syncReportsToServer(dates);
+                    showToast(`Zaxira: ${dates.length} kun · server ${sync.ok} ta`, sync.fail ? 'warn' : 'success');
+                } else { showToast('Fayl formati noto\'g\'ri!', 'error'); }
+            } catch(err) { showToast('JSON o\'qib bo\'lmadi: ' + err.message, 'error'); }
         };
         reader.readAsText(file);
         e.target.value = '';

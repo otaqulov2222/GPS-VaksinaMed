@@ -32,7 +32,11 @@ function vmApplyChrome(user) {
     const role = document.getElementById('tb-user-role');
     const panel = document.getElementById('btn-admin-panel');
     if (name) name.textContent = user.username || '—';
-    if (role) role.style.display = 'none';
+    if (role) {
+        role.hidden = false;
+        role.textContent = user.role === 'admin_pro' ? 'Admin Pro' : 'Admin';
+        role.className = 'tb-role tb-role-' + (user.role === 'admin_pro' ? 'pro' : 'admin');
+    }
     if (panel) {
         const isPro = user.role === 'admin_pro';
         panel.style.display = isPro ? 'inline-flex' : 'none';

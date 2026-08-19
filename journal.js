@@ -330,6 +330,7 @@ function renderJournal() {
             </div>
             <div class="row-btns" style="margin:0;">
               <button type="button" class="btn btn-ink btn-sm" id="j-csv">CSV</button>
+              <button type="button" class="btn btn-ink btn-sm" id="j-xlsx">Excel</button>
               <button type="button" class="btn btn-ink btn-sm" onclick="window.print()">PDF</button>
             </div>
           </div>
@@ -433,7 +434,14 @@ function renderJournal() {
   const cancel = document.getElementById('j-cancel');
   if (cancel) cancel.onclick = () => { J.editId = ''; renderJournal(); };
   const q = document.getElementById('j-q');
-  if (q) q.onchange = () => { J.q = q.value; renderJournal(); };
+  if (q) {
+    let qTimer;
+    q.oninput = () => {
+      clearTimeout(qTimer);
+      qTimer = setTimeout(() => { J.q = q.value; renderJournal(); }, 250);
+    };
+    q.onchange = () => { J.q = q.value; renderJournal(); };
+  }
   const jf = document.getElementById('j-from');
   const jt = document.getElementById('j-to');
   if (jf) jf.onchange = () => { J.from = jf.value; renderJournal(); };
@@ -449,7 +457,21 @@ function renderJournal() {
   });
   const csv = document.getElementById('j-csv');
   if (csv) csv.onclick = exportJournalCsv;
+  const xlsx = document.getElementById('j-xlsx');
+  if (xlsx) xlsx.onclick = exportJournalXlsx;
   onCarChange();
+}
+
+function exportJournalXlsx() {
+  if (typeof XLSX === 'undefined') { toast('Excel kutubxonasi yuklanmadi'); return; }
+  const rows = [['Turi', 'Kategoriya', 'Haydovchi', 'Mashina', 'Dorixona', 'Sabab', 'Daraja', 'Boshlanish', 'Tugash', 'Izoh']];
+  filtered().forEach(it => {
+    rows.push([it.kind, it.category, it.driver, it.car, it.pharmacy, it.reason, it.level, it.start, it.end, it.note]);
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Jurnal');
+  XLSX.writeFile(wb, 'jurnal-' + (STATE.month || 'all') + '.xlsx');
+  toast('Excel yuklab olindi');
 }
 
 function exportJournalCsv() {

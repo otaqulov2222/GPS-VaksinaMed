@@ -15,31 +15,7 @@ const DOC_KEYS = [
   { k: 'cylinder', t: 'Gaz ballon sinovi' }
 ];
 
-const DEFAULT_FLEET = [
-  { car: '01 269 KMA', name: 'Хўжамов Хасан', short: 'Хасан' },
-  { car: '01 949 AKA', name: 'Ибрагимов Дилшод', short: 'Дилшод' },
-  { car: '01 302 DNA', name: 'Абдумаликов Йигитали', short: 'Йигитали' },
-  { car: '01 255 HMA', name: 'Мустафақулов Мухриддин', short: 'Мухриддин' },
-  { car: '01 205 HMA', name: 'Туробов Аваз', short: 'Аваз' },
-  { car: '01 043 KMA', name: 'Саидов Жавохир', short: 'Жавохир' },
-  { car: '01 931 PJA', name: 'Нуралиев Тимур', short: 'Тимур' },
-  { car: '01 083 XJA', name: 'Қозоқов Зухриддин', short: 'Зухриддин' },
-  { car: '01 382 NMA', name: 'Наханбоев Умид', short: 'Умид' },
-  { car: '01 282 BMA', name: 'Ахтамов Боймурод', short: 'Боймурод' },
-  { car: '01 870 SEA', name: 'Хомидов Сардор', short: 'Сардор Х.' },
-  { car: '01 668 UKA', name: 'Маматқулов Жасур', short: 'Жасур' },
-  { car: '01 887 UKA', name: 'Ахмадов Комил', short: 'Комил' },
-  { car: '01 449 UKA', name: 'Абдурахмонов Санжарбек', short: 'Санжарбек' },
-  { car: '01 646 UKA', name: 'Абдусаломов Хасан', short: 'Хасан А.' },
-  { car: '01 844 FKA', name: 'Норқулов Гулом', short: 'Гулом', fuelType: 'dizel' },
-  { car: '01 699 UKA', name: 'Турдиев Сардор', short: 'Сардор Т.' },
-  { car: '01 592 YNA', name: 'Турсунқулов Нурбек', short: 'Нурбек' },
-  { car: '01 849 SNA', name: 'Абдурахимов Козим', short: 'Козим' },
-  { car: '01 309 YNA', name: 'Абдусатторов Акмал', short: 'Акмал' },
-  { car: '01 331 MLA', name: 'Ахтамов', short: 'Ахтамов' },
-  { car: '01 406 GNA', name: '01 406 GNA', short: '406 GNA' },
-  { car: '01 567 SGA', name: '01 567 SGA', short: '567 SGA' }
-];
+const DEFAULT_FLEET = (typeof FLEET_BASE !== 'undefined' && FLEET_BASE.length) ? FLEET_BASE : [];
 
 const STATE = {
   tab: 'daily',

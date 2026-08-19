@@ -25,7 +25,8 @@ DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 COOKIE = "vm_sid"
 SESSION_TTL = 12 * 3600
 SEED_USER = "adminpro"
-SEED_PASS = "AdminPro@2026"
+SEED_PASS = os.environ.get("VM_SEED_PASS", "AdminPro@2026")
+SESSIONS_KEY = "auth:sessions"
 
 PUBLIC_PATHS = {"/login.html", "/favicon.ico"}
 PUBLIC_PREFIX = ("/fonts/", "/logo/")
@@ -235,7 +236,29 @@ class AuthStore:
         self.lock = threading.Lock()
         self.sessions = {}
         self.seeded = False
+        self._load_sessions()
         self._ensure()
+
+    def _load_sessions(self):
+        raw = self.persist.get(SESSIONS_KEY, {})
+        if not isinstance(raw, dict):
+            raw = {}
+        t = now_ts()
+        cleaned = {}
+        for sid, sess in raw.items():
+            if not isinstance(sess, dict):
+                continue
+            if t - int(sess.get("last_seen") or 0) <= SESSION_TTL:
+                cleaned[sid] = sess
+        self.sessions = cleaned
+        if len(cleaned) != len(raw):
+            self._save_sessions()
+
+    def _save_sessions(self):
+        try:
+            self.persist.put(SESSIONS_KEY, self.sessions)
+        except Exception as e:
+            print("[WARN] Sessiya saqlanmadi:", e)
 
     def persist_info(self):
         return {"kind": self.persist.kind, "durable": bool(self.persist.durable)}
@@ -336,6 +359,7 @@ class AuthStore:
                 "last_seen": now_ts(),
             }
             self.sessions[sid] = sess
+            self._save_sessions()
             user["last_login"] = iso_now()
             self._audit(data, "login_ok", user["username"], ip)
             self._write(data)
@@ -344,6 +368,7 @@ class AuthStore:
     def logout(self, sid):
         with self.lock:
             self.sessions.pop(sid, None)
+            self._save_sessions()
 
     def get_session(self, sid):
         if not sid:
@@ -354,12 +379,15 @@ class AuthStore:
                 return None
             if now_ts() - sess["last_seen"] > SESSION_TTL:
                 self.sessions.pop(sid, None)
+                self._save_sessions()
                 return None
             sess["last_seen"] = now_ts()
+            self._save_sessions()
             data = self._read()
             user = self.find_user(data, uid=sess["user_id"])
             if not user or not user.get("active", True):
                 self.sessions.pop(sid, None)
+                self._save_sessions()
                 return None
             sess["role"] = user.get("role") or "admin"
             sess["name"] = user.get("name") or user["username"]
@@ -417,6 +445,7 @@ class AuthStore:
                 for sid, s in list(self.sessions.items()):
                     if s["user_id"] == uid:
                         self.sessions.pop(sid, None)
+                self._save_sessions()
             self._audit(data, "user_toggle", actor, f"{user['username']} active={user['active']}")
             self._write(data)
             return self.public_user(user), None
@@ -433,6 +462,7 @@ class AuthStore:
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
                     self.sessions.pop(sid, None)
+            self._save_sessions()
             self._audit(data, "user_del", actor, user["username"])
             self._write(data)
             return True, None
@@ -451,6 +481,7 @@ class AuthStore:
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
                     self.sessions.pop(sid, None)
+            self._save_sessions()
             self._audit(data, "pw_reset", actor, user["username"])
             self._write(data)
             return True, None
@@ -499,6 +530,7 @@ class AuthStore:
             s = self.sessions.pop(sid, None)
             if not s:
                 return None, "Sessiya topilmadi"
+            self._save_sessions()
             data = self._read()
             self._audit(data, "kick", actor, s.get("username"))
             self._write(data)
