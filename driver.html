@@ -73,7 +73,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .tag-bad { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
 .tag-warn { background: #f4ecd8; color: var(--warn); border-color: #e4d4a8; }
 .empty { color: var(--muted); padding: 8px 0; }
-#driver-map { height: 320px; background: #c5ccd6; border: 1px solid var(--line); }
+#driver-map { height: 340px; background: #c5ccd6; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; cursor: pointer; }
+#driver-map.active { cursor: grab; }
+.map-hint { text-align:center; font-size:11px; color:var(--muted); margin-top:4px; }
 .leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #c5ccd6; }
 .leaflet-popup-content-wrapper { background: #0c1016; color: #f4f4f2; border-radius: 0; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
 .leaflet-popup-content { margin: 10px 12px; font-size: 12px; line-height: 1.45; }
@@ -137,6 +139,7 @@ ul.plain li:last-child { border-bottom: 0; }
     <div class="card-h">Xarita — yo‘nalish va to‘xtashlar</div>
     <div class="card-b" style="padding:0">
       <div id="driver-map"></div>
+      <div class="map-hint" id="map-hint">Xaritani boshqarish uchun ustiga bosing</div>
     </div>
   </div>
   <div class="card">
@@ -219,7 +222,18 @@ function initDriverMap() {
   const el = document.getElementById('driver-map');
   if (!el || typeof L === 'undefined') return;
   if (drvMap) { drvMap.invalidateSize(); return; }
-  drvMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([41.3111, 69.2797], 12);
+  drvMap = L.map(el, {
+    zoomControl: true, attributionControl: false,
+    scrollWheelZoom: false, dragging: false, tap: false
+  }).setView([41.3111, 69.2797], 12);
+  drvMap.once('click', function () {
+    drvMap.scrollWheelZoom.enable();
+    drvMap.dragging.enable();
+    if (L.Browser.touch && drvMap.tap) drvMap.tap.enable();
+    el.classList.add('active');
+    const h = document.getElementById('map-hint');
+    if (h) h.style.display = 'none';
+  });
   const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     subdomains: 'abcd', maxZoom: 19
   });
