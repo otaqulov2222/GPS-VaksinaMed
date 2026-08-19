@@ -2046,6 +2046,29 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "dates": OFFICE.driver_month_dates(month, plate)})
             return
 
+        if path == "/api/driver/tasks":
+            sess = self.require_user()
+            if not sess:
+                return
+            all_flag = (qs.get("all") or [None])[0]
+            car_q = (qs.get("car") or [None])[0] or ""
+            if is_driver(sess):
+                car_q = sess.get("car") or ""
+            elif not is_staff(sess):
+                self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
+                return
+            if all_flag and is_staff(sess):
+                items = OFFICE._task_items()
+                items.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
+                self.send_json({"ok": True, "tasks": items[:200]})
+            elif car_q:
+                self.send_json({"ok": True, "tasks": OFFICE.tasks_for(car_q)})
+            else:
+                items = OFFICE._task_items()
+                items.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
+                self.send_json({"ok": True, "tasks": items[:200]})
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_api_post(self, path):

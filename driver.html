@@ -90,6 +90,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 ul.plain { list-style: none; }
 ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
 ul.plain li:last-child { border-bottom: 0; }
+.task-cards { display:flex; flex-direction:column; gap:8px; }
+.task-card { background:var(--card-bg,#1e293b); border:1px solid var(--line); border-radius:8px; padding:10px 14px; }
+.task-text { font-weight:600; }
+.task-meta { margin-top:4px; font-size:12px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; }
 @media (max-width: 800px) {
   .kpis { grid-template-columns: 1fr 1fr; }
   .tb-page { display: none; }
@@ -347,7 +351,12 @@ function paint(day) {
   }
   if (tasks.length) {
     th += '<div style="margin:10px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Admin topshirig‘i</div>';
-    th += '<ul class="plain">' + tasks.map(t => `<li>${esc(t.text)}${t.date ? ' <span class="meta">' + esc(t.date) + '</span>' : ''}</li>`).join('') + '</ul>';
+    th += '<div class="task-cards">' + tasks.map(t => {
+      const byStr = t.by ? `<span class="meta">— ${esc(t.by)}</span>` : '';
+      const dateStr = t.date ? `<span class="meta">${esc(t.date)}</span>` : '';
+      const created = (t.createdAt || '').slice(0, 10);
+      return `<div class="task-card"><span class="task-text">${esc(t.text)}</span><div class="task-meta">${dateStr} ${byStr} ${created ? '<span class="meta">' + esc(created) + '</span>' : ''}</div></div>`;
+    }).join('') + '</div>';
   }
   if (!th) th = '<div class="empty">Hali topshiriq yozilmagan</div>';
   if (missed.length) {

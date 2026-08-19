@@ -366,6 +366,18 @@ body { overflow-x: clip; }
       </div>
 
       <div class="card">
+        <div class="head"><h2>Berilgan vazifalar</h2></div>
+        <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Haydovchi</th><th>Sana</th><th>Matn</th><th>Kim berdi</th><th>Yaratilgan</th><th></th></tr>
+          </thead>
+          <tbody id="tb-tasks"></tbody>
+        </table>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="head"><h2>Kim tizimda</h2></div>
         <div class="table-scroll">
         <table>
@@ -505,8 +517,8 @@ body { overflow-x: clip; }
       <div class="field">
         <label>Yangi parol</label>
         <div class="pw-wrap">
-          <input id="reset-pass" type="password" autocomplete="new-password">
-          <button type="button" class="pw-eye" data-for="reset-pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          <input id="reset-pass" type="text" autocomplete="new-password" style="font-family:var(--mono)">
+          <button type="button" class="btn btn-sm" id="btn-gen-pass" style="margin-left:6px;white-space:nowrap">Tasodifiy</button>
         </div>
       </div>
       <button class="btn btn-gold btn-lg" type="button" id="reset-ok">Saqlash</button>
@@ -599,7 +611,47 @@ async function loadAll() {
     <td>${esc(a.detail || '')}</td>
   </tr>`).join('');
   }
+
+  loadTasks();
 }
+
+async function loadTasks() {
+  try {
+    const d = await vmApi('/api/driver/tasks?all=1');
+    const tasks = d.tasks || [];
+    const fleet = window.DRIVERS || [];
+    const tb = document.getElementById('tb-tasks');
+    if (!tasks.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Hali vazifa yozilmagan</td></tr>';
+      return;
+    }
+    tb.innerHTML = tasks.slice(0, 100).map(t => {
+      const drv = fleet.find(x => x.car === t.car);
+      const name = drv ? drv.shortName : (t.car || '—');
+      const created = (t.createdAt || '').slice(0, 16).replace('T', ' ');
+      return `<tr>
+        <td>${esc(name)}</td>
+        <td class="mono">${esc(t.date || 'har kuni')}</td>
+        <td>${esc(t.text)}</td>
+        <td class="mono">${esc(t.by || '—')}</td>
+        <td class="mono">${esc(created)}</td>
+        <td><button class="btn btn-sm btn-bad" data-task-del="${esc(t.id)}">O'chirish</button></td>
+      </tr>`;
+    }).join('');
+  } catch (e) {}
+}
+
+document.getElementById('tb-tasks').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-task-del]');
+  if (!btn) return;
+  const id = btn.getAttribute('data-task-del');
+  try {
+    await vmApi('/api/driver/tasks', { method: 'POST', body: JSON.stringify({ deleteId: id }) });
+    loadTasks();
+  } catch (err) {
+    alert(err.message);
+  }
+});
 
 function clearAddForm() {
   document.getElementById('n-name').value = '';
@@ -631,6 +683,13 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
   } catch (err) {
     show('msg-users', err.message, false);
   }
+});
+
+document.getElementById('btn-gen-pass').addEventListener('click', () => {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pw = '';
+  for (let i = 0; i < 8; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('reset-pass').value = pw;
 });
 
 document.getElementById('reset-close').addEventListener('click', () => {
@@ -731,6 +790,7 @@ document.getElementById('form-task').addEventListener('submit', async (e) => {
     });
     show('msg-task', 'Topshiriq yozildi. Haydovchi kabinetida ko‘rinadi.', true);
     document.getElementById('t-text').value = '';
+    loadTasks();
   } catch (err) {
     show('msg-task', err.message, false);
   }
