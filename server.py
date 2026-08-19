@@ -814,6 +814,89 @@ class OfficeStore:
             self._save("office:report:" + date, payload)
         return payload, None
 
+    def gps_config_internal(self):
+        with self.lock:
+            data = self._load("office:gps:config", {})
+            if not isinstance(data, dict):
+                data = {}
+            token = str(data.get("token") or "")
+            user = str(data.get("user") or "")
+            host = str(data.get("host") or "http://bms1.gpsavto.uz")
+            return {
+                "configured": bool(host and (token or user)),
+                "host": host,
+                "token": token,
+                "user": user,
+                "password": str(data.get("password") or ""),
+            }
+
+    def gps_config_public(self):
+        cfg = self.gps_config_internal()
+        return {
+            "configured": cfg["configured"],
+            "host": cfg["host"],
+            "user": cfg["user"],
+            "hasToken": bool(cfg.get("token")),
+        }
+
+    def save_gps_config(self, body, saved_by=""):
+        body = body or {}
+        host = str(body.get("host") or "http://bms1.gpsavto.uz").strip()[:120]
+        token = str(body.get("token") or "").strip()[:500]
+        user = str(body.get("user") or "").strip()[:80]
+        password = str(body.get("password") or "").strip()[:120]
+        with self.lock:
+            cur = self._load("office:gps:config", {})
+            if not isinstance(cur, dict):
+                cur = {}
+            if not token and cur.get("token"):
+                token = str(cur.get("token") or "")
+            if not password and cur.get("password"):
+                password = str(cur.get("password") or "")
+            payload = {
+                "host": host,
+                "token": token,
+                "user": user,
+                "password": password,
+                "savedAt": iso_now(),
+                "savedBy": str(saved_by or "")[:40],
+            }
+            self._save("office:gps:config", payload)
+        return self.gps_config_public()
+
+    def gps_status_public(self):
+        with self.lock:
+            st = self._load("office:gps:status", {})
+            if not isinstance(st, dict):
+                st = {}
+        cfg = self.gps_config_internal()
+        return {
+            "configured": cfg["configured"],
+            "lastSync": st.get("lastSync") or "",
+            "running": bool(st.get("running")),
+            "cars": int(st.get("cars") or 0),
+            "error": str(st.get("error") or "")[:200],
+            "autoIntervalSec": int(os.environ.get("GPS_SYNC_INTERVAL", "300")),
+        }
+
+    def set_gps_status(self, running=False, cars=0, error=""):
+        with self.lock:
+            st = self._load("office:gps:status", {})
+            if not isinstance(st, dict):
+                st = {}
+            st["running"] = bool(running)
+            if running:
+                self._save("office:gps:status", st)
+                return
+            if error:
+                st["error"] = str(error)[:200]
+            else:
+                st["error"] = ""
+            if cars:
+                st["cars"] = int(cars)
+            st["lastSync"] = iso_now()
+            self._save("office:gps:status", st)
+
     def settings(self):
         with self.lock:
             data = self._load("office:settings", {})
@@ -1696,6 +1779,20 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             )
             return
 
+        if path == "/api/office/gps/status":
+            sess = self.require_user()
+            if not sess:
+                return
+            self.send_json({"ok": True, **OFFICE.gps_status_public()})
+            return
+
+        if path == "/api/office/gps/config":
+            sess = self.require_staff()
+            if not sess:
+                return
+            self.send_json({"ok": True, **OFFICE.gps_config_public()})
+            return
+
         if path == "/api/office/report":
             sess = self.require_user()
             if not sess:
@@ -1995,6 +2092,31 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "savedAt": payload.get("savedAt")})
             return
 
+        if path == "/api/office/gps/config":
+            sess = self.require_staff()
+            if not sess:
+                return
+            pub = OFFICE.save_gps_config(body, sess.get("username"))
+            self.send_json({"ok": True, **pub})
+            return
+
+        if path == "/api/office/gps/sync":
+            sess = self.require_staff()
+            if not sess:
+                return
+            try:
+                import gps_sync
+
+                result = gps_sync.sync_today(OFFICE, DIRECTORY, body.get("date"), saved_by=sess.get("username"))
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:200]}, 500)
+                return
+            if not result.get("ok"):
+                self.send_json({"ok": False, "error": result.get("error") or "Sync failed"}, 400)
+                return
+            self.send_json({"ok": True, **result, **OFFICE.gps_status_public()})
+            return
+
         if path == "/api/office/telegram":
             sess = self.require_pro()
             if not sess:
@@ -2175,6 +2297,35 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.wfile.write(error_msg)
 
 
+GPS_SYNC_INTERVAL = int(os.environ.get("GPS_SYNC_INTERVAL", "300"))
+_gps_worker_started = False
+_gps_sync_lock = threading.Lock()
+
+
+def start_gps_worker(office, base_dir):
+    global _gps_worker_started
+    if _gps_worker_started:
+        return
+    _gps_worker_started = True
+
+    def loop():
+        while True:
+            try:
+                if office.gps_config_internal().get("configured"):
+                    if _gps_sync_lock.acquire(blocking=False):
+                        try:
+                            import gps_sync
+
+                            gps_sync.sync_today(office, base_dir)
+                        finally:
+                            _gps_sync_lock.release()
+            except Exception as e:
+                print("[gps-sync]", e)
+            time.sleep(max(60, GPS_SYNC_INTERVAL))
+
+    threading.Thread(target=loop, daemon=True, name="gps-sync").start()
+
+
 def main():
     global STORE, OFFICE
     parser = argparse.ArgumentParser(description="VaksinaMed GPS Monitor Server")
@@ -2188,6 +2339,7 @@ def main():
     persist = make_persist(args.dir)
     STORE = AuthStore(persist)
     OFFICE = OfficeStore(persist, os.path.join(args.dir, "office-seed.json"))
+    start_gps_worker(OFFICE, args.dir)
 
     seed_note = ""
     if STORE.seeded:

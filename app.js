@@ -1413,15 +1413,101 @@ function hasGpsConfig() {
     const c = STATE.gpsConfig;
     return !!(c && ((c.token && c.token.trim()) || (c.user && String(c.user).trim())));
 }
-async function syncFromGPS(dateVal, cfg) {
+
+const GPS_AUTO_MS = 5 * 60 * 1000;
+
+function stopGpsAutoSync() {
+    if (STATE.gpsAutoTimer) clearInterval(STATE.gpsAutoTimer);
+    STATE.gpsAutoTimer = null;
+}
+
+function startGpsAutoSync() {
+    stopGpsAutoSync();
+    if (!hasGpsConfig()) return;
+    STATE.gpsAutoTimer = setInterval(() => {
+        if (STATE.gpsSyncBusy) return;
+        const today = dateStr(new Date());
+        syncFromGPS(today, STATE.gpsConfig, { silent: true, skipDigest: true });
+    }, GPS_AUTO_MS);
+}
+
+async function saveGpsConfigToServer(cfg) {
+    if (!cfg) return;
+    try {
+        await vmApi('/api/office/gps/config', {
+            method: 'POST',
+            body: JSON.stringify({
+                host: cfg.host || '',
+                token: cfg.token || '',
+                user: cfg.user || '',
+                password: cfg.password || ''
+            })
+        });
+    } catch (e) {
+        console.warn('gps config server:', e);
+    }
+}
+
+function updateGpsLastSyncUi(iso, running) {
+    const el = document.getElementById('gps-last-sync');
+    if (!el) return;
+    if (running) {
+        el.textContent = 'Hozir yangilanmoqda...';
+        return;
+    }
+    if (iso) {
+        const d = new Date(iso);
+        el.textContent = 'Oxirgi: ' + d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+        return;
+    }
+    if (STATE.gpsLastSync) {
+        el.textContent = 'Oxirgi: ' + new Date(STATE.gpsLastSync).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+        return;
+    }
+    el.textContent = 'Hali yangilanmagan';
+}
+
+async function pollServerGpsStatus() {
+    try {
+        const d = await vmApi('/api/office/gps/status');
+        updateGpsLastSyncUi(d.lastSync, d.running);
+        if (d.running) setGpsUi('sync');
+        else if (hasGpsConfig() || d.configured) setGpsUi('on');
+        if (!d.lastSync) return;
+        const ts = new Date(d.lastSync).getTime();
+        if (ts <= (STATE.serverGpsSyncTs || 0)) return;
+        STATE.serverGpsSyncTs = ts;
+        const today = dateStr(new Date());
+        if (window.VMOffice) {
+            delete STATE.data[today];
+            await VMOffice.loadReportIfNeeded(today);
+            if (STATE.currentDate === today) {
+                renderCalendar();
+                renderDriverTabs();
+                refreshUI();
+            }
+        }
+    } catch (e) {
+        console.warn('gps status:', e);
+    }
+}
+
+async function syncFromGPS(dateVal, cfg, opts) {
+    opts = opts || {};
+    const silent = !!opts.silent;
+    const skipDigest = !!opts.skipDigest;
+    if (STATE.gpsSyncBusy) return;
+    STATE.gpsSyncBusy = true;
+
     const progWrap = document.getElementById('sync-progress');
     const progBar  = document.getElementById('sync-progress-bar');
     const statEl   = document.getElementById('sync-status');
     const detEl    = document.getElementById('sync-details');
 
-    if (progWrap) progWrap.style.display = 'block';
+    if (!silent && progWrap) progWrap.style.display = 'block';
 
     const updateProg = (pct, msg, detail) => {
+        if (silent) return;
         if (progBar) progBar.style.width = pct + '%';
         if (statEl)  statEl.textContent  = msg;
         if (detEl && detail) detEl.innerHTML += `<li>${detail}</li>`;
@@ -1429,7 +1515,7 @@ async function syncFromGPS(dateVal, cfg) {
 
     try {
         if (!window.wialonGPS) {
-            showToast('❌ GPS moduli yuklanmagan (wialon-api.js)', 'error');
+            if (!silent) showToast('❌ GPS moduli yuklanmagan (wialon-api.js)', 'error');
             return;
         }
         updateProg(5, 'GPS serveriga ulanilmoqda...');
@@ -1482,22 +1568,31 @@ async function syncFromGPS(dateVal, cfg) {
         renderCalendar(); renderDriverTabs(); refreshUI();
         if (window.VMOffice) {
             VMOffice.renderFleetBoard();
-            VMOffice.saveReport(dateVal);
-            VMOffice.sendDigest(dateVal);
+            await VMOffice.saveReport(dateVal);
+            if (!skipDigest) VMOffice.sendDigest(dateVal);
         }
 
         if (done > 0) {
-            showToast(`GPS dan ${dateVal} uchun ${done} ta mashina yuklandi`, 'success');
-            document.getElementById('modal-gps').classList.remove('open');
-        } else {
+            STATE.gpsLastSync = Date.now();
+            updateGpsLastSyncUi();
+            await saveGpsConfigToServer(cfg);
+            startGpsAutoSync();
+            if (!silent) {
+                showToast(`GPS dan ${dateVal} uchun ${done} ta mashina yuklandi`, 'success');
+                document.getElementById('modal-gps').classList.remove('open');
+            }
+        } else if (!silent) {
             showToast('GPS ulandi, lekin saqlanadigan ma\'lumot chiqmadi. Tafsilotni modalda ko\'ring.', 'warn');
             document.getElementById('modal-gps').classList.add('open');
         }
 
     } catch(e) {
-        showToast('GPS xatosi: ' + e.message, 'error');
-        if (statEl) statEl.textContent = 'Xato: ' + e.message;
+        if (!silent) showToast('GPS xatosi: ' + e.message, 'error');
+        if (!silent && statEl) statEl.textContent = 'Xato: ' + e.message;
         setGpsUi(hasGpsConfig() ? 'on' : 'off');
+    } finally {
+        STATE.gpsSyncBusy = false;
+        if (!silent) setGpsUi(hasGpsConfig() ? 'on' : 'off');
     }
 }
 
@@ -2097,13 +2192,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     setGpsUi(hasGpsConfig() ? 'on' : 'off');
     refreshDayKm(STATE.currentDate);
     
-    // ── Avtomatik GPS (faqat saqlangan sozlamada) ─────────
+    // ── Avtomatik GPS (saqlangan sozlamada kun davomida yangilanadi) ──
     setTimeout(() => {
         const todayStr = dateStr(new Date());
         setGpsUi(hasGpsConfig() ? 'on' : 'off');
-        if (!STATE.history.includes(todayStr) && hasGpsConfig()) {
-            showToast('Bugungi kun ma\'lumotlari avtomatik yuklanmoqda...', 'info');
-            syncFromGPS(todayStr, STATE.gpsConfig);
+        pollServerGpsStatus();
+        setInterval(pollServerGpsStatus, 2 * 60 * 1000);
+        if (hasGpsConfig()) {
+            const silent = STATE.history.includes(todayStr);
+            syncFromGPS(todayStr, STATE.gpsConfig, { silent, skipDigest: silent });
+            startGpsAutoSync();
         }
     }, 1500);
 
@@ -2190,7 +2288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Saqlab qo'yamiz
         STATE.gpsConfig = { host, user, password: pass, token };
         saveAll();
-        
+        await saveGpsConfigToServer(STATE.gpsConfig);
         await syncFromGPS(date, STATE.gpsConfig);
     });
 

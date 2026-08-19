@@ -899,7 +899,9 @@ input, select, textarea { max-width: 100%; }
       </div>
       <div class="gps-meta">
         <b>HOST</b> bms1.gpsavto.uz<br>
-        <b>PROTO</b> Wialon / xronologiya
+        <b>PROTO</b> Wialon / xronologiya<br>
+        <span style="display:block;margin-top:6px">Avto yangilanish: har 5 daqiqa</span>
+        <span id="gps-last-sync" style="display:block;margin-top:2px">—</span>
       </div>
     </div>
 
@@ -1163,7 +1165,7 @@ input, select, textarea { max-width: 100%; }
 <script src="wialon-api.js?v=11"></script>
 <script src="fleet-data.js?v=1"></script>
 <script src="auth.js?v=8"></script>
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 <script src="office.js?v=6"></script>
 <script>
 document.querySelectorAll('.modal-bg').forEach(m => {

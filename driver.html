@@ -103,6 +103,7 @@ ul.plain li:last-child { border-bottom: 0; }
 <div class="wrap">
   <div class="toolbar">
     <label>Sana <input type="date" id="d-date"></label>
+    <span class="meta" id="day-updated" style="font-size:11px;color:var(--muted)"></span>
     <label id="staff-pick" hidden>Mashina
       <select id="d-car"></select>
     </label>
@@ -153,6 +154,7 @@ function stopKind(st) {
 }
 
 let ME = null;
+let dayTimer = null;
 
 async function loadDay() {
   const date = document.getElementById('d-date').value;
@@ -161,6 +163,13 @@ async function loadDay() {
   if (vmIsStaff(ME) && carSel.value) q.set('car', carSel.value);
   const d = await vmApi('/api/driver/day?' + q.toString());
   paint(d.day || {});
+  const upd = document.getElementById('day-updated');
+  if (upd) upd.textContent = 'Yangilandi: ' + new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+}
+
+function startDayAutoRefresh() {
+  if (dayTimer) clearInterval(dayTimer);
+  dayTimer = setInterval(() => loadDay().catch(() => {}), 3 * 60 * 1000);
 }
 
 function paint(day) {
@@ -192,13 +201,18 @@ function paint(day) {
 
   const tasks = day.tasks || [];
   const ph = day.pharmacies || [];
+  const hasGps = !!day.hasGps;
   let th = '';
   if (day.routes) th += `<div class="row"><span class="nm">Yo‘nalish</span><span class="meta">${esc(day.routes)}</span></div>`;
   if (ph.length) {
     th += '<div style="margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Biriktirilgan dorixonalar</div>';
     th += '<ul class="plain">' + ph.map(n => {
       const miss = missed.some(m => String(m).toLowerCase() === String(n).toLowerCase());
-      return `<li>${esc(n)} ${miss ? '<span class="tag tag-warn">borilmadi</span>' : '<span class="tag tag-ok">reja</span>'}</li>`;
+      let tag;
+      if (!hasGps) tag = '<span class="tag">reja</span>';
+      else if (miss) tag = '<span class="tag tag-warn">borilmadi</span>';
+      else tag = '<span class="tag tag-ok">borildi</span>';
+      return `<li>${esc(n)} ${tag}</li>`;
     }).join('') + '</ul>';
   }
   if (tasks.length) {
@@ -258,6 +272,7 @@ function paint(day) {
     sel.addEventListener('change', () => loadDay().catch(err => alert(err.message)));
   }
   await loadDay();
+  startDayAutoRefresh();
 })().catch(err => {
   document.getElementById('task-box').innerHTML = '<div class="empty">' + esc(err.message) + '</div>';
 });
