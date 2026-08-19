@@ -17,6 +17,10 @@ function vmHaversineM(lat1, lng1, lat2, lng2) {
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
+function plateCompact(p) {
+    return String(p || '').replace(/\s+/g, '').toUpperCase();
+}
+
 function vmStopKey(dateVal, car, st) {
     const t = String((st && st.inTime) || '');
     const p = String((st && st.place) || '').slice(0, 50);
@@ -70,6 +74,16 @@ const VMOffice = {
             if (!STATE.reviews) STATE.reviews = {};
         }
         if (typeof buildPharmIndex === 'function') buildPharmIndex();
+        if (!this._fleetClickBound) {
+            this._fleetClickBound = true;
+            const el = document.getElementById('fleet-board-body');
+            if (el) {
+                el.addEventListener('click', e => {
+                    const tr = e.target.closest('tr[data-car]');
+                    if (tr && typeof selectDriver === 'function') selectDriver(tr.getAttribute('data-car'));
+                });
+            }
+        }
         if (STATE.currentDate) await this.loadReportIfNeeded(STATE.currentDate);
     },
 
@@ -148,9 +162,9 @@ const VMOffice = {
     recForPlate(day, plate) {
         if (!day || !plate) return null;
         if (day[plate]) return day[plate];
-        const compact = String(plate).replace(/\s+/g, '');
+        const compact = plateCompact(plate);
         for (const k of Object.keys(day)) {
-            if (String(k).replace(/\s+/g, '') === compact) return day[k];
+            if (plateCompact(k) === compact) return day[k];
         }
         return null;
     },
@@ -264,19 +278,21 @@ const VMOffice = {
         const day = (dateVal && STATE.data[dateVal]) ? STATE.data[dateVal] : {};
         const drivers = this.driversList();
         const used = new Set();
+        const markUsed = p => { if (p) used.add(plateCompact(p)); };
+        const isUsed = p => used.has(plateCompact(p));
         const rows = drivers.map(drv => {
             const rec = this.recForPlate(day, drv.car);
             if (rec) {
-                used.add(drv.car);
-                Object.keys(day).forEach(k => { if (day[k] === rec) used.add(k); });
+                markUsed(drv.car);
+                Object.keys(day).forEach(k => { if (day[k] === rec) markUsed(k); });
             }
             return this.rowOf(drv, rec);
         });
         Object.keys(day).forEach(car => {
-            if (used.has(car)) return;
+            if (isUsed(car)) return;
             const rec = day[car];
             const drv = (rec && rec.driver) || { fullName: car, shortName: car, car, routes: '—' };
-            used.add(car);
+            markUsed(car);
             rows.push(this.rowOf(drv, rec));
         });
         return rows.sort((a, b) => {
@@ -323,11 +339,6 @@ const VMOffice = {
                 <td class="font-mono">${empty ? '—' : (typeof fmtSpd === 'function' ? fmtSpd(r.speed) : (r.speed || '—'))}</td>
             </tr>`;
         }).join('');
-        el.querySelectorAll('tr[data-car]').forEach(tr => {
-            tr.addEventListener('click', () => {
-                if (typeof selectDriver === 'function') selectDriver(tr.getAttribute('data-car'));
-            });
-        });
     },
 
     buildDigest(dateVal) {

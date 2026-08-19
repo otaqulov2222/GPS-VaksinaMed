@@ -75,14 +75,19 @@ function vmApplyChrome(user) {
         }
     }
     if (panel) {
-        panel.style.display = vmIsStaff(user) ? 'inline-flex' : 'none';
-        panel.textContent = 'Admin';
+        if (vmIsStaff(user)) {
+            panel.style.display = 'inline-flex';
+            panel.textContent = user.role === 'admin_pro' ? 'Admin Pro' : 'Panel';
+        } else {
+            panel.style.display = 'none';
+        }
         panel.setAttribute('href', '/admin.html');
     }
 }
 
 function vmStartHeartbeat() {
-    setInterval(() => {
+    if (window._vmHeartbeat) return;
+    window._vmHeartbeat = setInterval(() => {
         fetch('/api/ping', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' })
             .then(r => { if (r.status === 401) location.replace('/login.html'); })
             .catch(() => {});

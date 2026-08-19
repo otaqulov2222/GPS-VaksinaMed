@@ -937,6 +937,7 @@ class OfficeStore:
         if not isinstance(data, dict):
             data = {}
         data.setdefault("cars", {})
+        data["cars"] = self._dedupe_cars(data.get("cars"))
         return data
 
     def _plate_compact(self, plate):
@@ -950,6 +951,27 @@ class OfficeStore:
             if self._plate_compact(key) == compact:
                 return key
         return plate
+
+    def _dedupe_cars(self, cars):
+        if not isinstance(cars, dict):
+            return {}
+        out = {}
+        for k, v in cars.items():
+            if not isinstance(v, dict):
+                continue
+            canon = self._existing_plate_key(out, str(k).strip()[:24])
+            if canon in out:
+                old = out[canon]
+                old_days = old.get("days") if isinstance(old.get("days"), dict) else {}
+                new_days = v.get("days") if isinstance(v.get("days"), dict) else {}
+                merged = dict(old_days)
+                merged.update(new_days)
+                out[canon] = dict(old)
+                out[canon].update(v)
+                out[canon]["days"] = merged
+            else:
+                out[canon] = v
+        return out
 
     def save_fuel_month(self, month, body):
         if not month or not MONTH_RE.match(str(month)):
@@ -1045,6 +1067,7 @@ class OfficeStore:
                 "driverChanges": dch or old_dch,
                 "days": merged_days,
             }
+        cars = self._dedupe_cars(cars)
         payload = {"month": month, "savedAt": iso_now(), "cars": cars}
         self._save("fuel:month:" + month, payload)
         return payload, None

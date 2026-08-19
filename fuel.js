@@ -69,20 +69,60 @@ function plateCode(car) {
   const m = String(car).match(/(\d{3})/);
   return m ? m[1] : String(car).slice(-3);
 }
+function plateCompact(p) {
+  return String(p || '').replace(/\s+/g, '').toUpperCase();
+}
+function canonicalPlate(p) {
+  const c = plateCompact(p);
+  for (const d of DEFAULT_FLEET) {
+    if (plateCompact(d.car) === c) return d.car;
+  }
+  for (const k of Object.keys(STATE.meta.vehicles || {})) {
+    if (plateCompact(k) === c) return k;
+  }
+  return String(p || '').trim();
+}
+function normalizeCarMap(cars) {
+  const out = {};
+  Object.keys(cars || {}).forEach(k => {
+    const canon = canonicalPlate(k);
+    const rec = cars[k];
+    if (!rec) return;
+    if (!out[canon]) {
+      out[canon] = Object.assign({}, rec);
+      return;
+    }
+    const prev = out[canon];
+    out[canon] = Object.assign({}, prev, rec, {
+      days: Object.assign({}, prev.days || {}, rec.days || {})
+    });
+  });
+  return out;
+}
 function plateDisp(car) {
   return String(car).replace(/^(\d{2})\s+/, '$1/');
 }
 function gpsKmLookup(dateMap, plate) {
   if (!dateMap) return 0;
   if (n(dateMap[plate]) > 0) return n(dateMap[plate]);
-  const compact = String(plate).replace(/\s+/g, '');
-  const code = plateCode(plate);
+  const compact = plateCompact(plate);
   for (const k of Object.keys(dateMap)) {
     if (n(dateMap[k]) <= 0) continue;
-    if (k.replace(/\s+/g, '') === compact) return n(dateMap[k]);
-    if (code && plateCode(k) === code) return n(dateMap[k]);
+    if (plateCompact(k) === compact) return n(dateMap[k]);
   }
-  return 0;
+  const code = plateCode(plate);
+  if (!code) return 0;
+  let hit = null;
+  let hits = 0;
+  for (const k of Object.keys(dateMap)) {
+    if (n(dateMap[k]) <= 0) continue;
+    if (plateCode(k) === code) {
+      hit = k;
+      hits += 1;
+      if (hits > 1) return 0;
+    }
+  }
+  return hit ? n(dateMap[hit]) : 0;
 }
 function monthTitle(ym) {
   if (!ym) return '—';
@@ -160,9 +200,15 @@ function ensureVehicleMeta(plate) {
 
 function fleet() {
   const plates = [];
-  const seen = {};
-  DEFAULT_FLEET.forEach(d => { if (!seen[d.car]) { seen[d.car] = 1; plates.push(d.car); } });
-  Object.keys(STATE.meta.vehicles || {}).forEach(p => { if (!seen[p]) { seen[p] = 1; plates.push(p); } });
+  const seen = new Set();
+  const add = p => {
+    const c = plateCompact(p);
+    if (seen.has(c)) return;
+    seen.add(c);
+    plates.push(canonicalPlate(p));
+  };
+  DEFAULT_FLEET.forEach(d => add(d.car));
+  Object.keys(STATE.meta.vehicles || {}).forEach(p => add(p));
   return plates.map(vehicleInfo).filter(v => !v.hidden);
 }
 
@@ -188,13 +234,22 @@ function blankCar(info) {
 function recForPlate(map, plate) {
   if (!map || !plate) return null;
   if (map[plate]) return map[plate];
-  const compact = String(plate).replace(/\s+/g, '');
-  const code = plateCode(plate);
+  const compact = plateCompact(plate);
   for (const k of Object.keys(map)) {
-    if (String(k).replace(/\s+/g, '') === compact) return map[k];
-    if (code && plateCode(k) === code) return map[k];
+    if (plateCompact(k) === compact) return map[k];
   }
-  return null;
+  const code = plateCode(plate);
+  if (!code) return null;
+  let hit = null;
+  let hits = 0;
+  for (const k of Object.keys(map)) {
+    if (plateCode(k) === code) {
+      hit = map[k];
+      hits += 1;
+      if (hits > 1) return null;
+    }
+  }
+  return hit;
 }
 
 function carHasContent(car) {
@@ -216,11 +271,15 @@ function adoptCars(raw) {
     if (rec) out[f.car] = Object.assign({}, rec, { _fromServer: true });
   });
   Object.keys(src).forEach(k => {
-    if (out[k]) return;
+    const canon = canonicalPlate(k);
+    if (out[canon]) {
+      out[canon].days = Object.assign({}, src[k].days || {}, out[canon].days || {});
+      return;
+    }
     if (recForPlate(out, k)) return;
-    out[k] = Object.assign({}, src[k], { _fromServer: true });
+    out[canon] = Object.assign({}, src[k], { _fromServer: true });
   });
-  return out;
+  return normalizeCarMap(out);
 }
 
 function localMonthKey(ym) {
@@ -250,20 +309,20 @@ function readLocalMonth(ym) {
 function mergeCarMaps(primary, secondary) {
   const out = {};
   Object.keys(primary || {}).forEach(k => {
-    out[k] = Object.assign({}, primary[k], { _fromServer: true });
+    const canon = canonicalPlate(k);
+    out[canon] = Object.assign({}, primary[k], { _fromServer: true });
   });
   Object.keys(secondary || {}).forEach(k => {
     const rec = secondary[k];
     if (!carHasContent(rec)) return;
-    const hit = recForPlate(out, k);
-    if (!hit) {
-      out[k] = Object.assign({}, rec, { _fromServer: true });
+    const canon = canonicalPlate(k);
+    if (out[canon]) {
+      out[canon].days = Object.assign({}, rec.days || {}, out[canon].days || {});
       return;
     }
-    const plate = Object.keys(out).find(p => out[p] === hit) || k;
-    out[plate].days = Object.assign({}, rec.days || {}, hit.days || {});
+    out[canon] = Object.assign({}, rec, { _fromServer: true });
   });
-  return out;
+  return normalizeCarMap(out);
 }
 
 function getCar(plate) {
@@ -380,7 +439,7 @@ function markDirty() {
   const st = document.getElementById('save-st');
   if (st) st.textContent = 'Saqlanmagan...';
   clearTimeout(STATE.saveTimer);
-  STATE.saveTimer = setTimeout(saveMonth, 800);
+  STATE.saveTimer = setTimeout(saveMonth, 1500);
 }
 
 async function loadAll() {
@@ -412,7 +471,10 @@ async function loadAll() {
   if (!STATE.car) STATE.car = (fleet()[0] && fleet()[0].car) || '';
   setMonthLabel();
   await autoChainMonth();
-  if (STATE.dirty) await saveMonth();
+  if (STATE.dirty) {
+    clearTimeout(STATE.saveTimer);
+    await saveMonth();
+  }
   renderAll();
 }
 
@@ -439,7 +501,10 @@ async function changeMonth(ym) {
   STATE.dayRep = 1;
   setMonthLabel();
   await autoChainMonth();
-  if (STATE.dirty) await saveMonth();
+  if (STATE.dirty) {
+    clearTimeout(STATE.saveTimer);
+    await saveMonth();
+  }
   renderAll();
 }
 
@@ -1383,7 +1448,8 @@ async function autoChainMonth() {
   const st = document.getElementById('save-st');
   const gpsDays = Object.keys(STATE.gpsKm || {}).filter(dt => dt.startsWith(STATE.month + '-')).length;
   if (gpsN || balN) {
-    await saveMonth();
+    STATE.dirty = true;
+    writeLocalMonth();
     if (st) st.textContent = 'Avto: GPS ' + gpsN + ' kun' + (balN ? ', qoldiq ' + balN + ' mashina' : '');
   } else if (st && !gpsDays) {
     st.textContent = 'GPS hisobot yo\'q — VHK da kun ochilsa km o\'zi tushadi';
@@ -2027,14 +2093,9 @@ function bind() {
     if (STATE.dirty) await saveMonth();
     vmLogout();
   };
-  window.addEventListener('beforeunload', e => {
+  window.addEventListener('beforeunload', () => {
     flushFormToState();
     writeLocalMonth();
-    if (STATE.dirty) {
-      e.preventDefault();
-      e.returnValue = '';
-      saveMonth();
-    }
   });
 }
 

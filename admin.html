@@ -514,7 +514,7 @@ body { overflow-x: clip; }
 </div>
 
 <script src="fleet-data.js?v=1"></script>
-<script src="auth.js?v=7"></script>
+<script src="auth.js?v=8"></script>
 <script>
 function show(id, text, ok) {
   const el = document.getElementById(id);
@@ -924,7 +924,7 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
   vmStartHeartbeat();
   await loadAll();
   await loadOffice();
-  setInterval(loadAll, 15000);
+  setInterval(loadAll, 45000);
 })();
 </script>
 </body>
