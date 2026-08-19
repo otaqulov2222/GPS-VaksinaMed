@@ -573,6 +573,53 @@ function remainClass(v) {
   return '';
 }
 
+function dailyJamiHtml(rows) {
+  const t = totals(rows);
+  const last = rows[rows.length - 1] || {};
+  return `<tr class="jami-row">
+      <td class="day">JAMI</td>
+      <td><span class="out" data-j="km">${t.km ? fmt(t.km, 2) : ''}</span></td>
+      <td><span class="out" data-j="odo">${last.odo ? fmt(last.odo, 1) : ''}</span></td>
+      <td></td>
+      <td></td>
+      <td><span class="out" data-j="gasIn">${t.gasIn ? fmt(t.gasIn, 4) : ''}</span></td>
+      <td></td>
+      <td><span class="out" data-j="gasSum">${t.gasIn ? money(t.gasSum) : ''}</span></td>
+      <td><span class="out" data-j="benzinIn">${t.benzinIn ? fmt(t.benzinIn, 4) : ''}</span></td>
+      <td></td>
+      <td><span class="out" data-j="benzinSum">${t.benzinIn ? money(t.benzinSum) : ''}</span></td>
+      <td><span class="out" data-j="gasUsed">${t.gasUsed ? t.gasUsed.toFixed(4) : ''}</span></td>
+      <td><span class="out" data-j="benUsed">${t.benUsed ? t.benUsed.toFixed(4) : ''}</span></td>
+      <td><span class="out ${remainClass(t.gasR)}" data-j="gasR">${t.gasR || t.gasR === 0 ? t.gasR.toFixed(4) : ''}</span></td>
+      <td><span class="out ${remainClass(t.benR)}" data-j="benR">${t.benR || t.benR === 0 ? t.benR.toFixed(4) : ''}</span></td>
+      <td><span class="out" data-j="extra">${t.extra ? money(t.extra) : ''}</span></td>
+      <td></td>
+      <td></td>
+    </tr>`;
+}
+
+function paintDailyJami(rows) {
+  const t = totals(rows);
+  const last = rows[rows.length - 1] || {};
+  const set = (k, v, cls) => {
+    const el = document.querySelector('#daily-body .jami-row [data-j="' + k + '"]');
+    if (!el) return;
+    el.textContent = v;
+    if (cls != null) el.className = 'out ' + cls;
+  };
+  set('km', t.km ? fmt(t.km, 2) : '');
+  set('odo', last.odo ? fmt(last.odo, 1) : '');
+  set('gasIn', t.gasIn ? fmt(t.gasIn, 4) : '');
+  set('gasSum', t.gasIn ? money(t.gasSum) : '');
+  set('benzinIn', t.benzinIn ? fmt(t.benzinIn, 4) : '');
+  set('benzinSum', t.benzinIn ? money(t.benzinSum) : '');
+  set('gasUsed', t.gasUsed ? t.gasUsed.toFixed(4) : '');
+  set('benUsed', t.benUsed ? t.benUsed.toFixed(4) : '');
+  set('gasR', (t.gasR || t.gasR === 0) ? t.gasR.toFixed(4) : '', remainClass(t.gasR));
+  set('benR', (t.benR || t.benR === 0) ? t.benR.toFixed(4) : '', remainClass(t.benR));
+  set('extra', t.extra ? money(t.extra) : '');
+}
+
 function renderDailyTable() {
   const car = getCar(STATE.car);
   const rows = calcCar(car);
@@ -600,12 +647,12 @@ function renderDailyTable() {
       <td><input class="w-note" data-d="${r.d}" data-f="extraWhy" value="${esc(src.extraWhy)}"></td>
       <td><input class="w-note" data-d="${r.d}" data-f="note" value="${esc(src.note)}"></td>
     </tr>`;
-  }).join('');
+  }).join('') + dailyJamiHtml(rows);
 }
 
 function paintCalc() {
   const rows = calcCar(getCar(STATE.car));
-  document.querySelectorAll('#daily-body tr').forEach((tr, i) => {
+  document.querySelectorAll('#daily-body tr:not(.jami-row)').forEach((tr, i) => {
     const r = rows[i];
     if (!r) return;
     const outs = tr.querySelectorAll('.out');
@@ -622,6 +669,7 @@ function paintCalc() {
       outs[5].className = 'out ' + remainClass(r.benR);
     }
   });
+  paintDailyJami(rows);
 }
 
 function fleetTotals() {
