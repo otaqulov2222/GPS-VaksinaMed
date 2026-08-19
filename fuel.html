@@ -8,6 +8,31 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+* { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: #e8ebf0; }
+*::-webkit-scrollbar-thumb {
+  background: #9aa3ae; border-radius: 8px; border: 2px solid #e8ebf0;
+}
+*::-webkit-scrollbar-thumb:hover { background: #5c6573; }
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:start:decrement,
+*::-webkit-scrollbar-button:end:increment {
+  display: none !important; width: 0; height: 0;
+}
+*::-webkit-scrollbar-corner { background: #e8ebf0; }
+.tabs, .topbar, .driver-strip-wrap {
+  scrollbar-color: #5a6470 #161c24;
+}
+.tabs::-webkit-scrollbar-track,
+.topbar::-webkit-scrollbar-track,
+.driver-strip-wrap::-webkit-scrollbar-track { background: #161c24; }
+.tabs::-webkit-scrollbar-thumb,
+.topbar::-webkit-scrollbar-thumb,
+.driver-strip-wrap::-webkit-scrollbar-thumb {
+  background: #4a5460; border-color: #161c24;
+}
 :root {
   --bg: #c9ced6;
   --surface: #f3f4f6;
@@ -172,11 +197,11 @@ table.dtable td.day {
   font-family: var(--mono); font-weight: 700; width: 36px;
 }
 table.dtable tr.jami-row td {
-  position: sticky; bottom: 0; z-index: 3;
-  background: #0c1016 !important; color: #f4f4f2;
-  font-weight: 700; font-size: 12px;
+  background: #161c24 !important; color: #f4f4f2;
+  font-weight: 700; font-size: 12px; padding: 8px 6px;
+  border-top: 2px solid #c9a227;
 }
-table.dtable tr.jami-row td.day { background: #0c1016 !important; color: #e8b423; }
+table.dtable tr.jami-row td.day { background: #161c24 !important; color: #e8b423; }
 table.dtable tr.jami-row .out {
   background: transparent; color: inherit; font-weight: 700; min-height: 26px; line-height: 26px;
 }

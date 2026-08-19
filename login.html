@@ -8,6 +8,20 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scrollbar-width: thin; scrollbar-color: #5a6470 #161c24; }
+* { scrollbar-width: thin; scrollbar-color: #5a6470 #161c24; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: #161c24; }
+*::-webkit-scrollbar-thumb {
+  background: #4a5460; border-radius: 8px; border: 2px solid #161c24;
+}
+*::-webkit-scrollbar-thumb:hover { background: #6b7380; }
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:start:decrement,
+*::-webkit-scrollbar-button:end:increment {
+  display: none !important; width: 0; height: 0;
+}
+*::-webkit-scrollbar-corner { background: #161c24; }
 html, body { height: 100%; }
 body {
   font-family: 'IBM Plex Sans', system-ui, sans-serif;

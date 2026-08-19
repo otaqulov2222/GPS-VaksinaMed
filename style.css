@@ -38,6 +38,20 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+* { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: #e8ebf0; }
+*::-webkit-scrollbar-thumb {
+  background: #9aa3ae; border-radius: 8px; border: 2px solid #e8ebf0;
+}
+*::-webkit-scrollbar-thumb:hover { background: #5c6573; }
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:start:decrement,
+*::-webkit-scrollbar-button:end:increment {
+  display: none !important; width: 0; height: 0;
+}
+*::-webkit-scrollbar-corner { background: #e8ebf0; }
 
 body {
   font-family: 'Inter', -apple-system, system-ui, sans-serif;
@@ -153,8 +167,7 @@ body {
   padding: 2px 0 10px;
   scrollbar-width: thin;
 }
-.drivers-scroll-strip::-webkit-scrollbar { height: 4px; }
-.drivers-scroll-strip::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.drivers-scroll-strip::-webkit-scrollbar { height: 8px; }
 
 .driver-tab-pill {
   display: inline-flex;

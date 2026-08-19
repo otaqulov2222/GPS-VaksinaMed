@@ -10,6 +10,31 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+* { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: #e8ebf0; }
+*::-webkit-scrollbar-thumb {
+  background: #9aa3ae; border-radius: 8px; border: 2px solid #e8ebf0;
+}
+*::-webkit-scrollbar-thumb:hover { background: #5c6573; }
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:start:decrement,
+*::-webkit-scrollbar-button:end:increment {
+  display: none !important; width: 0; height: 0;
+}
+*::-webkit-scrollbar-corner { background: #e8ebf0; }
+.tabs, .topbar, .driver-strip-wrap {
+  scrollbar-color: #5a6470 #161c24;
+}
+.tabs::-webkit-scrollbar-track,
+.topbar::-webkit-scrollbar-track,
+.driver-strip-wrap::-webkit-scrollbar-track { background: #161c24; }
+.tabs::-webkit-scrollbar-thumb,
+.topbar::-webkit-scrollbar-thumb,
+.driver-strip-wrap::-webkit-scrollbar-thumb {
+  background: #4a5460; border-color: #161c24;
+}
 
 :root {
   --bg: #c9ced6;
@@ -104,10 +129,7 @@ body {
   border-bottom: 1px solid #2a323c;
   padding: 0 12px;
   overflow-x: auto;
-  scrollbar-width: thin;
 }
-.driver-strip-wrap::-webkit-scrollbar { height: 4px; }
-.driver-strip-wrap::-webkit-scrollbar-thumb { background: #3a4450; }
 .driver-strip { display: flex; align-items: stretch; min-width: max-content; }
 
 .dtab {
