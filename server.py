@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 VaksinaMed GPS Monitor — HTTP server
-Auth (Admin Pro / Admin) + GPS proxy + statik fayllar
+Auth (Admin Pro / Admin / Haydovchi) + GPS proxy + statik fayllar
 """
 
 import hashlib
@@ -35,6 +35,39 @@ BLOCKED_NAMES = {"users.json", "server.py", "start.bat", "office-seed.json"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 YEAR_RE = re.compile(r"^\d{4}$")
+STAFF_ROLES = ("admin_pro", "admin")
+
+
+def is_staff(sess):
+    return bool(sess) and sess.get("role") in STAFF_ROLES
+
+
+def is_driver(sess):
+    return bool(sess) and sess.get("role") == "driver"
+
+
+def compact_plate(plate):
+    return re.sub(r"\s+", "", str(plate or "").upper())
+
+
+def find_by_plate(mapping, plate):
+    if not isinstance(mapping, dict):
+        return None, None
+    if plate in mapping:
+        return plate, mapping[plate]
+    want = compact_plate(plate)
+    if not want:
+        return None, None
+    for k, v in mapping.items():
+        if compact_plate(k) == want:
+            return k, v
+    return None, None
+
+
+def home_for(sess):
+    if is_driver(sess):
+        return "/driver.html"
+    return "/"
 
 
 def as_num(v, default=0.0):
@@ -320,6 +353,7 @@ class AuthStore:
             "username": u["username"],
             "name": u.get("name") or u["username"],
             "role": u.get("role") or "admin",
+            "car": u.get("car") or "",
             "active": bool(u.get("active", True)),
             "protected": bool(u.get("protected")),
             "created_at": u.get("created_at"),
@@ -353,6 +387,7 @@ class AuthStore:
                 "username": user["username"],
                 "name": user.get("name") or user["username"],
                 "role": user.get("role") or "admin",
+                "car": user.get("car") or "",
                 "ip": ip,
                 "ua": (ua or "")[:180],
                 "created": now_ts(),
@@ -391,6 +426,7 @@ class AuthStore:
                 return None
             sess["role"] = user.get("role") or "admin"
             sess["name"] = user.get("name") or user["username"]
+            sess["car"] = user.get("car") or ""
             return sess
 
     def list_users(self):
@@ -398,28 +434,54 @@ class AuthStore:
             data = self._read()
             return [self.public_user(u) for u in data.get("users", [])]
 
+    def can_manage(self, actor_role, target):
+        if not target:
+            return False
+        if target.get("protected") or target.get("role") == "admin_pro":
+            return False
+        if target.get("role") == "admin":
+            return actor_role == "admin_pro"
+        if target.get("role") == "driver":
+            return actor_role in STAFF_ROLES
+        return actor_role == "admin_pro"
+
     def add_admin(self, actor, name, username, password):
+        return self.add_user(actor, name, username, password, role="admin", car="")
+
+    def add_user(self, actor, name, username, password, role="admin", car=""):
         username = (username or "").strip().lower()
         name = (name or "").strip()
         password = password or ""
+        role = (role or "admin").strip()
+        car = str(car or "").strip()[:24]
+        if role not in ("admin", "driver"):
+            return None, "Rol noto'g'ri"
         if not username or len(username) < 3:
             return None, "Login kamida 3 belgi bo'lsin"
         if not all(c.isalnum() or c in "._-" for c in username):
             return None, "Login: faqat harf, raqam, . _ -"
         if len(password) < 6:
             return None, "Parol kamida 6 belgi bo'lsin"
+        if role == "driver" and not car:
+            return None, "Haydovchiga mashina biriktiring"
         if not name:
             name = username
         with self.lock:
             data = self._read()
             if self.find_user(data, username=username):
                 return None, "Bu login band"
+            if role == "driver":
+                want = compact_plate(car)
+                for u in data.get("users", []):
+                    if u.get("role") == "driver" and compact_plate(u.get("car")) == want:
+                        return None, "Bu mashinaga allaqachon login berilgan"
             salt, pw_hash = hash_pw(password)
             user = {
                 "id": new_id("u"),
                 "username": username,
                 "name": name,
-                "role": "admin",
+                "role": role,
+                "car": car if role == "driver" else "",
                 "password_salt": salt,
                 "password_hash": pw_hash,
                 "active": True,
@@ -428,18 +490,18 @@ class AuthStore:
                 "last_login": None,
             }
             data["users"].append(user)
-            self._audit(data, "user_add", actor, username)
+            self._audit(data, "user_add", actor, "%s (%s)" % (username, role))
             self._write(data)
             return self.public_user(user), None
 
-    def set_active(self, actor, uid, active):
+    def set_active(self, actor, uid, active, actor_role="admin_pro"):
         with self.lock:
             data = self._read()
             user = self.find_user(data, uid=uid)
             if not user:
                 return None, "Foydalanuvchi topilmadi"
-            if user.get("protected") and not active:
-                return None, "Admin Pro ni o'chirib bo'lmaydi"
+            if not self.can_manage(actor_role, user):
+                return None, "Ruxsat yo'q"
             user["active"] = bool(active)
             if not active:
                 for sid, s in list(self.sessions.items()):
@@ -450,14 +512,14 @@ class AuthStore:
             self._write(data)
             return self.public_user(user), None
 
-    def delete_user(self, actor, uid):
+    def delete_user(self, actor, uid, actor_role="admin_pro"):
         with self.lock:
             data = self._read()
             user = self.find_user(data, uid=uid)
             if not user:
                 return None, "Foydalanuvchi topilmadi"
-            if user.get("protected") or user.get("role") == "admin_pro":
-                return None, "Admin Pro ni o'chirib bo'lmaydi"
+            if not self.can_manage(actor_role, user):
+                return None, "Ruxsat yo'q"
             data["users"] = [u for u in data["users"] if u["id"] != uid]
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
@@ -467,7 +529,7 @@ class AuthStore:
             self._write(data)
             return True, None
 
-    def reset_password(self, actor, uid, new_password):
+    def reset_password(self, actor, uid, new_password, actor_role="admin_pro"):
         if len(new_password or "") < 6:
             return None, "Parol kamida 6 belgi bo'lsin"
         with self.lock:
@@ -475,6 +537,8 @@ class AuthStore:
             user = self.find_user(data, uid=uid)
             if not user:
                 return None, "Foydalanuvchi topilmadi"
+            if not self.can_manage(actor_role, user):
+                return None, "Ruxsat yo'q"
             salt, pw_hash = hash_pw(new_password)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
@@ -515,6 +579,7 @@ class AuthStore:
                         "username": s["username"],
                         "name": s["name"],
                         "role": s["role"],
+                        "car": s.get("car") or "",
                         "ip": s.get("ip") or "",
                         "ua": s.get("ua") or "",
                         "created": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(s["created"])),
@@ -1102,6 +1167,250 @@ class OfficeStore:
         self._save("journal:entries", {"items": items, "savedAt": iso_now()})
         return True, None
 
+    def _task_items(self):
+        data = self._load("driver:tasks", {})
+        items = data.get("items") if isinstance(data, dict) else []
+        if not isinstance(items, list):
+            items = []
+        return items
+
+    def tasks_for(self, car, date=None):
+        want = compact_plate(car)
+        out = []
+        for it in self._task_items():
+            if not isinstance(it, dict):
+                continue
+            if compact_plate(it.get("car")) != want:
+                continue
+            td = str(it.get("date") or "")
+            if date and td and td != date:
+                continue
+            out.append(it)
+        out.sort(key=lambda x: (str(x.get("date") or ""), str(x.get("createdAt") or "")), reverse=True)
+        return out[:80]
+
+    def add_task(self, car, date, text, who=""):
+        car = str(car or "").strip()[:24]
+        text = str(text or "").strip()[:400]
+        date = str(date or "").strip()[:10]
+        if not car:
+            return None, "Mashina majburiy"
+        if not text:
+            return None, "Topshiriq matni yozing"
+        if date and not valid_date(date):
+            return None, "Sana noto'g'ri"
+        item = {
+            "id": new_id("tk"),
+            "car": car,
+            "date": date,
+            "text": text,
+            "by": str(who or "")[:40],
+            "createdAt": iso_now(),
+        }
+        items = self._task_items()
+        items.append(item)
+        if len(items) > 800:
+            items = items[-800:]
+        self._save("driver:tasks", {"items": items, "savedAt": iso_now()})
+        return item, None
+
+    def delete_task(self, tid):
+        tid = str(tid or "").strip()[:40]
+        if not tid:
+            return False, "ID yo'q"
+        items = [it for it in self._task_items() if not (isinstance(it, dict) and it.get("id") == tid)]
+        self._save("driver:tasks", {"items": items, "savedAt": iso_now()})
+        return True, None
+
+    def _fuel_day(self, plate, date):
+        if not valid_date(date):
+            return None
+        month = date[:7]
+        day = int(date[8:10])
+        data = self.fuel_month(month) or {}
+        cars = data.get("cars") if isinstance(data, dict) else {}
+        _key, rec = find_by_plate(cars, plate)
+        if not isinstance(rec, dict):
+            return None
+        days = rec.get("days") if isinstance(rec.get("days"), dict) else {}
+        gas_r = as_num(rec.get("gasStart"))
+        ben_r = as_num(rec.get("benzinStart"))
+        odo_prev = as_num(rec.get("odoStart"))
+        gas_norm0 = as_num(rec.get("gasNorm"), 12)
+        ben_norm0 = as_num(rec.get("benzinNorm"), 4)
+        mix0 = as_num(rec.get("mixPct"), 70)
+        changes = rec.get("changes") if isinstance(rec.get("changes"), list) else []
+
+        def apply_ch(field, fallback, d):
+            val = fallback
+            for ch in changes:
+                if not isinstance(ch, dict):
+                    continue
+                try:
+                    cd = int(ch.get("day") or 0)
+                except (TypeError, ValueError):
+                    cd = 0
+                if cd <= d and ch.get("field") == field:
+                    val = as_num(ch.get("value"), val)
+            return val
+
+        last = None
+        for d in range(1, day + 1):
+            src = days.get(str(d)) if isinstance(days.get(str(d)), dict) else {}
+            gas_norm = apply_ch("gasNorm", gas_norm0, d)
+            ben_norm = apply_ch("benzinNorm", ben_norm0, d)
+            mix = apply_ch("mixPct", mix0, d)
+            km = as_num(src.get("km"))
+            odo = as_num(src.get("odo"))
+            if not km and odo > 0 and odo_prev > 0 and odo + 0.0001 >= odo_prev:
+                km = round(odo - odo_prev, 4)
+            if odo > 0:
+                odo_prev = odo
+            elif km > 0:
+                odo_prev = round(odo_prev + km, 4)
+            mode = str(src.get("mode") or "gaz")
+            gas_used = ben_used = 0.0
+            if km > 0:
+                if mode == "gaz":
+                    gas_used = round(km * gas_norm / 100.0, 4)
+                elif mode in ("benzin", "dizel"):
+                    ben_used = round(km * ben_norm / 100.0, 4)
+                elif mode == "aralash":
+                    gas_used = round(km * gas_norm / 100.0 * mix / 100.0, 4)
+                    ben_used = round(km * ben_norm / 100.0 * (100.0 - mix) / 100.0, 4)
+            gas_in = as_num(src.get("gasIn"))
+            ben_in = as_num(src.get("benzinIn"))
+            gas_r = round(gas_r + gas_in - gas_used, 4)
+            ben_r = round(ben_r + ben_in - ben_used, 4)
+            last = {
+                "km": km,
+                "mode": mode,
+                "station": str(src.get("station") or ""),
+                "gasIn": gas_in,
+                "benzinIn": ben_in,
+                "gasUsed": gas_used,
+                "benUsed": ben_used,
+                "gasR": gas_r,
+                "benR": ben_r,
+                "fuelType": rec.get("fuelType") or "mixed",
+            }
+        return last
+
+    def driver_day(self, date, plate):
+        if not valid_date(date) or not compact_plate(plate):
+            return None
+        report = self.get_report(date)
+        cars = (report or {}).get("cars") if isinstance(report, dict) else {}
+        key, rec = find_by_plate(cars, plate)
+        rec = rec if isinstance(rec, dict) else {}
+        stats = rec.get("stats") if isinstance(rec.get("stats"), dict) else {}
+        analysis = rec.get("analysis") if isinstance(rec.get("analysis"), dict) else {}
+        score = analysis.get("score") if isinstance(analysis.get("score"), dict) else {}
+        stops_in = rec.get("stops") if isinstance(rec.get("stops"), list) else []
+        stops = []
+        for st in stops_in[:80]:
+            if not isinstance(st, dict):
+                continue
+            stops.append(
+                {
+                    "place": str(st.get("place") or st.get("phName") or "")[:120],
+                    "inTime": str(st.get("inTime") or "")[:20],
+                    "outTime": str(st.get("outTime") or "")[:20],
+                    "matchType": str(st.get("matchType") or "")[:16],
+                    "isProblem": bool(st.get("isProblem")),
+                    "isOffice": bool(st.get("isOffice")),
+                    "isOutside": bool(st.get("isOutside")),
+                }
+            )
+        reviews = []
+        bag = self.reviews(date) or {}
+        want = compact_plate(plate)
+        for k, rv in bag.items():
+            if not isinstance(rv, dict):
+                continue
+            parts = str(k).split("|")
+            car_k = parts[1] if len(parts) > 1 else ""
+            if compact_plate(car_k) != want:
+                continue
+            reviews.append(
+                {
+                    "place": parts[-1] if parts else "",
+                    "time": parts[2] if len(parts) > 2 else "",
+                    "status": rv.get("status"),
+                    "note": rv.get("note") or "",
+                }
+            )
+        pharms = []
+        for p in self.pharmacies():
+            if isinstance(p, dict) and compact_plate(p.get("car")) == want:
+                pharms.append(str(p.get("name") or "")[:80])
+        journal = []
+        for it in self.journal_items():
+            if not isinstance(it, dict):
+                continue
+            if compact_plate(it.get("car")) != want:
+                continue
+            start = str(it.get("start") or "")
+            if start and not start.startswith(date):
+                continue
+            journal.append(
+                {
+                    "kind": it.get("kind"),
+                    "reason": it.get("reason") or "",
+                    "level": it.get("level") or "",
+                    "note": it.get("note") or "",
+                    "start": start,
+                }
+            )
+        drv = rec.get("driver") if isinstance(rec.get("driver"), dict) else {}
+        return {
+            "date": date,
+            "car": key or plate,
+            "name": drv.get("fullName") or drv.get("name") or "",
+            "routes": drv.get("routes") or "",
+            "hasGps": bool(rec),
+            "stats": {
+                "km": as_num(stats.get("probeg")),
+                "maxSpeed": as_num(stats.get("maxSpeed")),
+                "avgSpeed": as_num(stats.get("avgSpeed")),
+                "trips": as_num(stats.get("poezdok")),
+                "stops": as_num(stats.get("stoyanok")),
+                "motoChas": str(stats.get("motoChas") or ""),
+            },
+            "analysis": {
+                "ownVisited": int(as_num(analysis.get("ownVisited"))),
+                "totalOwn": int(as_num(analysis.get("totalOwn"))),
+                "otherDirection": int(as_num(analysis.get("otherDirection"))),
+                "problemStops": int(as_num(analysis.get("problemStops"))),
+                "outsideCity": int(as_num(analysis.get("outsideCity"))),
+                "missedList": analysis.get("missedList") if isinstance(analysis.get("missedList"), list) else [],
+                "score": as_num(score.get("final")),
+                "grade": str(score.get("grade") or "—"),
+                "breakdown": score.get("breakdown") if isinstance(score.get("breakdown"), list) else [],
+            },
+            "stops": stops,
+            "reviews": reviews,
+            "pharmacies": pharms,
+            "journal": journal[:30],
+            "fuel": self._fuel_day(plate, date),
+            "tasks": self.tasks_for(plate, date),
+        }
+
+    def driver_month_dates(self, month, plate):
+        if not month or not MONTH_RE.match(str(month)):
+            return []
+        out = []
+        for d in self.report_dates():
+            if not str(d).startswith(month + "-"):
+                continue
+            report = self.get_report(d)
+            cars = (report or {}).get("cars") if isinstance(report, dict) else {}
+            k, _rec = find_by_plate(cars, plate)
+            if k:
+                out.append(d)
+        out.sort()
+        return out
+
 
 STORE = None
 OFFICE = None
@@ -1187,6 +1496,21 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return None
         return sess
 
+    def require_staff(self):
+        sess = self.require_user()
+        if not sess:
+            return None
+        if not is_staff(sess):
+            self.send_json({"ok": False, "error": "Faqat admin"}, 403)
+            return None
+        return sess
+
+    def deny_driver_write(self, sess):
+        if is_driver(sess):
+            self.send_json({"ok": False, "error": "Haydovchi faqat ko'ra oladi"}, 403)
+            return True
+        return False
+
     def is_public(self, path):
         if path in PUBLIC_PATHS:
             return True
@@ -1216,8 +1540,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/gps-proxy":
-            if not self.current_session():
+            sess = self.current_session()
+            if not sess:
                 self.send_json({"ok": False, "error": "Kirish talab qilinadi"}, 401)
+                return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi GPS yuklay olmaydi"}, 403)
                 return
             self.handle_gps_proxy(parsed)
             return
@@ -1230,13 +1558,16 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
         if path == "/login.html":
             if sess:
-                self.redirect("/")
+                self.redirect(home_for(sess))
                 return
             return super().do_GET()
 
         if path in ("/", "/index.html", "/fuel.html"):
             if not sess:
                 self.redirect("/login.html")
+                return
+            if is_driver(sess):
+                self.redirect("/driver.html")
                 return
             if path == "/":
                 self.path = "/index.html"
@@ -1246,7 +1577,16 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 self.redirect("/login.html")
                 return
-            if sess.get("role") != "admin_pro":
+            if not is_staff(sess):
+                self.redirect(home_for(sess))
+                return
+            return super().do_GET()
+
+        if path == "/driver.html":
+            if not sess:
+                self.redirect("/login.html")
+                return
+            if not is_driver(sess) and not is_staff(sess):
                 self.redirect("/")
                 return
             return super().do_GET()
@@ -1284,19 +1624,20 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         "username": sess["username"],
                         "name": sess["name"],
                         "role": sess["role"],
+                        "car": sess.get("car") or "",
                     },
                     "persist": STORE.persist_info(),
                 }
             )
             return
         if path == "/api/users":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             self.send_json({"ok": True, "users": STORE.list_users()})
             return
         if path == "/api/sessions":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             self.send_json({"ok": True, "sessions": STORE.list_sessions(), "me": sess["id"]})
@@ -1317,6 +1658,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
+                return
             self.send_json(
                 {
                     "ok": True,
@@ -1333,6 +1677,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
+                return
             if not valid_date(date):
                 self.send_json({"ok": False, "error": "Sana noto'g'ri"}, 400)
                 return
@@ -1345,12 +1692,18 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
+                return
             self.send_json({"ok": True, "meta": OFFICE.fuel_meta()})
             return
 
         if path == "/api/office/fuel/month":
             sess = self.require_user()
             if not sess:
+                return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
                 return
             data = OFFICE.fuel_month(month)
             if data is None:
@@ -1363,6 +1716,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
+                return
             if not month or not MONTH_RE.match(str(month)):
                 self.send_json({"ok": False, "error": "Oy noto'g'ri"}, 400)
                 return
@@ -1372,6 +1728,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if path == "/api/office/fuel/year":
             sess = self.require_user()
             if not sess:
+                return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
                 return
             data = OFFICE.fuel_year(year)
             if data is None:
@@ -1384,6 +1743,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
+                return
             gps = {}
             if month and MONTH_RE.match(str(month)):
                 gps = OFFICE.gps_totals_month(month)
@@ -1395,6 +1757,41 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "gps": gps,
                 }
             )
+            return
+
+        if path == "/api/driver/day":
+            sess = self.require_user()
+            if not sess:
+                return
+            plate = (qs.get("car") or [None])[0] or ""
+            if is_driver(sess):
+                plate = sess.get("car") or ""
+            elif not is_staff(sess):
+                self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
+                return
+            if not compact_plate(plate):
+                self.send_json({"ok": False, "error": "Mashina biriktirilmagan"}, 400)
+                return
+            if not valid_date(date):
+                self.send_json({"ok": False, "error": "Sana noto'g'ri"}, 400)
+                return
+            self.send_json({"ok": True, "day": OFFICE.driver_day(date, plate)})
+            return
+
+        if path == "/api/driver/month":
+            sess = self.require_user()
+            if not sess:
+                return
+            plate = (qs.get("car") or [None])[0] or ""
+            if is_driver(sess):
+                plate = sess.get("car") or ""
+            elif not is_staff(sess):
+                self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
+                return
+            if not compact_plate(plate):
+                self.send_json({"ok": False, "error": "Mashina biriktirilmagan"}, 400)
+                return
+            self.send_json({"ok": True, "dates": OFFICE.driver_month_dates(month, plate)})
             return
 
         self.send_json({"ok": False, "error": "Not found"}, 404)
@@ -1420,8 +1817,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         "username": sess["username"],
                         "name": sess["name"],
                         "role": sess["role"],
+                        "car": sess.get("car") or "",
                     },
-                    "redirect": "/",
+                    "redirect": home_for(sess),
                 },
                 set_cookie=sess["id"],
             )
@@ -1453,14 +1851,28 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/users/create":
-            sess = self.require_pro()
+            sess = self.require_user()
             if not sess:
                 return
-            user, err = STORE.add_admin(
+            role = str(body.get("role") or "admin").strip()
+            if role == "driver":
+                if not is_staff(sess):
+                    self.send_json({"ok": False, "error": "Faqat admin"}, 403)
+                    return
+            elif role == "admin":
+                if sess.get("role") != "admin_pro":
+                    self.send_json({"ok": False, "error": "Faqat Admin Pro"}, 403)
+                    return
+            else:
+                self.send_json({"ok": False, "error": "Rol noto'g'ri"}, 400)
+                return
+            user, err = STORE.add_user(
                 sess["username"],
                 body.get("name"),
                 body.get("username"),
                 body.get("password"),
+                role=role,
+                car=body.get("car") or "",
             )
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
@@ -1469,11 +1881,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/users/toggle":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             user, err = STORE.set_active(
-                sess["username"], body.get("id"), bool(body.get("active"))
+                sess["username"], body.get("id"), bool(body.get("active")), sess.get("role")
             )
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
@@ -1482,10 +1894,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/users/delete":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
-            ok, err = STORE.delete_user(sess["username"], body.get("id"))
+            ok, err = STORE.delete_user(sess["username"], body.get("id"), sess.get("role"))
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
                 return
@@ -1493,11 +1905,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/users/reset":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             ok, err = STORE.reset_password(
-                sess["username"], body.get("id"), body.get("password")
+                sess["username"], body.get("id"), body.get("password"), sess.get("role")
             )
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
@@ -1506,7 +1918,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/sessions/kick":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             ok, err = STORE.kick(sess["username"], body.get("id"))
@@ -1528,6 +1940,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            if self.deny_driver_write(sess):
+                return
             data, err = OFFICE.set_review(
                 body.get("date"),
                 body.get("key"),
@@ -1546,6 +1960,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if path == "/api/office/report":
             sess = self.require_user()
             if not sess:
+                return
+            if self.deny_driver_write(sess):
                 return
             payload, err = OFFICE.save_report(
                 body.get("date"), body.get("cars") or {}, sess.get("username")
@@ -1584,6 +2000,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            if self.deny_driver_write(sess):
+                return
             tg = OFFICE.settings()["telegram"]
             if not (tg.get("enabled") and tg.get("botToken") and tg.get("chatId")):
                 self.send_json({"ok": True, "skipped": True})
@@ -1603,6 +2021,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            if self.deny_driver_write(sess):
+                return
             meta = OFFICE.save_fuel_meta(body)
             self.send_json({"ok": True, "meta": meta})
             return
@@ -1610,6 +2030,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if path == "/api/office/fuel/month":
             sess = self.require_user()
             if not sess:
+                return
+            if self.deny_driver_write(sess):
                 return
             payload, err = OFFICE.save_fuel_month(body.get("month"), body)
             if err:
@@ -1621,6 +2043,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if path == "/api/office/journal":
             sess = self.require_user()
             if not sess:
+                return
+            if self.deny_driver_write(sess):
                 return
             if body.get("deleteId"):
                 ok, err = OFFICE.delete_journal(body.get("deleteId"))
@@ -1634,6 +2058,26 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": err}, 400)
                 return
             self.send_json({"ok": True, "entry": entry, "items": OFFICE.journal_items()})
+            return
+
+        if path == "/api/driver/tasks":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if body.get("deleteId"):
+                ok, err = OFFICE.delete_task(body.get("deleteId"))
+                if err:
+                    self.send_json({"ok": False, "error": err}, 400)
+                    return
+                self.send_json({"ok": True})
+                return
+            item, err = OFFICE.add_task(
+                body.get("car"), body.get("date"), body.get("text"), sess.get("username")
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({"ok": True, "task": item})
             return
 
         self.send_json({"ok": False, "error": "Not found"}, 404)

@@ -177,6 +177,7 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
 }
 .chip-pro { background: var(--gold); color: #0c1016; border-color: var(--gold); }
 .chip-admin { background: #e6edf4; color: #1a4a78; border-color: #c5d0dc; }
+.chip-drv { background: #161c24; color: #e8b423; border-color: #3a4450; }
 .chip-on { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
 .chip-off { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
 .row-btns { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -253,7 +254,7 @@ body { overflow-x: clip; }
 
   <div class="layout">
     <aside>
-      <div class="add-win">
+      <div class="add-win pro-only" id="win-admin">
         <div class="add-win-head">
           <div class="kicker">Yangi hisob</div>
           <h1>Admin qo‘shish</h1>
@@ -295,6 +296,56 @@ body { overflow-x: clip; }
           <button class="btn btn-gold btn-lg" type="submit" id="btn-add">Hisobni yaratish</button>
         </form>
       </div>
+      <div class="add-win" id="win-driver" style="margin-top:12px">
+        <div class="add-win-head">
+          <div class="kicker">Haydovchi kabineti</div>
+          <h1>Shofyor qo‘shish</h1>
+          <p>U faqat o‘z kunini ko‘radi, hech narsani o‘zgartira olmaydi. Mashina biriktiriladi.</p>
+        </div>
+        <form class="add-win-body" id="form-drv" autocomplete="off">
+          <div class="msg" id="msg-drv"></div>
+          <div class="field">
+            <label>Ism</label>
+            <input id="d-name" autocomplete="off" placeholder="Haydovchi F.I.O.">
+          </div>
+          <div class="field">
+            <label>Login</label>
+            <input id="d-user" autocomplete="off" spellcheck="false" placeholder="masalan: hasan">
+          </div>
+          <div class="field">
+            <label>Mashina</label>
+            <select id="d-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#f7f8fa;font-family:var(--mono);font-size:13px"></select>
+          </div>
+          <div class="field">
+            <label>Parol</label>
+            <input id="d-pass" type="password" autocomplete="new-password" placeholder="kamida 6 belgi">
+          </div>
+          <button class="btn btn-gold btn-lg" type="submit" id="btn-drv">Haydovchini yaratish</button>
+        </form>
+      </div>
+      <div class="add-win" id="win-task" style="margin-top:12px">
+        <div class="add-win-head">
+          <div class="kicker">Topshiriq</div>
+          <h1>Kunlik vazifa</h1>
+          <p>Haydovchi kabinetida faqat o‘qiladi.</p>
+        </div>
+        <form class="add-win-body" id="form-task">
+          <div class="msg" id="msg-task"></div>
+          <div class="field">
+            <label>Mashina</label>
+            <select id="t-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#f7f8fa;font-family:var(--mono);font-size:13px"></select>
+          </div>
+          <div class="field">
+            <label>Sana <em>bo‘sh = har kuni</em></label>
+            <input id="t-date" type="date">
+          </div>
+          <div class="field">
+            <label>Matn</label>
+            <input id="t-text" placeholder="Masalan: 12 ta nuqtani yoping">
+          </div>
+          <button class="btn btn-gold btn-lg" type="submit">Topshiriq yozish</button>
+        </form>
+      </div>
     </aside>
 
     <div class="stack">
@@ -307,7 +358,7 @@ body { overflow-x: clip; }
         <div class="table-scroll">
         <table>
           <thead>
-            <tr><th>Ism</th><th>Login</th><th>Rol</th><th>Holat</th><th>Oxirgi kirish</th><th>Amal</th></tr>
+            <tr><th>Ism</th><th>Login</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Oxirgi kirish</th><th>Amal</th></tr>
           </thead>
           <tbody id="tb-users"></tbody>
         </table>
@@ -352,7 +403,7 @@ body { overflow-x: clip; }
     </div>
   </div>
 
-  <div class="card" style="margin-top:12px;">
+  <div class="card pro-only" style="margin-top:12px;">
     <div class="head">
       <h2>Dorixona geozonalari</h2>
       <span class="muted" id="ph-count">0</span>
@@ -399,7 +450,7 @@ body { overflow-x: clip; }
     </div>
   </div>
 
-  <div class="card" style="margin-top:12px;">
+  <div class="card pro-only" style="margin-top:12px;">
     <div class="head"><h2>Telegram ogohlantirish</h2></div>
     <div class="body">
       <div class="msg" id="msg-tg"></div>
@@ -433,7 +484,7 @@ body { overflow-x: clip; }
     </div>
   </div>
 
-  <div class="card" style="margin-top:12px;">
+  <div class="card pro-only" style="margin-top:12px;">
     <div class="head"><h2>Jurnal</h2></div>
     <table>
       <thead><tr><th>Vaqt</th><th>Amal</th><th>Kim</th><th>Izoh</th></tr></thead>
@@ -463,7 +514,7 @@ body { overflow-x: clip; }
 </div>
 
 <script src="fleet-data.js?v=1"></script>
-<script src="auth.js?v=6"></script>
+<script src="auth.js?v=7"></script>
 <script>
 function show(id, text, ok) {
   const el = document.getElementById(id);
@@ -481,26 +532,31 @@ function esc(s) {
 let resetId = null;
 
 async function loadAll() {
-  const [users, sess, audit] = await Promise.all([
-    vmApi('/api/users'),
-    vmApi('/api/sessions'),
-    vmApi('/api/audit')
-  ]);
-  document.getElementById('s-users').textContent = users.users.length;
+  const me = window.VM_USER || {};
+  const reqs = [vmApi('/api/users'), vmApi('/api/sessions')];
+  if (me.role === 'admin_pro') reqs.push(vmApi('/api/audit'));
+  const [users, sess, audit] = await Promise.all(reqs);
+  const drvN = (users.users || []).filter(u => u.role === 'driver').length;
+  document.getElementById('s-users').textContent = users.users.length + (drvN ? (' · ' + drvN + ' haydovchi') : '');
   document.getElementById('s-sess').textContent = sess.sessions.length;
   document.getElementById('s-on').textContent = sess.sessions.filter(s => s.online).length;
 
   document.getElementById('tb-users').innerHTML = users.users.map(u => {
     const role = u.role === 'admin_pro'
       ? '<span class="chip chip-pro">Pro</span>'
-      : '<span class="chip chip-admin">Admin</span>';
+      : (u.role === 'driver' ? '<span class="chip chip-drv">Haydovchi</span>' : '<span class="chip chip-admin">Admin</span>');
     const st = u.active
       ? '<span class="chip chip-on">Faol</span>'
       : '<span class="chip chip-off">Blok</span>';
     const locked = u.protected || u.role === 'admin_pro';
-    const acts = locked
+    const canAct = u.role === 'driver' ? true : (me.role === 'admin_pro' && !locked);
+    const view = u.role === 'driver' && u.car
+      ? `<a class="btn btn-sm" href="/driver.html?car=${encodeURIComponent(u.car)}">Ko‘rish</a>`
+      : '';
+    const acts = !canAct
       ? '<span class="muted">Himoyalangan</span>'
       : `<div class="row-btns">
+          ${view}
           <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Bloklash' : 'Yoqish'}</button>
           <button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
           <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}">O‘chirish</button>
@@ -509,6 +565,7 @@ async function loadAll() {
       <td>${esc(u.name)}</td>
       <td class="mono">${esc(u.username)}</td>
       <td>${role}</td>
+      <td class="mono">${esc(u.car || '—')}</td>
       <td>${st}</td>
       <td class="mono">${esc(u.last_login || '—')}</td>
       <td>${acts}</td>
@@ -532,12 +589,15 @@ async function loadAll() {
     }).join('');
   }
 
-  document.getElementById('tb-audit').innerHTML = audit.audit.map(a => `<tr>
+  const auditEl = document.getElementById('tb-audit');
+  if (auditEl && audit && audit.audit) {
+    auditEl.innerHTML = audit.audit.map(a => `<tr>
     <td class="mono">${esc(a.t)}</td>
     <td class="mono">${esc(a.act)}</td>
     <td>${esc(a.who)}</td>
     <td>${esc(a.detail || '')}</td>
   </tr>`).join('');
+  }
 }
 
 function clearAddForm() {
@@ -557,7 +617,7 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
     if (act === 'toggle') {
       await vmApi('/api/users/toggle', { method: 'POST', body: JSON.stringify({ id, active: btn.getAttribute('data-on') === '1' }) });
     } else if (act === 'del') {
-      if (!confirm('Adminni tizimdan o‘chirish?')) return;
+      if (!confirm('Bu foydalanuvchini o‘chirish?')) return;
       await vmApi('/api/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
     } else if (act === 'reset') {
       resetId = id;
@@ -632,6 +692,49 @@ document.getElementById('form-add').addEventListener('submit', async (e) => {
   }
 });
 
+document.getElementById('form-drv').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hide('msg-drv');
+  try {
+    await vmApi('/api/users/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        role: 'driver',
+        name: document.getElementById('d-name').value.trim(),
+        username: document.getElementById('d-user').value.trim(),
+        password: document.getElementById('d-pass').value,
+        car: document.getElementById('d-car').value
+      })
+    });
+    show('msg-drv', 'Haydovchi qo‘shildi. U login/parol bilan o‘z kabinetiga kiradi.', true);
+    document.getElementById('d-name').value = '';
+    document.getElementById('d-user').value = '';
+    document.getElementById('d-pass').value = '';
+    await loadAll();
+  } catch (err) {
+    show('msg-drv', err.message, false);
+  }
+});
+
+document.getElementById('form-task').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hide('msg-task');
+  try {
+    await vmApi('/api/driver/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        car: document.getElementById('t-car').value,
+        date: document.getElementById('t-date').value,
+        text: document.getElementById('t-text').value.trim()
+      })
+    });
+    show('msg-task', 'Topshiriq yozildi. Haydovchi kabinetida ko‘rinadi.', true);
+    document.getElementById('t-text').value = '';
+  } catch (err) {
+    show('msg-task', err.message, false);
+  }
+});
+
 document.getElementById('btn-pw').addEventListener('click', async () => {
   hide('msg-pw');
   try {
@@ -662,10 +765,13 @@ function carLabel(car) {
 }
 
 function fillCarSelect() {
-  const sel = document.getElementById('ph-car');
-  sel.innerHTML = OFFICE_CARS.map(([car, name]) =>
+  const html = OFFICE_CARS.map(([car, name]) =>
     `<option value="${esc(car)}">${esc(name)} — ${esc(car)}</option>`
   ).join('');
+  ['ph-car', 'd-car', 't-car'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) sel.innerHTML = html;
+  });
 }
 
 function renderPharms() {
@@ -793,9 +899,12 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
   const d = await vmApi('/api/me');
   const me = d.user;
   window.VM_USER = me;
-  if (!me || me.role !== 'admin_pro') {
+  if (!me || (me.role !== 'admin_pro' && me.role !== 'admin')) {
     location.replace('/');
     return;
+  }
+  if (me.role !== 'admin_pro') {
+    document.querySelectorAll('.pro-only').forEach(el => { el.style.display = 'none'; });
   }
   const note = document.getElementById('persist-note');
   if (note) {

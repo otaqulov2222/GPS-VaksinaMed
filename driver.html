@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Haydovchi — VaksinaMed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+* { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: #e8ebf0; }
+*::-webkit-scrollbar-thumb { background: #9aa3ae; border-radius: 8px; border: 2px solid #e8ebf0; }
+*::-webkit-scrollbar-button { display: none !important; width: 0; height: 0; }
+:root {
+  --bg: #c9ced6; --card: #fff; --ink: #12151c; --muted: #5c6573;
+  --line: #b7bec8; --header: #0c1016; --gold: #c9a227;
+  --ok: #1a5c3a; --bad: #9b1c1c; --warn: #8a5a12;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 13px; min-height: 100vh; }
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  min-height: 52px; padding: 8px 16px 8px 12px;
+  background: var(--header); color: #f4f4f2;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  border-bottom: 2px solid var(--gold);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand img { width: 36px; height: 36px; display: block; }
+.tb-name { font-size: 14px; font-weight: 700; letter-spacing: .04em; color: #c4a0de; line-height: 1; }
+.tb-name span { color: #e8b423; }
+.tb-line { font-size: 8px; font-weight: 600; letter-spacing: .16em; color: #9b7ab3; margin-top: 3px; }
+.tb-page { border-left: 1px solid #2a323c; padding-left: 12px; margin-left: 4px; }
+.tb-title { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.tb-sub { font-size: 10px; color: #8b939e; letter-spacing: .08em; margin-top: 2px; }
+.acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.btn {
+  height: 32px; padding: 0 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #3a4450; background: transparent; color: #d5d8dc;
+  font: 700 11px/1 var(--sans); letter-spacing: .05em; cursor: pointer; text-decoration: none;
+}
+.btn:hover { background: #1c232c; color: #fff; }
+.note {
+  background: #161c24; color: #c8ced6; font-size: 12px; padding: 8px 14px;
+  border-bottom: 1px solid #2a323c;
+}
+.wrap { max-width: 980px; margin: 14px auto 32px; padding: 0 12px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.toolbar input, .toolbar select {
+  height: 36px; padding: 0 10px; border: 1px solid var(--line); background: #fff;
+  font: 600 13px/1 var(--mono); color: var(--ink);
+}
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.kpi { background: var(--card); border: 1px solid #12151c; padding: 12px 14px; }
+.kpi i { display: block; font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.kpi b { display: block; font-size: 22px; font-weight: 700; margin-top: 4px; font-family: var(--mono); }
+.kpi s { display: block; text-decoration: none; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.card { background: var(--card); border: 1px solid #12151c; margin-bottom: 12px; }
+.card-h { padding: 10px 14px; background: #0c1016; color: #f4f4f2; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.card-b { padding: 12px 14px; }
+.row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.nm { font-weight: 600; }
+.meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border: 1px solid var(--line); }
+.tag-ok { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
+.tag-bad { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
+.tag-warn { background: #f4ecd8; color: var(--warn); border-color: #e4d4a8; }
+.empty { color: var(--muted); padding: 8px 0; }
+ul.plain { list-style: none; }
+ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+ul.plain li:last-child { border-bottom: 0; }
+@media (max-width: 800px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .tb-page { display: none; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img src="/logo/mark.svg?v=3" alt="">
+    <div>
+      <div class="tb-name">VAKSINA <span>MED</span></div>
+      <div class="tb-line">MACHINE CONTROL</div>
+    </div>
+    <div class="tb-page">
+      <div class="tb-title">Haydovchi kabineti</div>
+      <div class="tb-sub" id="who-line">Faqat ko‘rish</div>
+    </div>
+  </div>
+  <div class="acts">
+    <span id="tb-user-name" style="font-size:12px;font-weight:600">—</span>
+    <button class="btn" type="button" id="btn-logout">Chiqish</button>
+  </div>
+</header>
+<div class="note">Bu sahifada hech narsa o‘zgartirilmaydi. Faqat o‘zingizga biriktirilgan kunlik natija ko‘rinadi.</div>
+<div class="wrap">
+  <div class="toolbar">
+    <label>Sana <input type="date" id="d-date"></label>
+    <label id="staff-pick" hidden>Mashina
+      <select id="d-car"></select>
+    </label>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys / to‘xtash</s></div>
+    <div class="kpi"><i>Ball</i><b id="k-score">—</b><s id="k-grade">VHK bahosi</s></div>
+    <div class="kpi"><i>O‘tkazib yuborilgan</i><b id="k-miss">—</b><s>nuqta</s></div>
+    <div class="kpi"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan to‘xtash</s></div>
+  </div>
+  <div class="card">
+    <div class="card-h">Yoqilg‘i</div>
+    <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilg‘i yozuvi yo‘q</div></div>
+  </div>
+  <div class="card">
+    <div class="card-h">Topshiriqlar — biriktirilgan nuqtalar</div>
+    <div class="card-b" id="task-box"></div>
+  </div>
+  <div class="card">
+    <div class="card-h">Yo‘nalish va to‘xtashlar</div>
+    <div class="card-b" id="stop-box"></div>
+  </div>
+  <div class="card">
+    <div class="card-h">Jurnal</div>
+    <div class="card-b" id="jr-box"></div>
+  </div>
+</div>
+<script src="fleet-data.js?v=1"></script>
+<script src="auth.js?v=7"></script>
+<script>
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function modeLabel(m) {
+  return ({ gaz: 'Gaz', benzin: 'Benzin', dizel: 'Dizel', aralash: 'Aralash' })[m] || (m || '—');
+}
+function stopKind(st) {
+  if (st.isOffice) return ['Ofis', 'tag-ok'];
+  if (st.isOutside) return ['Shahar tashqari', 'tag-warn'];
+  if (st.isProblem) return ['Muammo', 'tag-bad'];
+  if (st.matchType === 'own') return ['O‘z nuqtasi', 'tag-ok'];
+  if (st.matchType === 'other') return ['Boshqa yo‘nalish', 'tag-warn'];
+  return ['To‘xtash', ''];
+}
+
+let ME = null;
+
+async function loadDay() {
+  const date = document.getElementById('d-date').value;
+  const carSel = document.getElementById('d-car');
+  const q = new URLSearchParams({ date });
+  if (vmIsStaff(ME) && carSel.value) q.set('car', carSel.value);
+  const d = await vmApi('/api/driver/day?' + q.toString());
+  paint(d.day || {});
+}
+
+function paint(day) {
+  const a = day.analysis || {};
+  const st = day.stats || {};
+  const fuel = day.fuel;
+  const missed = Array.isArray(a.missedList) ? a.missedList : [];
+  const viol = (day.reviews || []).filter(r => r.status === 'violation');
+  document.getElementById('k-km').textContent = st.km ? Number(st.km).toFixed(1) + ' km' : '—';
+  document.getElementById('k-trips').textContent = (st.trips || 0) + ' reys · ' + (st.stops || 0) + ' to‘xtash';
+  document.getElementById('k-score').textContent = day.hasGps && a.score != null ? Number(a.score).toFixed(1) : '—';
+  document.getElementById('k-grade').textContent = a.grade && a.grade !== '—' ? ('Bahosi ' + a.grade) : 'GPS hisobot yo‘q';
+  document.getElementById('k-miss').textContent = String(missed.length);
+  document.getElementById('k-bad').textContent = String(viol.length || a.problemStops || 0);
+
+  const fb = document.getElementById('fuel-box');
+  if (!fuel) {
+    fb.innerHTML = '<div class="empty">Bu kun uchun yoqilg‘i yozuvi yo‘q</div>';
+  } else {
+    fb.innerHTML = `
+      <div class="row"><span class="nm">Rejim</span><span class="meta">${esc(modeLabel(fuel.mode))}</span></div>
+      <div class="row"><span class="nm">Km (Boshqaruv)</span><span class="meta">${Number(fuel.km||0).toFixed(1)}</span></div>
+      <div class="row"><span class="nm">Sarf gaz</span><span class="meta">${Number(fuel.gasUsed||0).toFixed(2)} m³</span></div>
+      <div class="row"><span class="nm">Sarf benzin/dizel</span><span class="meta">${Number(fuel.benUsed||0).toFixed(2)} l</span></div>
+      <div class="row"><span class="nm">Olingan gaz / benzin</span><span class="meta">${Number(fuel.gasIn||0).toFixed(2)} / ${Number(fuel.benzinIn||0).toFixed(2)}</span></div>
+      <div class="row"><span class="nm">Qoldiq gaz / benzin</span><span class="meta">${Number(fuel.gasR||0).toFixed(2)} / ${Number(fuel.benR||0).toFixed(2)}</span></div>
+      ${fuel.station ? `<div class="row"><span class="nm">Zapravka</span><span class="meta">${esc(fuel.station)}</span></div>` : ''}`;
+  }
+
+  const tasks = day.tasks || [];
+  const ph = day.pharmacies || [];
+  let th = '';
+  if (day.routes) th += `<div class="row"><span class="nm">Yo‘nalish</span><span class="meta">${esc(day.routes)}</span></div>`;
+  if (ph.length) {
+    th += '<div style="margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Biriktirilgan dorixonalar</div>';
+    th += '<ul class="plain">' + ph.map(n => {
+      const miss = missed.some(m => String(m).toLowerCase() === String(n).toLowerCase());
+      return `<li>${esc(n)} ${miss ? '<span class="tag tag-warn">borilmadi</span>' : '<span class="tag tag-ok">reja</span>'}</li>`;
+    }).join('') + '</ul>';
+  }
+  if (tasks.length) {
+    th += '<div style="margin:10px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Admin topshirig‘i</div>';
+    th += '<ul class="plain">' + tasks.map(t => `<li>${esc(t.text)}${t.date ? ' <span class="meta">' + esc(t.date) + '</span>' : ''}</li>`).join('') + '</ul>';
+  }
+  if (!th) th = '<div class="empty">Hali topshiriq yozilmagan</div>';
+  if (missed.length) {
+    th += '<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--warn)">O‘tkazib yuborilgan: ' + missed.map(esc).join(', ') + '</div>';
+  }
+  document.getElementById('task-box').innerHTML = th;
+
+  const stops = day.stops || [];
+  const sb = document.getElementById('stop-box');
+  if (!day.hasGps) {
+    sb.innerHTML = '<div class="empty">Bu kun uchun GPS hisobot hali yuklanmagan. Admin VHK dan yuklagach shu yerda ko‘rinadi.</div>';
+  } else if (!stops.length) {
+    sb.innerHTML = '<div class="empty">To‘xtashlar ro‘yxati yo‘q</div>';
+  } else {
+    sb.innerHTML = stops.map(s => {
+      const [lab, cls] = stopKind(s);
+      return `<div class="row"><div><div class="nm">${esc(s.place || '—')}</div><div class="meta">${esc(s.inTime || '')}${s.outTime ? ' → ' + esc(s.outTime) : ''}</div></div><span class="tag ${cls}">${lab}</span></div>`;
+    }).join('');
+  }
+
+  const jr = day.journal || [];
+  document.getElementById('jr-box').innerHTML = jr.length
+    ? jr.map(j => `<div class="row"><div><div class="nm">${esc(j.reason || (j.kind === 'good' ? 'Maktov' : 'Kamchilik'))}</div><div class="meta">${esc(j.note || '')}</div></div><span class="tag ${j.kind==='good'?'tag-ok':'tag-bad'}">${j.kind==='good'?'Yaxshi':'Kamchilik'}</span></div>`).join('')
+    : '<div class="empty">Jurnal yozuvi yo‘q</div>';
+}
+
+(async function init() {
+  ME = await vmMe();
+  vmApplyChrome(ME);
+  vmGatePage(ME);
+  vmStartHeartbeat();
+  document.getElementById('btn-logout').onclick = () => vmLogout();
+  const who = [ME.name || ME.username, ME.car].filter(Boolean).join(' · ');
+  document.getElementById('who-line').textContent = who || 'Faqat ko‘rish';
+  const dt = document.getElementById('d-date');
+  const q = new URLSearchParams(location.search);
+  dt.value = q.get('date') || todayStr();
+  dt.addEventListener('change', () => loadDay().catch(err => alert(err.message)));
+  if (vmIsStaff(ME)) {
+    const wrap = document.getElementById('staff-pick');
+    wrap.hidden = false;
+    const sel = document.getElementById('d-car');
+    const users = await vmApi('/api/users');
+    const drivers = (users.users || []).filter(u => u.role === 'driver');
+    const fleet = window.DRIVERS || [];
+    const opts = drivers.length ? drivers.map(u => {
+      const d = fleet.find(x => x.car === u.car);
+      return `<option value="${esc(u.car)}">${esc((d && d.shortName) || u.name)} — ${esc(u.car)}</option>`;
+    }) : fleet.map(d => `<option value="${esc(d.car)}">${esc(d.shortName)} — ${esc(d.car)}</option>`);
+    sel.innerHTML = opts.join('');
+    if (q.get('car')) sel.value = q.get('car');
+    sel.addEventListener('change', () => loadDay().catch(err => alert(err.message)));
+  }
+  await loadDay();
+})().catch(err => {
+  document.getElementById('task-box').innerHTML = '<div class="empty">' + esc(err.message) + '</div>';
+});
+</script>
+</body>
+</html>

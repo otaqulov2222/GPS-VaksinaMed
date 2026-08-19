@@ -2063,6 +2063,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const user = await vmMe();
         vmApplyChrome(user);
+        vmGatePage(user);
         vmStartHeartbeat();
         document.getElementById('btn-logout')?.addEventListener('click', () => vmLogout());
     } catch (e) {

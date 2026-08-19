@@ -2041,6 +2041,7 @@ function bind() {
 (async function init() {
   const user = await vmMe();
   vmApplyChrome(user);
+  vmGatePage(user);
   vmStartHeartbeat();
   bind();
   await loadAll();

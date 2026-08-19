@@ -36,6 +36,26 @@ function vmSameLabel(a, b) {
     return !!x && x === y;
 }
 
+function vmIsStaff(user) {
+    return !!user && (user.role === 'admin_pro' || user.role === 'admin');
+}
+
+function vmIsDriver(user) {
+    return !!user && user.role === 'driver';
+}
+
+function vmGatePage(user) {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    const onDriver = path.endsWith('/driver.html');
+    if (vmIsDriver(user)) {
+        if (!onDriver) location.replace('/driver.html');
+        return;
+    }
+    if (onDriver && !vmIsStaff(user)) {
+        location.replace('/');
+    }
+}
+
 function vmApplyChrome(user) {
     if (!user) return;
     const name = document.getElementById('tb-user-name');
@@ -43,20 +63,19 @@ function vmApplyChrome(user) {
     const panel = document.getElementById('btn-admin-panel');
     if (name) name.textContent = user.username || user.name || '—';
     if (role) {
-        const roleLabel = user.role === 'admin_pro' ? 'Admin Pro' : '';
+        const roleLabel = user.role === 'admin_pro' ? 'Admin Pro' : (user.role === 'driver' ? 'Haydovchi' : '');
         const shown = name ? name.textContent : (user.username || '');
         if (roleLabel && !vmSameLabel(shown, roleLabel) && !vmSameLabel(shown, 'admin')) {
             role.hidden = false;
             role.textContent = roleLabel;
-            role.className = 'tb-role tb-role-pro';
+            role.className = 'tb-role ' + (user.role === 'admin_pro' ? 'tb-role-pro' : 'tb-role-admin');
         } else {
             role.hidden = true;
             role.textContent = '';
         }
     }
     if (panel) {
-        const isPro = user.role === 'admin_pro';
-        panel.style.display = isPro ? 'inline-flex' : 'none';
+        panel.style.display = vmIsStaff(user) ? 'inline-flex' : 'none';
         panel.textContent = 'Admin';
         panel.setAttribute('href', '/admin.html');
     }
