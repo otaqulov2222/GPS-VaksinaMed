@@ -145,6 +145,8 @@ function modeLabel(m) {
   return ({ gaz: 'Gaz', benzin: 'Benzin', dizel: 'Dizel', aralash: 'Aralash' })[m] || (m || '—');
 }
 function stopKind(st) {
+  if (st && st.reviewStatus === 'violation') return ['VHK buzilish', 'tag-bad'];
+  if (st && st.reviewStatus === 'allowed') return ['Ruxsat', 'tag-ok'];
   if (st.isOffice) return ['Ofis', 'tag-ok'];
   if (st.isOutside) return ['Shahar tashqari', 'tag-warn'];
   if (st.isProblem) return ['Muammo', 'tag-bad'];
@@ -176,11 +178,19 @@ function startDayAutoRefresh() {
   dayTimer = setInterval(() => loadDay().catch(() => {}), 2 * 60 * 1000);
 }
 
+function normPh(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^a-z0-9а-яўқғҳ]/gi, '');
+}
+
 function paint(day) {
   const a = day.analysis || {};
   const st = day.stats || {};
   const fuel = day.fuel;
   const missed = Array.isArray(a.missedList) ? a.missedList : [];
+  const missedSet = new Set(missed.map(normPh).filter(Boolean));
   const viol = (day.reviews || []).filter(r => r.status === 'violation');
   document.getElementById('k-km').textContent = st.km ? Number(st.km).toFixed(1) + ' km' : '—';
   document.getElementById('k-trips').textContent = (st.trips || 0) + ' reys · ' + (st.stops || 0) + ' to‘xtash';
@@ -204,14 +214,16 @@ function paint(day) {
   }
 
   const tasks = day.tasks || [];
-  const ph = day.pharmacies || [];
   const hasGps = !!day.hasGps;
+  const ph = (Array.isArray(day.pharmacies) && day.pharmacies.length)
+    ? day.pharmacies
+    : (Array.isArray(a.ownPharms) ? a.ownPharms : []);
   let th = '';
   if (day.routes) th += `<div class="row"><span class="nm">Yo‘nalish</span><span class="meta">${esc(day.routes)}</span></div>`;
   if (ph.length) {
     th += '<div style="margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Biriktirilgan dorixonalar</div>';
     th += '<ul class="plain">' + ph.map(n => {
-      const miss = missed.some(m => String(m).toLowerCase() === String(n).toLowerCase());
+      const miss = missedSet.has(normPh(n));
       let tag;
       if (!hasGps) tag = '<span class="tag">reja</span>';
       else if (miss) tag = '<span class="tag tag-warn">borilmadi</span>';
@@ -238,7 +250,16 @@ function paint(day) {
   } else {
     sb.innerHTML = stops.map(s => {
       const [lab, cls] = stopKind(s);
-      return `<div class="row"><div><div class="nm">${esc(s.place || '—')}</div><div class="meta">${esc(s.inTime || '')}${s.outTime ? ' → ' + esc(s.outTime) : ''}</div></div><span class="tag ${cls}">${lab}</span></div>`;
+      const note = s.reviewNote || s.problemRule || '';
+      const noteHtml = note ? `<div class="meta" style="margin-top:2px;color:#8b939e;">${esc(note)}</div>` : '';
+      return `<div class="row">
+        <div>
+          <div class="nm">${esc(s.place || '—')}</div>
+          <div class="meta">${esc(s.inTime || '')}${s.outTime ? ' → ' + esc(s.outTime) : ''}</div>
+          ${noteHtml}
+        </div>
+        <span class="tag ${cls}">${lab}</span>
+      </div>`;
     }).join('');
   }
 

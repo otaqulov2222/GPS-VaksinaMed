@@ -1414,9 +1414,65 @@ class OfficeStore:
         score = analysis.get("score") if isinstance(analysis.get("score"), dict) else {}
         stops_in = rec.get("stops") if isinstance(rec.get("stops"), list) else []
         stops = []
+        # Reviews data is keyed by vmStopKey(date, car, stop).
+        bag = self.reviews(date) or {}
+        want = compact_plate(plate)
+        def _f4(v):
+            try:
+                x = float(v or 0)
+                return f"{x:.4f}"
+            except Exception:
+                return "0.0000"
+        def _norm_plate_for_key(p):
+            # Key uses car as-is from UI. We keep `plate` for correctness in review lookup.
+            return plate
+        # Map review key -> review dict for quick lookup
+        # (bag already is this mapping)
         for st in stops_in[:80]:
             if not isinstance(st, dict):
                 continue
+            place_raw = str(st.get("place") or st.get("phName") or "")[:200]
+            place_key = place_raw[:50]
+            in_time = str(st.get("inTime") or "")[:20]
+            lat_fixed = _f4(st.get("lat"))
+            lng_fixed = _f4(st.get("lng"))
+            # vmStopKey format: date|car|t|lat(4)|lng(4)|place(<=50)
+            rev_key = "|".join([date, _norm_plate_for_key(want), in_time, lat_fixed, lng_fixed, place_key])
+            rv = bag.get(rev_key)
+            if not isinstance(rv, dict):
+                # Fallback: relaxed match by date+car(last compaction)+time+place
+                for k2, rv2 in bag.items():
+                    if not isinstance(rv2, dict):
+                        continue
+                    parts2 = str(k2).split("|")
+                    if len(parts2) < 6:
+                        continue
+                    car_k2 = parts2[1] if len(parts2) > 1 else ""
+                    if compact_plate(car_k2) != want:
+                        continue
+                    t2 = parts2[2] if len(parts2) > 2 else ""
+                    p2 = parts2[-1] if parts2 else ""
+                    if str(t2) == in_time and str(p2) == place_key:
+                        rv = rv2
+                        break
+            reviewStatus = None
+            reviewNote = ""
+            if isinstance(rv, dict):
+                reviewStatus = rv.get("status")
+                reviewNote = str(rv.get("note") or "")[:200]
+
+            dur_sec = as_num(st.get("durSec") or st.get("dursec") or 0, 0.0)
+            match_type = str(st.get("matchType") or "")
+            is_office = bool(st.get("isOffice"))
+            is_outside = bool(st.get("isOutside"))
+            is_problem = bool(st.get("isProblem"))
+            problem_rule = ""
+            if not reviewStatus and is_problem:
+                if (match_type == "none") and (not is_office) and (not is_outside):
+                    problem_rule = "VHK: To‘xtash dorixona/geozonaga mos kelmadi yoki ruxsat berilmagan"
+                else:
+                    problem_rule = "VHK: Qoidabuzarlik (muammo) aniqlandi"
+
             stops.append(
                 {
                     "place": str(st.get("place") or st.get("phName") or "")[:120],
@@ -1426,11 +1482,16 @@ class OfficeStore:
                     "isProblem": bool(st.get("isProblem")),
                     "isOffice": bool(st.get("isOffice")),
                     "isOutside": bool(st.get("isOutside")),
+                    "lat": st.get("lat"),
+                    "lng": st.get("lng"),
+                    "durSec": float(dur_sec) if dur_sec is not None else 0,
+                    "duration": str(st.get("duration") or "")[:40],
+                    "reviewStatus": reviewStatus,
+                    "reviewNote": reviewNote,
+                    "problemRule": problem_rule,
                 }
             )
         reviews = []
-        bag = self.reviews(date) or {}
-        want = compact_plate(plate)
         for k, rv in bag.items():
             if not isinstance(rv, dict):
                 continue
@@ -1492,6 +1553,7 @@ class OfficeStore:
                 "otherDirection": int(as_num(analysis.get("otherDirection"))),
                 "problemStops": int(as_num(analysis.get("problemStops"))),
                 "outsideCity": int(as_num(analysis.get("outsideCity"))),
+                "ownPharms": analysis.get("ownPharms") if isinstance(analysis.get("ownPharms"), list) else [],
                 "missedList": analysis.get("missedList") if isinstance(analysis.get("missedList"), list) else [],
                 "score": as_num(score.get("final")),
                 "grade": str(score.get("grade") or "—"),
