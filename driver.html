@@ -6,6 +6,7 @@
 <title>Haydovchi — VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
@@ -72,6 +73,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-
 .tag-bad { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
 .tag-warn { background: #f4ecd8; color: var(--warn); border-color: #e4d4a8; }
 .empty { color: var(--muted); padding: 8px 0; }
+#driver-map { height: 320px; background: #c5ccd6; border: 1px solid var(--line); }
+.leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #c5ccd6; }
+.leaflet-popup-content-wrapper { background: #0c1016; color: #f4f4f2; border-radius: 0; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.leaflet-popup-content { margin: 10px 12px; font-size: 12px; line-height: 1.45; }
+.leaflet-popup-content b { color: #f4f4f2; }
+.leaflet-popup-tip { background: #0c1016; }
+.vm-pin { background: none !important; border: none !important; }
+.vm-pin-dot {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; font-family: var(--mono);
+  font-size: 8px; font-weight: 700; color: #fff;
+  border: 1.5px solid #fff; border-radius: 50%;
+}
+.vm-pin-end { width: 24px; height: 24px; background: #0c1016 !important; border-color: #c9a227; color: #c9a227; }
 ul.plain { list-style: none; }
 ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
 ul.plain li:last-child { border-bottom: 0; }
@@ -115,6 +130,12 @@ ul.plain li:last-child { border-bottom: 0; }
     <div class="kpi"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan to‘xtash</s></div>
   </div>
   <div class="card">
+    <div class="card-h">Xarita — yo‘nalish va to‘xtashlar</div>
+    <div class="card-b" style="padding:0">
+      <div id="driver-map"></div>
+    </div>
+  </div>
+  <div class="card">
     <div class="card-h">Yoqilg‘i</div>
     <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilg‘i yozuvi yo‘q</div></div>
   </div>
@@ -133,6 +154,7 @@ ul.plain li:last-child { border-bottom: 0; }
 </div>
 <script src="fleet-data.js?v=1"></script>
 <script src="auth.js?v=8"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 function esc(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -157,6 +179,91 @@ function stopKind(st) {
 
 let ME = null;
 let dayTimer = null;
+let drvMap = null;
+let drvMapLayers = [];
+
+function normPlate(s) {
+  return String(s || '').replace(/\s+/g, '').toUpperCase();
+}
+function fleetPharmacies(car) {
+  const fleet = window.DRIVERS || window.FLEET_DRIVERS || [];
+  const d = fleet.find(x => normPlate(x.car) === normPlate(car));
+  if (!d || !d.pharmacies) return [];
+  return d.pharmacies.split(',').map(s => s.trim()).filter(Boolean);
+}
+function stopLabel(s) {
+  const place = String(s.place || s.phName || '').trim();
+  if (place && !/^\d+\.\d+,\s*\d+\.\d+$/.test(place)) return place;
+  if (s.lat != null && s.lng != null) return Number(s.lat).toFixed(5) + ', ' + Number(s.lng).toFixed(5);
+  return place || '—';
+}
+function drvStopColor(st) {
+  if (st.reviewStatus === 'violation' || st.isProblem) return '#9b1c1c';
+  if (st.reviewStatus === 'allowed' || st.matchType === 'own') return '#1a5c3a';
+  if (st.isOutside || st.matchType === 'other') return '#1a4a78';
+  if (st.isOffice) return '#2a303a';
+  return '#8b939e';
+}
+function drvPinIcon(label, color, isEnd) {
+  return L.divIcon({
+    className: 'vm-pin',
+    html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color}">${label}</span>`,
+    iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -12]
+  });
+}
+function initDriverMap() {
+  const el = document.getElementById('driver-map');
+  if (!el || typeof L === 'undefined') return;
+  if (drvMap) { drvMap.invalidateSize(); return; }
+  drvMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([41.3111, 69.2797], 12);
+  const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 19
+  });
+  carto.on('tileerror', () => {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(drvMap);
+  });
+  carto.addTo(drvMap);
+}
+function refreshDriverMap(day) {
+  initDriverMap();
+  if (!drvMap) return;
+  drvMapLayers.forEach(l => { try { drvMap.removeLayer(l); } catch (e) {} });
+  drvMapLayers = [];
+  const stops = (day.stops || []).filter(s => s.lat != null && s.lng != null);
+  const geos = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo : [];
+  geos.forEach(p => {
+    if (p.lat == null || p.lng == null) return;
+    drvMapLayers.push(L.circle([p.lat, p.lng], {
+      radius: p.radiusM || 120, color: '#1a5c3a', weight: 1,
+      fillColor: '#1a5c3a', fillOpacity: 0.08, interactive: false
+    }).addTo(drvMap));
+    const m = L.circleMarker([p.lat, p.lng], {
+      radius: 4, color: '#1a5c3a', fillColor: '#1a5c3a', fillOpacity: 0.9, weight: 1
+    }).addTo(drvMap);
+    m.bindTooltip(p.name || '', { direction: 'top' });
+    drvMapLayers.push(m);
+  });
+  if (!stops.length && !geos.length) return;
+  const latlngs = stops.map(s => [Number(s.lat), Number(s.lng)]);
+  if (latlngs.length > 1) {
+    drvMapLayers.push(L.polyline(latlngs, { color: '#0c1016', weight: 5, opacity: 0.35 }).addTo(drvMap));
+    drvMapLayers.push(L.polyline(latlngs, { color: '#c9a227', weight: 2.4, opacity: 0.95 }).addTo(drvMap));
+  }
+  const lastI = stops.length - 1;
+  stops.forEach((st, i) => {
+    const color = drvStopColor(st);
+    const label = i === 0 ? 'A' : (i === lastI ? 'B' : String(i + 1));
+    const isEnd = i === 0 || i === lastI;
+    const mk = L.marker([st.lat, st.lng], { icon: drvPinIcon(label, color, isEnd) }).addTo(drvMap);
+    const [lab] = stopKind(st);
+    mk.bindPopup(`<b>${esc(stopLabel(st))}</b><br>${esc(st.inTime || '')}${st.outTime ? ' → ' + esc(st.outTime) : ''}<br>${st.duration ? esc(st.duration) : ''}<br><span style="color:#c9a227">${esc(lab)}</span>`);
+    drvMapLayers.push(mk);
+  });
+  const allPts = latlngs.concat(geos.map(p => [p.lat, p.lng]));
+  if (allPts.length > 1) drvMap.fitBounds(L.latLngBounds(allPts), { padding: [36, 36], maxZoom: 15 });
+  else if (allPts.length === 1) drvMap.setView(allPts[0], 14);
+  setTimeout(() => { if (drvMap) drvMap.invalidateSize(); }, 120);
+}
 
 async function loadDay() {
   const date = document.getElementById('d-date').value;
@@ -164,7 +271,8 @@ async function loadDay() {
   const q = new URLSearchParams({ date });
   if (vmIsStaff(ME) && carSel.value) q.set('car', carSel.value);
   const d = await vmApi('/api/driver/day?' + q.toString());
-  paint(d.day || {});
+  const day = d.day || {};
+  paint(day);
   const upd = document.getElementById('day-updated');
   if (upd) {
     let txt = 'Yangilandi: ' + new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
@@ -217,7 +325,7 @@ function paint(day) {
   const hasGps = !!day.hasGps;
   const ph = (Array.isArray(day.pharmacies) && day.pharmacies.length)
     ? day.pharmacies
-    : (Array.isArray(a.ownPharms) ? a.ownPharms : []);
+    : (Array.isArray(a.ownPharms) && a.ownPharms.length ? a.ownPharms : fleetPharmacies(day.car));
   let th = '';
   if (day.routes) th += `<div class="row"><span class="nm">Yo‘nalish</span><span class="meta">${esc(day.routes)}</span></div>`;
   if (ph.length) {
@@ -252,16 +360,20 @@ function paint(day) {
       const [lab, cls] = stopKind(s);
       const note = s.reviewNote || s.problemRule || '';
       const noteHtml = note ? `<div class="meta" style="margin-top:2px;color:#8b939e;">${esc(note)}</div>` : '';
+      const durHtml = s.duration ? `<div class="meta">Turgani: ${esc(s.duration)}</div>` : '';
       return `<div class="row">
         <div>
-          <div class="nm">${esc(s.place || '—')}</div>
+          <div class="nm">${esc(stopLabel(s))}</div>
           <div class="meta">${esc(s.inTime || '')}${s.outTime ? ' → ' + esc(s.outTime) : ''}</div>
+          ${durHtml}
           ${noteHtml}
         </div>
         <span class="tag ${cls}">${lab}</span>
       </div>`;
     }).join('');
   }
+
+  refreshDriverMap(day);
 
   const jr = day.journal || [];
   document.getElementById('jr-box').innerHTML = jr.length
@@ -299,7 +411,9 @@ function paint(day) {
   await loadDay();
   startDayAutoRefresh();
 })().catch(err => {
-  document.getElementById('task-box').innerHTML = '<div class="empty">' + esc(err.message) + '</div>';
+  const upd = document.getElementById('day-updated');
+  if (upd) upd.textContent = 'Xato: ' + err.message;
+  else alert(err.message);
 });
 </script>
 </body>

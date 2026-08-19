@@ -1402,6 +1402,20 @@ class OfficeStore:
             }
         return last
 
+    def _fleet_pharmacy_names(self, plate):
+        try:
+            import gps_sync
+
+            base = os.path.dirname(os.path.abspath(self.seed_path))
+            want = compact_plate(plate)
+            for d in gps_sync.load_fleet_drivers(base):
+                if compact_plate(d.get("car")) == want:
+                    raw = d.get("pharmacies") or ""
+                    return [p.strip() for p in raw.split(",") if p.strip()]
+        except Exception:
+            pass
+        return []
+
     def driver_day(self, date, plate):
         if not valid_date(date) or not compact_plate(plate):
             return None
@@ -1508,9 +1522,32 @@ class OfficeStore:
                 }
             )
         pharms = []
+        pharmacy_geo = []
         for p in self.pharmacies():
-            if isinstance(p, dict) and compact_plate(p.get("car")) == want:
-                pharms.append(str(p.get("name") or "")[:80])
+            if not isinstance(p, dict) or compact_plate(p.get("car")) != want:
+                continue
+            name = str(p.get("name") or "")[:80]
+            if name:
+                pharms.append(name)
+            lat, lng = p.get("lat"), p.get("lng")
+            if lat is not None and lng is not None:
+                try:
+                    pharmacy_geo.append(
+                        {
+                            "name": name,
+                            "lat": float(lat),
+                            "lng": float(lng),
+                            "radiusM": int(p.get("radiusM") or 120),
+                        }
+                    )
+                except (TypeError, ValueError):
+                    pass
+        if not pharms:
+            own = analysis.get("ownPharms")
+            if isinstance(own, list) and own:
+                pharms = [str(x)[:80] for x in own if x]
+        if not pharms:
+            pharms = self._fleet_pharmacy_names(plate)
         journal = []
         for it in self.journal_items():
             if not isinstance(it, dict):
@@ -1562,6 +1599,7 @@ class OfficeStore:
             "stops": stops,
             "reviews": reviews,
             "pharmacies": pharms,
+            "pharmacyGeo": pharmacy_geo,
             "journal": journal[:30],
             "fuel": self._fuel_day(plate, date),
             "tasks": self.tasks_for(plate, date),
