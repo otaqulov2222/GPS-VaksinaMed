@@ -771,16 +771,41 @@ class OfficeStore:
                 data = {}
             status = (rec or {}).get("status")
             if status in ("allowed", "violation"):
-                data[key] = {
+                entry = {
                     "status": status,
                     "note": str((rec or {}).get("note") or "")[:200],
                     "by": str((rec or {}).get("by") or "")[:40],
                     "at": iso_now(),
                 }
+                ph_name = str((rec or {}).get("phName") or "")[:80].strip()
+                if ph_name:
+                    entry["phName"] = ph_name
+                car = str((rec or {}).get("car") or "")[:32].strip()
+                if car:
+                    entry["car"] = car
+                lat = (rec or {}).get("lat")
+                lng = (rec or {}).get("lng")
+                if lat is not None and lng is not None:
+                    try:
+                        entry["lat"] = float(lat)
+                        entry["lng"] = float(lng)
+                    except (TypeError, ValueError):
+                        pass
+                data[key] = entry
             else:
                 data.pop(key, None)
             self._save(store_key, data)
             return data, None
+
+    def learn_and_reprocess(self, base_dir, date=None):
+        import gps_sync
+
+        learned = gps_sync.learn_geozones_from_reports(self, base_dir)
+        if date and valid_date(date):
+            days = 1 if gps_sync.reprocess_day(self, base_dir, date) else 0
+        else:
+            days = gps_sync.reprocess_recent(self, base_dir)
+        return {"learned": learned, "days": days}
 
     def report_dates(self):
         dates = []
@@ -2160,7 +2185,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 return
             items = OFFICE.save_pharmacies(body.get("pharmacies") or [])
+            try:
+                import gps_sync
+                gps_sync.reprocess_recent(OFFICE, DIRECTORY, limit=45)
+            except Exception:
+                pass
             self.send_json({"ok": True, "pharmacies": items})
+            return
+
+        if path == "/api/office/learn-geozones":
+            sess = self.require_pro()
+            if not sess:
+                return
+            try:
+                result = OFFICE.learn_and_reprocess(DIRECTORY, body.get("date"))
+                self.send_json({"ok": True, **result})
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:200]}, 500)
             return
 
         if path == "/api/office/reviews":
@@ -2169,18 +2210,39 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             if self.deny_driver_write(sess):
                 return
+            date_val = body.get("date")
             data, err = OFFICE.set_review(
-                body.get("date"),
+                date_val,
                 body.get("key"),
                 {
                     "status": body.get("status"),
                     "note": body.get("note"),
+                    "phName": body.get("phName"),
+                    "car": body.get("car"),
+                    "lat": body.get("lat"),
+                    "lng": body.get("lng"),
                     "by": sess.get("username"),
                 },
             )
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
                 return
+            if body.get("status") == "allowed" and body.get("phName") and body.get("lat") is not None:
+                try:
+                    import gps_sync
+                    pharms = list(OFFICE.pharmacies())
+                    if gps_sync.learn_geozone(
+                        pharms,
+                        body.get("car") or "",
+                        body.get("phName"),
+                        body.get("lat"),
+                        body.get("lng"),
+                    ):
+                        OFFICE.save_pharmacies(pharms)
+                    if valid_date(date_val):
+                        gps_sync.reprocess_day(OFFICE, DIRECTORY, date_val)
+                except Exception:
+                    pass
             self.send_json({"ok": True, "reviews": data})
             return
 
@@ -2483,6 +2545,14 @@ def main():
     OFFICE = OfficeStore(persist, os.path.join(args.dir, "office-seed.json"))
     seed_gps_from_env(OFFICE)
     start_gps_worker(OFFICE, args.dir)
+
+    def bootstrap_geozones():
+        try:
+            OFFICE.learn_and_reprocess(args.dir)
+        except Exception as e:
+            print("[geozone-bootstrap]", e)
+
+    threading.Thread(target=bootstrap_geozones, daemon=True, name="geozone-bootstrap").start()
 
     seed_note = ""
     if STORE.seeded:

@@ -143,12 +143,21 @@ const VMOffice = {
         return !!(st && st.isProblem);
     },
 
-    async setReview(dateVal, car, st, status) {
+    async setReview(dateVal, car, st, status, phName) {
         const key = vmStopKey(dateVal, car, st);
+        const body = {
+            date: dateVal,
+            key,
+            status: status || '',
+            car,
+            lat: st && st.lat != null ? st.lat : undefined,
+            lng: st && st.lng != null ? st.lng : undefined,
+        };
+        if (phName) body.phName = phName;
         try {
             const d = await vmApi('/api/office/reviews', {
                 method: 'POST',
-                body: JSON.stringify({ date: dateVal, key, status: status || '' })
+                body: JSON.stringify(body)
             });
             STATE.reviews[dateVal] = d.reviews || {};
         } catch (e) {

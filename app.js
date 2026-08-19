@@ -557,6 +557,17 @@ function analyzeData(stops, carKey, stats, dateVal) {
     const visitedNorms = new Set(
         stops.filter(s => s.matchType === 'own').map(s => normPh(s.phName || s.place || '')).filter(Boolean)
     );
+    const bag = (STATE.reviews && STATE.reviews[day]) || {};
+    const want = String(carKey || '').replace(/\s+/g, '').toUpperCase();
+    Object.keys(bag).forEach(key => {
+        const rv = bag[key];
+        if (!rv || rv.status !== 'allowed' || !rv.phName) return;
+        const parts = key.split('|');
+        const carK = rv.car || (parts[1] || '');
+        if (String(carK).replace(/\s+/g, '').toUpperCase() !== want) return;
+        const n = normPh(rv.phName);
+        if (n) visitedNorms.add(n);
+    });
     const missedList = ownPharms.filter(ph => !visitedNorms.has(normPh(ph)));
     const ownVisited = ownPharms.length ? (ownPharms.length - missedList.length) : visitedNorms.size;
     const otherDir      = stops.filter(s => s.matchType === 'other').length;
@@ -1167,6 +1178,30 @@ function bindReviewClicks(root) {
         const rec = STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][STATE.currentCar];
         const st = rec && rec.stops && rec.stops[i];
         if (!st) return;
+        if (status === 'allowed') {
+            const names = VMOffice.ownNames(STATE.currentCar);
+            let phName = st.phName || '';
+            if (!phName && names.length) {
+                const opts = names.map((n, idx) => `${idx + 1}. ${n}`).join('\n');
+                const pick = window.prompt(
+                    'Bu to\'xtash qaysi dorixona?\n(nomer yoki nomini yozing)\n\n' + opts,
+                    ''
+                );
+                if (pick == null) return;
+                const num = parseInt(pick, 10);
+                if (num >= 1 && num <= names.length) phName = names[num - 1];
+                else {
+                    const fold = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-яўқғҳ]/gi, '');
+                    const hit = names.find(n => fold(n).includes(fold(pick)) || fold(pick).includes(fold(n)));
+                    phName = hit || pick.trim();
+                }
+            }
+            if (!phName) {
+                showToast('Dorixona tanlanmadi — geozona o\'rganilmaydi', 'warn');
+            }
+            VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status, phName);
+            return;
+        }
         VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status);
     });
 }

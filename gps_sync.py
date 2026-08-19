@@ -14,6 +14,8 @@ from datetime import datetime, timedelta, timezone
 
 TZ5 = timezone(timedelta(hours=5))
 
+COORD_PLACE_RE = re.compile(r"^\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*$")
+
 OFFICE_KEYWORDS = (
     "sklad", "склад", "офис", "omborxona", "ombo", "база", "vaksina", "vaksinamed",
     "завод", "fabrika", "tashkent farma", "korxona", "baza", "bosh ofis",
@@ -465,7 +467,170 @@ def own_pharmacy_list(car_key, drivers, pharmacies):
     return out
 
 
-def analyze_data(stops, car_key, stats, drivers, pharmacies):
+def is_coord_place(place):
+    return bool(COORD_PLACE_RE.match(str(place or "").strip()))
+
+
+def find_pharmacy(pharmacies, car, name):
+    want_car = compact_car(car)
+    want_name = norm_ph(name)
+    for ph in pharmacies or []:
+        if not isinstance(ph, dict):
+            continue
+        if compact_car(ph.get("car")) != want_car:
+            continue
+        if norm_ph(ph.get("name")) == want_name:
+            return ph
+    return None
+
+
+def merge_geozone(ph, lat, lng, radius_m=120):
+    lat_f, lng_f = float(lat), float(lng)
+    if ph.get("lat") is not None and ph.get("lng") is not None:
+        ph["lat"] = round((float(ph["lat"]) + lat_f) / 2, 6)
+        ph["lng"] = round((float(ph["lng"]) + lng_f) / 2, 6)
+    else:
+        ph["lat"] = round(lat_f, 6)
+        ph["lng"] = round(lng_f, 6)
+    if not ph.get("radiusM"):
+        ph["radiusM"] = int(radius_m)
+
+
+def learn_geozone(pharmacies, car, ph_name, lat, lng):
+    ph = find_pharmacy(pharmacies, car, ph_name)
+    if not ph:
+        return False
+    try:
+        y, x = float(lat or 0), float(lng or 0)
+    except (TypeError, ValueError):
+        return False
+    if not y or not x:
+        return False
+    merge_geozone(ph, y, x)
+    return True
+
+
+def learn_geozones_from_stops(pharmacies, car, stops):
+    learned = 0
+    for st in stops or []:
+        if not isinstance(st, dict) or st.get("matchType") != "own":
+            continue
+        ph_name = st.get("phName") or st.get("place")
+        if ph_name and learn_geozone(pharmacies, car, ph_name, st.get("lat"), st.get("lng")):
+            learned += 1
+    return learned
+
+
+def learn_geozones_from_reviews(pharmacies, reviews):
+    learned = 0
+    for key, rv in (reviews or {}).items():
+        if not isinstance(rv, dict) or rv.get("status") != "allowed":
+            continue
+        ph_name = rv.get("phName") or ""
+        parts = str(key).split("|")
+        car = rv.get("car") or (parts[1] if len(parts) > 1 else "")
+        if ph_name and car and learn_geozone(pharmacies, car, ph_name, rv.get("lat"), rv.get("lng")):
+            learned += 1
+    return learned
+
+
+def stops_as_raw(stops):
+    raw = []
+    for s in stops or []:
+        if not isinstance(s, dict):
+            continue
+        raw.append(
+            {
+                "place": s.get("place") or "",
+                "inTime": s.get("inTime") or "",
+                "outTime": s.get("outTime") or "",
+                "duration": s.get("duration") or "",
+                "lat": s.get("lat"),
+                "lng": s.get("lng"),
+            }
+        )
+    return raw
+
+
+def _visited_from_reviews(reviews, car_key):
+    visited = set()
+    want = compact_car(car_key)
+    for key, rv in (reviews or {}).items():
+        if not isinstance(rv, dict) or rv.get("status") != "allowed":
+            continue
+        parts = str(key).split("|")
+        car_k = rv.get("car") or (parts[1] if len(parts) > 1 else "")
+        if compact_car(car_k) != want:
+            continue
+        ph_name = rv.get("phName") or ""
+        n = norm_ph(ph_name)
+        if n:
+            visited.add(n)
+    return visited
+
+
+def reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=None):
+    if not isinstance(rec, dict):
+        return rec
+    raw = stops_as_raw(rec.get("stops") or [])
+    stops = enrich_stops(raw, car, pharm_index, pharmacies)
+    stats = rec.get("stats") if isinstance(rec.get("stats"), dict) else {}
+    analysis = analyze_data(stops, car, stats, drivers, pharmacies, reviews=reviews)
+    rec["stops"] = stops
+    rec["analysis"] = analysis
+    return rec
+
+
+def reprocess_day(office, base_dir, date_str):
+    report = office.get_report(date_str)
+    if not report:
+        return 0
+    cars = report.get("cars") if isinstance(report.get("cars"), dict) else {}
+    if not cars:
+        return 0
+    drivers = load_fleet_drivers(base_dir)
+    pharmacies = office.pharmacies()
+    pharm_index = build_pharm_index(drivers, pharmacies)
+    reviews = office.reviews(date_str) or {}
+    done = 0
+    for car_key, rec in cars.items():
+        if not isinstance(rec, dict):
+            continue
+        car = rec.get("car") or car_key
+        reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=reviews)
+        done += 1
+    if done:
+        office.save_report(date_str, cars, saved_by="reprocess")
+    return done
+
+
+def reprocess_recent(office, base_dir, limit=45):
+    total = 0
+    for date_str in office.report_dates()[:limit]:
+        total += reprocess_day(office, base_dir, date_str)
+    return total
+
+
+def learn_geozones_from_reports(office, base_dir):
+    pharmacies = list(office.pharmacies())
+    learned = 0
+    for date_str in office.report_dates():
+        report = office.get_report(date_str)
+        cars = (report or {}).get("cars") if isinstance(report, dict) else {}
+        if not isinstance(cars, dict):
+            continue
+        for car_key, rec in cars.items():
+            if not isinstance(rec, dict):
+                continue
+            car = rec.get("car") or car_key
+            learned += learn_geozones_from_stops(pharmacies, car, rec.get("stops") or [])
+        learned += learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
+    if learned:
+        office.save_pharmacies(pharmacies)
+    return learned
+
+
+def analyze_data(stops, car_key, stats, drivers, pharmacies, reviews=None):
     own_pharms = own_pharmacy_list(car_key, drivers, pharmacies)
     visited = set()
     for s in stops or []:
@@ -473,6 +638,7 @@ def analyze_data(stops, car_key, stats, drivers, pharmacies):
             n = norm_ph(s.get("phName") or s.get("place") or "")
             if n:
                 visited.add(n)
+    visited.update(_visited_from_reviews(reviews, car_key))
     missed = [ph for ph in own_pharms if norm_ph(ph) not in visited]
     own_visited = len(own_pharms) - len(missed) if own_pharms else len(visited)
     other_dir = sum(1 for s in stops or [] if s.get("matchType") == "other")
@@ -528,13 +694,13 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
         client.login()
         units = client.get_units()
         drivers = load_fleet_drivers(base_dir)
-        pharmacies = office.pharmacies()
+        pharmacies = list(office.pharmacies())
         pharm_index = build_pharm_index(drivers, pharmacies)
-        cars = {}
+        unit_rows = []
         done = 0
         for unit in units:
             name = str(unit.get("nm") or unit.get("name") or "")
-            drv = find_driver_by_car(name)
+            drv = find_driver_by_car(drivers, name)
             if not drv:
                 continue
             try:
@@ -542,11 +708,26 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
             except Exception:
                 continue
             raw_stops = chrono.get("stops") or []
-            stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
             stats = dict(chrono.get("stats") or {})
+            unit_rows.append((drv, raw_stops, stats))
+
+        # 1-pass: geozonalarni o'rganish (matn yoki geo mos kelgan to'xtashlar)
+        for drv, raw_stops, _stats in unit_rows:
+            stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
+            learn_geozones_from_stops(pharmacies, drv["car"], stops)
+        learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
+        if any(isinstance(p, dict) and p.get("lat") is not None for p in pharmacies):
+            office.save_pharmacies(pharmacies)
+            pharmacies = office.pharmacies()
+            pharm_index = build_pharm_index(drivers, pharmacies)
+
+        reviews = office.reviews(date_str) or {}
+        cars = {}
+        for drv, raw_stops, stats in unit_rows:
+            stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
             if not stats.get("stoyanok"):
                 stats["stoyanok"] = len(stops)
-            analysis = analyze_data(stops, drv["car"], stats, drivers, pharmacies)
+            analysis = analyze_data(stops, drv["car"], stats, drivers, pharmacies, reviews=reviews)
             cars[drv["car"]] = {
                 "car": drv["car"],
                 "driver": drv,
@@ -558,6 +739,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
             done += 1
         if done:
             office.save_report(date_str, cars, saved_by=saved_by)
+            reprocess_day(office, base_dir, date_str)
         office.set_gps_status(running=False, cars=done, error="")
         return {"ok": True, "date": date_str, "cars": done}
     except Exception as e:

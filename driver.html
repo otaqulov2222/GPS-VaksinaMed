@@ -328,6 +328,12 @@ function paint(day) {
     : (Array.isArray(a.ownPharms) && a.ownPharms.length ? a.ownPharms : fleetPharmacies(day.car));
   let th = '';
   if (day.routes) th += `<div class="row"><span class="nm">Yo‘nalish</span><span class="meta">${esc(day.routes)}</span></div>`;
+  const geoCount = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo.length : 0;
+  if (hasGps && ph.length && !geoCount) {
+    th += '<div class="empty" style="color:var(--warn);margin:8px 0">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi. VHK da to‘xtashga «Ruxsat» bering (dorixona tanlang).</div>';
+  } else if (hasGps && geoCount) {
+    th += `<div class="meta" style="margin:4px 0 8px">${geoCount} ta geozona faol</div>`;
+  }
   if (ph.length) {
     th += '<div style="margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Biriktirilgan dorixonalar</div>';
     th += '<ul class="plain">' + ph.map(n => {

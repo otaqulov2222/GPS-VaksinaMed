@@ -439,6 +439,7 @@ body { overflow-x: clip; }
         </div>
       </div>
       <button class="btn btn-gold" type="button" id="btn-ph-add">Dorixona qo‘shish</button>
+      <button class="btn" type="button" id="btn-ph-learn" style="margin-left:8px">Geozonalarni o‘rganish va qayta hisoblash</button>
       <div style="margin-top:12px;overflow-x:auto">
         <table>
           <thead>
@@ -842,6 +843,23 @@ document.getElementById('btn-ph-add').addEventListener('click', async () => {
     show('msg-ph', 'Dorixona saqlandi.', true);
   } catch (err) {
     show('msg-ph', err.message, false);
+  }
+});
+
+document.getElementById('btn-ph-learn').addEventListener('click', async () => {
+  hide('msg-ph');
+  const btn = document.getElementById('btn-ph-learn');
+  btn.disabled = true;
+  btn.textContent = 'Hisoblanmoqda…';
+  try {
+    const d = await vmApi('/api/office/learn-geozones', { method: 'POST', body: '{}' });
+    await loadPharms();
+    show('msg-ph', `Tayyor: ${d.learned || 0} geozona, ${d.days || 0} kun qayta hisoblandi.`, true);
+  } catch (err) {
+    show('msg-ph', err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Geozonalarni o‘rganish va qayta hisoblash';
   }
 });
 
