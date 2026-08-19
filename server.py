@@ -1721,6 +1721,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_api_get(self, path):
+        if path == "/api/health":
+            self.send_json({"ok": True, "ts": iso_now()})
+            return
         if path == "/api/me":
             sess = self.require_user()
             if not sess:

@@ -177,12 +177,32 @@ html { -webkit-text-size-adjust: 100%; }
   </form>
 </div>
 <script>
+async function wakeServer(maxTry) {
+  for (let i = 0; i < maxTry; i++) {
+    try {
+      const r = await fetch('/api/health', { cache: 'no-store' });
+      if (r.ok) return true;
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  return false;
+}
+
 document.getElementById('f').addEventListener('submit', async (e) => {
   e.preventDefault();
   const err = document.getElementById('err');
   const btn = document.getElementById('btn');
   err.classList.remove('show');
   btn.disabled = true;
+  btn.textContent = 'Server uyg\'onmoqda...';
+  const up = await wakeServer(8);
+  if (!up) {
+    err.textContent = 'Server hali javob bermayapti. Render bepul rejimda 1–2 daqiqa kuting va qayta urining.';
+    err.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Kirish';
+    return;
+  }
   btn.textContent = 'Tekshirilmoqda...';
   try {
     const r = await fetch('/api/login', {
@@ -198,7 +218,12 @@ document.getElementById('f').addEventListener('submit', async (e) => {
     if (!r.ok || !d.ok) throw new Error(d.error || 'Kirish muvaffaqiyatsiz');
     location.replace(d.redirect || '/');
   } catch (ex) {
-    err.textContent = ex.message || 'Xato';
+    const msg = String(ex.message || '');
+    if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+      err.textContent = 'Server bilan aloqa uzildi. 30 soniya kutib, qayta Kirish bosing (Render uyg\'onishi kerak).';
+    } else {
+      err.textContent = msg || 'Xato';
+    }
     err.classList.add('show');
     btn.disabled = false;
     btn.textContent = 'Kirish';
