@@ -331,7 +331,7 @@ function renderJournal() {
             <div class="row-btns" style="margin:0;">
               <button type="button" class="btn btn-ink btn-sm" id="j-csv">CSV</button>
               <button type="button" class="btn btn-ink btn-sm" id="j-xlsx">Excel</button>
-              <button type="button" class="btn btn-ink btn-sm" onclick="window.print()">PDF</button>
+              <button type="button" class="btn btn-ink btn-sm" id="j-pdf">PDF yuklab olish</button>
             </div>
           </div>
           <div class="card-b">
@@ -459,6 +459,8 @@ function renderJournal() {
   if (csv) csv.onclick = exportJournalCsv;
   const xlsx = document.getElementById('j-xlsx');
   if (xlsx) xlsx.onclick = exportJournalXlsx;
+  const pdf = document.getElementById('j-pdf');
+  if (pdf) pdf.onclick = () => exportJournalPdf().catch(err => toast(err.message));
   onCarChange();
 }
 
@@ -472,6 +474,38 @@ function exportJournalXlsx() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Jurnal');
   XLSX.writeFile(wb, 'jurnal-' + (STATE.month || 'all') + '.xlsx');
   toast('Excel yuklab olindi');
+}
+
+async function exportJournalPdf() {
+  const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!JsPDF) throw new Error('PDF moduli yuklanmadi');
+  toast('PDF tayyorlanmoqda...');
+  const fonts = (typeof loadFuelPdfFonts === 'function') ? await loadFuelPdfFonts() : null;
+  const doc = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  if (typeof applyFuelPdfFont === 'function') applyFuelPdfFont(doc, fonts);
+  const w = 297, h = 210;
+  const label = (STATE && STATE.month) ? STATE.month : 'jurnal';
+  if (typeof fuelPdfHeader === 'function') fuelPdfHeader(doc, w, label);
+  const rows = filtered().map(it => [
+    it.kind === 'good' ? 'Maktov' : 'Kamchilik',
+    it.category === 'pharmacy' ? 'Dorixona' : 'Haydovchi',
+    it.driver || '', it.car || '', it.pharmacy || '',
+    it.reason || '', it.level || '', it.start || '', it.end || '', it.note || ''
+  ]);
+  if (typeof fuelPdfTable === 'function') {
+    fuelPdfTable(doc, w, {
+      pageLabel: label,
+      startY: 32,
+      head: [['Turi', 'Kim', 'Haydovchi', 'Mashina', 'Dorixona', 'Sabab', 'Daraja', 'Boshlanish', 'Tugash', 'Izoh']],
+      body: rows
+    });
+    fuelPdfFooter(doc, w, h, label);
+  } else {
+    doc.text('Haydovchilar jurnali', 12, 16);
+    doc.autoTable({ startY: 22, head: [['Turi','Kim','Haydovchi','Mashina','Dorixona','Sabab','Daraja','Boshlanish','Tugash','Izoh']], body: rows });
+  }
+  doc.save('jurnal-' + label + '.pdf');
+  toast('Jurnal PDF yuklab olindi');
 }
 
 function exportJournalCsv() {

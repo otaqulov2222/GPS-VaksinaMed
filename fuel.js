@@ -710,7 +710,7 @@ function renderDayRep() {
   document.getElementById('panel-dayrep').innerHTML = `
     <div class="card"><div class="card-h">
       <h3>Kun hisoboti — ${day}-${monthLow(STATE.month)} ${y}</h3>
-      <button class="btn btn-ink btn-sm no-print" type="button" onclick="window.print()">PDF chiqarish</button>
+      <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-dayrep">PDF yuklab olish</button>
     </div>
     <div class="card-b">
       <div class="day-pills no-print">${Array.from({length: dim}, (_, i) => i + 1).map(d =>
@@ -742,6 +742,8 @@ function renderDayRep() {
   document.querySelectorAll('.day-pill').forEach(btn => {
     btn.onclick = () => { STATE.dayRep = n(btn.getAttribute('data-day')); renderDayRep(); };
   });
+  const pdfDay = document.getElementById('btn-pdf-dayrep');
+  if (pdfDay) pdfDay.onclick = () => downloadFuelPdf('dayrep').catch(err => toast(err.message));
 }
 
 function renderMonth() {
@@ -756,7 +758,7 @@ function renderMonth() {
   }, { km: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0 });
   document.getElementById('panel-month').innerHTML = `
     <div class="card"><div class="card-h"><h3>Oylik jamlanma — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
-      <button class="btn btn-ink btn-sm no-print" type="button" onclick="window.print()">PDF chiqarish</button></div>
+      <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-month">PDF yuklab olish</button></div>
     <div class="card-b scroll-x">
       <table class="gtable">
         <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
@@ -778,9 +780,9 @@ function renderMonth() {
         </tbody>
       </table>
     </div></div>`;
+  const pdfMonth = document.getElementById('btn-pdf-month');
+  if (pdfMonth) pdfMonth.onclick = () => downloadFuelPdf('month').catch(err => toast(err.message));
 }
-
-function renderOfficial() {
   const firm = STATE.meta.firm || {};
   const list = fleet().map(f => {
     const car = getCar(f.car);
@@ -793,7 +795,7 @@ function renderOfficial() {
     <div class="card">
       <div class="card-h no-print"><h3>Rasmiy oylik hisobot — ${esc(titleM)} ${y}</h3>
         <div class="row-btns" style="margin:0">
-          <button class="btn btn-gold btn-sm" type="button" onclick="window.print()">Chop etish / PDF</button>
+          <button class="btn btn-gold btn-sm" type="button" id="btn-pdf-official">PDF yuklab olish</button>
           <button class="btn btn-ink btn-sm" type="button" id="off-xlsx">Shablon Excel</button>
         </div>
       </div>
@@ -867,6 +869,8 @@ function renderOfficial() {
   });
   const xbtn = document.getElementById('off-xlsx');
   if (xbtn) xbtn.onclick = exportExcel;
+  const pdfOff = document.getElementById('btn-pdf-official');
+  if (pdfOff) pdfOff.onclick = () => downloadFuelPdf('official').catch(err => toast(err.message));
 }
 
 function collectFills() {
@@ -894,7 +898,7 @@ function renderStations() {
   const list = STATE.meta.stations || [];
   document.getElementById('panel-stations').innerHTML = `
     <div class="card"><div class="card-h"><h3>Zapravka reestri — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
-      <button class="btn btn-ink btn-sm no-print" type="button" onclick="window.print()">PDF chiqarish</button></div>
+      <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-stations">PDF yuklab olish</button></div>
       <div class="card-b">
         <div class="hint">Bu reestr kunlik kiritishdan avtomatik yig'iladi. Admin zapravka nomini kunlik jadvalda yoki pastda qo'lda o'zgartiradi.</div>
         <div class="row-btns add-row no-print" style="margin:0 0 10px;">
@@ -947,6 +951,8 @@ function renderStations() {
       renderStations();
     };
   });
+  const pdfSt = document.getElementById('btn-pdf-stations');
+  if (pdfSt) pdfSt.onclick = () => downloadFuelPdf('stations').catch(err => toast(err.message));
 }
 
 function renderGasAct() {
@@ -967,7 +973,7 @@ function renderGasAct() {
   document.getElementById('panel-gasact').innerHTML = `
     <div class="card">
       <div class="card-h no-print"><h3>Gaz dalolatnomasi — ${esc(monthLow(STATE.month))} ${y}</h3>
-        <button class="btn btn-gold btn-sm" type="button" onclick="window.print()">PDF chiqarish</button></div>
+        <button class="btn btn-gold btn-sm" type="button" id="btn-pdf-gasact">PDF yuklab olish</button></div>
       <div class="card-b">
         <div style="text-align:center;font-weight:700;margin-bottom:12px;">GAZ DALOLATNOMASI</div>
         <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
@@ -1000,6 +1006,8 @@ function renderGasAct() {
         <p class="note">Imzo: _________________</p>
       </div>
     </div>`;
+  const pdfGas = document.getElementById('btn-pdf-gasact');
+  if (pdfGas) pdfGas.onclick = () => downloadFuelPdf('gasact').catch(err => toast(err.message));
 }
 
 function monthTotalsFor(ym, carsMap) {
@@ -1040,7 +1048,7 @@ async function renderYear() {
       <div class="kpi"><i>Yillik km</i><b>${fmt(ysum.km, 2)}</b><s>probeg</s></div>
     </div>
     <div class="card"><div class="card-h"><h3>${esc(year)} yil — oyma-oy jamlanma</h3>
-      <button class="btn btn-ink btn-sm no-print" type="button" onclick="window.print()">PDF chiqarish</button></div>
+      <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-year">PDF yuklab olish</button></div>
     <div class="card-b scroll-x">
       <table class="gtable">
         <thead><tr><th>Oy</th><th>Probeg (km)</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Jami (so'm)</th></tr></thead>
@@ -1063,6 +1071,8 @@ async function renderYear() {
         </tbody>
       </table>
     </div></div>`;
+  const pdfYear = document.getElementById('btn-pdf-year');
+  if (pdfYear) pdfYear.onclick = () => downloadFuelPdf('year').catch(err => toast(err.message));
 }
 
 function docCell(car, key, rec) {
@@ -1428,6 +1438,424 @@ function exportExcel() {
   collectFills().forEach(f => fills.push([f.d, f.plate, f.station, f.type, f.qty, f.price, f.sum]));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fills), 'Zapravka');
   XLSX.writeFile(wb, 'yoqilgi-' + STATE.month + '.xlsx');
+}
+
+let FUEL_PDF_FONTS = null;
+let FUEL_PDF_FONT = 'helvetica';
+
+function abToB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+
+async function loadFuelPdfFonts() {
+  if (FUEL_PDF_FONTS) return FUEL_PDF_FONTS;
+  const pairs = [
+    ['fonts/NotoSans-Regular.ttf', 'fonts/NotoSans-Bold.ttf'],
+    [
+      'https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf',
+      'https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Bold.ttf'
+    ]
+  ];
+  for (const [regUrl, boldUrl] of pairs) {
+    try {
+      const [reg, bold] = await Promise.all([
+        fetch(regUrl).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }),
+        fetch(boldUrl).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      ]);
+      FUEL_PDF_FONTS = { regular: abToB64(reg), bold: abToB64(bold) };
+      return FUEL_PDF_FONTS;
+    } catch (e) {}
+  }
+  return null;
+}
+
+function applyFuelPdfFont(doc, fonts) {
+  if (!fonts) {
+    FUEL_PDF_FONT = 'helvetica';
+    doc.setFont('helvetica', 'normal');
+    return;
+  }
+  doc.addFileToVFS('NotoSans-Regular.ttf', fonts.regular);
+  doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+  doc.addFileToVFS('NotoSans-Bold.ttf', fonts.bold);
+  doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
+  doc.setFont('NotoSans', 'normal');
+  FUEL_PDF_FONT = 'NotoSans';
+}
+
+function fuelPdfF(doc, style) {
+  doc.setFont(FUEL_PDF_FONT, style || 'normal');
+}
+
+function fuelPdfHeader(doc, w, line2) {
+  doc.setFillColor(12, 16, 22);
+  doc.rect(0, 0, w, 24, 'F');
+  doc.setFillColor(201, 162, 39);
+  doc.rect(0, 24, w, 1.5, 'F');
+  doc.setTextColor(244, 244, 242);
+  fuelPdfF(doc, 'bold');
+  doc.setFontSize(10);
+  doc.text('VAKSINA MED  ·  BOSHQARUV', 12, 10);
+  fuelPdfF(doc, 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(201, 162, 39);
+  doc.text('YOQILG\'I HISOBOTI', 12, 16);
+  if (line2) {
+    doc.setTextColor(180, 186, 194);
+    doc.text(String(line2), w - 12, 16, { align: 'right' });
+  }
+}
+
+function fuelPdfFooter(doc, w, h, label) {
+  const n = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i);
+    doc.setFillColor(243, 244, 246);
+    doc.rect(0, h - 10, w, 10, 'F');
+    fuelPdfF(doc, 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(92, 101, 115);
+    doc.text('VaksinaMed  ·  ichki hisobot  ·  ' + label, 12, h - 4);
+    doc.text(i + ' / ' + n, w - 12, h - 4, { align: 'right' });
+  }
+}
+
+function fuelPdfKpis(doc, y, boxes, w) {
+  const gap = 4;
+  const n = boxes.length;
+  const boxW = (w - 24 - gap * (n - 1)) / n;
+  boxes.forEach((b, i) => {
+    const x = 12 + i * (boxW + gap);
+    doc.setFillColor(243, 244, 246);
+    doc.setDrawColor(183, 190, 200);
+    doc.rect(x, y, boxW, 18, 'FD');
+    doc.setFillColor(201, 162, 39);
+    doc.rect(x, y, boxW, 1.1, 'F');
+    fuelPdfF(doc, 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(92, 101, 115);
+    doc.text(b[0], x + 3, y + 7);
+    doc.setFontSize(11);
+    doc.setTextColor(18, 21, 28);
+    doc.text(String(b[1]), x + 3, y + 14);
+  });
+  return y + 24;
+}
+
+function fuelPdfTable(doc, w, opts) {
+  const merged = Object.assign({
+    theme: 'plain',
+    styles: {
+      font: FUEL_PDF_FONT,
+      fontSize: 7,
+      textColor: [18, 21, 28],
+      cellPadding: 1.6,
+      overflow: 'linebreak',
+      lineColor: [220, 224, 230],
+      lineWidth: 0.1
+    },
+    headStyles: {
+      fillColor: [12, 16, 22],
+      textColor: [244, 244, 242],
+      fontStyle: 'bold',
+      fontSize: 6.5,
+      font: FUEL_PDF_FONT,
+      cellPadding: 1.8
+    },
+    alternateRowStyles: { fillColor: [247, 248, 250] },
+    margin: { left: 12, right: 12, top: 30, bottom: 14 },
+    tableWidth: w - 24,
+    didDrawPage: function () { fuelPdfHeader(doc, w, opts.pageLabel); }
+  }, opts);
+  if (typeof doc.autoTable === 'function') {
+    doc.autoTable(merged);
+    return doc.lastAutoTable.finalY;
+  }
+  return opts.startY || 40;
+}
+
+function monthReportData() {
+  const rows = fleet().map((f, i) => {
+    const t = totals(calcCar(getCar(f.car)));
+    return Object.assign({ n: i + 1, plate: f.car, name: f.name, short: f.short, brand: f.brand }, t);
+  });
+  const sum = rows.reduce((a, r) => {
+    a.km += r.km || 0; a.gasIn += r.gasIn || 0; a.benzinIn += r.benzinIn || 0;
+    a.gasSum += r.gasSum || 0; a.benzinSum += r.benzinSum || 0; a.extra += r.extra || 0; a.cost += r.cost || 0;
+    a.gasUsed += r.gasUsed || 0; a.benUsed += r.benUsed || 0;
+    return a;
+  }, { km: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0, gasUsed: 0, benUsed: 0 });
+  return { rows, sum };
+}
+
+async function downloadFuelPdf(kind) {
+  const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!JsPDF) throw new Error('PDF moduli yuklanmadi. Sahifani yangilang (Ctrl+F5).');
+  toast('PDF tayyorlanmoqda...');
+  const fonts = await loadFuelPdfFonts();
+  const firm = (STATE.meta && STATE.meta.firm) || {};
+  const firmName = firm.name || 'VAKSINA HEALTHCARE MChJ';
+  const titleM = monthLow(STATE.month);
+  const y = STATE.month.slice(0, 4);
+  const pageLabel = titleM + ' ' + y;
+  const landscape = kind === 'month' || kind === 'dayrep' || kind === 'official' || kind === 'gasact';
+  const doc = new JsPDF({ unit: 'mm', format: 'a4', orientation: landscape ? 'landscape' : 'portrait' });
+  applyFuelPdfFont(doc, fonts);
+  const w = landscape ? 297 : 210;
+  const h = landscape ? 210 : 297;
+
+  fuelPdfHeader(doc, w, pageLabel);
+  let startY = 32;
+  fuelPdfF(doc, 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(18, 21, 28);
+
+  if (kind === 'month') {
+    const { rows, sum } = monthReportData();
+    doc.text('Oylik jamlanma', 12, startY);
+    fuelPdfF(doc, 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(42, 48, 58);
+    doc.text(pageLabel.toUpperCase() + '  ·  ' + firmName, 12, startY + 7);
+    startY = fuelPdfKpis(doc, startY + 12, [
+      ['MASHINA', String(rows.length)],
+      ['JAMI KM', fmt(sum.km, 2)],
+      ['GAZ (m3)', fmt(sum.gasIn, 2)],
+      ['BENZIN (l)', fmt(sum.benzinIn, 2)],
+      ['JAMI XARAJAT', money(sum.cost)]
+    ], w);
+    const body = rows.map(r => [
+      r.n,
+      plateDisp(r.plate),
+      r.name,
+      fmt(r.km, 2),
+      fmt(r.gasIn, 3),
+      money(r.gasSum),
+      fmt(r.benzinIn, 3),
+      money(r.benzinSum),
+      money(r.extra),
+      money(r.cost),
+      fmt(r.gasR, 3),
+      fmt(r.benR, 3)
+    ]);
+    body.push([
+      { content: 'JAMI', colSpan: 3, styles: { fontStyle: 'bold' } },
+      fmt(sum.km, 2), fmt(sum.gasIn, 2), money(sum.gasSum),
+      fmt(sum.benzinIn, 2), money(sum.benzinSum), money(sum.extra), money(sum.cost), '', ''
+    ]);
+    fuelPdfTable(doc, w, {
+      pageLabel,
+      startY,
+      head: [['№', 'Mashina', 'Haydovchi', 'Probeg (km)', 'Olingan gaz (m³)', 'Gaz summa', 'Olingan benzin (l)', 'Benzin summa', "Qo'shimcha", 'Umumiy xarajat', 'Gaz qoldiq', 'Benzin qoldiq']],
+      body,
+      columnStyles: {
+        0: { cellWidth: 10, halign: 'center' },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 36 },
+        3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' },
+        6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' },
+        9: { halign: 'right', fontStyle: 'bold' },
+        10: { halign: 'right' }, 11: { halign: 'right' }
+      },
+      didParseCell: (data) => {
+        if (data.section !== 'body' || data.row.index >= rows.length) return;
+        if (data.column.index === 10 && n(rows[data.row.index].gasR) < 0) data.cell.styles.textColor = [155, 28, 28];
+        if (data.column.index === 11 && n(rows[data.row.index].benR) < 0) data.cell.styles.textColor = [155, 28, 28];
+      }
+    });
+    const fy = (doc.lastAutoTable && doc.lastAutoTable.finalY) || startY + 20;
+    fuelPdfF(doc, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(92, 101, 115);
+    doc.text('Mexanik: ' + (firm.mechanic || '_______________') + '          Hisobchi: _______________          Direktor: ' + (firm.director || '_______________'), 12, Math.min(fy + 12, h - 16));
+    fuelPdfFooter(doc, w, h, pageLabel);
+    doc.save('oylik-hisobot-' + STATE.month + '.pdf');
+    toast('Oylik hisobot PDF yuklab olindi');
+    return;
+  }
+
+  if (kind === 'dayrep') {
+    const dim = daysInMonth(STATE.month);
+    const day = Math.min(Math.max(1, n(STATE.dayRep) || 1), dim);
+    const rows = fleet().map((f, i) => {
+      const car = getCar(f.car);
+      const r = calcCar(car)[day - 1] || {};
+      return Object.assign({ n: i + 1, plate: f.car, name: driverOnDay(f, car, day) }, r);
+    });
+    const sum = totals(rows);
+    doc.text('Kun hisoboti', 12, startY);
+    fuelPdfF(doc, 'normal');
+    doc.setFontSize(10);
+    doc.text(day + '-' + titleM + ' ' + y + '  ·  ' + firmName, 12, startY + 7);
+    startY = fuelPdfKpis(doc, startY + 12, [
+      ['MASHINA', String(rows.length)],
+      ['KM', fmt(sum.km, 2)],
+      ['GAZ', fmt(sum.gasIn, 2) + ' m3'],
+      ['BENZIN', fmt(sum.benzinIn, 2) + ' l'],
+      ['XARAJAT', money(sum.gasSum + sum.benzinSum + sum.extra)]
+    ], w);
+    fuelPdfTable(doc, w, {
+      pageLabel,
+      startY,
+      head: [['№', 'Mashina', 'Haydovchi', 'Km', 'Nimada', 'Zapravka', 'Gaz m³', 'Gaz summa', 'Benzin l', 'Benzin summa', 'Sarf gaz', 'Sarf benzin', "Qo'shimcha", 'Izoh']],
+      body: rows.map(r => [
+        r.n, plateDisp(r.plate), r.name, r.km ? fmt(r.km, 2) : '', r.mode || '', r.station || '',
+        r.gasIn ? fmt(r.gasIn, 3) : '', r.gasIn ? money(r.gasSum) : '',
+        r.benzinIn ? fmt(r.benzinIn, 3) : '', r.benzinIn ? money(r.benzinSum) : '',
+        r.gasUsed ? fmt(r.gasUsed, 3) : '', r.benUsed ? fmt(r.benUsed, 3) : '',
+        r.extra ? money(r.extra) : '', r.note || r.extraWhy || ''
+      ]).concat([[
+        { content: 'JAMI', colSpan: 3, styles: { fontStyle: 'bold' } },
+        fmt(sum.km, 2), '', '', fmt(sum.gasIn, 2), money(sum.gasSum), fmt(sum.benzinIn, 2), money(sum.benzinSum),
+        fmt(sum.gasUsed, 2), fmt(sum.benUsed, 2), money(sum.extra), ''
+      ]])
+    });
+    fuelPdfFooter(doc, w, h, day + '.' + STATE.month.slice(5) + '.' + y);
+    doc.save('kun-hisobot-' + STATE.month + '-' + String(day).padStart(2, '0') + '.pdf');
+    toast('Kun hisoboti PDF yuklab olindi');
+    return;
+  }
+
+  if (kind === 'official') {
+    const list = fleet().map(f => {
+      const car = getCar(f.car);
+      const t = totals(calcCar(car));
+      return { f, car, t };
+    }).filter(x => x.t.km || x.t.gasIn || x.t.benzinIn || x.t.gasUsed || x.t.benUsed);
+    doc.text('Rasmiy oylik hisobot', 12, startY);
+    fuelPdfF(doc, 'normal');
+    doc.setFontSize(9);
+    doc.text(firmName + '  ·  ' + pageLabel, 12, startY + 7);
+    doc.text('Bosh direktor: ' + (firm.director || '_______________'), w - 12, startY + 7, { align: 'right' });
+    const body = [];
+    list.forEach((x, i) => {
+      body.push([i + 1, x.f.brand || '—', plateDisp(x.f.car), x.f.name, 'GAZ (m³)',
+        fmt(x.car.gasNorm, 2), fmt(x.car.gasStart, 3), fmt(x.t.gasIn, 3), money(x.t.gasSum),
+        fmt(x.t.km, 2), fmt(x.t.gasUsed, 3), fmt(x.t.gasR, 3), money(x.t.cost)]);
+      body.push(['', '', '', '', 'BENZIN (l)',
+        fmt(x.car.benzinNorm, 2), fmt(x.car.benzinStart, 3), fmt(x.t.benzinIn, 3), money(x.t.benzinSum),
+        '', fmt(x.t.benUsed, 3), fmt(x.t.benR, 3), '']);
+    });
+    fuelPdfTable(doc, w, {
+      pageLabel,
+      startY: startY + 12,
+      head: [['№', 'Marka', 'Gos №', 'Haydovchi', "Yoqilg'i", 'Norma', 'Qoldiq boshi', 'Olingan', 'Qiymati', 'Probeg', 'Sarf', 'Qoldiq oxiri', 'Pul sarfi']],
+      body
+    });
+    fuelPdfFooter(doc, w, h, pageLabel);
+    doc.save('rasmiy-hisobot-' + STATE.month + '.pdf');
+    toast('Rasmiy hisobot PDF yuklab olindi');
+    return;
+  }
+
+  if (kind === 'gasact') {
+    const [yy, mo] = STATE.month.split('-').map(Number);
+    const next = new Date(yy, mo, 1);
+    const nextStr = String(next.getDate()).padStart(2, '0') + '.' + String(next.getMonth() + 1).padStart(2, '0') + '.' + next.getFullYear();
+    const startStr = '01.' + String(mo).padStart(2, '0') + '.' + yy;
+    const lastDay = daysInMonth(STATE.month);
+    const rows = fleet().map((f, i) => {
+      const car = getCar(f.car);
+      const t = totals(calcCar(car));
+      return { n: i + 1, f, car, t };
+    });
+    const sum = rows.reduce((a, r) => {
+      a.start += n(r.car.gasStart); a.in += r.t.gasIn; a.km += r.t.km; a.used += r.t.gasUsed; a.end += r.t.gasR;
+      return a;
+    }, { start: 0, in: 0, km: 0, used: 0, end: 0 });
+    doc.text('Gaz dalolatnomasi', 12, startY);
+    fuelPdfF(doc, 'normal');
+    doc.setFontSize(10);
+    doc.text(pageLabel + '  ·  ' + firmName, 12, startY + 7);
+    fuelPdfTable(doc, w, {
+      pageLabel,
+      startY: startY + 12,
+      head: [['№', 'Haydovchi', 'Marka', 'Raqam', startStr + ' qoldiq', "To'ldirilgan", 'Meyyor', 'Km', 'Sarf', nextStr + ' qoldiq']],
+      body: rows.map(r => [
+        r.n, r.f.name, r.f.brand || '—', plateDisp(r.f.car),
+        fmt(r.car.gasStart, 3), fmt(r.t.gasIn, 3), fmt(r.car.gasNorm, 2),
+        fmt(r.t.km, 2), fmt(r.t.gasUsed, 3), fmt(r.t.gasR, 3)
+      ]).concat([[
+        { content: 'JAMI', colSpan: 4, styles: { fontStyle: 'bold' } },
+        fmt(sum.start, 2), fmt(sum.in, 2), '', fmt(sum.km, 2), fmt(sum.used, 2), fmt(sum.end, 2)
+      ]])
+    });
+    const fy = (doc.lastAutoTable && doc.lastAutoTable.finalY) || startY + 20;
+    fuelPdfF(doc, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(42, 48, 58);
+    doc.text(lastDay + '.' + String(mo).padStart(2, '0') + '.' + yy + ' holatiga jami ' + fmt(sum.used, 3) + ' m³ gaz sarflandi. ' + nextStr + ' qoldiq: ' + fmt(sum.end, 3) + ' m³.', 12, Math.min(fy + 10, h - 16));
+    fuelPdfFooter(doc, w, h, pageLabel);
+    doc.save('gaz-dalolatnoma-' + STATE.month + '.pdf');
+    toast('Gaz dalolatnomasi PDF yuklab olindi');
+    return;
+  }
+
+  if (kind === 'stations') {
+    const all = collectFills();
+    const filt = STATE.stationFilter;
+    const fills = all.filter(f => filt === 'all' || (filt === 'gaz' && f.kind === 'gaz') || (filt === 'benzin' && f.kind === 'benzin'));
+    doc.text('Zapravka reestri', 12, startY);
+    fuelPdfF(doc, 'normal');
+    doc.setFontSize(10);
+    doc.text(pageLabel + '  ·  ' + fills.length + ' ta quyish', 12, startY + 7);
+    fuelPdfTable(doc, w, {
+      pageLabel,
+      startY: startY + 12,
+      head: [['Kun', 'Mashina', 'Haydovchi', 'Zapravka', 'Tur', 'Miqdor', 'Narx', 'Summa']],
+      body: fills.map(f => [f.d, plateDisp(f.plate), f.name, f.station, f.type, fmt(f.qty, 3), money(f.price), money(f.sum)])
+    });
+    fuelPdfFooter(doc, w, h, pageLabel);
+    doc.save('zapravka-' + STATE.month + '.pdf');
+    toast('Zapravka reestri PDF yuklab olindi');
+    return;
+  }
+
+  if (kind === 'year') {
+    const year = STATE.month.slice(0, 4);
+    const months = [];
+    for (let m = 1; m <= 12; m++) months.push(year + '-' + String(m).padStart(2, '0'));
+    const currentMonth = STATE.month;
+    const perMonth = months.map(ym => {
+      const cars = currentMonth === ym ? STATE.cars : ((STATE.yearMonths[ym] || {}).cars || {});
+      return Object.assign({ ym }, monthTotalsFor(ym, cars));
+    });
+    const ysum = perMonth.reduce((a, r) => {
+      a.km += r.km; a.gasIn += r.gasIn; a.benzinIn += r.benzinIn; a.gasSum += r.gasSum; a.benzinSum += r.benzinSum; a.cost += r.cost;
+      return a;
+    }, { km: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, cost: 0 });
+    doc.text(year + ' yil — oyma-oy jamlanma', 12, startY);
+    startY = fuelPdfKpis(doc, startY + 8, [
+      ['KM', fmt(ysum.km, 2)],
+      ['GAZ', fmt(ysum.gasIn, 1) + ' m3'],
+      ['BENZIN', fmt(ysum.benzinIn, 1) + ' l'],
+      ['JAMI', money(ysum.cost)]
+    ], w);
+    fuelPdfTable(doc, w, {
+      pageLabel: year,
+      startY,
+      head: [['Oy', 'Probeg (km)', 'Gaz (m³)', 'Gaz summa', 'Benzin (l)', 'Benzin summa', "Jami (so'm)"]],
+      body: perMonth.map(r => [
+        UZ_M[Number(r.ym.slice(5)) - 1],
+        r.km ? fmt(r.km, 2) : '',
+        r.gasIn ? fmt(r.gasIn, 2) : '',
+        r.gasSum ? money(r.gasSum) : '',
+        r.benzinIn ? fmt(r.benzinIn, 2) : '',
+        r.benzinSum ? money(r.benzinSum) : '',
+        r.cost ? money(r.cost) : ''
+      ]).concat([['JAMI', fmt(ysum.km, 2), fmt(ysum.gasIn, 2), money(ysum.gasSum), fmt(ysum.benzinIn, 2), money(ysum.benzinSum), money(ysum.cost)]])
+    });
+    fuelPdfFooter(doc, w, h, year);
+    doc.save('yillik-jamlanma-' + year + '.pdf');
+    toast('Yillik jamlanma PDF yuklab olindi');
+    return;
+  }
 }
 
 function downloadBackup() {
