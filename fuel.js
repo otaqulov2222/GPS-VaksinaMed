@@ -15,7 +15,9 @@ const DOC_KEYS = [
   { k: 'cylinder', t: 'Gaz ballon sinovi' }
 ];
 
-const DEFAULT_FLEET = (typeof FLEET_BASE !== 'undefined' && FLEET_BASE.length) ? FLEET_BASE : [];
+const DEFAULT_FLEET = (window.FLEET_BASE && window.FLEET_BASE.length)
+  ? window.FLEET_BASE
+  : ((typeof FLEET_BASE !== 'undefined' && FLEET_BASE.length) ? FLEET_BASE : []);
 
 const STATE = {
   tab: 'daily',
@@ -407,7 +409,7 @@ async function loadAll() {
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.gpsKm = gps.days || {};
   STATE.dayRep = Math.min(now.getDate(), daysInMonth(STATE.month));
-  if (!STATE.car) STATE.car = fleet()[0].car;
+  if (!STATE.car) STATE.car = (fleet()[0] && fleet()[0].car) || '';
   setMonthLabel();
   await autoChainMonth();
   if (STATE.dirty) await saveMonth();
@@ -831,6 +833,8 @@ function renderMonth() {
   const pdfMonth = document.getElementById('btn-pdf-month');
   if (pdfMonth) pdfMonth.onclick = () => downloadFuelPdf('month').catch(err => toast(err.message));
 }
+
+function renderOfficial() {
   const firm = STATE.meta.firm || {};
   const list = fleet().map(f => {
     const car = getCar(f.car);
