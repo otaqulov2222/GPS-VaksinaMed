@@ -627,6 +627,24 @@ table.gtable tr.rank-row.is-empty td { color: #8b939e; }
   border-color: #3a4450;
 }
 .btn-light:hover { background: #1c232c; color: #fff; border-color: #6b7380; }
+.btn-gold {
+  background: #e8b423;
+  color: #0c1016;
+  border-color: #e8b423;
+}
+.btn-gold:hover, .btn-gold:visited {
+  background: #f0c44a;
+  color: #0c1016;
+  border-color: #f0c44a;
+}
+.btn-nav-fuel {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  box-shadow: 0 0 0 1px rgba(232,180,35,.35);
+}
 .btn-outline { background: #fff; color: var(--ink-2); border-color: var(--line-2); }
 .btn-outline:hover { background: var(--header); color: #fff; border-color: var(--header); }
 .btn-sm { font-size: 10px; padding: 0 10px; height: 26px; }
@@ -850,7 +868,7 @@ input, select, textarea { max-width: 100%; }
     <div class="tb-user" id="tb-user">
       <span class="tb-user-name" id="tb-user-name">—</span>
       <span class="tb-role" id="tb-user-role" hidden></span>
-      <a class="btn btn-gold btn-sm" href="/fuel.html">Boshqaruv</a>
+      <a class="btn btn-gold btn-nav-fuel" href="/fuel.html">Boshqaruv</a>
       <a class="btn btn-light btn-sm" id="btn-admin-panel" href="/admin.html" style="display:none">Panel</a>
       <button class="btn btn-light btn-sm" id="btn-logout">Chiqish</button>
     </div>
