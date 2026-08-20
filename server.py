@@ -43,6 +43,8 @@ BLOCKED_NAMES = {
     "procfile",
     "render.yaml",
     "gps_sync.py",
+    "hr_api.py",
+    "hr-api.md",
 }
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
@@ -1965,6 +1967,80 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return True
         return False
 
+    def send_hr_json(self, obj, code=200):
+        """HR API javobi — CORS (boshqa domen HR platformasi uchun)."""
+        raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "X-API-Key, Authorization, Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def require_hr_key(self):
+        import hr_api
+
+        ok, err, code = hr_api.check_hr_key(hr_api.extract_api_key(self.headers))
+        if not ok:
+            self.send_hr_json({"ok": False, "error": err}, code)
+            return False
+        return True
+
+    def handle_hr_api(self, path):
+        """Faqat o'qish HR API — session cookie talab qilinmaydi."""
+        import hr_api
+
+        if not self.require_hr_key():
+            return
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        date = (qs.get("date") or [None])[0]
+        car = (qs.get("car") or [None])[0]
+
+        if path in ("/api/hr", "/api/hr/", "/api/hr/health"):
+            self.send_hr_json(
+                {
+                    "ok": True,
+                    "service": "VaksinaMed HR API",
+                    "version": 1,
+                    "today": hr_api.today_tashkent(),
+                    "endpoints": [
+                        "GET /api/hr/health",
+                        "GET /api/hr/fleet?date=YYYY-MM-DD",
+                        "GET /api/hr/driver?car=01+887+UKA&date=YYYY-MM-DD",
+                        "GET /api/hr/tasks?date=YYYY-MM-DD",
+                    ],
+                }
+            )
+            return
+
+        if path == "/api/hr/fleet":
+            data, err = hr_api.hr_fleet(OFFICE, date)
+            if err:
+                self.send_hr_json({"ok": False, "error": err}, 400)
+                return
+            self.send_hr_json({"ok": True, **data})
+            return
+
+        if path == "/api/hr/driver":
+            data, err = hr_api.hr_driver(OFFICE, car or "", date)
+            if err:
+                self.send_hr_json({"ok": False, "error": err}, 400)
+                return
+            self.send_hr_json({"ok": True, "driver": data})
+            return
+
+        if path == "/api/hr/tasks":
+            data, err = hr_api.hr_tasks(OFFICE, date, car)
+            if err:
+                self.send_hr_json({"ok": False, "error": err}, 400)
+                return
+            self.send_hr_json({"ok": True, **data})
+            return
+
+        self.send_hr_json({"ok": False, "error": "Not found"}, 404)
+
     def is_public(self, path):
         if path in PUBLIC_PATHS:
             return True
@@ -1984,7 +2060,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         return False
 
     def do_OPTIONS(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path or "/"
         self.send_response(200)
+        if path.startswith("/api/hr"):
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "X-API-Key, Authorization, Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.end_headers()
 
     def do_GET(self):
@@ -2068,6 +2150,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_api_get(self, path):
+        # HR API — alohida, cookie login talab qilinmaydi
+        if path.startswith("/api/hr"):
+            self.handle_hr_api(path)
+            return
+
         if path == "/api/health":
             self.send_json({"ok": True, "ts": iso_now()})
             return
@@ -2885,6 +2972,9 @@ def main():
   |  Birinchi ish: panelda parolni almashtiring! |"""
 
     persist_line = "PostgreSQL (qoladi)" if persist.durable else "lokal fayl (Render da yo'qoladi)"
+    import hr_api as _hr
+
+    hr_line = "yoqilgan (VM_HR_API_KEY)" if _hr.hr_api_key() else "ochiq emas — VM_HR_API_KEY qo'ying"
 
     print(f"""
   +==========================================+
@@ -2892,7 +2982,8 @@ def main():
   +==========================================+
   |  Manzil: http://localhost:{args.port:<14}  |
   |  Kirish: login + parol majburiy          |
-  |  Saqlash: {persist_line:<29} |{seed_note}
+  |  Saqlash: {persist_line:<29} |
+  |  HR API: {hr_line:<30} |{seed_note}
   +==========================================+
   Toxtatish: Ctrl+C
 """)
