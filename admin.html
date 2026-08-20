@@ -200,6 +200,18 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
 html { -webkit-text-size-adjust: 100%; }
 body { overflow-x: clip; }
 .table-scroll { overflow: auto; -webkit-overflow-scrolling: touch; }
+.cred {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  background: #fff4c4;
+  border: 1px solid #ead98a;
+  padding: 3px 8px;
+  color: #12151c;
+  letter-spacing: .02em;
+}
+.cred.empty { background: #f3f4f6; border-color: var(--line); color: var(--muted); font-weight: 500; font-size: 12px; }
 .btn { touch-action: manipulation; }
 
 @media (max-width: 900px) {
@@ -358,7 +370,7 @@ body { overflow-x: clip; }
         <div class="table-scroll">
         <table>
           <thead>
-            <tr><th>Ism</th><th>Login</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Oxirgi kirish</th><th>Amal</th></tr>
+            <tr><th>Ism</th><th>Login</th><th>Parol</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Oxirgi kirish</th><th>Amal</th></tr>
           </thead>
           <tbody id="tb-users"></tbody>
         </table>
@@ -579,9 +591,14 @@ async function loadAll() {
       const live = resolveDriver(u.car);
       displayName = live.fullName || live.name || displayName;
     }
+    const pw = (u.password || '').trim();
+    const pwCell = pw
+      ? `<span class="cred">${esc(pw)}</span>`
+      : `<span class="cred empty">Hali yozilmagan — «Parol» bosing</span>`;
     return `<tr>
       <td>${esc(displayName)}</td>
-      <td class="mono">${esc(u.username)}</td>
+      <td><span class="cred">${esc(u.username)}</span></td>
+      <td>${pwCell}</td>
       <td>${role}</td>
       <td class="mono">${esc(u.car || '—')}</td>
       <td>${st}</td>
@@ -710,9 +727,10 @@ document.getElementById('modal-reset').addEventListener('click', (e) => {
 document.getElementById('reset-ok').addEventListener('click', async () => {
   if (!resetId) return;
   try {
-    await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: resetId, password: document.getElementById('reset-pass').value }) });
+    const pw = document.getElementById('reset-pass').value;
+    await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: resetId, password: pw }) });
     document.getElementById('modal-reset').classList.remove('open');
-    show('msg-users', 'Parol yangilandi. Eski sessiya yopildi.', true);
+    show('msg-users', 'Parol yangilandi: ' + pw, true);
     await loadAll();
   } catch (err) {
     alert(err.message);

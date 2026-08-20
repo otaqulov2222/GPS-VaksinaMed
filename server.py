@@ -358,6 +358,7 @@ class AuthStore:
             "protected": bool(u.get("protected")),
             "created_at": u.get("created_at"),
             "last_login": u.get("last_login"),
+            "password": str(u.get("password_plain") or ""),
         }
 
     def find_user(self, data, username=None, uid=None):
@@ -484,6 +485,7 @@ class AuthStore:
                 "car": car if role == "driver" else "",
                 "password_salt": salt,
                 "password_hash": pw_hash,
+                "password_plain": password[:80],
                 "active": True,
                 "protected": False,
                 "created_at": iso_now(),
@@ -542,6 +544,7 @@ class AuthStore:
             salt, pw_hash = hash_pw(new_password)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
+            user["password_plain"] = (new_password or "")[:80]
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
                     self.sessions.pop(sid, None)
@@ -563,6 +566,7 @@ class AuthStore:
             salt, pw_hash = hash_pw(new_pw)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
+            user["password_plain"] = (new_pw or "")[:80]
             self._audit(data, "pw_self", user["username"], "")
             self._write(data)
             return True, None
