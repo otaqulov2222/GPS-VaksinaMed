@@ -1247,7 +1247,7 @@ class OfficeStore:
                 except (TypeError, ValueError):
                     continue
                 if km > 0:
-                    day[str(car)] = round(km, 2)
+                    day[str(car)] = float(km)
             if day:
                 out[date] = day
         return out
@@ -1260,7 +1260,7 @@ class OfficeStore:
                 continue
             for plate, km in cars.items():
                 rec = totals.setdefault(str(plate), {"km": 0, "days": 0})
-                rec["km"] = round(rec["km"] + float(km or 0), 2)
+                rec["km"] = rec["km"] + float(km or 0)
                 rec["days"] += 1
         return {"days": days, "totals": totals}
 
@@ -1428,26 +1428,26 @@ class OfficeStore:
             mix = apply_ch("mixPct", mix0, d)
             km = as_num(src.get("km"))
             odo = as_num(src.get("odo"))
-            if not km and odo > 0 and odo_prev > 0 and odo + 0.0001 >= odo_prev:
-                km = round(odo - odo_prev, 4)
+            if not km and odo > 0 and odo_prev > 0 and odo >= odo_prev:
+                km = odo - odo_prev
             if odo > 0:
                 odo_prev = odo
             elif km > 0:
-                odo_prev = round(odo_prev + km, 4)
+                odo_prev = odo_prev + km
             mode = str(src.get("mode") or "gaz")
             gas_used = ben_used = 0.0
             if km > 0:
                 if mode == "gaz":
-                    gas_used = round(km * gas_norm / 100.0, 4)
+                    gas_used = km * gas_norm / 100.0
                 elif mode in ("benzin", "dizel"):
-                    ben_used = round(km * ben_norm / 100.0, 4)
+                    ben_used = km * ben_norm / 100.0
                 elif mode == "aralash":
-                    gas_used = round(km * gas_norm / 100.0 * mix / 100.0, 4)
-                    ben_used = round(km * ben_norm / 100.0 * (100.0 - mix) / 100.0, 4)
+                    gas_used = km * gas_norm / 100.0 * mix / 100.0
+                    ben_used = km * ben_norm / 100.0 * (100.0 - mix) / 100.0
             gas_in = as_num(src.get("gasIn"))
             ben_in = as_num(src.get("benzinIn"))
-            gas_r = round(gas_r + gas_in - gas_used, 4)
-            ben_r = round(ben_r + ben_in - ben_used, 4)
+            gas_r = gas_r + gas_in - gas_used
+            ben_r = ben_r + ben_in - ben_used
             last = {
                 "km": km,
                 "mode": mode,

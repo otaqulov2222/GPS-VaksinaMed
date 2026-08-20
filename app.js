@@ -81,7 +81,7 @@ function secsToHHMM(secs) {
 function roundKm(v) {
     const x = Number(v);
     if (!Number.isFinite(x) || x <= 0) return 0;
-    return Math.round(x * 100) / 100;
+    return x;
 }
 function roundSpd(v) {
     const x = Number(v);
@@ -91,7 +91,7 @@ function roundSpd(v) {
 function roundFuel(v) {
     const x = Number(v);
     if (!Number.isFinite(x) || x <= 0) return 0;
-    return Math.round(x * 10000) / 10000;
+    return x;
 }
 function fmtDec(v, maxDec) {
     const x = Number(v);

@@ -298,7 +298,7 @@ class WialonGPSClient {
     roundKm(v) {
         const x = Number(v);
         if (!Number.isFinite(x) || x <= 0) return 0;
-        return Math.round(x * 100) / 100;
+        return x;
     }
 
     roundSpd(v) {
@@ -310,7 +310,7 @@ class WialonGPSClient {
     roundFuel(v) {
         const x = Number(v);
         if (!Number.isFinite(x) || x <= 0) return 0;
-        return Math.round(x * 10000) / 10000;
+        return x;
     }
 
     tripDistanceMeters(tr) {

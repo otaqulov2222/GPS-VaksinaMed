@@ -42,24 +42,22 @@ function n(v) {
   const x = Number(String(v ?? '').replace(',', '.').replace(/\s/g, ''));
   return Number.isFinite(x) ? x : 0;
 }
-function r4(v) {
-  return Math.round(n(v) * 10000) / 10000;
+function fmtNum(v) {
+  const x = n(v);
+  if (!Number.isFinite(x)) return '';
+  if (x === 0) return '0';
+  return x.toLocaleString('uz-UZ', { maximumFractionDigits: 20, minimumFractionDigits: 0 });
 }
-function r2(v) {
-  return Math.round(n(v) * 100) / 100;
-}
+function fmt(v) { return fmtNum(v); }
+function money(v) { return fmtNum(v); }
 function vin(v) {
-  const x = n(v);
-  if (!x) return '';
-  return String(Math.round(x * 10000) / 10000);
-}
-function fmt(v, d) {
-  const x = n(v);
-  const p = d == null ? 2 : d;
-  return x.toLocaleString('uz-UZ', { maximumFractionDigits: p, minimumFractionDigits: 0 });
-}
-function money(v) {
-  return Math.round(n(v)).toLocaleString('uz-UZ');
+  if (v == null || v === '') return '';
+  const raw = String(v).trim().replace(/\s/g, '').replace(',', '.');
+  const x = Number(raw);
+  if (!Number.isFinite(x)) return '';
+  if (x === 0) return '0';
+  if (/[.,]/.test(String(v))) return raw;
+  return fmtNum(x);
 }
 function daysInMonth(ym) {
   const [y, m] = String(ym).split('-').map(Number);
@@ -380,8 +378,8 @@ function applyChanges(car, d, field, fallback) {
 function calcCar(car) {
   const dim = daysInMonth(STATE.month);
   let odoPrev = n(car.odoStart);
-  let gasR = r4(car.gasStart);
-  let benR = r4(car.benzinStart);
+  let gasR = n(car.gasStart);
+  let benR = n(car.benzinStart);
   const rows = [];
   for (let d = 1; d <= dim; d++) {
     const src = dayRow(car, d);
@@ -391,26 +389,26 @@ function calcCar(car) {
     const benNorm = applyChanges(car, d, 'benzinNorm', n(car.benzinNorm));
     const mix = applyChanges(car, d, 'mixPct', n(car.mixPct) || 70);
     let km = n(src.km);
-    if (!km && src.odo > 0 && odoPrev > 0 && src.odo + 0.0001 >= odoPrev) {
-      km = r4(src.odo - odoPrev);
+    if (!km && src.odo > 0 && odoPrev > 0 && src.odo >= odoPrev) {
+      km = src.odo - odoPrev;
     }
     if (src.odo > 0) odoPrev = src.odo;
-    else if (km > 0) odoPrev = r4(odoPrev + km);
+    else if (km > 0) odoPrev = odoPrev + km;
     let gasUsed = 0, benUsed = 0;
     if (km > 0) {
-      if (src.mode === 'gaz') gasUsed = r4(km * gasNorm / 100);
-      else if (src.mode === 'benzin' || src.mode === 'dizel') benUsed = r4(km * benNorm / 100);
+      if (src.mode === 'gaz') gasUsed = km * gasNorm / 100;
+      else if (src.mode === 'benzin' || src.mode === 'dizel') benUsed = km * benNorm / 100;
       else if (src.mode === 'aralash') {
-        gasUsed = r4(km * gasNorm / 100 * mix / 100);
-        benUsed = r4(km * benNorm / 100 * (100 - mix) / 100);
+        gasUsed = km * gasNorm / 100 * mix / 100;
+        benUsed = km * benNorm / 100 * (100 - mix) / 100;
       }
     }
-    gasR = r4(gasR + src.gasIn - gasUsed);
-    benR = r4(benR + src.benzinIn - benUsed);
+    gasR = gasR + src.gasIn - gasUsed;
+    benR = benR + src.benzinIn - benUsed;
     rows.push({
       d, km, odo: src.odo, mode: src.mode, station: src.station,
-      gasIn: src.gasIn, gasPrice, gasSum: r2(src.gasIn * gasPrice),
-      benzinIn: src.benzinIn, benzinPrice: benPrice, benzinSum: r2(src.benzinIn * benPrice),
+      gasIn: src.gasIn, gasPrice, gasSum: src.gasIn * gasPrice,
+      benzinIn: src.benzinIn, benzinPrice: benPrice, benzinSum: src.benzinIn * benPrice,
       gasUsed, benUsed, gasR, benR, gasNorm, benNorm,
       extra: src.extra, extraWhy: src.extraWhy, note: src.note
     });
@@ -426,9 +424,7 @@ function totals(rows) {
     t.gasSum += r.gasSum; t.benzinSum += r.benzinSum; t.extra += r.extra;
     if (r.odo > t.odo) t.odo = r.odo;
   });
-  t.km = r4(t.km); t.gasIn = r4(t.gasIn); t.benzinIn = r4(t.benzinIn);
-  t.gasUsed = r4(t.gasUsed); t.benUsed = r4(t.benUsed);
-  t.cost = r2(t.gasSum + t.benzinSum + t.extra);
+  t.cost = t.gasSum + t.benzinSum + t.extra;
   if (rows.length) { t.gasR = rows[rows.length - 1].gasR; t.benR = rows[rows.length - 1].benR; }
   return t;
 }
@@ -744,10 +740,10 @@ function dailyJamiHtml(rows) {
       <td><span class="out" data-j="benzinIn">${t.benzinIn ? fmt(t.benzinIn, 4) : ''}</span></td>
       <td></td>
       <td><span class="out" data-j="benzinSum">${t.benzinIn ? money(t.benzinSum) : ''}</span></td>
-      <td><span class="out" data-j="gasUsed">${t.gasUsed ? t.gasUsed.toFixed(4) : ''}</span></td>
-      <td><span class="out" data-j="benUsed">${t.benUsed ? t.benUsed.toFixed(4) : ''}</span></td>
-      <td><span class="out ${remainClass(t.gasR)}" data-j="gasR">${t.gasR || t.gasR === 0 ? t.gasR.toFixed(4) : ''}</span></td>
-      <td><span class="out ${remainClass(t.benR)}" data-j="benR">${t.benR || t.benR === 0 ? t.benR.toFixed(4) : ''}</span></td>
+      <td><span class="out" data-j="gasUsed">${t.gasUsed ? fmtNum(t.gasUsed) : ''}</span></td>
+      <td><span class="out" data-j="benUsed">${t.benUsed ? fmtNum(t.benUsed) : ''}</span></td>
+      <td><span class="out ${remainClass(t.gasR)}" data-j="gasR">${t.gasR || t.gasR === 0 ? fmtNum(t.gasR) : ''}</span></td>
+      <td><span class="out ${remainClass(t.benR)}" data-j="benR">${t.benR || t.benR === 0 ? fmtNum(t.benR) : ''}</span></td>
       <td><span class="out" data-j="extra">${t.extra ? money(t.extra) : ''}</span></td>
       <td></td>
       <td></td>
@@ -769,10 +765,10 @@ function paintDailyJami(rows) {
   set('gasSum', t.gasIn ? money(t.gasSum) : '');
   set('benzinIn', t.benzinIn ? fmt(t.benzinIn, 4) : '');
   set('benzinSum', t.benzinIn ? money(t.benzinSum) : '');
-  set('gasUsed', t.gasUsed ? t.gasUsed.toFixed(4) : '');
-  set('benUsed', t.benUsed ? t.benUsed.toFixed(4) : '');
-  set('gasR', (t.gasR || t.gasR === 0) ? t.gasR.toFixed(4) : '', remainClass(t.gasR));
-  set('benR', (t.benR || t.benR === 0) ? t.benR.toFixed(4) : '', remainClass(t.benR));
+  set('gasUsed', t.gasUsed ? fmtNum(t.gasUsed) : '');
+  set('benUsed', t.benUsed ? fmtNum(t.benUsed) : '');
+  set('gasR', (t.gasR || t.gasR === 0) ? fmtNum(t.gasR) : '', remainClass(t.gasR));
+  set('benR', (t.benR || t.benR === 0) ? fmtNum(t.benR) : '', remainClass(t.benR));
   set('extra', t.extra ? money(t.extra) : '');
 }
 
@@ -795,10 +791,10 @@ function renderDailyTable() {
       <td><input data-d="${r.d}" data-f="benzinIn" type="number" step="0.0001" value="${vin(src.benzinIn)}"></td>
       <td><input data-d="${r.d}" data-f="benzinPrice" type="number" step="1" value="${vin(r.benzinPrice)}"></td>
       <td><span class="out">${r.benzinIn ? money(r.benzinSum) : ''}</span></td>
-      <td><span class="out">${r.km ? r.gasUsed.toFixed(4) : ''}</span></td>
-      <td><span class="out">${r.km ? r.benUsed.toFixed(4) : ''}</span></td>
-      <td><span class="out ${remainClass(r.gasR)}">${(r.km || r.gasIn) ? r.gasR.toFixed(4) : ''}</span></td>
-      <td><span class="out ${remainClass(r.benR)}">${(r.km || r.benzinIn) ? r.benR.toFixed(4) : ''}</span></td>
+      <td><span class="out">${r.km ? fmtNum(r.gasUsed) : ''}</span></td>
+      <td><span class="out">${r.km ? fmtNum(r.benUsed) : ''}</span></td>
+      <td><span class="out ${remainClass(r.gasR)}">${(r.km || r.gasIn) ? fmtNum(r.gasR) : ''}</span></td>
+      <td><span class="out ${remainClass(r.benR)}">${(r.km || r.benzinIn) ? fmtNum(r.benR) : ''}</span></td>
       <td><input data-d="${r.d}" data-f="extra" type="number" step="1" value="${vin(src.extra)}"></td>
       <td><input class="w-note" data-d="${r.d}" data-f="extraWhy" value="${esc(src.extraWhy)}"></td>
       <td><input class="w-note" data-d="${r.d}" data-f="note" value="${esc(src.note)}"></td>
@@ -814,14 +810,14 @@ function paintCalc() {
     const outs = tr.querySelectorAll('.out');
     if (outs[0]) outs[0].textContent = r.gasIn ? money(r.gasSum) : '';
     if (outs[1]) outs[1].textContent = r.benzinIn ? money(r.benzinSum) : '';
-    if (outs[2]) outs[2].textContent = r.km ? r.gasUsed.toFixed(4) : '';
-    if (outs[3]) outs[3].textContent = r.km ? r.benUsed.toFixed(4) : '';
+    if (outs[2]) outs[2].textContent = r.km ? fmtNum(r.gasUsed) : '';
+    if (outs[3]) outs[3].textContent = r.km ? fmtNum(r.benUsed) : '';
     if (outs[4]) {
-      outs[4].textContent = (r.km || r.gasIn) ? r.gasR.toFixed(4) : '';
+      outs[4].textContent = (r.km || r.gasIn) ? fmtNum(r.gasR) : '';
       outs[4].className = 'out ' + remainClass(r.gasR);
     }
     if (outs[5]) {
-      outs[5].textContent = (r.km || r.benzinIn) ? r.benR.toFixed(4) : '';
+      outs[5].textContent = (r.km || r.benzinIn) ? fmtNum(r.benR) : '';
       outs[5].className = 'out ' + remainClass(r.benR);
     }
   });
@@ -929,8 +925,8 @@ function renderDayRep() {
           <td class="num">${r.km ? fmt(r.km, 2) : ''}</td><td>${esc(r.mode || '')}</td><td>${esc(r.station || '')}</td>
           <td class="num">${r.gasIn ? fmt(r.gasIn, 4) : ''}</td><td class="num">${r.gasIn ? money(r.gasSum) : ''}</td>
           <td class="num">${r.benzinIn ? fmt(r.benzinIn, 4) : ''}</td><td class="num">${r.benzinIn ? money(r.benzinSum) : ''}</td>
-          <td class="num">${r.gasUsed ? r.gasUsed.toFixed(4) : ''}</td>
-          <td class="num">${r.benUsed ? r.benUsed.toFixed(4) : ''}</td>
+          <td class="num">${r.gasUsed ? fmtNum(r.gasUsed) : ''}</td>
+          <td class="num">${r.benUsed ? fmtNum(r.benUsed) : ''}</td>
           <td class="num">${r.extra ? money(r.extra) : ''}</td><td>${esc(r.note || r.extraWhy || '')}</td>
         </tr>`).join('')}
         <tr><td colspan="3"><b>JAMI</b></td>
@@ -1248,10 +1244,10 @@ async function renderYear() {
   }, { km: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, cost: 0 });
   document.getElementById('panel-year').innerHTML = `
     <div class="kpis">
-      <div class="kpi"><i>Yillik gaz</i><b>${fmt(ysum.gasIn, 1)} m³</b><s>xarajat ${money(ysum.gasSum)}</s></div>
-      <div class="kpi"><i>Yillik benzin</i><b>${fmt(ysum.benzinIn, 1)} l</b><s>xarajat ${money(ysum.benzinSum)}</s></div>
+      <div class="kpi"><i>Yillik gaz</i><b>${fmtNum(ysum.gasIn)} m³</b><s>xarajat ${money(ysum.gasSum)}</s></div>
+      <div class="kpi"><i>Yillik benzin</i><b>${fmtNum(ysum.benzinIn)} l</b><s>xarajat ${money(ysum.benzinSum)}</s></div>
       <div class="kpi"><i>Umumiy xarajat</i><b>${money(ysum.cost)}</b><s>${esc(year)} yil</s></div>
-      <div class="kpi"><i>Yillik km</i><b>${fmt(ysum.km, 2)}</b><s>probeg</s></div>
+      <div class="kpi"><i>Yillik km</i><b>${fmtNum(ysum.km)}</b><s>probeg</s></div>
     </div>
     <div class="card"><div class="card-h"><h3>${esc(year)} yil — oyma-oy jamlanma</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-year">PDF yuklab olish</button></div>
@@ -1260,18 +1256,18 @@ async function renderYear() {
         <thead><tr><th>Oy</th><th>Probeg (km)</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Jami (so'm)</th></tr></thead>
         <tbody>${perMonth.map(r => `<tr>
           <td>${esc(UZ_M[Number(r.ym.slice(5))-1])}</td>
-          <td class="num">${r.km ? fmt(r.km, 2) : ''}</td>
-          <td class="num">${r.gasIn ? fmt(r.gasIn, 2) : ''}</td>
+          <td class="num">${r.km ? fmtNum(r.km) : ''}</td>
+          <td class="num">${r.gasIn ? fmtNum(r.gasIn) : ''}</td>
           <td class="num">${r.gasSum ? money(r.gasSum) : ''}</td>
-          <td class="num">${r.benzinIn ? fmt(r.benzinIn, 2) : ''}</td>
+          <td class="num">${r.benzinIn ? fmtNum(r.benzinIn) : ''}</td>
           <td class="num">${r.benzinSum ? money(r.benzinSum) : ''}</td>
           <td class="num">${r.cost ? money(r.cost) : ''}</td>
         </tr>`).join('')}
         <tr><td><b>JAMI</b></td>
-          <td class="num"><b>${fmt(ysum.km, 2)}</b></td>
-          <td class="num"><b>${fmt(ysum.gasIn, 2)}</b></td>
+          <td class="num"><b>${fmtNum(ysum.km)}</b></td>
+          <td class="num"><b>${fmtNum(ysum.gasIn)}</b></td>
           <td class="num"><b>${money(ysum.gasSum)}</b></td>
-          <td class="num"><b>${fmt(ysum.benzinIn, 2)}</b></td>
+          <td class="num"><b>${fmtNum(ysum.benzinIn)}</b></td>
           <td class="num"><b>${money(ysum.benzinSum)}</b></td>
           <td class="num"><b>${money(ysum.cost)}</b></td></tr>
         </tbody>
@@ -1552,7 +1548,7 @@ function fillFromOdo() {
     const row = ensureDay(car, d);
     const odo = n(row.odo);
     if (odo > 0 && prev > 0 && odo + 0.0001 >= prev) {
-      row.km = r4(odo - prev);
+      row.km = odo - prev;
       row.kmSrc = 'odo';
     }
     if (odo > 0) prev = odo;
@@ -1899,7 +1895,7 @@ function fillOdoFromKm(car) {
     const row = ensureDay(car, d);
     const km = n(row.km);
     if (km > 0) {
-      prev = r4(prev + km);
+      prev = prev + km;
       row.odo = prev;
     }
   }
