@@ -260,7 +260,10 @@ def make_persist(root):
         print("[OK] Saqlash: PostgreSQL — adminlar deploydan keyin qoladi")
         return persist
     print("[OK] Saqlash: lokal fayl (Render Free da yo'qoladi, DATABASE_URL qo'ying)")
-    return FilePersist(root)
+    # Render’da deploydan keyin ham qoladigan disk (volume) bo‘lsa, uni shu yerga ulab qo‘ying.
+    # Agar PERSIST_DIR berilmasa, eski holatdagi workspace ichidagi lokal fayl ishlaydi.
+    persist_root = (os.environ.get("PERSIST_DIR") or "").strip() or root
+    return FilePersist(persist_root)
 
 
 class AuthStore:

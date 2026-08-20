@@ -480,7 +480,9 @@ async function loadAll() {
   const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
   const localCars = (local && local.cars) || {};
   const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
-  if (localN > serverN) {
+  // Server bo'sh qolib ketgan (deploy/restartdan keyin) holatlarda localStorage'dagi oxirgi kiritilgan
+  // ma'lumotni majburan qayta tiklash kerak.
+  if ((Object.keys(adopted || {}).length === 0 && localN > 0) || (localN > serverN)) {
     STATE.cars = mergeCarMaps(adoptCars(localCars), adopted);
     STATE.dirty = true;
   } else {
@@ -515,10 +517,14 @@ async function changeMonth(ym) {
   const localCars = (local && local.cars) || {};
   const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
   const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
-  STATE.cars = localN > serverN ? mergeCarMaps(adoptCars(localCars), adopted) : mergeCarMaps(adopted, localCars);
+  const localRestore = (Object.keys(adopted || {}).length === 0 && localN > 0);
+  STATE.cars =
+    (localRestore || localN > serverN)
+      ? mergeCarMaps(adoptCars(localCars), adopted)
+      : mergeCarMaps(adopted, localCars);
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.gpsKm = gps.days || {};
-  STATE.dirty = localN > serverN;
+  STATE.dirty = localRestore || localN > serverN;
   STATE.dayRep = 1;
   setMonthLabel();
   await autoChainMonth();
