@@ -57,8 +57,9 @@ const VMOffice = {
     },
 
     async bootstrap() {
+        let d = null;
         try {
-            const d = await vmApi('/api/office/bootstrap');
+            d = await vmApi('/api/office/bootstrap');
             STATE.pharmacies = Array.isArray(d.pharmacies) ? d.pharmacies : [];
             STATE.reviews = d.reviews && typeof d.reviews === 'object' ? d.reviews : {};
             this.reportDates = d.reportDates || [];
@@ -75,6 +76,9 @@ const VMOffice = {
                 STATE.pharmacies = this.seedFromDrivers();
             }
             if (!STATE.reviews) STATE.reviews = {};
+        }
+        if (d && d.vehicles && typeof applyFleetNameOverrides === 'function') {
+            applyFleetNameOverrides(d.vehicles);
         }
         if (typeof buildPharmIndex === 'function') buildPharmIndex();
         if (!this._fleetClickBound) {

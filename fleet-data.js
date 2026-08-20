@@ -51,3 +51,69 @@ const FLEET_BASE = FLEET_DRIVERS.map(d => ({
 
 window.DRIVERS = FLEET_DRIVERS;
 window.FLEET_BASE = FLEET_BASE;
+
+function fleetPlateKey(p) {
+  return String(p || '').replace(/\s+/g, '').toUpperCase();
+}
+
+function fleetShortFromName(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+function applyFleetNameOverrides(vehicles) {
+  const map = vehicles && typeof vehicles === 'object' ? vehicles : {};
+  const recFor = (car) => {
+    if (map[car]) return map[car];
+    const c = fleetPlateKey(car);
+    for (const k of Object.keys(map)) {
+      if (fleetPlateKey(k) === c) return map[k];
+    }
+    return null;
+  };
+  const patch = (d) => {
+    if (!d || !d.car) return;
+    const extra = recFor(d.car);
+    if (!extra || extra.hidden) return;
+    if (extra.name) {
+      d.fullName = extra.name;
+      d.name = extra.name;
+      d.shortName = extra.short || fleetShortFromName(extra.name) || extra.name;
+      d.short = d.shortName;
+    }
+    if (extra.brand != null && extra.brand !== '') d.brand = extra.brand;
+    if (extra.fuelType) d.fuelType = extra.fuelType;
+  };
+  [FLEET_DRIVERS, FLEET_BASE, window.DRIVERS, window.FLEET_BASE].forEach(list => {
+    if (Array.isArray(list)) list.forEach(patch);
+  });
+  if (typeof DRIVERS !== 'undefined' && Array.isArray(DRIVERS)) DRIVERS.forEach(patch);
+  Object.keys(map).forEach(plate => {
+    const extra = map[plate];
+    if (!extra || extra.hidden || !extra.name) return;
+    const exists = FLEET_DRIVERS.some(d => fleetPlateKey(d.car) === fleetPlateKey(plate));
+    if (exists) return;
+    const short = extra.short || fleetShortFromName(extra.name) || extra.name;
+    FLEET_DRIVERS.push({
+      car: plate,
+      fullName: extra.name,
+      shortName: short,
+      brand: extra.brand || '',
+      fuelType: extra.fuelType || 'mixed',
+      routes: '—',
+      pharmacies: '',
+      color: '#7f8c8d'
+    });
+    FLEET_BASE.push({
+      car: plate,
+      name: extra.name,
+      short,
+      brand: extra.brand || '',
+      fuelType: extra.fuelType || 'mixed'
+    });
+  });
+  window.DRIVERS = FLEET_DRIVERS;
+  window.FLEET_BASE = FLEET_BASE;
+}
+
+window.applyFleetNameOverrides = applyFleetNameOverrides;

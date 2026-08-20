@@ -17,6 +17,9 @@ async function vmApi(path, opts) {
 async function vmMe() {
     const d = await vmApi('/api/me');
     window.VM_USER = d.user;
+    if (d.vehicles && typeof applyFleetNameOverrides === 'function') {
+        applyFleetNameOverrides(d.vehicles);
+    }
     return d.user;
 }
 

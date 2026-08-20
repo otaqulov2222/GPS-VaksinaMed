@@ -59,6 +59,34 @@ def load_fleet_drivers(base_dir):
     return drivers
 
 
+def overlay_fuel_driver_names(office, drivers):
+    try:
+        vehicles = (office.fuel_meta() or {}).get("vehicles") or {}
+    except Exception:
+        vehicles = {}
+    if not isinstance(vehicles, dict) or not vehicles:
+        return drivers
+    for d in drivers or []:
+        if not isinstance(d, dict):
+            continue
+        rec = None
+        want = compact_car(d.get("car"))
+        for k, v in vehicles.items():
+            if compact_car(k) == want and isinstance(v, dict):
+                rec = v
+                break
+        if not rec or not str(rec.get("name") or "").strip():
+            continue
+        name = str(rec.get("name") or "").strip()
+        short = str(rec.get("short") or "").strip()
+        if not short:
+            parts = name.split()
+            short = parts[-1] if parts else name
+        d["fullName"] = name
+        d["shortName"] = short
+    return drivers
+
+
 def find_driver_by_car(drivers, car_raw):
     compact = compact_car(re.sub(r"[^0-9A-Za-zА-Яа-яЎўҚқҲҳ]", "", str(car_raw or "")))
     if not compact:
@@ -588,7 +616,7 @@ def reprocess_day(office, base_dir, date_str):
     cars = report.get("cars") if isinstance(report.get("cars"), dict) else {}
     if not cars:
         return 0
-    drivers = load_fleet_drivers(base_dir)
+    drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
     pharmacies = office.pharmacies()
     pharm_index = build_pharm_index(drivers, pharmacies)
     reviews = office.reviews(date_str) or {}
@@ -693,7 +721,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
     try:
         client.login()
         units = client.get_units()
-        drivers = load_fleet_drivers(base_dir)
+        drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
         pharmacies = list(office.pharmacies())
         pharm_index = build_pharm_index(drivers, pharmacies)
         unit_rows = []

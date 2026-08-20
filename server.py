@@ -1427,6 +1427,35 @@ class OfficeStore:
             }
         return last
 
+    def overlay_driver_name(self, drv, plate):
+        vehicles = (self.fuel_meta() or {}).get("vehicles") or {}
+        if not isinstance(vehicles, dict):
+            return drv if isinstance(drv, dict) else {}
+        rec = None
+        want = compact_plate(plate)
+        if plate in vehicles and isinstance(vehicles.get(plate), dict):
+            rec = vehicles[plate]
+        else:
+            for k, v in vehicles.items():
+                if compact_plate(k) == want and isinstance(v, dict):
+                    rec = v
+                    break
+        out = dict(drv) if isinstance(drv, dict) else {}
+        if not rec or not str(rec.get("name") or "").strip():
+            return out
+        name = str(rec.get("name") or "").strip()[:80]
+        short = str(rec.get("short") or "").strip()[:40]
+        if not short:
+            parts = name.split()
+            short = parts[-1] if parts else name
+        out["fullName"] = name
+        out["name"] = name
+        out["shortName"] = short
+        brand = str(rec.get("brand") or "").strip()[:40]
+        if brand:
+            out["brand"] = brand
+        return out
+
     def _fleet_pharmacy_names(self, plate):
         try:
             import gps_sync
@@ -1592,6 +1621,7 @@ class OfficeStore:
                 }
             )
         drv = rec.get("driver") if isinstance(rec.get("driver"), dict) else {}
+        drv = self.overlay_driver_name(drv, plate)
         rep = self.get_report(date)
         updated_at = str((rep or {}).get("savedAt") or "")
         return {
@@ -1864,6 +1894,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         "car": sess.get("car") or "",
                     },
                     "persist": STORE.persist_info(),
+                    "vehicles": (OFFICE.fuel_meta() or {}).get("vehicles") or {},
                 }
             )
             return
@@ -1907,6 +1938,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "telegram": OFFICE.public_telegram(),
                     "gps": OFFICE.gps_status_public(),
                     "persist": STORE.persist_info(),
+                    "vehicles": (OFFICE.fuel_meta() or {}).get("vehicles") or {},
                 }
             )
             return

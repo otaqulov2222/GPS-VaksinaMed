@@ -463,6 +463,9 @@ async function loadAll() {
     vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(STATE.month)).catch(() => ({ days: {} }))
   ]);
   STATE.meta = normalizeMeta(meta.meta);
+  if (typeof applyFleetNameOverrides === 'function') {
+    applyFleetNameOverrides(STATE.meta.vehicles || {});
+  }
   const serverCars = (month.data && month.data.cars) || {};
   const local = readLocalMonth(STATE.month);
   const adopted = adoptCars(serverCars);
@@ -533,7 +536,10 @@ function readCarsTableToMeta() {
     tr.querySelectorAll('[data-v]').forEach(el => {
       const k = el.getAttribute('data-v');
       rec[k] = (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') ? el.value : n(el.value);
-      if (k === 'name') rec.short = (String(el.value || '').trim().split(' ')[0] || rec.short);
+      if (k === 'name') {
+        const nm = String(el.value || '').trim();
+        rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).pop() || '')) || rec.short;
+      }
       if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
         getCar(plate)[k] = rec[k];
       }
@@ -615,13 +621,19 @@ async function saveMeta() {
     body: JSON.stringify(STATE.meta)
   });
   STATE.meta = normalizeMeta(d.meta || STATE.meta);
+  if (typeof applyFleetNameOverrides === 'function') {
+    applyFleetNameOverrides(STATE.meta.vehicles || {});
+  }
 }
 
 function applyCarField(plate, el) {
   const rec = ensureVehicleMeta(plate);
   const k = el.getAttribute('data-v');
   rec[k] = (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') ? el.value : n(el.value);
-  if (k === 'name') rec.short = (String(el.value || '').trim().split(/\s+/)[0] || rec.short);
+  if (k === 'name') {
+    const nm = String(el.value || '').trim();
+    rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).pop() || '')) || rec.short;
+  }
   if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
     getCar(plate)[k] = rec[k];
     markDirty();
@@ -633,11 +645,15 @@ async function saveCarsMeta() {
   try {
     readCarsTableToMeta();
     await saveMeta();
+    if (typeof applyFleetNameOverrides === 'function') {
+      applyFleetNameOverrides(STATE.meta.vehicles || {});
+    }
     await saveMonth();
     if (st) st.textContent = 'Saqlandi';
     toast('Haydovchi ismlari va mashina ma\'lumotlari saqlandi');
     renderChips();
     if (STATE.car) writeParams();
+    if (STATE.tab === 'journal' && window.VMJournal) window.VMJournal.render();
   } catch (err) {
     if (st) st.textContent = err.message || 'Saqlanmadi';
     toast(err.message || 'Saqlanmadi');
@@ -1376,7 +1392,7 @@ function renderCars() {
     if (!car) return;
     const rec = ensureVehicleMeta(car);
     rec.name = name || car;
-    rec.short = (name.split(' ')[0] || car);
+    rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(name) : (name.split(' ').pop() || '')) || car;
     rec.brand = brand;
     rec.hidden = false;
     try {
