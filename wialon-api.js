@@ -120,29 +120,40 @@ class WialonGPSClient {
      */
     async login(options = {}) {
         const config = Object.assign(this.getConfig(), options);
-        let result;
+        const token = String(config.token || '').replace(/\s+/g, '').trim();
+        const user = String(config.user || '').trim();
+        const password = String(config.password || '').trim();
+        const host = config.host;
+        let lastErr = null;
 
-        if (config.token && config.token.trim() !== "") {
-            // Token orqali kirish
-            result = await this.sendRequest('token/login', { token: config.token.trim() }, config.host);
-        } else if (config.user && config.password) {
-            // Login va parol orqali kirish
-            result = await this.sendRequest('core/login', {
-                user: config.user.trim(),
-                password: config.password.trim()
-            }, config.host);
-        } else {
-            throw new Error("Iltimos, Login va Parol (yoki API Token) kiriting!");
-        }
-
-        if (result && result.eid) {
-            this.sessionId = result.eid;
-            this.isLoggedIn = true;
-            this.saveConfig(config);
-            return result;
-        } else {
+        const finish = (result) => {
+            if (result && result.eid) {
+                this.sessionId = result.eid;
+                this.isLoggedIn = true;
+                this.saveConfig(Object.assign({}, config, { token, user, password }));
+                return result;
+            }
             throw new Error("Wialon tizimiga kirib bo'lmadi. Ma'lumotlarni qayta tekshiring.");
+        };
+
+        if (user && password) {
+            try {
+                const result = await this.sendRequest('core/login', { user, password }, host);
+                return finish(result);
+            } catch (e) {
+                lastErr = e;
+            }
         }
+        if (token) {
+            try {
+                const result = await this.sendRequest('token/login', { token }, host);
+                return finish(result);
+            } catch (e) {
+                lastErr = e;
+            }
+        }
+        if (lastErr) throw lastErr;
+        throw new Error("Iltimos, Login va Parol (yoki API Token) kiriting!");
     }
 
     /**

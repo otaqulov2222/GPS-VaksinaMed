@@ -871,7 +871,7 @@ class OfficeStore:
     def save_gps_config(self, body, saved_by=""):
         body = body or {}
         host = str(body.get("host") or "http://bms1.gpsavto.uz").strip()[:120]
-        token = str(body.get("token") or "").strip()[:500]
+        token = re.sub(r"\s+", "", str(body.get("token") or "")).strip()[:800]
         user = str(body.get("user") or "").strip()[:80]
         password = str(body.get("password") or "").strip()[:120]
         with self.lock:

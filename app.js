@@ -1532,8 +1532,16 @@ async function syncFromGPS(dateVal, cfg, opts) {
     opts = opts || {};
     const silent = !!opts.silent;
     const skipDigest = !!opts.skipDigest;
-    if (STATE.gpsSyncBusy) return;
+    if (STATE.gpsSyncBusy) {
+        if (!silent) showToast('GPS hozir yuklanmoqda. Biroz kuting, keyin qayta bosing.', 'warn');
+        return;
+    }
     STATE.gpsSyncBusy = true;
+    const btn = document.getElementById('btn-gps-connect');
+    if (btn && !silent) {
+        btn.disabled = true;
+        btn.textContent = 'Yuklanmoqda...';
+    }
 
     const progWrap = document.getElementById('sync-progress');
     const progBar  = document.getElementById('sync-progress-bar');
@@ -1628,6 +1636,10 @@ async function syncFromGPS(dateVal, cfg, opts) {
         setGpsUi(hasGpsConfig() ? 'on' : 'off');
     } finally {
         STATE.gpsSyncBusy = false;
+        if (btn && !silent) {
+            btn.disabled = false;
+            btn.textContent = 'Shu kunni yuklash';
+        }
         if (!silent) setGpsUi(hasGpsConfig() ? 'on' : 'off');
     }
 }
@@ -2347,15 +2359,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const host  = document.getElementById('gps-host')?.value.trim();
         const user  = document.getElementById('gps-user')?.value.trim();
         const pass  = document.getElementById('gps-password')?.value.trim();
-        const token = document.getElementById('gps-token')?.value.trim();
+        const token = (document.getElementById('gps-token')?.value || '').replace(/\s+/g, '').trim();
         const date  = document.getElementById('gps-date')?.value;
-        if (!date) { showToast('⚠️ Sanani kiriting!', 'warn'); return; }
-        if (!user && !token) { showToast('⚠️ Login yoki Token kiriting!', 'warn'); return; }
-        
-        // Saqlab qo'yamiz
+        if (!date) { showToast('Sanani kiriting!', 'warn'); return; }
+        if (!user && !token) { showToast('Login yoki Token kiriting!', 'warn'); return; }
+        if (user && !pass && !token) { showToast('Parol yoki token kiriting!', 'warn'); return; }
+
         STATE.gpsConfig = { host, user, password: pass, token };
         saveAll();
-        await saveGpsConfigToServer(STATE.gpsConfig);
+        try {
+            await saveGpsConfigToServer(STATE.gpsConfig);
+        } catch (e) {}
         await syncFromGPS(date, STATE.gpsConfig);
     });
 
