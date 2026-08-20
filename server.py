@@ -831,6 +831,63 @@ class OfficeStore:
             data = self._load("office:report:" + date, None)
             return data if isinstance(data, dict) else None
 
+    def pharmacy_place_suggestions(self, limit_days=60):
+        """GPS hisobotlaridagi to'xtash joy nomlaridan dorixona takliflari."""
+        dates = self.report_dates()[: max(1, min(int(limit_days or 60), 120))]
+        bag = {}
+        for date in dates:
+            rep = self.get_report(date)
+            cars = (rep or {}).get("cars") if isinstance(rep, dict) else None
+            if not isinstance(cars, dict):
+                continue
+            for plate, rec in cars.items():
+                if not isinstance(rec, dict):
+                    continue
+                stops = rec.get("stops") if isinstance(rec.get("stops"), list) else []
+                for st in stops:
+                    if not isinstance(st, dict):
+                        continue
+                    place = str(st.get("phName") or st.get("place") or "").strip()
+                    if not place or len(place) < 3:
+                        continue
+                    # Skip raw coord-only places
+                    if place.replace(".", "").replace(",", "").replace(" ", "").replace("-", "").isdigit():
+                        continue
+                    if "," in place and all(
+                        part.strip().replace(".", "", 1).replace("-", "", 1).isdigit()
+                        for part in place.split(",", 1)
+                    ):
+                        continue
+                    key = place.lower()
+                    item = bag.get(key)
+                    if not item:
+                        item = {"name": place[:80], "count": 0, "cars": {}}
+                        bag[key] = item
+                    item["count"] += 1
+                    car = str(plate or "")[:24]
+                    if car:
+                        item["cars"][car] = item["cars"].get(car, 0) + 1
+        known = {
+            str(p.get("name") or "").strip().lower()
+            for p in (self.pharmacies() or [])
+            if isinstance(p, dict) and p.get("name")
+        }
+        out = []
+        for item in bag.values():
+            top_car = ""
+            if item["cars"]:
+                top_car = max(item["cars"].items(), key=lambda x: x[1])[0]
+            out.append(
+                {
+                    "name": item["name"],
+                    "count": item["count"],
+                    "topCar": top_car,
+                    "assigned": item["name"].lower() in known,
+                }
+            )
+        out.sort(key=lambda x: (-x["count"], x["name"].lower()))
+        return out[:300]
+
     def save_report(self, date, cars, saved_by=""):
         if not valid_date(date):
             return None, "Sana noto'g'ri"
@@ -1976,6 +2033,17 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "vehicles": (OFFICE.fuel_meta() or {}).get("vehicles") or {},
                 }
             )
+            return
+
+        if path == "/api/office/pharmacy-places":
+            sess = self.require_pro()
+            if not sess:
+                return
+            try:
+                days = int((qs.get("days") or ["60"])[0])
+            except (TypeError, ValueError):
+                days = 60
+            self.send_json({"ok": True, "places": OFFICE.pharmacy_place_suggestions(days)})
             return
 
         if path == "/api/office/gps/status":

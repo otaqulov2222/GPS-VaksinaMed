@@ -449,45 +449,76 @@ body { overflow-x: clip; }
 
   <div class="card pro-only" style="margin-top:12px;">
     <div class="head">
-      <h2>Dorixona geozonalari</h2>
+      <h2>Dorixona biriktirish</h2>
       <span class="muted" id="ph-count">0</span>
     </div>
     <div class="body">
       <div class="msg" id="msg-ph"></div>
       <p class="muted" style="margin-bottom:12px;line-height:1.5">
-        Nom majburiy. Kenglik/uzunlik bo‘lsa, GPS to‘xtashi radius ichida bo‘lsa — tashrif hisoblanadi.
-        Bo‘lmasa, joy nomi bilan solishtiriladi. Qolgan 13 haydovchiga shu yerdan dorixona qo‘shing.
+        Har bir dorixona <b>bitta mashinaga</b> tegishli. GPS to‘xtashi shu ro‘yxat bilan solishtiriladi
+        (nuqta bo‘lsa — radius, bo‘lmasa — nom). «Ganga»ni boshqa mashinaga o‘tkazish uchun qatordagi
+        <b>O‘tkazish</b> dan yangi mashinani tanlang.
       </p>
+
       <div class="grid2" style="margin-bottom:10px">
         <div class="field" style="margin:0">
-          <label>Haydovchi</label>
-          <select id="ph-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#f7f8fa;font-family:var(--mono);font-size:13px"></select>
+          <label>Filter: mashina</label>
+          <select id="ph-filter-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#f7f8fa;font-family:var(--mono);font-size:13px">
+            <option value="">Barcha mashinalar</option>
+          </select>
         </div>
         <div class="field" style="margin:0">
-          <label>Dorixona nomi</label>
-          <input id="ph-name" placeholder="Masalan: Сергели-8 корзинка">
+          <label>Qidiruv (dorixona nomi)</label>
+          <input id="ph-search" placeholder="Masalan: Ganga">
         </div>
       </div>
-      <div class="grid2" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
-        <div class="field" style="margin:0">
-          <label>Kenglik (lat)</label>
-          <input id="ph-lat" type="number" step="0.0001" placeholder="41.3111">
+
+      <div style="border:1px solid #d7dbe2;background:#f7f8fa;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Yangi dorixona qo‘shish</div>
+        <div class="grid2" style="margin-bottom:10px">
+          <div class="field" style="margin:0">
+            <label>Mashina / haydovchi</label>
+            <select id="ph-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#fff;font-family:var(--mono);font-size:13px"></select>
+          </div>
+          <div class="field" style="margin:0">
+            <label>Dorixona nomi</label>
+            <input id="ph-name" list="ph-gps-list" placeholder="Nom yoki GPS dan tanlang">
+            <datalist id="ph-gps-list"></datalist>
+          </div>
         </div>
-        <div class="field" style="margin:0">
-          <label>Uzunlik (lng)</label>
-          <input id="ph-lng" type="number" step="0.0001" placeholder="69.2797">
+        <div class="grid2" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
+          <div class="field" style="margin:0">
+            <label>Kenglik (lat)</label>
+            <input id="ph-lat" type="number" step="0.0001" placeholder="ixtiyoriy">
+          </div>
+          <div class="field" style="margin:0">
+            <label>Uzunlik (lng)</label>
+            <input id="ph-lng" type="number" step="0.0001" placeholder="ixtiyoriy">
+          </div>
+          <div class="field" style="margin:0">
+            <label>Radius, m</label>
+            <input id="ph-radius" type="number" value="120" min="40" max="500">
+          </div>
         </div>
-        <div class="field" style="margin:0">
-          <label>Radius, m</label>
-          <input id="ph-radius" type="number" value="120" min="40" max="500">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-gold" type="button" id="btn-ph-add">Biriktirish</button>
+          <button class="btn" type="button" id="btn-ph-gps">GPS dan nomlarni yuklash</button>
+          <button class="btn" type="button" id="btn-ph-learn">Geozonalarni o‘rganish va qayta hisoblash</button>
         </div>
+        <p class="muted" id="ph-gps-hint" style="margin-top:8px;display:none"></p>
       </div>
-      <button class="btn btn-gold" type="button" id="btn-ph-add">Dorixona qo‘shish</button>
-      <button class="btn" type="button" id="btn-ph-learn" style="margin-left:8px">Geozonalarni o‘rganish va qayta hisoblash</button>
-      <div style="margin-top:12px;overflow-x:auto">
+
+      <div style="margin-top:4px;overflow-x:auto">
         <table>
           <thead>
-            <tr><th>Haydovchi</th><th>Dorixona</th><th>Nuqta</th><th>Radius</th><th></th></tr>
+            <tr>
+              <th>Dorixona</th>
+              <th>Hozirgi mashina</th>
+              <th>Nuqta</th>
+              <th>Radius</th>
+              <th>Boshqa mashinaga o‘tkazish</th>
+              <th></th>
+            </tr>
           </thead>
           <tbody id="tb-ph"></tbody>
         </table>
@@ -903,31 +934,61 @@ function carLabel(car) {
 }
 
 function fillCarSelect() {
-  const html = officeCarsLive().map(([car, name]) =>
+  const cars = officeCarsLive();
+  const html = cars.map(([car, name]) =>
     `<option value="${esc(car)}">${esc(name)} — ${esc(car)}</option>`
   ).join('');
   ['ph-car', 'd-car', 't-car'].forEach(id => {
     const sel = document.getElementById(id);
     if (sel) sel.innerHTML = html;
   });
+  const filter = document.getElementById('ph-filter-car');
+  if (filter) {
+    const cur = filter.value;
+    filter.innerHTML = '<option value="">Barcha mashinalar</option>' + html;
+    filter.value = cur || '';
+  }
+}
+
+function carOptionsHtml(selected) {
+  return officeCarsLive().map(([car, name]) =>
+    `<option value="${esc(car)}"${car === selected ? ' selected' : ''}>${esc(name)} — ${esc(car)}</option>`
+  ).join('');
+}
+
+function visiblePharms() {
+  const filterCar = (document.getElementById('ph-filter-car') || {}).value || '';
+  const q = String((document.getElementById('ph-search') || {}).value || '').trim().toLowerCase();
+  return [...PHARMS]
+    .filter(p => !filterCar || p.car === filterCar)
+    .filter(p => !q || String(p.name || '').toLowerCase().includes(q))
+    .sort((a, b) => String(a.name).localeCompare(b.name) || String(a.car).localeCompare(b.car));
 }
 
 function renderPharms() {
   document.getElementById('ph-count').textContent = PHARMS.length + ' ta';
   const tb = document.getElementById('tb-ph');
-  if (!PHARMS.length) {
-    tb.innerHTML = '<tr><td colspan="5" class="muted" style="padding:14px">Ro‘yxat bo‘sh</td></tr>';
+  const list = visiblePharms();
+  if (!list.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Ro‘yxat bo‘sh yoki filterga mos kelmadi</td></tr>';
     return;
   }
-  const sorted = [...PHARMS].sort((a, b) => String(a.car).localeCompare(b.car) || String(a.name).localeCompare(b.name));
-  tb.innerHTML = sorted.map(p => {
+  tb.innerHTML = list.map(p => {
     const geo = (p.lat != null && p.lng != null) ? (Number(p.lat).toFixed(4) + ', ' + Number(p.lng).toFixed(4)) : '—';
-    return `<tr>
+    return `<tr data-ph-id="${esc(p.id)}">
+      <td><b>${esc(p.name)}</b></td>
       <td>${esc(carLabel(p.car))}</td>
-      <td>${esc(p.name)}</td>
       <td class="mono">${esc(geo)}</td>
       <td class="mono">${esc(p.radiusM || 120)}</td>
-      <td><button class="btn btn-sm btn-bad" data-ph-del="${esc(p.id)}">O‘chirish</button></td>
+      <td>
+        <div style="display:flex;gap:6px;align-items:center;min-width:220px">
+          <select data-ph-move="${esc(p.id)}" style="flex:1;height:34px;padding:0 8px;border:1px solid #9aa3ae;background:#fff;font-size:12px">
+            ${carOptionsHtml(p.car)}
+          </select>
+          <button class="btn btn-sm btn-gold" type="button" data-ph-apply="${esc(p.id)}">O‘tkazish</button>
+        </div>
+      </td>
+      <td><button class="btn btn-sm btn-bad" type="button" data-ph-del="${esc(p.id)}">O‘chirish</button></td>
     </tr>`;
   }).join('');
 }
@@ -948,6 +1009,10 @@ async function loadOffice() {
   tok.placeholder = tg.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : '123456:ABC...';
 }
 
+async function loadPharms() {
+  await loadOffice();
+}
+
 async function savePharms() {
   const d = await vmApi('/api/office/pharmacies', {
     method: 'POST',
@@ -962,7 +1027,14 @@ document.getElementById('btn-ph-add').addEventListener('click', async () => {
   const name = document.getElementById('ph-name').value.trim();
   const car = document.getElementById('ph-car').value;
   if (!name || !car) {
-    show('msg-ph', 'Haydovchi va dorixona nomini kiriting.', false);
+    show('msg-ph', 'Mashina va dorixona nomini kiriting.', false);
+    return;
+  }
+  const exists = PHARMS.find(p =>
+    String(p.name || '').toLowerCase() === name.toLowerCase() && p.car === car
+  );
+  if (exists) {
+    show('msg-ph', 'Bu dorixona allaqachon shu mashinaga biriktirilgan.', false);
     return;
   }
   const latRaw = document.getElementById('ph-lat').value;
@@ -981,9 +1053,37 @@ document.getElementById('btn-ph-add').addEventListener('click', async () => {
     document.getElementById('ph-name').value = '';
     document.getElementById('ph-lat').value = '';
     document.getElementById('ph-lng').value = '';
-    show('msg-ph', 'Dorixona saqlandi.', true);
+    show('msg-ph', 'Dorixona biriktirildi va GPS kunlari qayta hisoblanadi.', true);
   } catch (err) {
     show('msg-ph', err.message, false);
+  }
+});
+
+document.getElementById('btn-ph-gps').addEventListener('click', async () => {
+  hide('msg-ph');
+  const btn = document.getElementById('btn-ph-gps');
+  const hint = document.getElementById('ph-gps-hint');
+  btn.disabled = true;
+  btn.textContent = 'Yuklanmoqda…';
+  try {
+    const d = await vmApi('/api/office/pharmacy-places?days=60');
+    const places = Array.isArray(d.places) ? d.places : [];
+    const dl = document.getElementById('ph-gps-list');
+    dl.innerHTML = places.map(p =>
+      `<option value="${esc(p.name)}">${esc(p.name)} · ${p.count} marta${p.assigned ? ' (biriktirilgan)' : ''}</option>`
+    ).join('');
+    const fresh = places.filter(p => !p.assigned).length;
+    if (hint) {
+      hint.style.display = 'block';
+      hint.textContent = 'GPS dan ' + places.length + ' ta joy nomi topildi (' + fresh +
+        ' hali biriktirilmagan). Nom maydoniga yozib tanlang, keyin mashinani belgilab «Biriktirish».';
+    }
+    show('msg-ph', 'GPS joy nomlari yuklandi.', true);
+  } catch (err) {
+    show('msg-ph', err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'GPS dan nomlarni yuklash';
   }
 });
 
@@ -1004,14 +1104,40 @@ document.getElementById('btn-ph-learn').addEventListener('click', async () => {
   }
 });
 
+document.getElementById('ph-filter-car').addEventListener('change', renderPharms);
+document.getElementById('ph-search').addEventListener('input', renderPharms);
+
 document.getElementById('tb-ph').addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-ph-del]');
-  if (!btn) return;
-  const id = btn.getAttribute('data-ph-del');
-  PHARMS = PHARMS.filter(p => p.id !== id);
+  const del = e.target.closest('[data-ph-del]');
+  if (del) {
+    const id = del.getAttribute('data-ph-del');
+    if (!confirm('Bu dorixonani o‘chirasizmi?')) return;
+    PHARMS = PHARMS.filter(p => p.id !== id);
+    try {
+      await savePharms();
+      show('msg-ph', 'O‘chirildi.', true);
+    } catch (err) {
+      show('msg-ph', err.message, false);
+    }
+    return;
+  }
+  const apply = e.target.closest('[data-ph-apply]');
+  if (!apply) return;
+  const id = apply.getAttribute('data-ph-apply');
+  const sel = document.querySelector('select[data-ph-move="' + id + '"]');
+  if (!sel) return;
+  const newCar = sel.value;
+  const rec = PHARMS.find(p => p.id === id);
+  if (!rec) return;
+  if (rec.car === newCar) {
+    show('msg-ph', 'Allaqachon shu mashinada.', false);
+    return;
+  }
+  const oldLabel = carLabel(rec.car);
+  rec.car = newCar;
   try {
     await savePharms();
-    show('msg-ph', 'O‘chirildi.', true);
+    show('msg-ph', '"' + rec.name + '" ' + oldLabel + ' dan ' + carLabel(newCar) + ' ga o‘tkazildi.', true);
   } catch (err) {
     show('msg-ph', err.message, false);
   }
