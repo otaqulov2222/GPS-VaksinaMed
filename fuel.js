@@ -653,10 +653,13 @@ function syncParamsToMeta(plate, car) {
   if (car.fuelType) rec.fuelType = car.fuelType;
 }
 
-function carsToSave() {
-  flushFormToState();
-  // flush DOM dagi eski narxlarni qayta yozmasligi uchun yuqoridan qayta bog'lash
-  if (STATE.car) syncDayPricesFromCar(getCar(STATE.car));
+function carsToSave(opts) {
+  opts = opts || {};
+  // skipFlush: saveMonth allaqachon flush + narx sync qilgan — DOM qayta yozmasin
+  if (!opts.skipFlush) {
+    flushFormToState();
+    if (STATE.car) syncDayPricesFromCar(getCar(STATE.car));
+  }
   const out = {};
   Object.keys(STATE.cars || {}).forEach(k => {
     out[k] = stripLocalFlags(STATE.cars[k]);
@@ -670,7 +673,7 @@ async function saveMonth() {
     flushFormToState();
     syncAllCarsDayPrices();
     Object.keys(STATE.cars || {}).forEach(k => syncParamsToMeta(k, STATE.cars[k]));
-    const payload = { month: STATE.month, cars: carsToSave() };
+    const payload = { month: STATE.month, cars: carsToSave({ skipFlush: true }) };
     writeLocalMonth();
     const d = await vmApi('/api/office/fuel/month', {
       method: 'POST',

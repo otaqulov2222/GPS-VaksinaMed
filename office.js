@@ -138,7 +138,21 @@ const VMOffice = {
     reviewOf(dateVal, car, st) {
         const key = vmStopKey(dateVal, car, st);
         const bag = STATE.reviews[dateVal] || {};
-        return bag[key] || null;
+        if (bag[key]) return bag[key];
+        // Yumshoq moslash: vaqt + joy (kalit farqi bo'lsa)
+        const want = plateCompact(car);
+        const t = String((st && st.inTime) || '');
+        const p = String((st && st.place) || '').slice(0, 50);
+        for (const k of Object.keys(bag)) {
+            const rv = bag[k];
+            if (!rv) continue;
+            const parts = String(k).split('|');
+            if (parts.length < 6) continue;
+            const carK = rv.car || parts[1] || '';
+            if (plateCompact(carK) !== want) continue;
+            if (parts[2] === t && String(parts[5] || '').slice(0, 50) === p) return rv;
+        }
+        return null;
     },
 
     isProblem(dateVal, car, st) {

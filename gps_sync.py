@@ -638,11 +638,71 @@ def _visited_from_reviews(reviews, car_key):
     return visited
 
 
+def _f4_coord(v):
+    try:
+        return "%.4f" % float(v or 0)
+    except (TypeError, ValueError):
+        return "0.0000"
+
+
+def _review_for_stop(reviews, car_key, stop):
+    """To'xtash uchun review topish (vmStopKey + yumshoq moslash)."""
+    if not reviews or not isinstance(reviews, dict) or not isinstance(stop, dict):
+        return None
+    want = compact_car(car_key)
+    in_time = str(stop.get("inTime") or "")[:20]
+    place = str(stop.get("place") or stop.get("phName") or "")[:50]
+    lat = _f4_coord(stop.get("lat"))
+    lng = _f4_coord(stop.get("lng"))
+    soft = None
+    for key, rv in reviews.items():
+        if not isinstance(rv, dict):
+            continue
+        parts = str(key).split("|")
+        car_k = rv.get("car") or (parts[1] if len(parts) > 1 else "")
+        if compact_car(car_k) != want:
+            continue
+        if len(parts) >= 6:
+            t2 = parts[2]
+            lat2 = parts[3]
+            lng2 = parts[4]
+            p2 = parts[5] if len(parts) > 5 else parts[-1]
+            if t2 == in_time and lat2 == lat and lng2 == lng and str(p2)[:50] == place:
+                return rv
+            if t2 == in_time and str(p2)[:50] == place:
+                soft = rv
+        elif not soft:
+            soft = rv
+    return soft
+
+
+def stop_counts_as_problem(stop, car_key, reviews=None):
+    """JS VMOffice.isProblem bilan bir xil: allowed=yo'q, violation=ha, aks holda isProblem."""
+    rv = _review_for_stop(reviews, car_key, stop)
+    if rv:
+        st = rv.get("status")
+        if st == "allowed":
+            return False
+        if st == "violation":
+            return True
+    return bool(stop and stop.get("isProblem"))
+
+
+def apply_review_problem_flags(stops, car_key, reviews=None):
+    """Saqlangan to'xtash isProblem bayrog'ini review bilan moslashtirish."""
+    for s in stops or []:
+        if not isinstance(s, dict):
+            continue
+        s["isProblem"] = stop_counts_as_problem(s, car_key, reviews)
+    return stops
+
+
 def reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=None):
     if not isinstance(rec, dict):
         return rec
     raw = stops_as_raw(rec.get("stops") or [])
     stops = enrich_stops(raw, car, pharm_index, pharmacies)
+    apply_review_problem_flags(stops, car, reviews)
     stats = rec.get("stats") if isinstance(rec.get("stats"), dict) else {}
     analysis = analyze_data(stops, car, stats, drivers, pharmacies, reviews=reviews)
     drv = find_driver_by_car(drivers, car) or (rec.get("driver") if isinstance(rec.get("driver"), dict) else {})
@@ -721,7 +781,7 @@ def analyze_data(stops, car_key, stats, drivers, pharmacies, reviews=None):
     missed = [ph for ph in own_pharms if norm_ph(ph) not in visited]
     own_visited = len(own_pharms) - len(missed) if own_pharms else len(visited)
     other_dir = sum(1 for s in stops or [] if s.get("matchType") == "other")
-    problem_stops = sum(1 for s in stops or [] if s.get("isProblem"))
+    problem_stops = sum(1 for s in stops or [] if stop_counts_as_problem(s, car_key, reviews))
     outside_city = sum(1 for s in stops or [] if s.get("isOutside"))
     score = 10.0
     breakdown = ["Boshlang'ich ball: 10.0"]
@@ -811,6 +871,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
         cars = {}
         for drv, raw_stops, stats in unit_rows:
             stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
+            apply_review_problem_flags(stops, drv["car"], reviews)
             if not stats.get("stoyanok"):
                 stats["stoyanok"] = len(stops)
             analysis = analyze_data(stops, drv["car"], stats, drivers, pharmacies, reviews=reviews)

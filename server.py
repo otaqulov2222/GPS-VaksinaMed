@@ -964,7 +964,13 @@ class OfficeStore:
             user = str(data.get("user") or "")
             host = str(data.get("host") or "http://bms1.gpsavto.uz")
             return {
-                "configured": bool(host and (token or user)),
+                "configured": bool(
+                    host
+                    and (
+                        bool(token)
+                        or (bool(user) and bool(str(data.get("password") or "").strip()))
+                    )
+                ),
                 "host": host,
                 "token": token,
                 "user": user,

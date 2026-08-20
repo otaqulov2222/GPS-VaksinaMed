@@ -94,7 +94,14 @@ class WialonGPSClient {
                 throw new Error("Proxy error");
             }
         } catch (fetchErr) {
-            // Agar proxy ishlamasa, JSONP orqali sinab ko'ramiz
+            // HTTPS sahifadan HTTP GPS ga JSONP brauzerda bloklanadi — chalkash xato bermaslik
+            const pageHttps = typeof location !== 'undefined' && location.protocol === 'https:';
+            const hostHttp = /^http:\/\//i.test(host);
+            if (pageHttps && hostHttp) {
+                throw new Error(
+                    "GPS proxy orqali ulanib bo'lmadi. Server sync ishlashi kerak (CFG saqlang va qayta yuklang). HTTPS→HTTP to'g'ridan ulanish brauzerda yopilgan."
+                );
+            }
             return await this.sendJsonpRequest(host, svc, params);
         }
     }
