@@ -2036,7 +2036,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/pharmacy-places":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             try:
@@ -2346,7 +2346,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/pharmacies":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             items = OFFICE.save_pharmacies(body.get("pharmacies") or [])
@@ -2359,7 +2359,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/learn-geozones":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             try:
