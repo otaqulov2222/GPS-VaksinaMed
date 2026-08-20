@@ -1465,8 +1465,9 @@ function startGpsAutoSync() {
     stopGpsAutoSync();
     STATE.gpsAutoTimer = setInterval(() => {
         if (gpsModalOpen()) return;
+        if (document.hidden) return;
         pollServerGpsStatus(false);
-    }, 30 * 1000);
+    }, 90 * 1000);
 }
 
 function sleepMs(ms) {
@@ -1566,7 +1567,12 @@ async function syncFromGPS(dateVal, cfg, opts) {
         if (silent) return;
         if (progBar) progBar.style.width = pct + '%';
         if (statEl)  statEl.textContent  = msg;
-        if (detEl && detail) detEl.innerHTML += `<li>${detail}</li>`;
+        if (detEl && detail) {
+            const li = document.createElement('li');
+            li.textContent = detail;
+            detEl.appendChild(li);
+            while (detEl.children.length > 40) detEl.removeChild(detEl.firstChild);
+        }
     };
 
     try {
@@ -1621,6 +1627,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
             const drv = findDriverByCar(unit.name) || findDriverByCar(unit.carNumber);
             if (!drv) {
                 updateProg(0, '', `⏭ ${unit.name}: haydovchi ro'yxatida yo'q`);
+                await sleepMs(0);
                 continue;
             }
             try {
@@ -1645,6 +1652,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
                 console.error("Xato:", e);
                 updateProg(0, '', `⚠️ ${unit.name}: ${e.message}`);
             }
+            await sleepMs(0);
         }
         }
 
@@ -2327,7 +2335,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (serverGps || hasGpsConfig()) setGpsUi('on');
         } catch (e) {}
         await pollServerGpsStatus(true);
-        setInterval(() => pollServerGpsStatus(false), 90 * 1000);
         startGpsAutoSync();
         if (!hasGpsConfig() && serverGps) {
             showToast('Server GPS avtomatik yangilayapti — brauzer yopiq bo\'lsa ham ishlaydi', 'info');

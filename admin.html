@@ -1263,11 +1263,15 @@ document.getElementById('btn-ph-learn').addEventListener('click', async () => {
   hide('msg-ph');
   const btn = document.getElementById('btn-ph-learn');
   btn.disabled = true;
-  btn.textContent = 'Hisoblanmoqda…';
+  btn.textContent = 'Navbatga qo‘yildi…';
   try {
     const d = await vmApi('/api/office/learn-geozones', { method: 'POST', body: '{}' });
     await loadPharms();
-    show('msg-ph', `Tayyor: ${d.learned || 0} geozona, ${d.days || 0} kun qayta hisoblandi.`, true);
+    if (d.queued) {
+      show('msg-ph', d.message || 'Fon rejimida o‘rganilmoqda — 1–2 daqiqadan so‘ng yangilang.', true);
+    } else {
+      show('msg-ph', `Tayyor: ${d.learned || 0} geozona, ${d.days || 0} kun qayta hisoblandi.`, true);
+    }
   } catch (err) {
     show('msg-ph', err.message, false);
   } finally {
@@ -1393,7 +1397,12 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
       loadAll();
     });
   }
-  setInterval(loadAll, 45000);
+  setInterval(() => {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return;
+    if (document.hidden) return;
+    loadAll();
+  }, 60000);
 })();
 </script>
 <div class="ph-toast" id="ph-toast"></div>

@@ -892,6 +892,20 @@ function renderDailyTable() {
   }).join('') + dailyJamiHtml(rows);
 }
 
+let _paintCalcTimer = null;
+function schedulePaintCalc(immediate) {
+  if (immediate) {
+    if (_paintCalcTimer) { clearTimeout(_paintCalcTimer); _paintCalcTimer = null; }
+    paintCalc();
+    return;
+  }
+  if (_paintCalcTimer) clearTimeout(_paintCalcTimer);
+  _paintCalcTimer = setTimeout(() => {
+    _paintCalcTimer = null;
+    paintCalc();
+  }, 220);
+}
+
 function paintCalc() {
   const rows = calcCar(getCar(STATE.car));
   document.querySelectorAll('#daily-body tr:not(.jami-row)').forEach((tr, i) => {
@@ -2700,7 +2714,7 @@ function bind() {
         applyFuelTypeUi(el.value);
         renderDailyTable();
       } else {
-        paintCalc();
+        schedulePaintCalc();
       }
       markDirty();
     });
@@ -2732,7 +2746,7 @@ function bind() {
       else if (el.value === 'benzin' || el.value === 'dizel') { row.gasKm = 0; syncGasKmInput(0); }
     }
     if (f === 'km') {
-      const km = n(el.value);
+      const km = n(row.km);
       if (row.mode === 'gaz') { row.gasKm = km; syncGasKmInput(km || ''); }
       else if (row.mode === 'benzin' || row.mode === 'dizel') { row.gasKm = 0; syncGasKmInput(0); }
     }
@@ -2744,7 +2758,7 @@ function bind() {
         stationDatalist();
       }
     }
-    paintCalc();
+    schedulePaintCalc(f === 'mode');
     markDirty();
   });
   document.getElementById('daily-body').addEventListener('change', e => {
@@ -2752,7 +2766,7 @@ function bind() {
   });
   document.getElementById('month-input').addEventListener('change', e => changeMonth(e.target.value));
   document.getElementById('btn-save').onclick = saveMonth;
-  document.getElementById('btn-recalc').onclick = () => { paintCalc(); renderChips(); saveMonth(); toast('Zanjir yangilandi'); };
+  document.getElementById('btn-recalc').onclick = () => { schedulePaintCalc(true); renderChips(); saveMonth(); toast('Zanjir yangilandi'); };
   document.getElementById('btn-fill-odo').onclick = fillFromOdo;
   document.getElementById('btn-gps-km').onclick = fillFromGps;
   document.getElementById('btn-prev-bal').onclick = () => fillPrevBalance().catch(err => toast(err.message));

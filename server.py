@@ -1148,7 +1148,15 @@ class OfficeStore:
         try:
             import gps_sync
 
-            gps_sync.reprocess_recent(self, os.path.dirname(os.path.abspath(self.seed_path)), limit=14)
+            def _reprocess_fuel_meta():
+                try:
+                    gps_sync.reprocess_recent(
+                        self, os.path.dirname(os.path.abspath(self.seed_path)), limit=14
+                    )
+                except Exception:
+                    pass
+
+            threading.Thread(target=_reprocess_fuel_meta, daemon=True).start()
         except Exception:
             pass
         return cur
@@ -1876,6 +1884,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             n = 0
+        if n > 12 * 1024 * 1024:
+            return {}
         raw = self.rfile.read(n) if n else b"{}"
         try:
             return json.loads(raw.decode("utf-8") or "{}")
@@ -2396,23 +2406,36 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 return
             items = OFFICE.save_pharmacies(body.get("pharmacies") or [])
-            try:
-                import gps_sync
-                gps_sync.reprocess_recent(OFFICE, DIRECTORY, limit=45)
-            except Exception:
-                pass
             self.send_json({"ok": True, "pharmacies": items})
+
+            def _reprocess_pharms():
+                try:
+                    import gps_sync
+                    gps_sync.reprocess_recent(OFFICE, DIRECTORY, limit=45)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_reprocess_pharms, daemon=True).start()
             return
 
         if path == "/api/office/learn-geozones":
             sess = self.require_staff()
             if not sess:
                 return
-            try:
-                result = OFFICE.learn_and_reprocess(DIRECTORY, body.get("date"))
-                self.send_json({"ok": True, **result})
-            except Exception as e:
-                self.send_json({"ok": False, "error": str(e)[:200]}, 500)
+            date_arg = body.get("date")
+
+            def _learn_bg():
+                try:
+                    OFFICE.learn_and_reprocess(DIRECTORY, date_arg)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_learn_bg, daemon=True).start()
+            self.send_json({
+                "ok": True,
+                "queued": True,
+                "message": "Geozonlar fon rejimida o‘rganilmoqda va hisobotlar yangilanmoqda"
+            })
             return
 
         if path == "/api/office/reviews":

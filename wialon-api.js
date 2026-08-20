@@ -647,7 +647,7 @@ class WialonGPSClient {
             timeTo,
             flags: 1,
             flagsMask: 65281,
-            loadCount: 20000
+            loadCount: 6000
         });
         const msgs = (resp && resp.messages) || [];
         if (!msgs.length) return chronology;
@@ -658,6 +658,7 @@ class WialonGPSClient {
         let mileage = 0;
         let maxSpd = 0;
         let lastMove = null;
+        let ticks = 0;
 
         const haversine = (a, b) => {
             const R = 6371;
@@ -679,26 +680,28 @@ class WialonGPSClient {
                 }
                 lastMove = { y: pos.y, x: pos.x, t: msgs[i].t };
                 i++;
-                continue;
+            } else {
+                let j = i;
+                while (j < msgs.length && msgs[j].pos && (msgs[j].pos.s || 0) <= STOP_SPEED) j++;
+                const t0 = msgs[i].t || 0;
+                const t1 = (msgs[Math.max(i, j - 1)].t || t0);
+                if (t1 - t0 >= STOP_MIN) {
+                    chronology.stops.push({
+                        num: chronology.stops.length + 1,
+                        type: 'stop',
+                        place: `${pos.y.toFixed(5)}, ${pos.x.toFixed(5)}`,
+                        inTime: this.formatTime(t0),
+                        outTime: this.formatTime(t1),
+                        duration: this.formatDuration(t1 - t0),
+                        lat: pos.y,
+                        lng: pos.x
+                    });
+                }
+                lastMove = null;
+                i = Math.max(j, i + 1);
             }
-            let j = i;
-            while (j < msgs.length && msgs[j].pos && (msgs[j].pos.s || 0) <= STOP_SPEED) j++;
-            const t0 = msgs[i].t || 0;
-            const t1 = (msgs[Math.max(i, j - 1)].t || t0);
-            if (t1 - t0 >= STOP_MIN) {
-                chronology.stops.push({
-                    num: chronology.stops.length + 1,
-                    type: 'stop',
-                    place: `${pos.y.toFixed(5)}, ${pos.x.toFixed(5)}`,
-                    inTime: this.formatTime(t0),
-                    outTime: this.formatTime(t1),
-                    duration: this.formatDuration(t1 - t0),
-                    lat: pos.y,
-                    lng: pos.x
-                });
-            }
-            lastMove = null;
-            i = Math.max(j, i + 1);
+            ticks++;
+            if (ticks % 500 === 0) await new Promise(r => setTimeout(r, 0));
         }
 
         chronology.stats.probeg = this.roundKm(mileage);
