@@ -899,31 +899,53 @@ class OfficeStore:
             if not isinstance(st, dict):
                 st = {}
         cfg = self.gps_config_internal()
+        running = bool(st.get("running"))
+        started = int(st.get("runningSinceTs") or 0)
+        if running and started and (time.time() - started) > 20 * 60:
+            running = False
         return {
             "configured": cfg["configured"],
             "lastSync": st.get("lastSync") or "",
-            "running": bool(st.get("running")),
+            "running": running,
             "cars": int(st.get("cars") or 0),
             "error": str(st.get("error") or "")[:200],
             "autoIntervalSec": int(os.environ.get("GPS_SYNC_INTERVAL", "300")),
+            "syncDate": str(st.get("syncDate") or ""),
+            "lastDate": str(st.get("lastDate") or ""),
+            "message": str(st.get("message") or "")[:180],
+            "lastJobId": int(st.get("lastJobId") or 0),
+            "currentJobId": int(st.get("currentJobId") or 0),
         }
 
-    def set_gps_status(self, running=False, cars=0, error=""):
+    def set_gps_status(self, running=False, cars=0, error="", date="", message="", job_id=None):
         with self.lock:
             st = self._load("office:gps:status", {})
             if not isinstance(st, dict):
                 st = {}
             st["running"] = bool(running)
+            if date:
+                st["syncDate"] = str(date)[:12]
+            if message != "":
+                st["message"] = str(message)[:180]
+            if job_id is not None:
+                st["currentJobId"] = int(job_id)
             if running:
+                st["runningSinceTs"] = int(time.time())
+                st["error"] = ""
+                if cars:
+                    st["cars"] = int(cars)
                 self._save("office:gps:status", st)
                 return
             if error:
                 st["error"] = str(error)[:200]
             else:
                 st["error"] = ""
-            if cars:
-                st["cars"] = int(cars)
+            st["cars"] = int(cars or st.get("cars") or 0)
             st["lastSync"] = iso_now()
+            st["lastDate"] = str(date or st.get("syncDate") or "")[:12]
+            if job_id is not None:
+                st["lastJobId"] = int(job_id)
+                st["currentJobId"] = int(job_id)
             self._save("office:gps:status", st)
 
     def settings(self):
@@ -2340,14 +2362,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             pub = OFFICE.save_gps_config(body, sess.get("username"))
 
             def run_sync():
-                if not _gps_sync_lock.acquire(blocking=False):
-                    return
-                try:
-                    import gps_sync
-
-                    gps_sync.sync_today(OFFICE, DIRECTORY, saved_by=sess.get("username"))
-                finally:
-                    _gps_sync_lock.release()
+                enqueue_gps_sync(OFFICE, DIRECTORY, None, sess.get("username") or "user")
 
             threading.Thread(target=run_sync, daemon=True).start()
             self.send_json({"ok": True, **pub})
@@ -2357,17 +2372,14 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_staff()
             if not sess:
                 return
-            try:
-                import gps_sync
-
-                result = gps_sync.sync_today(OFFICE, DIRECTORY, body.get("date"), saved_by=sess.get("username"))
-            except Exception as e:
-                self.send_json({"ok": False, "error": str(e)[:200]}, 500)
+            date_val = str(body.get("date") or "").strip()
+            if date_val and not valid_date(date_val):
+                self.send_json({"ok": False, "error": "Sana noto'g'ri"}, 400)
                 return
-            if not result.get("ok"):
-                self.send_json({"ok": False, "error": result.get("error") or "Sync failed"}, 400)
-                return
-            self.send_json({"ok": True, **result, **OFFICE.gps_status_public()})
+            job_id = enqueue_gps_sync(
+                OFFICE, DIRECTORY, date_val or None, sess.get("username") or "user"
+            )
+            self.send_json({"ok": True, "queued": True, "jobId": job_id, "date": date_val, **OFFICE.gps_status_public()})
             return
 
         if path == "/api/office/telegram":
@@ -2553,10 +2565,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 GPS_SYNC_INTERVAL = int(os.environ.get("GPS_SYNC_INTERVAL", "300"))
 _gps_worker_started = False
 _gps_sync_lock = threading.Lock()
+_GPS_JOB = {"q": [], "active": False, "seq": 0, "lock": threading.Lock()}
 
 
 def seed_gps_from_env(office):
-    token = os.environ.get("GPS_TOKEN", "").strip()
+    token = re.sub(r"\s+", "", os.environ.get("GPS_TOKEN", "")).strip()
     user = os.environ.get("GPS_USER", "").strip()
     password = os.environ.get("GPS_PASSWORD", "").strip()
     host = os.environ.get("GPS_HOST", "http://bms1.gpsavto.uz").strip()
@@ -2568,34 +2581,90 @@ def seed_gps_from_env(office):
     )
 
 
+def enqueue_gps_sync(office, base_dir, date_str=None, saved_by="auto"):
+    date_str = str(date_str or "").strip() or None
+    with _GPS_JOB["lock"]:
+        _GPS_JOB["seq"] += 1
+        job_id = _GPS_JOB["seq"]
+        _GPS_JOB["q"] = [item for item in _GPS_JOB["q"] if item[0] != date_str]
+        _GPS_JOB["q"].append((date_str, str(saved_by or "auto"), job_id))
+        need_start = not _GPS_JOB["active"]
+        if need_start:
+            _GPS_JOB["active"] = True
+    if need_start:
+        threading.Thread(
+            target=_gps_queue_runner,
+            args=(office, base_dir),
+            daemon=True,
+            name="gps-sync-job",
+        ).start()
+    return job_id
+
+
+def _gps_queue_runner(office, base_dir):
+    try:
+        while True:
+            with _GPS_JOB["lock"]:
+                if not _GPS_JOB["q"]:
+                    _GPS_JOB["active"] = False
+                    return
+                date_str, saved_by, job_id = _GPS_JOB["q"].pop(0)
+            try:
+                import gps_sync
+
+                d = date_str or gps_sync.today_tashkent()
+                office.set_gps_status(
+                    running=True, date=d, message="Navbat boshlandi", job_id=job_id
+                )
+                with _gps_sync_lock:
+                    result = gps_sync.sync_today(office, base_dir, d, saved_by=saved_by) or {}
+                office.set_gps_status(
+                    running=False,
+                    cars=int(result.get("cars") or 0),
+                    error=str(result.get("error") or "")[:200],
+                    date=d,
+                    message="Tayyor" if result.get("ok") else "Xato",
+                    job_id=job_id,
+                )
+            except Exception as e:
+                print("[gps-sync]", e)
+                try:
+                    office.set_gps_status(
+                        running=False, error=str(e)[:200], date=date_str or "", message="Xato", job_id=job_id
+                    )
+                except Exception:
+                    pass
+    except Exception as e:
+        print("[gps-sync runner]", e)
+        with _GPS_JOB["lock"]:
+            _GPS_JOB["active"] = False
+
+
 def start_gps_worker(office, base_dir):
     global _gps_worker_started
     if _gps_worker_started:
         return
     _gps_worker_started = True
 
-    def run_sync_once():
+    def auto_tick():
         if not office.gps_config_internal().get("configured"):
             return
-        if not _gps_sync_lock.acquire(blocking=False):
-            return
-        try:
-            import gps_sync
+        import gps_sync
 
-            gps_sync.sync_today(office, base_dir)
-        except Exception as e:
-            print("[gps-sync]", e)
-        finally:
-            _gps_sync_lock.release()
+        enqueue_gps_sync(office, base_dir, gps_sync.today_tashkent(), "auto")
+        yday = gps_sync.yesterday_tashkent()
+        rec = office.get_report(yday)
+        cars = rec.get("cars") if isinstance(rec, dict) else None
+        if not cars:
+            enqueue_gps_sync(office, base_dir, yday, "auto-kecha")
 
-    threading.Thread(target=run_sync_once, daemon=True).start()
+    threading.Thread(target=auto_tick, daemon=True).start()
 
     def loop():
         while True:
             time.sleep(max(60, GPS_SYNC_INTERVAL))
             try:
-                if office.gps_config_internal().get("configured"):
-                    run_sync_once()
+                auto_tick()
             except Exception as e:
                 print("[gps-sync loop]", e)
 

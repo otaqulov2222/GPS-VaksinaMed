@@ -94,8 +94,9 @@ const VMOffice = {
         if (STATE.currentDate) await this.loadReportIfNeeded(STATE.currentDate);
     },
 
-    async loadReportIfNeeded(dateVal) {
+    async loadReportIfNeeded(dateVal, force) {
         if (!dateVal) return;
+        if (force) delete STATE.data[dateVal];
         const hasLocal = STATE.data[dateVal] && Object.keys(STATE.data[dateVal]).length;
         if (hasLocal) {
             if (typeof recomputeDay === 'function') recomputeDay(dateVal);

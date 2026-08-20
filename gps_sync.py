@@ -142,6 +142,10 @@ def today_tashkent():
     return datetime.now(TZ5).strftime("%Y-%m-%d")
 
 
+def yesterday_tashkent():
+    return (datetime.now(TZ5) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
 def parse_dur_sec(s):
     s = str(s or "").strip()
     if not s:
@@ -187,14 +191,26 @@ class WialonClient:
         return data
 
     def login(self):
+        self.token = re.sub(r"\s+", "", str(self.token or "")).strip()
+        self.user = str(self.user or "").strip()
+        self.password = str(self.password or "").strip()
+        last = None
+        if self.user and self.password:
+            try:
+                r = self._call("core/login", {"user": self.user, "password": self.password})
+                self.sid = r.get("eid")
+                if self.sid:
+                    return True
+            except Exception as e:
+                last = e
         if self.token:
             r = self._call("token/login", {"token": self.token})
-        else:
-            r = self._call("core/login", {"user": self.user, "password": self.password})
-        self.sid = r.get("eid")
-        if not self.sid:
-            raise RuntimeError("Wialon login failed")
-        return True
+            self.sid = r.get("eid")
+            if self.sid:
+                return True
+        if last:
+            raise last
+        raise RuntimeError("Wialon login failed")
 
     def get_units(self):
         r = self._call(
@@ -752,9 +768,10 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
         return {"ok": False, "error": "GPS sozlamasi yo'q"}
     host = cfg.get("host") or "http://bms1.gpsavto.uz"
     client = WialonClient(host, token=cfg.get("token") or "", user=cfg.get("user") or "", password=cfg.get("password") or "")
-    office.set_gps_status(running=True, error="")
+    office.set_gps_status(running=True, error="", date=date_str, message="GPS ga ulanilmoqda...")
     try:
         client.login()
+        office.set_gps_status(running=True, date=date_str, message="Mashinalar ro'yxati olinmoqda...")
         units = client.get_units()
         drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
         pharmacies = list(office.pharmacies())
@@ -767,6 +784,12 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
             if not drv:
                 continue
             try:
+                office.set_gps_status(
+                    running=True,
+                    date=date_str,
+                    cars=len(unit_rows),
+                    message="Yuklanmoqda: " + (drv.get("shortName") or name),
+                )
                 chrono = client.get_chronology(unit["id"], date_str)
             except Exception:
                 continue
@@ -803,8 +826,8 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
         if done:
             office.save_report(date_str, cars, saved_by=saved_by)
             reprocess_day(office, base_dir, date_str)
-        office.set_gps_status(running=False, cars=done, error="")
+        office.set_gps_status(running=False, cars=done, error="", date=date_str, message="Tayyor")
         return {"ok": True, "date": date_str, "cars": done}
     except Exception as e:
-        office.set_gps_status(running=False, error=str(e)[:200])
+        office.set_gps_status(running=False, error=str(e)[:200], date=date_str, message="Xato")
         return {"ok": False, "error": str(e)}
