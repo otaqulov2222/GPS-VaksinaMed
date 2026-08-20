@@ -39,6 +39,7 @@ function esc(s) {
   }[c]));
 }
 function n(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   let s = String(v ?? '').trim().replace(/\s/g, '').replace(/\u00a0/g, '');
   if (!s) return 0;
   // 1.516.071,50 — Yevropa minglik
@@ -50,22 +51,25 @@ function n(v) {
   const x = Number(s);
   return Number.isFinite(x) ? x : 0;
 }
+function cleanFloat(x) {
+  if (!Number.isFinite(x)) return x;
+  // faqat float shovqinini olib tashlash (0.62120000002 → 0.6212)
+  return Number(Number(x).toPrecision(12));
+}
 function fmtNum(v) {
-  const x = n(v);
+  const x = cleanFloat(n(v));
   if (!Number.isFinite(x)) return '';
   if (x === 0) return '0';
-  return x.toLocaleString('uz-UZ', { maximumFractionDigits: 20, minimumFractionDigits: 0 });
+  return x.toLocaleString('uz-UZ', { maximumFractionDigits: 10, minimumFractionDigits: 0 });
 }
 function fmt(v) { return fmtNum(v); }
 function money(v) { return fmtNum(v); }
 function vin(v) {
   if (v == null || v === '') return '';
-  const raw = String(v).trim().replace(/\s/g, '').replace(',', '.');
-  const x = Number(raw);
+  const x = cleanFloat(n(v));
   if (!Number.isFinite(x)) return '';
   if (x === 0) return '0';
-  if (/[.,]/.test(String(v))) return raw;
-  return fmtNum(x);
+  return String(x);
 }
 function daysInMonth(ym) {
   const [y, m] = String(ym).split('-').map(Number);
@@ -433,14 +437,14 @@ function calcCar(car) {
       gasUsed = split.gasKm * gasNorm / 100;
       benUsed = split.liqKm * benNorm / 100;
     }
-    gasR = gasR + src.gasIn - gasUsed;
-    benR = benR + src.benzinIn - benUsed;
+    gasR = cleanFloat(gasR + src.gasIn - gasUsed);
+    benR = cleanFloat(benR + src.benzinIn - benUsed);
     rows.push({
       d, km, gasKm: split.gasKm, liqKm: split.liqKm,
       odo: src.odo, mode: src.mode, station: src.station,
-      gasIn: src.gasIn, gasPrice, gasSum: src.gasIn * gasPrice,
-      benzinIn: src.benzinIn, benzinPrice: benPrice, benzinSum: src.benzinIn * benPrice,
-      gasUsed, benUsed, gasR, benR, gasNorm, benNorm,
+      gasIn: src.gasIn, gasPrice, gasSum: cleanFloat(src.gasIn * gasPrice),
+      benzinIn: src.benzinIn, benzinPrice: benPrice, benzinSum: cleanFloat(src.benzinIn * benPrice),
+      gasUsed: cleanFloat(gasUsed), benUsed: cleanFloat(benUsed), gasR, benR, gasNorm, benNorm,
       extra: src.extra, extraWhy: src.extraWhy, note: src.note
     });
   }
@@ -1802,7 +1806,36 @@ function isJamiRow(row) {
 }
 
 function sheetToAoa(sheet) {
-  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+  // raw:true — Exceldagi haqiqiy son (147.996), locale formatiga aldanish yo'q
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+  return aoa.map(row => (row || []).map(c => {
+    if (typeof c === 'number' && Number.isFinite(c)) return c;
+    if (c instanceof Date) return cellStr(c);
+    return cellStr(c);
+  }));
+}
+
+/** Excel ba'zan 147.996 ni 147996 qilib beradi — norma/sarf bo'yicha tuzatish */
+function sanitizeFuelQty(qty, kind, km, norm, used) {
+  let v = n(qty);
+  if (v <= 0) return 0;
+  const expect = (n(km) > 0 && n(norm) > 0) ? (n(km) * n(norm) / 100) : n(used);
+  // Faqat aniq ~1000x: v/1000 sarf/normaga yaqin bo'lsagina
+  if (v >= 1000 && expect > 1 && expect < 3000) {
+    const scaled = v / 1000;
+    const lim = Math.max(40, expect * 0.4);
+    if (Math.abs(scaled - expect) <= lim) v = scaled;
+  }
+  if ((kind === 'gaz' || kind === 'dizel_gaz') && v > 3000) v = v / 1000;
+  if ((kind === 'benzin' || kind === 'dizel') && v > 8000) v = v / 1000;
+  return v;
+}
+
+function sanitizeStartBal(v, kind) {
+  let x = n(v);
+  if (kind === 'gaz' && x > 2000) x = x / 1000;
+  if ((kind === 'benzin' || kind === 'dizel') && x > 5000) x = x / 1000;
+  return x;
 }
 
 function detectMonthYearFromText(text) {
@@ -1930,40 +1963,58 @@ function extractPriceFromAoa(aoa) {
 function extractMonthlyMetrics(row, plateCol) {
   const nums = [];
   for (let c = plateCol + 1; c < row.length; c++) {
-    const raw = cellStr(row[c]);
-    if (!raw || !/\d/.test(raw)) continue;
-    // haydovchi matni ichida raqam bo'lmasa — o'tkaz
-    if (/[A-Za-zА-Яа-яЁё]{3,}/.test(raw) && !/^\d/.test(raw.replace(/\s/g, ''))) continue;
-    const v = n(raw);
+    const raw = row[c];
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      nums.push(raw);
+      continue;
+    }
+    const s = cellStr(raw);
+    if (!s || !/\d/.test(s)) continue;
+    if (/[A-Za-zА-Яа-яЁё]{3,}/.test(s) && !/^\d/.test(s.replace(/\s/g, ''))) continue;
+    const v = n(s);
     if (!Number.isFinite(v)) continue;
     nums.push(v);
   }
-  // Kutilgan: norma, start, issued, cost, km, used, end
   let norm = 0, start = 0, issued = 0, cost = 0, km = 0, used = 0, end = 0;
   if (nums.length >= 7) {
-    norm = nums[0]; start = nums[1]; issued = nums[2]; cost = nums[3];
-    km = nums[4]; used = nums[5]; end = nums[6];
-  } else if (nums.length === 6) {
-    // cost yo'q bo'lishi mumkin
-    norm = nums[0]; start = nums[1]; issued = nums[2];
-    km = nums[3]; used = nums[4]; end = nums[5];
-  } else if (nums.length >= 4) {
-    norm = nums[0]; start = nums[1]; issued = nums[2]; km = nums[nums.length - 3] || nums[3];
-    used = nums[nums.length - 2] || 0; end = nums[nums.length - 1] || 0;
-  } else if (nums.length) {
-    km = nums[nums.length - 1];
-    if (nums.length > 1) issued = nums[Math.min(2, nums.length - 1)];
-    if (nums.length > 2) start = nums[1];
     norm = nums[0];
+    start = nums[1];
+    issued = nums[2];
+    cost = nums[3];
+    km = nums[4];
+    used = nums[5];
+    end = nums[6];
+  } else if (nums.length === 6) {
+    norm = nums[0];
+    start = nums[1];
+    issued = nums[2];
+    km = nums[3];
+    used = nums[4];
+    end = nums[5];
+  } else if (nums.length >= 3) {
+    norm = nums[0];
+    start = nums[1];
+    issued = nums[2];
+    if (nums.length > 3) km = nums[3];
+    if (nums.length > 4) used = nums[4];
+    if (nums.length > 5) end = nums[5];
   }
-  // km ni cost bilan adashtirmaslik
-  if (km > 200000 && cost > 0 && cost < km) {
-    const tmp = km; km = cost; cost = tmp;
+  // Cost odatda eng katta; issued bilan almashtirilgan bo'lsa tuzat
+  if (issued > 50000 && cost > 0 && cost < issued) {
+    const t = issued; issued = cost; cost = t;
   }
-  if (km > 50000 && issued > 0 && issued < 5000) {
-    // ba'zan tartib siljigan
-    const maybeKm = nums.find(v => v >= 50 && v <= 20000);
-    if (maybeKm) km = maybeKm;
+  // 147996 kabi — 1000 baravar katta yozilgan yoqilg'i
+  if (issued >= 1000) {
+    const scaled = issued / 1000;
+    if (scaled < 3000 && (used <= 0 || Math.abs(scaled - used) <= Math.max(50, used * 0.5) || scaled < 500)) {
+      if (used > 0 && Math.abs(scaled - used) < Math.abs(issued - used)) issued = scaled;
+      else if (used <= 0 && scaled < 500) issued = scaled;
+      else if (issued > 50000 && scaled < 3000) issued = scaled;
+    }
+  }
+  if (km < 30 || km > 80000) {
+    const kmLike = nums.find(v => v >= 50 && v <= 30000);
+    if (kmLike) km = kmLike;
   }
   return { norm, start, issued, cost, km, used, end };
 }
@@ -1996,8 +2047,18 @@ function parseMonthlyFuelReportAoa(aoa, sheetName) {
     const hit = findPlateInRow(row);
     if (!hit) continue;
     plate = hit.plate;
-    const m = extractMonthlyMetrics(row, hit.col);
-    if (!m.km && !m.issued && !m.start && !m.norm) continue;
+    const raw = extractMonthlyMetrics(row, hit.col);
+    if (!raw.km && !raw.issued && !raw.start && !raw.norm) continue;
+
+    const m = {
+      norm: raw.norm,
+      start: sanitizeStartBal(raw.start, kind),
+      issued: sanitizeFuelQty(raw.issued, kind, raw.km, raw.norm, raw.used),
+      cost: raw.cost,
+      km: raw.km,
+      used: sanitizeFuelQty(raw.used, kind, raw.km, raw.norm, raw.used),
+      end: sanitizeStartBal(raw.end, kind)
+    };
 
     const day = days[1] || { mode: kind === 'benzin' || kind === 'dizel' ? kind : 'gaz' };
     if (m.km > n(day.km)) {
@@ -2008,19 +2069,29 @@ function parseMonthlyFuelReportAoa(aoa, sheetName) {
       if (m.issued) day.benzinIn = n(day.benzinIn) + m.issued;
       params.benzinStart = m.start;
       if (m.norm) params.benzinNorm = m.norm;
-      if (priceHint) params.benzinPrice = priceHint;
-      else if (m.issued > 0 && m.cost > 0) params.benzinPrice = Math.round(m.cost / m.issued);
+      let price = priceHint;
+      if (!price && m.issued > 0 && m.cost > 0) price = Math.round(m.cost / m.issued);
+      if (price > 500 && price < 100000) params.benzinPrice = price;
       day.mode = n(day.gasIn) ? 'aralash' : (kind === 'dizel' ? 'dizel' : 'benzin');
-      if (m.issued) day.benzinPrice = params.benzinPrice;
+      if (params.benzinPrice) day.benzinPrice = params.benzinPrice;
+      if (n(day.gasIn) && n(day.benzinIn)) {
+        day.mode = 'aralash';
+        delete day.gasKm;
+      }
     } else {
       if (m.issued) day.gasIn = n(day.gasIn) + m.issued;
       params.gasStart = m.start;
       if (m.norm) params.gasNorm = m.norm;
-      if (priceHint) params.gasPrice = priceHint;
-      else if (m.issued > 0 && m.cost > 0) params.gasPrice = Math.round(m.cost / m.issued);
+      let price = priceHint;
+      if (!price && m.issued > 0 && m.cost > 0) price = Math.round(m.cost / m.issued);
+      if (price > 500 && price < 100000) params.gasPrice = price;
       day.mode = n(day.benzinIn) ? 'aralash' : 'gaz';
-      if (m.km) day.gasKm = m.km;
-      if (m.issued) day.gasPrice = params.gasPrice;
+      if (m.km && !n(day.benzinIn)) day.gasKm = m.km;
+      if (n(day.gasIn) && n(day.benzinIn)) {
+        day.mode = 'aralash';
+        delete day.gasKm;
+      }
+      if (params.gasPrice) day.gasPrice = params.gasPrice;
     }
     day.note = 'Excel oylik: ' + cellStr(sheetName);
     days[1] = day;
@@ -2075,8 +2146,10 @@ function mergeImportParsed(into, extra) {
     if (b.gasPrice) merged.gasPrice = b.gasPrice;
     if (a.benzinPrice && !merged.benzinPrice) merged.benzinPrice = a.benzinPrice;
     if (b.benzinPrice) merged.benzinPrice = b.benzinPrice;
-    if (n(merged.gasIn) && n(merged.benzinIn)) merged.mode = 'aralash';
-    else if (n(merged.benzinIn) && !n(merged.gasIn)) merged.mode = b.mode || a.mode || 'benzin';
+    if (n(merged.gasIn) && n(merged.benzinIn)) {
+      merged.mode = 'aralash';
+      delete merged.gasKm;
+    } else if (n(merged.benzinIn) && !n(merged.gasIn)) merged.mode = b.mode || a.mode || 'benzin';
     else if (n(merged.gasIn)) merged.mode = 'gaz';
     if (merged.km) merged.kmSrc = 'user';
     out.days[d] = merged;
