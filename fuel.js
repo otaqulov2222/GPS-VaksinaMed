@@ -39,7 +39,15 @@ function esc(s) {
   }[c]));
 }
 function n(v) {
-  const x = Number(String(v ?? '').replace(',', '.').replace(/\s/g, ''));
+  let s = String(v ?? '').trim().replace(/\s/g, '').replace(/\u00a0/g, '');
+  if (!s) return 0;
+  // 1.516.071,50 — Yevropa minglik
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  // 1,516,071.50 yoki 1,516,071 — AQSH minglik (2+ vergul guruhi)
+  else if (/^\d{1,3}(,\d{3}){2,}(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
+  // 7,6 / 147,996 / 8,01 — o‘nlik vergul (bitta vergul)
+  else if (/^\d+,\d+$/.test(s)) s = s.replace(',', '.');
+  const x = Number(s);
   return Number.isFinite(x) ? x : 0;
 }
 function fmtNum(v) {
@@ -68,7 +76,7 @@ function plateCode(car) {
   return m ? m[1] : String(car).slice(-3);
 }
 function plateCompact(p) {
-  return String(p || '').replace(/\s+/g, '').toUpperCase();
+  return String(p || '').replace(/[\s\/\-_]/g, '').toUpperCase();
 }
 function canonicalPlate(p) {
   const c = plateCompact(p);
@@ -1863,129 +1871,172 @@ function plateByCode(code) {
   return '';
 }
 
-function sheetFuelKind(name) {
+function sheetFuelKind(name, aoa) {
   const s = String(name || '').toLowerCase();
-  if (/бен|benzin|ben/.test(s)) return 'benzin';
+  if (/бензин|benzin/.test(s) || /(^|[^а-яa-z])бен([^а-яa-z]|$)/.test(s) || /\bben\b/.test(s)) return 'benzin';
   if (/дизел|dizel|diesel/.test(s)) return 'dizel';
   if (/газ|gaz|cng|метан/.test(s)) return 'gaz';
-  return '';
+  const head = (aoa || []).slice(0, 10).map(r => (r || []).map(cellStr).join(' ')).join(' ').toLowerCase();
+  if (/бензин|benzin/.test(head)) return 'benzin';
+  if (/дизел|dizel/.test(head)) return 'dizel';
+  if (/сжатого|природного газа|\bгаз\b|метан/.test(head)) return 'gaz';
+  return 'gaz';
 }
 
 function isMonthlyFuelReport(aoa) {
-  const head = aoa.slice(0, 18).map(r => (r || []).map(cellStr).join(' ')).join(' ').toLowerCase();
+  const head = aoa.slice(0, 22).map(r => (r || []).map(cellStr).join(' ')).join(' ').toLowerCase();
   if (/иш\s*куни|заправка\s*номи|spidometr|yurgan masofa/.test(head)) return false;
-  return /израсходован|расходовании/.test(head) ||
-    (/остаток/.test(head) && /выдано|пробег/.test(head) && /гос|номер|марка/.test(head));
+  return /израсходован|расходован/.test(head) ||
+    (/остаток/.test(head) && /(выдано|выданн)/.test(head)) ||
+    (/отчет/.test(head) && /(пробег|топлив|бензин|газ)/.test(head));
 }
 
-function findMonthlyHeaderRow(aoa) {
-  for (let i = 0; i < Math.min(25, aoa.length); i++) {
+function matchPlateCell(text) {
+  const m = cellStr(text).match(/(\d{2})\s*[\/\-]?\s*(\d{3})\s*([A-Za-zА-Яа-яЁё]{2,4})/);
+  if (!m) return null;
+  return {
+    plate: (m[1] + ' ' + m[2] + ' ' + m[3]).toUpperCase(),
+    code: m[2]
+  };
+}
+
+function findPlateInRow(row) {
+  for (let c = 0; c < (row || []).length; c++) {
+    const hit = matchPlateCell(row[c]);
+    if (hit) return Object.assign({ col: c }, hit);
+  }
+  return null;
+}
+
+function extractPriceFromAoa(aoa) {
+  for (let i = 0; i < aoa.length; i++) {
     const line = (aoa[i] || []).map(cellStr).join(' ').toLowerCase();
-    if (/гос/.test(line) && (/номер|№/.test(line) || /марка/.test(line))) return i;
-    if (/марка/.test(line) && /водитель|haydovchi|пробег/.test(line)) return i;
-  }
-  return -1;
-}
-
-function colIdxByKeywords(headerRow, groups) {
-  const cells = (headerRow || []).map(c => cellStr(c).toLowerCase());
-  const out = {};
-  Object.keys(groups).forEach(key => {
-    out[key] = -1;
-    const words = groups[key];
-    for (let i = 0; i < cells.length; i++) {
-      if (words.some(w => cells[i].includes(w))) {
-        out[key] = i;
-        break;
-      }
+    const avg = line.match(/(?:средн|o\'rtacha|urtacha|в среднем)[^\d]{0,12}(\d[\d\s]{2,})/i);
+    if (avg) {
+      const v = n(avg[1]);
+      if (v >= 1000 && v <= 100000) return v;
     }
-  });
-  return out;
-}
-
-function parseMonthlyFuelReportAoa(aoa, sheetName, carHint) {
-  if (!isMonthlyFuelReport(aoa)) return null;
-  const headerIdx = findMonthlyHeaderRow(aoa);
-  if (headerIdx < 0) return null;
-  const cols = colIdxByKeywords(aoa[headerIdx], {
-    plate: ['гос', 'номер', 'номер а'],
-    brand: ['марка'],
-    driver: ['водител', 'haydovchi'],
-    norm: ['норма'],
-    start: ['остаток на 0', 'остаток на начало', 'қолдиқ', 'qoldiq', 'остаток'],
-    issued: ['выдано', 'berilgan', 'олинган', 'получено'],
-    cost: ['стоимость', 'сумма', 'narx'],
-    km: ['пробег', 'probeg', 'км'],
-    used: ['израсход', 'sarf', 'расход'],
-    end: ['остаток на 2', 'остаток на конец', 'охири']
-  });
-  // "остаток" ikki marta bo'lsa — birinchisi start, oxirgisi end
-  if (cols.start >= 0 && cols.end < 0) {
-    const cells = (aoa[headerIdx] || []).map(c => cellStr(c).toLowerCase());
-    const restIdx = [];
-    cells.forEach((c, i) => { if (c.includes('остаток') || c.includes('qoldiq')) restIdx.push(i); });
-    if (restIdx.length >= 2) {
-      cols.start = restIdx[0];
-      cols.end = restIdx[restIdx.length - 1];
+    const range = line.match(/(\d[\d\s]{3,})\s*[–\-]\s*(\d[\d\s]{3,})/);
+    if (range && /сум|so\'m|narx|цен/.test(line)) {
+      const a = n(range[1]);
+      const b = n(range[2]);
+      if (a >= 1000 && b >= 1000) return Math.round((a + b) / 2);
     }
   }
-  const kind = sheetFuelKind(sheetName) || 'gaz';
-  const monthYear = detectMonthYearFromAoa(aoa);
-  const lastDay = monthYear ? daysInMonth(monthYear.year + '-' + String(monthYear.month).padStart(2, '0')) : 1;
+  return 0;
+}
+
+/** Vaksina oylik hisobot qatori: plate dan o'ngdagi raqamlar */
+function extractMonthlyMetrics(row, plateCol) {
+  const nums = [];
+  for (let c = plateCol + 1; c < row.length; c++) {
+    const raw = cellStr(row[c]);
+    if (!raw || !/\d/.test(raw)) continue;
+    // haydovchi matni ichida raqam bo'lmasa — o'tkaz
+    if (/[A-Za-zА-Яа-яЁё]{3,}/.test(raw) && !/^\d/.test(raw.replace(/\s/g, ''))) continue;
+    const v = n(raw);
+    if (!Number.isFinite(v)) continue;
+    nums.push(v);
+  }
+  // Kutilgan: norma, start, issued, cost, km, used, end
+  let norm = 0, start = 0, issued = 0, cost = 0, km = 0, used = 0, end = 0;
+  if (nums.length >= 7) {
+    norm = nums[0]; start = nums[1]; issued = nums[2]; cost = nums[3];
+    km = nums[4]; used = nums[5]; end = nums[6];
+  } else if (nums.length === 6) {
+    // cost yo'q bo'lishi mumkin
+    norm = nums[0]; start = nums[1]; issued = nums[2];
+    km = nums[3]; used = nums[4]; end = nums[5];
+  } else if (nums.length >= 4) {
+    norm = nums[0]; start = nums[1]; issued = nums[2]; km = nums[nums.length - 3] || nums[3];
+    used = nums[nums.length - 2] || 0; end = nums[nums.length - 1] || 0;
+  } else if (nums.length) {
+    km = nums[nums.length - 1];
+    if (nums.length > 1) issued = nums[Math.min(2, nums.length - 1)];
+    if (nums.length > 2) start = nums[1];
+    norm = nums[0];
+  }
+  // km ni cost bilan adashtirmaslik
+  if (km > 200000 && cost > 0 && cost < km) {
+    const tmp = km; km = cost; cost = tmp;
+  }
+  if (km > 50000 && issued > 0 && issued < 5000) {
+    // ba'zan tartib siljigan
+    const maybeKm = nums.find(v => v >= 50 && v <= 20000);
+    if (maybeKm) km = maybeKm;
+  }
+  return { norm, start, issued, cost, km, used, end };
+}
+
+function parseMonthlyFuelReportAoa(aoa, sheetName) {
+  const kind = sheetFuelKind(sheetName, aoa);
+  const looksMonthly = isMonthlyFuelReport(aoa) || !!String(sheetName || '').match(/\d{3}/);
+  if (!looksMonthly && !aoa.some(r => findPlateInRow(r))) return null;
+
+  let monthYear = null;
+  for (let i = 0; i < Math.min(12, aoa.length); i++) {
+    monthYear = detectMonthYearFromText((aoa[i] || []).map(cellStr).join(' '));
+    if (monthYear) break;
+  }
+
+  const priceHint = extractPriceFromAoa(aoa);
   const days = {};
   const params = {};
-  let plate = detectPlateFromAoa(aoa);
+  let plate = '';
   let rowsHit = 0;
 
-  for (let i = headerIdx + 1; i < aoa.length; i++) {
+  for (let i = 0; i < aoa.length; i++) {
     const row = aoa[i] || [];
-    if (isJamiRow(row)) break;
     const line = row.map(cellStr).join(' ');
-    if (!line.replace(/\s/g, '')) continue;
-    let rowPlate = '';
-    if (cols.plate >= 0) {
-      const pm = cellStr(row[cols.plate]).match(/(\d{2})\s*[\/\-]?\s*(\d{3})\s*([A-Za-zА-Яа-яЁё]{2,4})/);
-      if (pm) rowPlate = canonicalPlate((pm[1] + ' ' + pm[2] + ' ' + pm[3]).toUpperCase());
+    if (isJamiRow(row)) break;
+    if (/^за\s+(март|месяц)|механик|директор|подпись/i.test(line.trim())) {
+      if (rowsHit) break;
+      continue;
     }
-    if (!rowPlate) {
-      const pm = line.match(/(\d{2})\s*[\/\-]?\s*(\d{3})\s*([A-Za-zА-Яа-яЁё]{2,4})/);
-      if (pm) rowPlate = canonicalPlate((pm[1] + ' ' + pm[2] + ' ' + pm[3]).toUpperCase());
-    }
-    const km = cols.km >= 0 ? n(row[cols.km]) : 0;
-    const issued = cols.issued >= 0 ? n(row[cols.issued]) : 0;
-    const startBal = cols.start >= 0 ? n(row[cols.start]) : 0;
-    const norm = cols.norm >= 0 ? n(row[cols.norm]) : 0;
-    if (!rowPlate && !km && !issued) continue;
-    if (rowPlate) plate = rowPlate;
+    const hit = findPlateInRow(row);
+    if (!hit) continue;
+    plate = hit.plate;
+    const m = extractMonthlyMetrics(row, hit.col);
+    if (!m.km && !m.issued && !m.start && !m.norm) continue;
 
-    const day = days[lastDay] || { mode: kind === 'benzin' || kind === 'dizel' ? kind : 'gaz' };
-    if (km > n(day.km)) {
-      day.km = km;
+    const day = days[1] || { mode: kind === 'benzin' || kind === 'dizel' ? kind : 'gaz' };
+    if (m.km > n(day.km)) {
+      day.km = m.km;
       day.kmSrc = 'user';
     }
     if (kind === 'benzin' || kind === 'dizel') {
-      if (issued) day.benzinIn = n(day.benzinIn) + issued;
-      if (cols.start >= 0 && cellStr(row[cols.start]) !== '') params.benzinStart = startBal;
-      if (norm) params.benzinNorm = norm;
-      day.mode = day.gasIn ? 'aralash' : (kind === 'dizel' ? 'dizel' : 'benzin');
+      if (m.issued) day.benzinIn = n(day.benzinIn) + m.issued;
+      params.benzinStart = m.start;
+      if (m.norm) params.benzinNorm = m.norm;
+      if (priceHint) params.benzinPrice = priceHint;
+      else if (m.issued > 0 && m.cost > 0) params.benzinPrice = Math.round(m.cost / m.issued);
+      day.mode = n(day.gasIn) ? 'aralash' : (kind === 'dizel' ? 'dizel' : 'benzin');
+      if (m.issued) day.benzinPrice = params.benzinPrice;
     } else {
-      if (issued) day.gasIn = n(day.gasIn) + issued;
-      if (cols.start >= 0 && cellStr(row[cols.start]) !== '') params.gasStart = startBal;
-      if (norm) params.gasNorm = norm;
-      if (day.benzinIn) day.mode = 'aralash';
-      else day.mode = 'gaz';
-      if (km) day.gasKm = km;
+      if (m.issued) day.gasIn = n(day.gasIn) + m.issued;
+      params.gasStart = m.start;
+      if (m.norm) params.gasNorm = m.norm;
+      if (priceHint) params.gasPrice = priceHint;
+      else if (m.issued > 0 && m.cost > 0) params.gasPrice = Math.round(m.cost / m.issued);
+      day.mode = n(day.benzinIn) ? 'aralash' : 'gaz';
+      if (m.km) day.gasKm = m.km;
+      if (m.issued) day.gasPrice = params.gasPrice;
     }
-    days[lastDay] = day;
+    day.note = 'Excel oylik: ' + cellStr(sheetName);
+    days[1] = day;
     rowsHit += 1;
   }
 
-  if (!rowsHit && !Object.keys(days).length) return null;
-  if (!plate) {
-    const code = String(sheetName || '').match(/(\d{3})/);
-    if (code) plate = plateByCode(code[1]);
+  if (!rowsHit) return null;
+
+  const code = String(plate || sheetName || '').match(/(\d{3})/);
+  if (code) {
+    const byCode = plateByCode(code[1]);
+    if (byCode) plate = byCode;
+  } else {
+    plate = canonicalPlate(plate);
   }
-  if (!plate && carHint && carHint.car) plate = carHint.car;
+
   return {
     days,
     params,
@@ -1993,7 +2044,8 @@ function parseMonthlyFuelReportAoa(aoa, sheetName, carHint) {
       monthYear,
       plate: plate || '',
       sheetType: 'monthly',
-      fuelKind: kind
+      fuelKind: kind,
+      sheet: sheetName
     }
   };
 }
@@ -2005,9 +2057,7 @@ function mergeImportParsed(into, extra) {
     days: Object.assign({}, into.days),
     params: Object.assign({}, into.params, extra.params),
     meta: Object.assign({}, into.meta, extra.meta, {
-      sheetType: into.meta.sheetType === 'monthly' || extra.meta.sheetType === 'monthly'
-        ? 'monthly'
-        : (extra.meta.sheetType || into.meta.sheetType),
+      sheetType: 'monthly',
       plate: into.meta.plate || extra.meta.plate,
       monthYear: into.meta.monthYear || extra.meta.monthYear,
       sheets: [].concat(into.meta.sheets || into.meta.sheet || [], extra.meta.sheets || extra.meta.sheet || [])
@@ -2021,6 +2071,10 @@ function mergeImportParsed(into, extra) {
     if (n(a.benzinIn) || n(b.benzinIn)) merged.benzinIn = n(a.benzinIn) + n(b.benzinIn);
     if (n(a.km) || n(b.km)) merged.km = Math.max(n(a.km), n(b.km));
     if (n(a.gasKm) || n(b.gasKm)) merged.gasKm = Math.max(n(a.gasKm), n(b.gasKm));
+    if (a.gasPrice && !merged.gasPrice) merged.gasPrice = a.gasPrice;
+    if (b.gasPrice) merged.gasPrice = b.gasPrice;
+    if (a.benzinPrice && !merged.benzinPrice) merged.benzinPrice = a.benzinPrice;
+    if (b.benzinPrice) merged.benzinPrice = b.benzinPrice;
     if (n(merged.gasIn) && n(merged.benzinIn)) merged.mode = 'aralash';
     else if (n(merged.benzinIn) && !n(merged.gasIn)) merged.mode = b.mode || a.mode || 'benzin';
     else if (n(merged.gasIn)) merged.mode = 'gaz';
@@ -2147,17 +2201,25 @@ function parseKunlikAoa(aoa) {
 }
 
 function resolveImportPlate(sheetName, parsed) {
-  const fromHeader = parsed.meta && parsed.meta.plate;
-  if (fromHeader && fleet().some(f => plateCompact(f.car) === plateCompact(fromHeader))) {
-    return canonicalPlate(fromHeader);
-  }
-  if (fromHeader) return canonicalPlate(fromHeader);
+  // Varaq nomi (205 бен) — eng ishonchli (Excelda NMA/HMA chalkashishi mumkin)
   const code = String(sheetName || '').match(/(\d{3})/);
   if (code) {
     const byCode = plateByCode(code[1]);
     if (byCode) return byCode;
   }
-  return fromHeader || '';
+  const fromHeader = parsed.meta && parsed.meta.plate;
+  if (fromHeader) {
+    const compact = plateCompact(fromHeader);
+    const hit = fleet().find(f => plateCompact(f.car) === compact);
+    if (hit) return hit.car;
+    const code2 = String(fromHeader).match(/(\d{3})/);
+    if (code2) {
+      const byCode = plateByCode(code2[1]);
+      if (byCode) return byCode;
+    }
+    return canonicalPlate(fromHeader);
+  }
+  return '';
 }
 
 function parseExcelWorkbookAll(wb, fileName) {
@@ -2180,7 +2242,11 @@ function parseExcelWorkbookAll(wb, fileName) {
     }
     const hintPlate = resolveImportPlate(name, { meta: { plate: detectPlateFromAoa(aoa) } }) || plateByCode(name);
     const carHint = hintPlate ? getCar(hintPlate) : {};
-    parsed = parseMonthlyFuelReportAoa(aoa, name, carHint) || parseWaybillAoa(aoa, carHint);
+    const codeSheet = /\d{3}/.test(name);
+    if (isMonthlyFuelReport(aoa) || codeSheet) {
+      parsed = parseMonthlyFuelReportAoa(aoa, name);
+    }
+    if (!parsed) parsed = parseWaybillAoa(aoa, carHint);
     if (!parsed) continue;
     const plate = resolveImportPlate(name, parsed) || hintPlate;
     if (!plate) continue;
@@ -2229,7 +2295,14 @@ function applyExcelImport(parsed, plate, replaceDays) {
   if (p.benzinNorm) car.benzinNorm = p.benzinNorm;
   if (p.gasStart != null && p.gasStart !== '') car.gasStart = n(p.gasStart);
   if (p.benzinStart != null && p.benzinStart !== '') car.benzinStart = n(p.benzinStart);
+  if (p.gasPrice) car.gasPrice = n(p.gasPrice);
+  if (p.benzinPrice) car.benzinPrice = n(p.benzinPrice);
   if (p.odoStart) car.odoStart = p.odoStart;
+  const hasGaz = n(p.gasStart) || n(p.gasNorm) || Object.values(parsed.days || {}).some(d => n(d.gasIn) || n(d.gasKm));
+  const hasBen = n(p.benzinStart) || n(p.benzinNorm) || Object.values(parsed.days || {}).some(d => n(d.benzinIn));
+  if (hasGaz && hasBen) car.fuelType = 'mixed';
+  else if (hasBen && !hasGaz) car.fuelType = car.fuelType === 'dizel' ? 'dizel' : 'benzin';
+  else if (hasGaz && !hasBen) car.fuelType = 'gaz';
   let nDays = 0;
   Object.keys(parsed.days).forEach(k => {
     const d = Number(k);
@@ -2267,19 +2340,28 @@ function importPreviewText(pack) {
   const nCars = pack.cars.length;
   const nDays = pack.cars.reduce((s, c) => s + Object.keys(c.parsed.days).length, 0);
   const types = {};
+  let sumKm = 0, sumGas = 0, sumBen = 0;
   pack.cars.forEach(c => {
     const t = (c.parsed.meta && c.parsed.meta.sheetType) || 'waybill';
     types[t] = (types[t] || 0) + 1;
+    const tot = Object.values(c.parsed.days || {}).reduce((a, d) => {
+      a.km += n(d.km); a.gas += n(d.gasIn); a.ben += n(d.benzinIn);
+      return a;
+    }, { km: 0, gas: 0, ben: 0 });
+    sumKm += tot.km; sumGas += tot.gas; sumBen += tot.ben;
   });
   const typeBit = types.monthly
     ? ('oylik hisobot' + (types.waybill ? ' + putevoy' : ''))
     : 'putevoy / kunlik';
   const bits = [
-    nCars + ' mashina topildi',
-    nDays + ' kunlik qator',
+    nCars + ' mashina',
+    nDays + ' kun yozuvi',
     typeBit,
-    'oy: ' + importMonthLabel(pack.monthYear)
+    'oy: ' + importMonthLabel(pack.monthYear),
+    'jami km: ' + fmtNum(sumKm)
   ];
+  if (sumGas) bits.push('gaz: ' + fmtNum(sumGas) + ' m³');
+  if (sumBen) bits.push('benzin: ' + fmtNum(sumBen) + ' l');
   const codes = pack.cars.map(c => plateCode(c.plate)).filter(Boolean).slice(0, 12);
   if (codes.length) bits.push('kodlar: ' + codes.join(', ') + (pack.cars.length > 12 ? '…' : ''));
   return bits.join(' · ');
@@ -2395,12 +2477,19 @@ async function runExcelImportPack(pack) {
     if (!okOdo) missingOdo.push(plateCode(plate) || plate);
     filled += 1;
   });
+  if (pack.cars[0] && pack.cars[0].plate) STATE.car = canonicalPlate(pack.cars[0].plate);
   markDirty();
   writeParams();
   renderAll();
   await saveMeta();
   await saveMonth();
-  let msg = '✓ Fayl yuklandi — ' + filled + ' mashina to\'ldirildi.\nSpidometr kunlik km bo\'yicha hisoblandi.';
+  let msg = '✓ Fayl yuklandi — ' + filled + ' mashina to\'ldirildi.';
+  const monthly = pack.cars.some(c => c.parsed.meta && c.parsed.meta.sheetType === 'monthly');
+  if (monthly) {
+    msg += '\nOylik hisobot: km va zapravka 1-kunga yozildi (oy jami). Mashina chipidan tanlab 1-kunni ko\'ring.';
+  } else {
+    msg += '\nSpidometr kunlik km bo\'yicha hisoblandi.';
+  }
   if (missingOdo.length) {
     msg += '\n\n⚠ Spidometr (' + odoLabel + ') yo\'q ' + missingOdo.length + ' mashina: ' +
       missingOdo.join(', ') +
