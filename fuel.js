@@ -1767,18 +1767,18 @@ function exportExcel() {
 }
 
 const CYR_MONTHS = {
-  yanvar: 1, январ: 1, январь: 1,
-  fevral: 2, феврал: 2, февраль: 2,
-  mart: 3, март: 3,
-  aprel: 4, апрел: 4, апрель: 4,
-  may: 5, май: 5,
-  iyun: 6, июн: 6, июнь: 6,
-  iyul: 7, июл: 7, июль: 7,
-  avgust: 8, август: 8,
-  sentabr: 9, сентябр: 9, сентябрь: 9,
-  oktabr: 10, октябр: 10, октябрь: 10,
-  noyabr: 11, ноябр: 11, ноябрь: 11,
-  dekabr: 12, декабр: 12, декабрь: 12
+  yanvar: 1, январ: 1, январь: 1, января: 1,
+  fevral: 2, феврал: 2, февраль: 2, февраля: 2,
+  mart: 3, март: 3, марта: 3,
+  aprel: 4, апрел: 4, апрель: 4, апреля: 4,
+  may: 5, май: 5, мая: 5,
+  iyun: 6, июн: 6, июнь: 6, июня: 6,
+  iyul: 7, июл: 7, июль: 7, июля: 7,
+  avgust: 8, август: 8, августа: 8,
+  sentabr: 9, сентябр: 9, сентябрь: 9, сентября: 9,
+  oktabr: 10, октябр: 10, октябрь: 10, октября: 10,
+  noyabr: 11, ноябр: 11, ноябрь: 11, ноября: 11,
+  dekabr: 12, декабр: 12, декабрь: 12, декабря: 12
 };
 const IMPORT = { file: null, pack: null };
 const SKIP_SHEET_RE = /акт|эколог|ekolog|лист\s*1|sheet1|jami|жами|итого/i;
@@ -1798,26 +1798,52 @@ function sheetToAoa(sheet) {
 }
 
 function detectMonthYearFromText(text) {
-  const line = String(text || '').toLowerCase();
+  const line = String(text || '').toLowerCase().replace(/ё/g, 'е');
   const yearM = line.match(/20\d{2}/);
   if (!yearM) return null;
-  let month = null;
-  Object.keys(CYR_MONTHS).forEach(k => {
-    if (line.includes(k)) month = CYR_MONTHS[k];
-  });
-  return month ? { year: Number(yearM[0]), month } : null;
+  const year = Number(yearM[0]);
+
+  // Oy nomlari avval — 01.05 va "февраль" aralashmasin
+  const keys = Object.keys(CYR_MONTHS).sort((a, b) => b.length - a.length);
+  for (const k of keys) {
+    const re = new RegExp('(?:^|[^a-zа-я])' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[^a-zа-я]|$)', 'i');
+    if (re.test(line)) return { year, month: CYR_MONTHS[k] };
+  }
+
+  // 01.02.2026 / 1.2.2026 (kun.oy.yil)
+  const dm = line.match(/\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b/);
+  if (dm) {
+    const a = Number(dm[1]);
+    const b = Number(dm[2]);
+    let month = b;
+    if (a > 12 && b >= 1 && b <= 12) month = b;
+    else if (b > 12 && a >= 1 && a <= 12) month = a;
+    else if (b >= 1 && b <= 12) month = b;
+    else month = 0;
+    if (month >= 1 && month <= 12) return { year: Number(dm[3]), month };
+  }
+  const ym = line.match(/\b(20\d{2})[./-](\d{1,2})\b/);
+  if (ym) {
+    const month = Number(ym[2]);
+    if (month >= 1 && month <= 12) return { year: Number(ym[1]), month };
+  }
+  return null;
 }
 
 function detectMonthYearFromAoa(aoa) {
-  for (let i = 0; i < Math.min(10, aoa.length); i++) {
+  for (let i = 0; i < Math.min(15, aoa.length); i++) {
     const hit = detectMonthYearFromText((aoa[i] || []).map(cellStr).join(' '));
     if (hit) return hit;
   }
   return null;
 }
 
+function detectMonthYearFromFilename(name) {
+  return detectMonthYearFromText(String(name || '').replace(/\.xlsx?$/i, ' ').replace(/[_-]+/g, ' '));
+}
+
 function detectPlateFromAoa(aoa) {
-  for (let i = 0; i < Math.min(10, aoa.length); i++) {
+  for (let i = 0; i < Math.min(20, aoa.length); i++) {
     const line = (aoa[i] || []).map(cellStr).join(' ');
     const m = line.match(/(\d{2})\s*[\/\-]?\s*(\d{3})\s*([A-Za-zА-Яа-яЁё]{2,4})/);
     if (m) return canonicalPlate((m[1] + ' ' + m[2] + ' ' + m[3]).toUpperCase());
@@ -1835,6 +1861,173 @@ function plateByCode(code) {
     if (plateCode(f.car) === c) return f.car;
   }
   return '';
+}
+
+function sheetFuelKind(name) {
+  const s = String(name || '').toLowerCase();
+  if (/бен|benzin|ben/.test(s)) return 'benzin';
+  if (/дизел|dizel|diesel/.test(s)) return 'dizel';
+  if (/газ|gaz|cng|метан/.test(s)) return 'gaz';
+  return '';
+}
+
+function isMonthlyFuelReport(aoa) {
+  const head = aoa.slice(0, 18).map(r => (r || []).map(cellStr).join(' ')).join(' ').toLowerCase();
+  if (/иш\s*куни|заправка\s*номи|spidometr|yurgan masofa/.test(head)) return false;
+  return /израсходован|расходовании/.test(head) ||
+    (/остаток/.test(head) && /выдано|пробег/.test(head) && /гос|номер|марка/.test(head));
+}
+
+function findMonthlyHeaderRow(aoa) {
+  for (let i = 0; i < Math.min(25, aoa.length); i++) {
+    const line = (aoa[i] || []).map(cellStr).join(' ').toLowerCase();
+    if (/гос/.test(line) && (/номер|№/.test(line) || /марка/.test(line))) return i;
+    if (/марка/.test(line) && /водитель|haydovchi|пробег/.test(line)) return i;
+  }
+  return -1;
+}
+
+function colIdxByKeywords(headerRow, groups) {
+  const cells = (headerRow || []).map(c => cellStr(c).toLowerCase());
+  const out = {};
+  Object.keys(groups).forEach(key => {
+    out[key] = -1;
+    const words = groups[key];
+    for (let i = 0; i < cells.length; i++) {
+      if (words.some(w => cells[i].includes(w))) {
+        out[key] = i;
+        break;
+      }
+    }
+  });
+  return out;
+}
+
+function parseMonthlyFuelReportAoa(aoa, sheetName, carHint) {
+  if (!isMonthlyFuelReport(aoa)) return null;
+  const headerIdx = findMonthlyHeaderRow(aoa);
+  if (headerIdx < 0) return null;
+  const cols = colIdxByKeywords(aoa[headerIdx], {
+    plate: ['гос', 'номер', 'номер а'],
+    brand: ['марка'],
+    driver: ['водител', 'haydovchi'],
+    norm: ['норма'],
+    start: ['остаток на 0', 'остаток на начало', 'қолдиқ', 'qoldiq', 'остаток'],
+    issued: ['выдано', 'berilgan', 'олинган', 'получено'],
+    cost: ['стоимость', 'сумма', 'narx'],
+    km: ['пробег', 'probeg', 'км'],
+    used: ['израсход', 'sarf', 'расход'],
+    end: ['остаток на 2', 'остаток на конец', 'охири']
+  });
+  // "остаток" ikki marta bo'lsa — birinchisi start, oxirgisi end
+  if (cols.start >= 0 && cols.end < 0) {
+    const cells = (aoa[headerIdx] || []).map(c => cellStr(c).toLowerCase());
+    const restIdx = [];
+    cells.forEach((c, i) => { if (c.includes('остаток') || c.includes('qoldiq')) restIdx.push(i); });
+    if (restIdx.length >= 2) {
+      cols.start = restIdx[0];
+      cols.end = restIdx[restIdx.length - 1];
+    }
+  }
+  const kind = sheetFuelKind(sheetName) || 'gaz';
+  const monthYear = detectMonthYearFromAoa(aoa);
+  const lastDay = monthYear ? daysInMonth(monthYear.year + '-' + String(monthYear.month).padStart(2, '0')) : 1;
+  const days = {};
+  const params = {};
+  let plate = detectPlateFromAoa(aoa);
+  let rowsHit = 0;
+
+  for (let i = headerIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i] || [];
+    if (isJamiRow(row)) break;
+    const line = row.map(cellStr).join(' ');
+    if (!line.replace(/\s/g, '')) continue;
+    let rowPlate = '';
+    if (cols.plate >= 0) {
+      const pm = cellStr(row[cols.plate]).match(/(\d{2})\s*[\/\-]?\s*(\d{3})\s*([A-Za-zА-Яа-яЁё]{2,4})/);
+      if (pm) rowPlate = canonicalPlate((pm[1] + ' ' + pm[2] + ' ' + pm[3]).toUpperCase());
+    }
+    if (!rowPlate) {
+      const pm = line.match(/(\d{2})\s*[\/\-]?\s*(\d{3})\s*([A-Za-zА-Яа-яЁё]{2,4})/);
+      if (pm) rowPlate = canonicalPlate((pm[1] + ' ' + pm[2] + ' ' + pm[3]).toUpperCase());
+    }
+    const km = cols.km >= 0 ? n(row[cols.km]) : 0;
+    const issued = cols.issued >= 0 ? n(row[cols.issued]) : 0;
+    const startBal = cols.start >= 0 ? n(row[cols.start]) : 0;
+    const norm = cols.norm >= 0 ? n(row[cols.norm]) : 0;
+    if (!rowPlate && !km && !issued) continue;
+    if (rowPlate) plate = rowPlate;
+
+    const day = days[lastDay] || { mode: kind === 'benzin' || kind === 'dizel' ? kind : 'gaz' };
+    if (km > n(day.km)) {
+      day.km = km;
+      day.kmSrc = 'user';
+    }
+    if (kind === 'benzin' || kind === 'dizel') {
+      if (issued) day.benzinIn = n(day.benzinIn) + issued;
+      if (cols.start >= 0 && cellStr(row[cols.start]) !== '') params.benzinStart = startBal;
+      if (norm) params.benzinNorm = norm;
+      day.mode = day.gasIn ? 'aralash' : (kind === 'dizel' ? 'dizel' : 'benzin');
+    } else {
+      if (issued) day.gasIn = n(day.gasIn) + issued;
+      if (cols.start >= 0 && cellStr(row[cols.start]) !== '') params.gasStart = startBal;
+      if (norm) params.gasNorm = norm;
+      if (day.benzinIn) day.mode = 'aralash';
+      else day.mode = 'gaz';
+      if (km) day.gasKm = km;
+    }
+    days[lastDay] = day;
+    rowsHit += 1;
+  }
+
+  if (!rowsHit && !Object.keys(days).length) return null;
+  if (!plate) {
+    const code = String(sheetName || '').match(/(\d{3})/);
+    if (code) plate = plateByCode(code[1]);
+  }
+  if (!plate && carHint && carHint.car) plate = carHint.car;
+  return {
+    days,
+    params,
+    meta: {
+      monthYear,
+      plate: plate || '',
+      sheetType: 'monthly',
+      fuelKind: kind
+    }
+  };
+}
+
+function mergeImportParsed(into, extra) {
+  if (!into) return extra;
+  if (!extra) return into;
+  const out = {
+    days: Object.assign({}, into.days),
+    params: Object.assign({}, into.params, extra.params),
+    meta: Object.assign({}, into.meta, extra.meta, {
+      sheetType: into.meta.sheetType === 'monthly' || extra.meta.sheetType === 'monthly'
+        ? 'monthly'
+        : (extra.meta.sheetType || into.meta.sheetType),
+      plate: into.meta.plate || extra.meta.plate,
+      monthYear: into.meta.monthYear || extra.meta.monthYear,
+      sheets: [].concat(into.meta.sheets || into.meta.sheet || [], extra.meta.sheets || extra.meta.sheet || [])
+    })
+  };
+  Object.keys(extra.days || {}).forEach(d => {
+    const a = out.days[d] || {};
+    const b = extra.days[d] || {};
+    const merged = Object.assign({}, a, b);
+    if (n(a.gasIn) || n(b.gasIn)) merged.gasIn = n(a.gasIn) + n(b.gasIn);
+    if (n(a.benzinIn) || n(b.benzinIn)) merged.benzinIn = n(a.benzinIn) + n(b.benzinIn);
+    if (n(a.km) || n(b.km)) merged.km = Math.max(n(a.km), n(b.km));
+    if (n(a.gasKm) || n(b.gasKm)) merged.gasKm = Math.max(n(a.gasKm), n(b.gasKm));
+    if (n(merged.gasIn) && n(merged.benzinIn)) merged.mode = 'aralash';
+    else if (n(merged.benzinIn) && !n(merged.gasIn)) merged.mode = b.mode || a.mode || 'benzin';
+    else if (n(merged.gasIn)) merged.mode = 'gaz';
+    if (merged.km) merged.kmSrc = 'user';
+    out.days[d] = merged;
+  });
+  return out;
 }
 
 function rowHasWaybillData(row) {
@@ -1967,9 +2160,9 @@ function resolveImportPlate(sheetName, parsed) {
   return fromHeader || '';
 }
 
-function parseExcelWorkbookAll(wb) {
+function parseExcelWorkbookAll(wb, fileName) {
   const cars = [];
-  let monthYear = null;
+  let monthYear = detectMonthYearFromFilename(fileName);
   for (const name of wb.SheetNames) {
     if (SKIP_SHEET_RE.test(name)) continue;
     const aoa = sheetToAoa(wb.Sheets[name]);
@@ -1987,17 +2180,21 @@ function parseExcelWorkbookAll(wb) {
     }
     const hintPlate = resolveImportPlate(name, { meta: { plate: detectPlateFromAoa(aoa) } }) || plateByCode(name);
     const carHint = hintPlate ? getCar(hintPlate) : {};
-    parsed = parseWaybillAoa(aoa, carHint);
+    parsed = parseMonthlyFuelReportAoa(aoa, name, carHint) || parseWaybillAoa(aoa, carHint);
     if (!parsed) continue;
-    const plate = resolveImportPlate(name, parsed);
+    const plate = resolveImportPlate(name, parsed) || hintPlate;
     if (!plate) continue;
     if (!monthYear && parsed.meta.monthYear) monthYear = parsed.meta.monthYear;
     parsed.meta = Object.assign({}, parsed.meta, { sheet: name, plate });
     const exists = cars.findIndex(c => plateCompact(c.plate) === plateCompact(plate));
-    if (exists >= 0) cars[exists] = { plate: canonicalPlate(plate), parsed };
-    else cars.push({ plate: canonicalPlate(plate), parsed });
+    if (exists >= 0) {
+      cars[exists].parsed = mergeImportParsed(cars[exists].parsed, parsed);
+      cars[exists].plate = canonicalPlate(plate);
+    } else {
+      cars.push({ plate: canonicalPlate(plate), parsed });
+    }
   }
-  if (!cars.length) throw new Error('Excelda putevoy ma\'lumot topilmadi (mashina varaqlarini tekshiring)');
+  if (!cars.length) throw new Error('Excelda putevoy / oylik hisobot topilmadi (mashina varaqlarini tekshiring)');
   if (!monthYear) {
     for (const c of cars) {
       if (c.parsed.meta && c.parsed.meta.monthYear) {
@@ -2069,9 +2266,18 @@ function importMonthLabel(my) {
 function importPreviewText(pack) {
   const nCars = pack.cars.length;
   const nDays = pack.cars.reduce((s, c) => s + Object.keys(c.parsed.days).length, 0);
+  const types = {};
+  pack.cars.forEach(c => {
+    const t = (c.parsed.meta && c.parsed.meta.sheetType) || 'waybill';
+    types[t] = (types[t] || 0) + 1;
+  });
+  const typeBit = types.monthly
+    ? ('oylik hisobot' + (types.waybill ? ' + putevoy' : ''))
+    : 'putevoy / kunlik';
   const bits = [
     nCars + ' mashina topildi',
     nDays + ' kunlik qator',
+    typeBit,
     'oy: ' + importMonthLabel(pack.monthYear)
   ];
   const codes = pack.cars.map(c => plateCode(c.plate)).filter(Boolean).slice(0, 12);
@@ -2156,7 +2362,7 @@ async function previewImportFile(file) {
   IMPORT.file = file;
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: 'array' });
-  IMPORT.pack = parseExcelWorkbookAll(wb);
+  IMPORT.pack = parseExcelWorkbookAll(wb, file.name);
   if (IMPORT.pack.monthYear) {
     document.getElementById('import-month').value = String(IMPORT.pack.monthYear.month);
     document.getElementById('import-year').value = String(IMPORT.pack.monthYear.year);
