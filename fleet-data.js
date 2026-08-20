@@ -61,8 +61,65 @@ function fleetShortFromName(name) {
   return parts.length ? parts[parts.length - 1] : '';
 }
 
-function applyFleetNameOverrides(vehicles) {
+function fleetDriversLive() {
+  if (typeof DRIVERS !== 'undefined' && Array.isArray(DRIVERS) && DRIVERS.length) return DRIVERS;
+  return window.DRIVERS || FLEET_DRIVERS || [];
+}
+
+function resolveDriver(plate, fallback) {
+  const want = fleetPlateKey(plate);
+  const list = fleetDriversLive();
+  let hit = list.find(d => fleetPlateKey(d.car) === want) || null;
+  if (!hit && want) {
+    hit = list.find(d => {
+      const c = fleetPlateKey(d.car);
+      return c && (want.startsWith(c) || c.startsWith(want));
+    }) || null;
+  }
+  const fb = fallback && typeof fallback === 'object' ? fallback : {};
+  if (hit) {
+    return {
+      car: hit.car || plate,
+      fullName: hit.fullName || hit.name || fb.fullName || plate,
+      shortName: hit.shortName || hit.short || fb.shortName || plate,
+      name: hit.fullName || hit.name || fb.name || plate,
+      routes: hit.routes || fb.routes || '—',
+      pharmacies: hit.pharmacies || fb.pharmacies || '',
+      color: hit.color || fb.color || '#7f8c8d',
+      brand: hit.brand || fb.brand || '',
+      fuelType: hit.fuelType || fb.fuelType || 'mixed'
+    };
+  }
+  return {
+    car: plate,
+    fullName: fb.fullName || fb.name || plate,
+    shortName: fb.shortName || fb.short || plate,
+    name: fb.fullName || fb.name || plate,
+    routes: fb.routes || '—',
+    pharmacies: fb.pharmacies || '',
+    color: fb.color || '#7f8c8d',
+    brand: fb.brand || '',
+    fuelType: fb.fuelType || 'mixed'
+  };
+}
+
+function patchStoredDriversInState() {
+  const data = (typeof STATE !== 'undefined' && STATE && STATE.data) ? STATE.data : null;
+  if (!data || typeof data !== 'object') return;
+  Object.keys(data).forEach(dateKey => {
+    const day = data[dateKey];
+    if (!day || typeof day !== 'object') return;
+    Object.keys(day).forEach(car => {
+      const rec = day[car];
+      if (!rec || typeof rec !== 'object') return;
+      rec.driver = resolveDriver(rec.car || car, rec.driver);
+    });
+  });
+}
+
+function applyFleetNameOverrides(vehicles, opts) {
   const map = vehicles && typeof vehicles === 'object' ? vehicles : {};
+  const silent = opts && opts.silent;
   const recFor = (car) => {
     if (map[car]) return map[car];
     const c = fleetPlateKey(car);
@@ -74,7 +131,7 @@ function applyFleetNameOverrides(vehicles) {
   const patch = (d) => {
     if (!d || !d.car) return;
     const extra = recFor(d.car);
-    if (!extra || extra.hidden) return;
+    if (!extra) return;
     if (extra.name) {
       d.fullName = extra.name;
       d.name = extra.name;
@@ -83,6 +140,7 @@ function applyFleetNameOverrides(vehicles) {
     }
     if (extra.brand != null && extra.brand !== '') d.brand = extra.brand;
     if (extra.fuelType) d.fuelType = extra.fuelType;
+    if (extra.hidden != null) d.hidden = !!extra.hidden;
   };
   [FLEET_DRIVERS, FLEET_BASE, window.DRIVERS, window.FLEET_BASE].forEach(list => {
     if (Array.isArray(list)) list.forEach(patch);
@@ -114,6 +172,32 @@ function applyFleetNameOverrides(vehicles) {
   });
   window.DRIVERS = FLEET_DRIVERS;
   window.FLEET_BASE = FLEET_BASE;
+  patchStoredDriversInState();
+  if (!silent && typeof BroadcastChannel !== 'undefined') {
+    try {
+      const bc = new BroadcastChannel('vm_fleet_names');
+      bc.postMessage({ type: 'fleet-names', vehicles: map, t: Date.now() });
+      bc.close();
+    } catch (e) {}
+  }
+}
+
+function listenFleetNameOverrides(onApply) {
+  if (typeof BroadcastChannel === 'undefined') return;
+  try {
+    const bc = new BroadcastChannel('vm_fleet_names');
+    bc.onmessage = (ev) => {
+      const msg = ev && ev.data;
+      if (!msg || msg.type !== 'fleet-names') return;
+      applyFleetNameOverrides(msg.vehicles || {}, { silent: true });
+      if (typeof onApply === 'function') onApply(msg.vehicles || {});
+    };
+  } catch (e) {}
 }
 
 window.applyFleetNameOverrides = applyFleetNameOverrides;
+window.resolveDriver = resolveDriver;
+window.fleetPlateKey = fleetPlateKey;
+window.fleetShortFromName = fleetShortFromName;
+window.listenFleetNameOverrides = listenFleetNameOverrides;
+window.patchStoredDriversInState = patchStoredDriversInState;

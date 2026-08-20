@@ -1036,6 +1036,12 @@ class OfficeStore:
                 docs[str(plate).strip()[:24]] = item
             cur["docs"] = docs
         self._save("fuel:meta", cur)
+        try:
+            import gps_sync
+
+            gps_sync.reprocess_recent(self, os.path.dirname(os.path.abspath(self.seed_path)), limit=14)
+        except Exception:
+            pass
         return cur
 
     def fuel_month(self, month):
@@ -1969,6 +1975,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             report = OFFICE.get_report(date)
             reviews = OFFICE.reviews(date)
+            if isinstance(report, dict) and isinstance(report.get("cars"), dict):
+                cars = report.get("cars") or {}
+                for plate, rec in list(cars.items()):
+                    if not isinstance(rec, dict):
+                        continue
+                    drv = rec.get("driver") if isinstance(rec.get("driver"), dict) else {}
+                    rec["driver"] = OFFICE.overlay_driver_name(drv, rec.get("car") or plate)
             self.send_json({"ok": True, "report": report, "reviews": reviews})
             return
 

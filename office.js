@@ -301,13 +301,16 @@ const VMOffice = {
             if (rec) {
                 markUsed(drv.car);
                 Object.keys(day).forEach(k => { if (day[k] === rec) markUsed(k); });
+                if (rec.driver) rec.driver = (typeof resolveDriver === 'function') ? resolveDriver(drv.car, rec.driver) : rec.driver;
             }
             return this.rowOf(drv, rec);
         });
         Object.keys(day).forEach(car => {
             if (isUsed(car)) return;
             const rec = day[car];
-            const drv = (rec && rec.driver) || { fullName: car, shortName: car, car, routes: '—' };
+            const drv = (typeof resolveDriver === 'function')
+              ? resolveDriver(car, (rec && rec.driver) || null)
+              : ((rec && rec.driver) || { fullName: car, shortName: car, car, routes: '—' });
             markUsed(car);
             rows.push(this.rowOf(drv, rec));
         });

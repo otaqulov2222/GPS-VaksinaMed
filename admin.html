@@ -526,7 +526,7 @@ body { overflow-x: clip; }
   </div>
 </div>
 
-<script src="fleet-data.js?v=2"></script>
+<script src="fleet-data.js?v=3"></script>
 <script src="auth.js?v=9"></script>
 <script>
 function show(id, text, ok) {
@@ -574,8 +574,13 @@ async function loadAll() {
           <button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
           <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}">O‘chirish</button>
         </div>`;
+    let displayName = u.name || u.username || '';
+    if (u.role === 'driver' && u.car && typeof resolveDriver === 'function') {
+      const live = resolveDriver(u.car);
+      displayName = live.fullName || live.name || displayName;
+    }
     return `<tr>
-      <td>${esc(u.name)}</td>
+      <td>${esc(displayName)}</td>
       <td class="mono">${esc(u.username)}</td>
       <td>${role}</td>
       <td class="mono">${esc(u.car || '—')}</td>
@@ -626,8 +631,8 @@ async function loadTasks() {
       return;
     }
     tb.innerHTML = tasks.slice(0, 100).map(t => {
-      const drv = fleet.find(x => x.car === t.car);
-      const name = drv ? drv.shortName : (t.car || '—');
+      const live = (typeof resolveDriver === 'function') ? resolveDriver(t.car) : null;
+      const name = (live && (live.shortName || live.fullName)) || t.car || '—';
       const created = (t.createdAt || '').slice(0, 16).replace('T', ' ');
       return `<tr>
         <td>${esc(name)}</td>
@@ -817,16 +822,24 @@ document.getElementById('btn-pw').addEventListener('click', async () => {
 document.getElementById('btn-reload').addEventListener('click', () => loadAll());
 document.getElementById('btn-out').addEventListener('click', () => vmLogout());
 
-const OFFICE_CARS = (window.DRIVERS || []).map(d => [d.car, d.shortName]);
+const OFFICE_CARS = [];
 let PHARMS = [];
 
+function officeCarsLive() {
+  return (window.DRIVERS || []).map(d => [d.car, d.shortName || d.fullName || d.car]);
+}
+
 function carLabel(car) {
-  const hit = OFFICE_CARS.find(x => x[0] === car);
+  const want = (typeof fleetPlateKey === 'function') ? fleetPlateKey(car) : String(car || '').replace(/\s+/g, '').toUpperCase();
+  const hit = officeCarsLive().find(x => {
+    const k = (typeof fleetPlateKey === 'function') ? fleetPlateKey(x[0]) : String(x[0] || '').replace(/\s+/g, '').toUpperCase();
+    return k === want;
+  });
   return hit ? hit[1] + ' · ' + car : car;
 }
 
 function fillCarSelect() {
-  const html = OFFICE_CARS.map(([car, name]) =>
+  const html = officeCarsLive().map(([car, name]) =>
     `<option value="${esc(car)}">${esc(name)} — ${esc(car)}</option>`
   ).join('');
   ['ph-car', 'd-car', 't-car'].forEach(id => {
@@ -860,6 +873,7 @@ async function loadOffice() {
   if (d.vehicles && typeof applyFleetNameOverrides === 'function') {
     applyFleetNameOverrides(d.vehicles);
   }
+  fillCarSelect();
   PHARMS = Array.isArray(d.pharmacies) ? d.pharmacies : [];
   renderPharms();
   const tg = d.telegram || {};
@@ -977,9 +991,7 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
 });
 
 (async () => {
-  const d = await vmApi('/api/me');
-  const me = d.user;
-  window.VM_USER = me;
+  const me = await vmMe();
   if (!me || (me.role !== 'admin_pro' && me.role !== 'admin')) {
     location.replace('/');
     return;
@@ -989,13 +1001,16 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
   }
   const note = document.getElementById('persist-note');
   if (note) {
-    if (d.persist && d.persist.durable) {
-      note.className = 'persist-note ok';
-      note.textContent = 'Adminlar bazada saqlanadi. Kod yangilanganda ham yo‘qolmaydi.';
-    } else {
-      note.className = 'persist-note bad';
-      note.textContent = 'Hozir vaqtinchalik disk. Render Environment ga DATABASE_URL qo‘ying — aks holda yangi deployda adminlar o‘chadi.';
-    }
+    try {
+      const d = await vmApi('/api/me');
+      if (d.persist && d.persist.durable) {
+        note.className = 'persist-note ok';
+        note.textContent = 'Adminlar bazada saqlanadi. Kod yangilanganda ham yo‘qolmaydi.';
+      } else {
+        note.className = 'persist-note bad';
+        note.textContent = 'Hozir vaqtinchalik disk. Render Environment ga DATABASE_URL qo‘ying — aks holda yangi deployda adminlar o‘chadi.';
+      }
+    } catch (e) {}
   }
   document.getElementById('who').textContent = me.username;
   document.getElementById('s-me').textContent = me.username;
@@ -1003,8 +1018,16 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
   clearAddForm();
   setTimeout(clearAddForm, 400);
   vmStartHeartbeat();
-  await loadAll();
   await loadOffice();
+  await loadAll();
+  if (typeof listenFleetNameOverrides === 'function') {
+    listenFleetNameOverrides(() => {
+      fillCarSelect();
+      renderPharms();
+      loadTasks();
+      loadAll();
+    });
+  }
   setInterval(loadAll, 45000);
 })();
 </script>

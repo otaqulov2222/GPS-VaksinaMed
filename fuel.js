@@ -466,6 +466,14 @@ async function loadAll() {
   if (typeof applyFleetNameOverrides === 'function') {
     applyFleetNameOverrides(STATE.meta.vehicles || {});
   }
+  if (typeof listenFleetNameOverrides === 'function' && !window._fuelFleetListen) {
+    window._fuelFleetListen = true;
+    listenFleetNameOverrides(() => {
+      renderChips();
+      if (STATE.tab === 'cars') renderCars();
+      if (STATE.tab === 'journal' && window.VMJournal) window.VMJournal.render();
+    });
+  }
   const serverCars = (month.data && month.data.cars) || {};
   const local = readLocalMonth(STATE.month);
   const adopted = adoptCars(serverCars);

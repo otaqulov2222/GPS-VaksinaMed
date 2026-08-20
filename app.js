@@ -1649,19 +1649,33 @@ function pdfStopStatus(st) {
 function collectDayEntries(dayData) {
     const used = new Set();
     const list = [];
+    const keyOf = p => (typeof fleetPlateKey === 'function' ? fleetPlateKey(p) : String(p || '').replace(/\s+/g, '').toUpperCase());
     DRIVERS.forEach(drv => {
+        let rec = null;
+        let hitKey = null;
         if (dayData[drv.car]) {
-            list.push({ drv, data: dayData[drv.car] });
-            used.add(drv.car);
+            rec = dayData[drv.car];
+            hitKey = drv.car;
+        } else {
+            const want = keyOf(drv.car);
+            hitKey = Object.keys(dayData).find(k => keyOf(k) === want) || null;
+            if (hitKey) rec = dayData[hitKey];
+        }
+        if (rec) {
+            if (rec.driver) rec.driver = (typeof resolveDriver === 'function') ? resolveDriver(drv.car, rec.driver) : rec.driver;
+            list.push({ drv: (typeof resolveDriver === 'function') ? resolveDriver(drv.car, drv) : drv, data: rec });
+            used.add(keyOf(drv.car));
+            if (hitKey) used.add(keyOf(hitKey));
         }
     });
     Object.keys(dayData).forEach(car => {
-        if (used.has(car)) return;
+        if (used.has(keyOf(car))) return;
         const d = dayData[car];
-        list.push({
-            drv: (d && d.driver) || { fullName: car, shortName: car, car, routes: '—' },
-            data: d
-        });
+        const drv = (typeof resolveDriver === 'function')
+          ? resolveDriver(car, (d && d.driver) || null)
+          : ((d && d.driver) || { fullName: car, shortName: car, car, routes: '—' });
+        list.push({ drv, data: d });
+        used.add(keyOf(car));
     });
     return list;
 }
@@ -2215,6 +2229,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (window.VMOffice) {
         await VMOffice.bootstrap();
+        if (typeof listenFleetNameOverrides === 'function') {
+            listenFleetNameOverrides(() => {
+                if (typeof buildPharmIndex === 'function') buildPharmIndex();
+                if (typeof renderDriverTabs === 'function') renderDriverTabs();
+                if (window.VMOffice && typeof VMOffice.renderFleetBoard === 'function') VMOffice.renderFleetBoard();
+                if (typeof renderFuelNormsTable === 'function') renderFuelNormsTable();
+                if (typeof refreshUI === 'function') refreshUI();
+            });
+        }
         recomputeDay(STATE.currentDate);
     }
 

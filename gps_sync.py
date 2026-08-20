@@ -64,9 +64,11 @@ def overlay_fuel_driver_names(office, drivers):
         vehicles = (office.fuel_meta() or {}).get("vehicles") or {}
     except Exception:
         vehicles = {}
+    out = list(drivers or [])
     if not isinstance(vehicles, dict) or not vehicles:
-        return drivers
-    for d in drivers or []:
+        return out
+    seen = {compact_car(d.get("car")) for d in out if isinstance(d, dict)}
+    for d in out:
         if not isinstance(d, dict):
             continue
         rec = None
@@ -84,7 +86,30 @@ def overlay_fuel_driver_names(office, drivers):
             short = parts[-1] if parts else name
         d["fullName"] = name
         d["shortName"] = short
-    return drivers
+        d["name"] = name
+    for plate, rec in vehicles.items():
+        if not isinstance(rec, dict) or rec.get("hidden"):
+            continue
+        if not str(rec.get("name") or "").strip():
+            continue
+        want = compact_car(plate)
+        if want in seen:
+            continue
+        name = str(rec.get("name") or "").strip()
+        short = str(rec.get("short") or "").strip()
+        if not short:
+            parts = name.split()
+            short = parts[-1] if parts else name
+        out.append({
+            "car": str(plate).strip(),
+            "fullName": name,
+            "shortName": short,
+            "routes": "—",
+            "pharmacies": "",
+            "color": "#7f8c8d",
+        })
+        seen.add(want)
+    return out
 
 
 def find_driver_by_car(drivers, car_raw):
@@ -604,6 +629,16 @@ def reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=Non
     stops = enrich_stops(raw, car, pharm_index, pharmacies)
     stats = rec.get("stats") if isinstance(rec.get("stats"), dict) else {}
     analysis = analyze_data(stops, car, stats, drivers, pharmacies, reviews=reviews)
+    drv = find_driver_by_car(drivers, car) or (rec.get("driver") if isinstance(rec.get("driver"), dict) else {})
+    if isinstance(drv, dict) and drv:
+        rec["driver"] = {
+            "car": drv.get("car") or car,
+            "fullName": drv.get("fullName") or drv.get("name") or car,
+            "shortName": drv.get("shortName") or drv.get("short") or car,
+            "routes": drv.get("routes") or "—",
+            "pharmacies": drv.get("pharmacies") or "",
+            "color": drv.get("color") or "#3498db",
+        }
     rec["stops"] = stops
     rec["analysis"] = analysis
     return rec

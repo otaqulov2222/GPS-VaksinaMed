@@ -359,8 +359,8 @@ function renderJournal() {
               <table class="gtable">
                 <thead><tr><th>Turi</th><th>Kim / nima</th><th>Mashina</th><th>GPS km</th><th>Vaqt</th><th>Sabab</th><th>Baho</th><th>Izoh</th><th></th></tr></thead>
                 <tbody>${rows.length ? rows.map(it => {
-                  const who = it.category === 'pharmacy' ? it.pharmacy : (it.driver || currentDriver(it.car));
                   const nowDrv = currentDriver(it.car);
+                  const who = it.category === 'pharmacy' ? it.pharmacy : (nowDrv || it.driver || '');
                   const changed = it.car && it.driver && nowDrv && it.driver !== nowDrv;
                   const g = gpsForPlate(it.car);
                   return `<tr>
@@ -468,7 +468,7 @@ function exportJournalXlsx() {
   if (typeof XLSX === 'undefined') { toast('Excel kutubxonasi yuklanmadi'); return; }
   const rows = [['Turi', 'Kategoriya', 'Haydovchi', 'Mashina', 'Dorixona', 'Sabab', 'Daraja', 'Boshlanish', 'Tugash', 'Izoh']];
   filtered().forEach(it => {
-    rows.push([it.kind, it.category, it.driver, it.car, it.pharmacy, it.reason, it.level, it.start, it.end, it.note]);
+    rows.push([it.kind, it.category, currentDriver(it.car) || it.driver, it.car, it.pharmacy, it.reason, it.level, it.start, it.end, it.note]);
   });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Jurnal');
@@ -489,7 +489,7 @@ async function exportJournalPdf() {
   const rows = filtered().map(it => [
     it.kind === 'good' ? 'Maktov' : 'Kamchilik',
     it.category === 'pharmacy' ? 'Dorixona' : 'Haydovchi',
-    it.driver || '', it.car || '', it.pharmacy || '',
+    currentDriver(it.car) || it.driver || '', it.car || '', it.pharmacy || '',
     it.reason || '', it.level || '', it.start || '', it.end || '', it.note || ''
   ]);
   if (typeof fuelPdfTable === 'function') {
@@ -511,7 +511,7 @@ async function exportJournalPdf() {
 function exportJournalCsv() {
   const rows = [['Turi','Kategoriya','Haydovchi','Mashina','Dorixona','Sabab','Daraja','Boshlanish','Tugash','Izoh']];
   filtered().forEach(it => {
-    rows.push([it.kind, it.category, it.driver, it.car, it.pharmacy, it.reason, it.level, it.start, it.end, it.note]);
+    rows.push([it.kind, it.category, currentDriver(it.car) || it.driver, it.car, it.pharmacy, it.reason, it.level, it.start, it.end, it.note]);
   });
   const csv = rows.map(r => r.map(c => '"' + String(c || '').replace(/"/g, '""') + '"').join(',')).join('\n');
   const a = document.createElement('a');

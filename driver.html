@@ -159,7 +159,7 @@ ul.plain li:last-child { border-bottom: 0; }
     <div class="card-b" id="jr-box"></div>
   </div>
 </div>
-<script src="fleet-data.js?v=2"></script>
+<script src="fleet-data.js?v=3"></script>
 <script src="auth.js?v=9"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -315,6 +315,10 @@ function paint(day) {
   const a = day.analysis || {};
   const st = day.stats || {};
   const fuel = day.fuel;
+  const titleName = day.name || ME.name || ME.username || '';
+  const titleCar = day.car || ME.car || '';
+  const whoEl = document.getElementById('who-line');
+  if (whoEl) whoEl.textContent = [titleName, titleCar].filter(Boolean).join(' · ') || 'Faqat ko‘rish';
   const missed = Array.isArray(a.missedList) ? a.missedList : [];
   const missedSet = new Set(missed.map(normPh).filter(Boolean));
   const viol = (day.reviews || []).filter(r => r.status === 'violation');
@@ -429,13 +433,19 @@ function paint(day) {
     const users = await vmApi('/api/users');
     const drivers = (users.users || []).filter(u => u.role === 'driver');
     const fleet = window.DRIVERS || [];
+    const keyOf = p => (typeof fleetPlateKey === 'function' ? fleetPlateKey(p) : String(p || '').replace(/\s+/g, '').toUpperCase());
     const opts = drivers.length ? drivers.map(u => {
-      const d = fleet.find(x => x.car === u.car);
-      return `<option value="${esc(u.car)}">${esc((d && d.shortName) || u.name)} — ${esc(u.car)}</option>`;
+      const d = (typeof resolveDriver === 'function')
+        ? resolveDriver(u.car)
+        : (fleet.find(x => keyOf(x.car) === keyOf(u.car)) || {});
+      return `<option value="${esc(u.car)}">${esc(d.shortName || d.fullName || u.name)} — ${esc(u.car)}</option>`;
     }) : fleet.map(d => `<option value="${esc(d.car)}">${esc(d.shortName)} — ${esc(d.car)}</option>`);
     sel.innerHTML = opts.join('');
     if (q.get('car')) sel.value = q.get('car');
     sel.addEventListener('change', () => loadDay().catch(err => alert(err.message)));
+  }
+  if (typeof listenFleetNameOverrides === 'function') {
+    listenFleetNameOverrides(() => loadDay().catch(() => {}));
   }
   await loadDay();
   startDayAutoRefresh();
