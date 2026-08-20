@@ -180,7 +180,24 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
 .chip-drv { background: #161c24; color: #e8b423; border-color: #3a4450; }
 .chip-on { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
 .chip-off { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
-.row-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+.row-btns { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; }
+.row-btns .btn { white-space: nowrap; }
+.users-table { min-width: 980px; }
+.users-table td { padding: 12px 10px; }
+.cred {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  background: #fff4c4;
+  border: 1px solid #c9a227;
+  padding: 6px 10px;
+  color: #12151c;
+  letter-spacing: .03em;
+  min-width: 88px;
+}
+.cred.empty { background: #f3f4f6; border-color: var(--line); color: var(--muted); font-weight: 600; font-size: 12px; min-width: 0; }
+.pw-make { height: 28px; padding: 0 8px; font-size: 10px; font-weight: 700; background: var(--gold); color: #0c1016; border: 1px solid var(--gold); cursor: pointer; }
 .muted { color: var(--muted); font-size: 12px; }
 .body { padding: 14px 16px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -364,11 +381,14 @@ body { overflow-x: clip; }
       <div class="card">
         <div class="head">
           <h2>Foydalanuvchilar</h2>
-          <button class="btn btn-sm" type="button" id="btn-reload">Yangilash</button>
+          <div class="row-btns">
+            <button class="btn btn-gold btn-sm" type="button" id="btn-fill-pass">Ko‘rinadigan parol berish</button>
+            <button class="btn btn-sm" type="button" id="btn-reload">Yangilash</button>
+          </div>
         </div>
         <div class="msg" id="msg-users" style="margin:12px 16px 0;"></div>
         <div class="table-scroll">
-        <table>
+        <table class="users-table">
           <thead>
             <tr><th>Ism</th><th>Login</th><th>Parol</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Oxirgi kirish</th><th>Amal</th></tr>
           </thead>
@@ -579,10 +599,10 @@ async function loadAll() {
       ? `<a class="btn btn-sm" href="/driver.html?car=${encodeURIComponent(u.car)}">Ko‘rish</a>`
       : '';
     const acts = !canAct
-      ? '<span class="muted">Himoyalangan</span>'
+      ? `<div class="row-btns"><button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button></div>`
       : `<div class="row-btns">
           ${view}
-          <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Bloklash' : 'Yoqish'}</button>
+          <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
           <button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
           <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}">O‘chirish</button>
         </div>`;
@@ -594,7 +614,7 @@ async function loadAll() {
     const pw = (u.password || '').trim();
     const pwCell = pw
       ? `<span class="cred">${esc(pw)}</span>`
-      : `<span class="cred empty">Hali yozilmagan — «Parol» bosing</span>`;
+      : `<button class="pw-make" type="button" data-act="genpw" data-id="${u.id}" data-name="${esc(u.username)}">Parol yaratish</button>`;
     return `<tr>
       <td>${esc(displayName)}</td>
       <td><span class="cred">${esc(u.username)}</span></td>
@@ -682,6 +702,13 @@ function clearAddForm() {
   document.getElementById('n-pass2').value = '';
 }
 
+function genRandomPass() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pw = '';
+  for (let i = 0; i < 8; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+  return pw;
+}
+
 document.getElementById('tb-users').addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-act]');
   if (!btn) return;
@@ -697,9 +724,13 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
     } else if (act === 'reset') {
       resetId = id;
       document.getElementById('reset-who').textContent = 'Login: ' + (btn.getAttribute('data-name') || '');
-      document.getElementById('reset-pass').value = '';
+      document.getElementById('reset-pass').value = genRandomPass();
       document.getElementById('modal-reset').classList.add('open');
       return;
+    } else if (act === 'genpw') {
+      const pw = genRandomPass();
+      await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id, password: pw }) });
+      show('msg-users', (btn.getAttribute('data-name') || '') + ' paroli: ' + pw, true);
     }
     await loadAll();
   } catch (err) {
@@ -708,10 +739,7 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
 });
 
 document.getElementById('btn-gen-pass').addEventListener('click', () => {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let pw = '';
-  for (let i = 0; i < 8; i++) pw += chars[Math.floor(Math.random() * chars.length)];
-  document.getElementById('reset-pass').value = pw;
+  document.getElementById('reset-pass').value = genRandomPass();
 });
 
 document.getElementById('reset-close').addEventListener('click', () => {
@@ -838,6 +866,24 @@ document.getElementById('btn-pw').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-reload').addEventListener('click', () => loadAll());
+document.getElementById('btn-fill-pass').addEventListener('click', async () => {
+  if (!confirm('Eski parollarni ko‘rib bo‘lmaydi. Hamma foydalanuvchiga yangi ko‘rinadigan parol berilsinmi?')) return;
+  hide('msg-users');
+  try {
+    const d = await vmApi('/api/users');
+    const need = (d.users || []).filter(u => !(u.password || '').trim());
+    const given = [];
+    for (const u of need) {
+      const pw = genRandomPass();
+      await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: u.id, password: pw }) });
+      given.push(u.username + ': ' + pw);
+    }
+    await loadAll();
+    show('msg-users', given.length ? ('Yangi parollar:\n' + given.join(' · ')) : 'Hammada parol bor edi', true);
+  } catch (err) {
+    show('msg-users', err.message, false);
+  }
+});
 document.getElementById('btn-out').addEventListener('click', () => vmLogout());
 
 const OFFICE_CARS = [];

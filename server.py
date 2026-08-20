@@ -539,7 +539,7 @@ class AuthStore:
             user = self.find_user(data, uid=uid)
             if not user:
                 return None, "Foydalanuvchi topilmadi"
-            if not self.can_manage(actor_role, user):
+            if actor_role != "admin_pro" and not self.can_manage(actor_role, user):
                 return None, "Ruxsat yo'q"
             salt, pw_hash = hash_pw(new_password)
             user["password_salt"] = salt
