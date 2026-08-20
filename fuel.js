@@ -179,7 +179,7 @@ function vehicleMetaRec(plate) {
 function vehicleInfo(plate) {
   const base = DEFAULT_FLEET.find(d => d.car === plate) || { car: plate, name: plate, short: plate };
   const extra = vehicleMetaRec(plate);
-  const diesel = (extra.fuelType || base.fuelType) === 'dizel';
+  const diesel = ['dizel', 'dizel_gaz'].includes(extra.fuelType || base.fuelType);
   return {
     car: plate,
     name: extra.name || base.name,
@@ -224,7 +224,7 @@ function fleet() {
 
 function blankCar(info) {
   const v = info || {};
-  const diesel = v.fuelType === 'dizel';
+  const diesel = v.fuelType === 'dizel' || v.fuelType === 'dizel_gaz';
   return {
     gasNorm: v.gasNorm != null ? n(v.gasNorm) : 12,
     benzinNorm: v.benzinNorm != null ? n(v.benzinNorm) : (diesel ? 10 : 4),
@@ -1084,7 +1084,7 @@ function collectFills() {
   fleet().forEach(f => {
     calcCar(getCar(f.car)).forEach(r => {
       if (r.gasIn > 0) out.push({ plate: f.car, name: f.name, short: f.short, d: r.d, station: r.station, type: 'Gaz', qty: r.gasIn, price: r.gasPrice, sum: r.gasSum, kind: 'gaz' });
-      if (r.benzinIn > 0) out.push({ plate: f.car, name: f.name, short: f.short, d: r.d, station: r.station, type: getCar(f.car).fuelType === 'dizel' ? 'Dizel' : 'Benzin', qty: r.benzinIn, price: r.benzinPrice, sum: r.benzinSum, kind: 'benzin' });
+      if (r.benzinIn > 0) out.push({ plate: f.car, name: f.name, short: f.short, d: r.d, station: r.station, type: ['dizel', 'dizel_gaz'].includes(getCar(f.car).fuelType) ? 'Dizel' : 'Benzin', qty: r.benzinIn, price: r.benzinPrice, sum: r.benzinSum, kind: 'benzin' });
     });
   });
   return out;
@@ -1386,6 +1386,7 @@ function renderCars() {
               <td><input data-v="card" value="${esc(f.card)}"></td>
               <td><select data-v="fuelType">
                 <option value="mixed"${f.fuelType==='mixed'?' selected':''}>Gaz+benzin</option>
+                <option value="dizel_gaz"${f.fuelType==='dizel_gaz'?' selected':''}>Dizel+gaz</option>
                 <option value="gaz"${f.fuelType==='gaz'?' selected':''}>Gaz</option>
                 <option value="benzin"${f.fuelType==='benzin'?' selected':''}>Benzin</option>
                 <option value="dizel"${f.fuelType==='dizel'?' selected':''}>Dizel</option>

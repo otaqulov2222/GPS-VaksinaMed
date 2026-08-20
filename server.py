@@ -1022,7 +1022,7 @@ class OfficeStore:
                 if not p or not isinstance(rec, dict):
                     continue
                 ft = str(rec.get("fuelType") or "mixed")[:12]
-                if ft not in ("mixed", "gaz", "benzin", "dizel"):
+                if ft not in ("mixed", "gaz", "benzin", "dizel", "dizel_gaz"):
                     ft = "mixed"
                 vehicles[p] = {
                     "name": str(rec.get("name") or "")[:80],
@@ -1187,7 +1187,7 @@ class OfficeStore:
                     continue
                 dch.append({"day": dday, "name": str(ch.get("name") or "")[:80]})
             ft = str(rec.get("fuelType") or "mixed")[:12]
-            if ft not in ("mixed", "gaz", "benzin", "dizel"):
+            if ft not in ("mixed", "gaz", "benzin", "dizel", "dizel_gaz"):
                 ft = "mixed"
             plate = self._existing_plate_key(cars, plate)
             old = cars.get(plate) if isinstance(cars.get(plate), dict) else {}
