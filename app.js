@@ -26,13 +26,24 @@ const UZ_MONTHS_SHORT = ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','
 let CAL = { y: new Date().getFullYear(), m: new Date().getMonth() };
 
 // ── LocalStorage ─────────────────────────────────────────────
+function gpsConfigSafe(cfg) {
+    if (!cfg || typeof cfg !== 'object') return null;
+    return {
+        host: cfg.host || '',
+        user: cfg.user || '',
+        hasToken: !!(cfg.token || cfg.hasToken),
+        hasPassword: !!(cfg.password || cfg.hasPassword),
+        serverConfigured: !!(cfg.serverConfigured || cfg.configured || cfg.token || cfg.password || cfg.hasToken || cfg.hasPassword || cfg.user)
+    };
+}
+
 function saveAll() {
     try {
         localStorage.setItem('vm_gps_v3', JSON.stringify({
             data: STATE.data,
             history: STATE.history,
             fuelNorms: STATE.fuelNorms,
-            gpsConfig: STATE.gpsConfig
+            gpsConfig: gpsConfigSafe(STATE.gpsConfig)
         }));
     } catch(e) {
         // Kvota tugasa eski 30 kunni o'chirish
@@ -42,7 +53,14 @@ function saveAll() {
             const trimmed = {};
             keep.forEach(d => { if (STATE.data[d]) trimmed[d] = STATE.data[d]; });
             STATE.data = trimmed;
-            try { localStorage.setItem('vm_gps_v3', JSON.stringify({ data:trimmed, history:keep, fuelNorms:STATE.fuelNorms, gpsConfig:STATE.gpsConfig })); } catch(_) {}
+            try {
+                localStorage.setItem('vm_gps_v3', JSON.stringify({
+                    data: trimmed,
+                    history: keep,
+                    fuelNorms: STATE.fuelNorms,
+                    gpsConfig: gpsConfigSafe(STATE.gpsConfig)
+                }));
+            } catch(_) {}
         }
     }
 }
@@ -55,7 +73,11 @@ function loadAll() {
         STATE.data      = p.data      || {};
         STATE.history   = p.history   || [];
         STATE.fuelNorms = p.fuelNorms || { gas:14, benzin:12, diesel:10 };
-        STATE.gpsConfig = p.gpsConfig || null;
+        // Eski localStorage dagi GPS parol/token ni o'qib, xotiraga ham saqlamaymiz
+        if (p.gpsConfig) {
+            STATE.gpsConfig = gpsConfigSafe(p.gpsConfig);
+            if (p.gpsConfig.password || p.gpsConfig.token) saveAll();
+        }
         if (STATE.history.length) {
             const sorted = [...STATE.history].sort((a,b)=>b.localeCompare(a));
             STATE.currentDate = sorted[0];
@@ -1446,7 +1468,9 @@ function setGpsUi(state) {
 
 function hasGpsConfig() {
     const c = STATE.gpsConfig;
-    return !!(c && ((c.token && c.token.trim()) || (c.user && String(c.user).trim())));
+    if (!c) return false;
+    if (c.serverConfigured || c.hasToken || c.hasPassword) return true;
+    return !!((c.token && String(c.token).trim()) || (c.user && String(c.user).trim()));
 }
 
 const GPS_AUTO_MS = 5 * 60 * 1000;
@@ -1477,15 +1501,31 @@ function sleepMs(ms) {
 async function saveGpsConfigToServer(cfg) {
     if (!cfg) return;
     try {
-        await vmApi('/api/office/gps/config', {
+        const body = {
+            host: cfg.host || '',
+            user: cfg.user || ''
+        };
+        // Bo'sh qoldirilsa serverdagi eski token/parol saqlanadi
+        if (cfg.token) body.token = cfg.token;
+        if (cfg.password) body.password = cfg.password;
+        const pub = await vmApi('/api/office/gps/config', {
             method: 'POST',
-            body: JSON.stringify({
-                host: cfg.host || '',
-                token: cfg.token || '',
-                user: cfg.user || '',
-                password: cfg.password || ''
-            })
+            body: JSON.stringify(body)
         });
+        STATE.gpsConfig = Object.assign({}, gpsConfigSafe(STATE.gpsConfig), {
+            host: pub.host || cfg.host || '',
+            user: pub.user || cfg.user || '',
+            hasToken: !!pub.hasToken,
+            hasPassword: !!pub.hasPassword,
+            serverConfigured: !!pub.configured
+        });
+        // Xotiradagi maxfiy maydonlarni tozalash (faqat shu sessiyada kerak bo'lmaguncha)
+        if (STATE.gpsConfig) {
+            delete STATE.gpsConfig.password;
+            delete STATE.gpsConfig.token;
+        }
+        saveAll();
+        return pub;
     } catch (e) {
         console.warn('gps config server:', e);
     }
@@ -1611,8 +1651,12 @@ async function syncFromGPS(dateVal, cfg, opts) {
         } catch (serverErr) {
             if (cancelled()) return;
             if (viaServer) throw serverErr;
+            const canBrowser = !!(cfg && (
+                (cfg.password && String(cfg.password).trim()) ||
+                (cfg.token && String(cfg.token).trim())
+            ));
+            if (!canBrowser || !window.wialonGPS) throw serverErr;
             updateProg(12, 'Brauzer orqali yuklanmoqda...', serverErr.message || '');
-            if (!window.wialonGPS) throw serverErr;
             const loginOk = await wialonGPS.login(cfg);
             if (cancelled()) return;
             if (!loginOk) throw new Error('Login amalga oshmadi. Login/parolni tekshiring.');
@@ -2364,18 +2408,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-excel-export')?.addEventListener('click', () => exportDayExcel());
 
     // ── GPS modal ─────────────────────────────────────────
-    const openGpsModal = () => {
+    const openGpsModal = async () => {
         const host = document.getElementById('gps-host');
         const user = document.getElementById('gps-user');
         const tok  = document.getElementById('gps-token');
         const dt   = document.getElementById('gps-date');
         const pass = document.getElementById('gps-password');
-        const cfg = STATE.gpsConfig || {};
+        let cfg = STATE.gpsConfig || {};
+
+        try {
+            const pub = await vmApi('/api/office/gps/config');
+            cfg = Object.assign({}, gpsConfigSafe(cfg), {
+                host: pub.host || cfg.host || '',
+                user: pub.user || cfg.user || '',
+                hasToken: !!pub.hasToken,
+                hasPassword: !!pub.hasPassword,
+                serverConfigured: !!pub.configured
+            });
+            STATE.gpsConfig = cfg;
+            saveAll();
+        } catch (e) {}
 
         if (host) host.value = cfg.host || 'http://bms1.gpsavto.uz';
         if (user) user.value = cfg.user || '';
-        if (tok)  tok.value  = cfg.token || '';
-        if (pass) pass.value = cfg.password || '';
+        // Parol/token hech qachon forma maydoniga to'ldirilmaydi
+        if (tok) {
+            tok.value = '';
+            tok.placeholder = cfg.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : 'Wialon token';
+        }
+        if (pass) {
+            pass.value = '';
+            pass.placeholder = cfg.hasPassword ? 'Saqlangan — o‘zgartirmasangiz qoladi' : '••••••••';
+        }
         
         const todayStr = dateStr(new Date());
         if (dt) dt.value = STATE.currentDate || todayStr;
@@ -2418,16 +2482,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const pass  = document.getElementById('gps-password')?.value.trim();
         const token = (document.getElementById('gps-token')?.value || '').replace(/\s+/g, '').trim();
         const date  = document.getElementById('gps-date')?.value;
+        const prev = STATE.gpsConfig || {};
         if (!date) { showToast('Sanani kiriting!', 'warn'); return; }
-        if (!user && !token) { showToast('Login yoki Token kiriting!', 'warn'); return; }
-        if (user && !pass && !token) { showToast('Parol yoki token kiriting!', 'warn'); return; }
+        if (!user && !token && !prev.hasToken && !prev.hasPassword) {
+            showToast('Login yoki Token kiriting!', 'warn');
+            return;
+        }
+        if (user && !pass && !token && !prev.hasPassword && !prev.hasToken) {
+            showToast('Parol yoki token kiriting!', 'warn');
+            return;
+        }
 
-        STATE.gpsConfig = { host, user, password: pass, token };
-        saveAll();
+        // Maxfiy maydonlar faqat serverga yuboriladi, localStorage ga yozilmaydi
+        const forServer = { host, user, password: pass || '', token: token || '' };
         try {
-            await saveGpsConfigToServer(STATE.gpsConfig);
+            await saveGpsConfigToServer(forServer);
         } catch (e) {}
-        await syncFromGPS(date, STATE.gpsConfig, { force: true });
+        // Brauzer fallback uchun shu sessiyadagi login ma'lumotini beramiz
+        await syncFromGPS(date, forServer, { force: true });
     });
 
     // ── Chop etish / PDF ──────────────────────────────────
@@ -2458,7 +2530,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Export JSON ───────────────────────────────────────
     document.getElementById('btn-export-json')?.addEventListener('click', () => {
-        const payload = JSON.stringify({ data: STATE.data, history: STATE.history, fuelNorms: STATE.fuelNorms, gpsConfig: STATE.gpsConfig }, null, 2);
+        const payload = JSON.stringify({
+            data: STATE.data,
+            history: STATE.history,
+            fuelNorms: STATE.fuelNorms,
+            gpsConfig: gpsConfigSafe(STATE.gpsConfig)
+        }, null, 2);
         const blob = new Blob([payload], { type: 'application/json' });
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement('a');
@@ -2485,7 +2562,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (!STATE.history.includes(dt)) STATE.history.push(dt);
                     });
                     if (p.fuelNorms) STATE.fuelNorms = p.fuelNorms;
-                    if (p.gpsConfig) STATE.gpsConfig = p.gpsConfig;
+                    if (p.gpsConfig) STATE.gpsConfig = gpsConfigSafe(p.gpsConfig);
                     saveAll();
                     renderCalendar();
                     renderDriverTabs();

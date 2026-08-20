@@ -412,6 +412,29 @@ function applyChanges(car, d, field, fallback) {
   return val;
 }
 
+/** Yuqoridagi norma/narx → kunlik qatorlar (o'rtasidagi changes zanjiri bilan) */
+function syncDayPricesFromCar(car) {
+  if (!car) return false;
+  let changed = false;
+  const dim = daysInMonth(STATE.month);
+  for (let d = 1; d <= dim; d++) {
+    const row = ensureDay(car, d);
+    const gp = applyChanges(car, d, 'gasPrice', n(car.gasPrice));
+    const bp = applyChanges(car, d, 'benzinPrice', n(car.benzinPrice));
+    if (n(row.gasPrice) !== n(gp)) { row.gasPrice = gp; changed = true; }
+    if (n(row.benzinPrice) !== n(bp)) { row.benzinPrice = bp; changed = true; }
+  }
+  return changed;
+}
+
+function syncAllCarsDayPrices() {
+  let changed = false;
+  Object.keys(STATE.cars || {}).forEach(plate => {
+    if (syncDayPricesFromCar(STATE.cars[plate])) changed = true;
+  });
+  return changed;
+}
+
 function calcCar(car) {
   const dim = daysInMonth(STATE.month);
   let odoPrev = n(car.odoStart);
@@ -420,8 +443,9 @@ function calcCar(car) {
   const rows = [];
   for (let d = 1; d <= dim; d++) {
     const src = dayRow(car, d);
-    const gasPrice = src.gasPrice || applyChanges(car, d, 'gasPrice', n(car.gasPrice));
-    const benPrice = src.benzinPrice || applyChanges(car, d, 'benzinPrice', n(car.benzinPrice));
+    // Yuqori forma + "Norma/narx o'zgarishi" zanjiri asosiy manba
+    const gasPrice = applyChanges(car, d, 'gasPrice', n(car.gasPrice)) || n(src.gasPrice);
+    const benPrice = applyChanges(car, d, 'benzinPrice', n(car.benzinPrice)) || n(src.benzinPrice);
     const gasNorm = applyChanges(car, d, 'gasNorm', n(car.gasNorm));
     const benNorm = applyChanges(car, d, 'benzinNorm', n(car.benzinNorm));
     const mix = applyChanges(car, d, 'mixPct', n(car.mixPct) || 70);
@@ -529,6 +553,7 @@ async function loadAll() {
   if (!STATE.car) STATE.car = (fleet()[0] && fleet()[0].car) || '';
   setMonthLabel();
   await autoChainMonth();
+  if (syncAllCarsDayPrices()) STATE.dirty = true;
   if (STATE.dirty) {
     clearTimeout(STATE.saveTimer);
     await saveMonth();
@@ -563,6 +588,7 @@ async function changeMonth(ym) {
   STATE.dayRep = 1;
   setMonthLabel();
   await autoChainMonth();
+  if (syncAllCarsDayPrices()) STATE.dirty = true;
   if (STATE.dirty) {
     clearTimeout(STATE.saveTimer);
     await saveMonth();
@@ -629,6 +655,8 @@ function syncParamsToMeta(plate, car) {
 
 function carsToSave() {
   flushFormToState();
+  // flush DOM dagi eski narxlarni qayta yozmasligi uchun yuqoridan qayta bog'lash
+  if (STATE.car) syncDayPricesFromCar(getCar(STATE.car));
   const out = {};
   Object.keys(STATE.cars || {}).forEach(k => {
     out[k] = stripLocalFlags(STATE.cars[k]);
@@ -640,6 +668,7 @@ function carsToSave() {
 async function saveMonth() {
   try {
     flushFormToState();
+    syncAllCarsDayPrices();
     Object.keys(STATE.cars || {}).forEach(k => syncParamsToMeta(k, STATE.cars[k]));
     const payload = { month: STATE.month, cars: carsToSave() };
     writeLocalMonth();
@@ -654,6 +683,10 @@ async function saveMonth() {
     writeLocalMonth();
     const st = document.getElementById('save-st');
     if (st) st.textContent = 'Saqlandi ' + (d.savedAt || '');
+    if (STATE.car) {
+      writeParams();
+      renderDailyTable();
+    }
   } catch (e) {
     writeLocalMonth();
     const st = document.getElementById('save-st');
@@ -685,6 +718,9 @@ function applyCarField(plate, el) {
   }
   if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
     getCar(plate)[k] = rec[k];
+    if (k === 'gasPrice' || k === 'benzinPrice' || k === 'gasNorm' || k === 'benzinNorm') {
+      syncDayPricesFromCar(getCar(plate));
+    }
     markDirty();
   }
 }
@@ -1721,8 +1757,9 @@ async function fillPrevBalance() {
   if (n(rec.gasPrice)) car.gasPrice = n(rec.gasPrice);
   if (n(rec.benzinPrice)) car.benzinPrice = n(rec.benzinPrice);
   writeParams();
+  syncDayPricesFromCar(car);
   markDirty();
-  paintCalc();
+  renderDailyTable();
   toast('Oldingi oy qoldig\'i olindi (manfiy bo\'lsa ham)');
 }
 
@@ -2401,6 +2438,7 @@ function applyExcelImport(parsed, plate, replaceDays) {
     if (touched) nDays += 1;
   });
   syncParamsToMeta(plate, car);
+  syncDayPricesFromCar(car);
   return nDays;
 }
 
@@ -3067,19 +3105,26 @@ function bind() {
     const c = e.target.closest('.chip-car');
     if (!c) return;
     readParamsIntoCar();
+    syncDayPricesFromCar(getCar(STATE.car));
     syncParamsToMeta(STATE.car, getCar(STATE.car));
     markDirty();
     STATE.car = c.getAttribute('data-car');
+    syncDayPricesFromCar(getCar(STATE.car));
     writeParams();
     renderChips();
     renderDailyTable();
   });
   document.querySelectorAll('[data-p]').forEach(el => {
     el.addEventListener('input', () => {
+      const key = el.getAttribute('data-p');
       readParamsIntoCar();
       syncParamsToMeta(STATE.car, getCar(STATE.car));
-      if (el.getAttribute('data-p') === 'fuelType') {
+      if (key === 'fuelType') {
         applyFuelTypeUi(el.value);
+        renderDailyTable();
+      } else if (key === 'gasPrice' || key === 'benzinPrice') {
+        // Yuqori narx → pastki jadval darhol
+        syncDayPricesFromCar(getCar(STATE.car));
         renderDailyTable();
       } else {
         schedulePaintCalc();
@@ -3134,7 +3179,15 @@ function bind() {
   });
   document.getElementById('month-input').addEventListener('change', e => changeMonth(e.target.value));
   document.getElementById('btn-save').onclick = saveMonth;
-  document.getElementById('btn-recalc').onclick = () => { schedulePaintCalc(true); renderChips(); saveMonth(); toast('Zanjir yangilandi'); };
+  document.getElementById('btn-recalc').onclick = () => {
+    readParamsIntoCar();
+    syncDayPricesFromCar(getCar(STATE.car));
+    renderDailyTable();
+    schedulePaintCalc(true);
+    renderChips();
+    saveMonth();
+    toast('Zanjir yangilandi — narxlar bog\'landi');
+  };
   document.getElementById('btn-fill-odo').onclick = fillFromOdo;
   document.getElementById('btn-gps-km').onclick = fillFromGps;
   document.getElementById('btn-prev-bal').onclick = () => fillPrevBalance().catch(err => toast(err.message));

@@ -398,7 +398,6 @@ body { overflow-x: clip; }
         <div class="head">
           <h2>Foydalanuvchilar</h2>
           <div class="row-btns">
-            <button class="btn btn-gold btn-sm" type="button" id="btn-fill-pass">Ko‘rinadigan parol berish</button>
             <button class="btn btn-sm" type="button" id="btn-reload">Yangilash</button>
           </div>
         </div>
@@ -710,9 +709,8 @@ async function loadAll() {
       const live = resolveDriver(u.car);
       displayName = live.fullName || live.name || displayName;
     }
-    const pw = (u.password || '').trim();
-    const pwCell = pw
-      ? `<span class="cred">${esc(pw)}</span>`
+    const pwCell = u.hasPassword
+      ? `<span class="cred empty" title="Parol hash sifatida saqlangan — ochiq ko‘rinmaydi">Saqlangan</span>`
       : `<button class="pw-make" type="button" data-act="genpw" data-id="${u.id}" data-name="${esc(u.username)}">Parol yaratish</button>`;
     return `<tr>
       <td>${esc(displayName)}</td>
@@ -829,7 +827,7 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
     } else if (act === 'genpw') {
       const pw = genRandomPass();
       await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id, password: pw }) });
-      show('msg-users', (btn.getAttribute('data-name') || '') + ' paroli: ' + pw, true);
+      show('msg-users', (btn.getAttribute('data-name') || '') + ' yangi paroli (faqat hozir ko‘rinadi): ' + pw, true);
     }
     await loadAll();
   } catch (err) {
@@ -857,7 +855,7 @@ document.getElementById('reset-ok').addEventListener('click', async () => {
     const pw = document.getElementById('reset-pass').value;
     await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: resetId, password: pw }) });
     document.getElementById('modal-reset').classList.remove('open');
-    show('msg-users', 'Parol yangilandi: ' + pw, true);
+    show('msg-users', 'Parol yangilandi (faqat hozir ko‘rinadi — yozib oling): ' + pw, true);
     await loadAll();
   } catch (err) {
     alert(err.message);
@@ -965,24 +963,6 @@ document.getElementById('btn-pw').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-reload').addEventListener('click', () => loadAll());
-document.getElementById('btn-fill-pass').addEventListener('click', async () => {
-  if (!confirm('Eski parollarni ko‘rib bo‘lmaydi. Hamma foydalanuvchiga yangi ko‘rinadigan parol berilsinmi?')) return;
-  hide('msg-users');
-  try {
-    const d = await vmApi('/api/users');
-    const need = (d.users || []).filter(u => !(u.password || '').trim());
-    const given = [];
-    for (const u of need) {
-      const pw = genRandomPass();
-      await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: u.id, password: pw }) });
-      given.push(u.username + ': ' + pw);
-    }
-    await loadAll();
-    show('msg-users', given.length ? ('Yangi parollar:\n' + given.join(' · ')) : 'Hammada parol bor edi', true);
-  } catch (err) {
-    show('msg-users', err.message, false);
-  }
-});
 document.getElementById('btn-out').addEventListener('click', () => vmLogout());
 
 const OFFICE_CARS = [];

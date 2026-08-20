@@ -30,8 +30,20 @@ SESSIONS_KEY = "auth:sessions"
 
 PUBLIC_PATHS = {"/login.html", "/favicon.ico"}
 PUBLIC_PREFIX = ("/fonts/", "/logo/")
-BLOCKED_EXT = {".py", ".bat", ".md", ".txt"}
-BLOCKED_NAMES = {"users.json", "server.py", "start.bat", "office-seed.json"}
+BLOCKED_EXT = {".py", ".bat", ".md", ".txt", ".env"}
+BLOCKED_NAMES = {
+    "users.json",
+    "server.py",
+    "start.bat",
+    "office-seed.json",
+    ".env",
+    ".env.example",
+    "requirements.txt",
+    "runtime.txt",
+    "procfile",
+    "render.yaml",
+    "gps_sync.py",
+}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 YEAR_RE = re.compile(r"^\d{4}$")
@@ -300,35 +312,50 @@ class AuthStore:
         return {"kind": self.persist.kind, "durable": bool(self.persist.durable)}
 
     def _ensure(self):
-        if self.persist.get("users") is not None:
+        if self.persist.get("users") is None:
+            salt, pw_hash = hash_pw(SEED_PASS)
+            data = {
+                "users": [
+                    {
+                        "id": "u_adminpro",
+                        "username": SEED_USER,
+                        "name": "Admin Pro",
+                        "role": "admin_pro",
+                        "password_salt": salt,
+                        "password_hash": pw_hash,
+                        "active": True,
+                        "protected": True,
+                        "created_at": iso_now(),
+                        "last_login": None,
+                    }
+                ],
+                "audit": [
+                    {
+                        "t": iso_now(),
+                        "act": "seed",
+                        "who": "system",
+                        "detail": "Admin Pro yaratildi",
+                    }
+                ],
+            }
+            self._write(data)
+            self.seeded = True
             return
-        salt, pw_hash = hash_pw(SEED_PASS)
-        data = {
-            "users": [
-                {
-                    "id": "u_adminpro",
-                    "username": SEED_USER,
-                    "name": "Admin Pro",
-                    "role": "admin_pro",
-                    "password_salt": salt,
-                    "password_hash": pw_hash,
-                    "active": True,
-                    "protected": True,
-                    "created_at": iso_now(),
-                    "last_login": None,
-                }
-            ],
-            "audit": [
-                {
-                    "t": iso_now(),
-                    "act": "seed",
-                    "who": "system",
-                    "detail": "Admin Pro yaratildi",
-                }
-            ],
-        }
-        self._write(data)
-        self.seeded = True
+        # Eski password_plain maydonlarini bir marta tozalash
+        data = self._read()
+        if self._strip_plaintext_passwords(data):
+            self._write(data)
+
+    @staticmethod
+    def _strip_plaintext_passwords(data):
+        changed = False
+        for u in data.get("users") or []:
+            if not isinstance(u, dict):
+                continue
+            if "password_plain" in u:
+                u.pop("password_plain", None)
+                changed = True
+        return changed
 
     def _read(self):
         data = self.persist.get("users")
@@ -339,6 +366,7 @@ class AuthStore:
         return data
 
     def _write(self, data):
+        self._strip_plaintext_passwords(data)
         self.persist.put("users", data)
 
     def _audit(self, data, act, who, detail=""):
@@ -361,7 +389,7 @@ class AuthStore:
             "protected": bool(u.get("protected")),
             "created_at": u.get("created_at"),
             "last_login": u.get("last_login"),
-            "password": str(u.get("password_plain") or ""),
+            "hasPassword": bool(u.get("password_hash")),
         }
 
     def find_user(self, data, username=None, uid=None):
@@ -488,7 +516,6 @@ class AuthStore:
                 "car": car if role == "driver" else "",
                 "password_salt": salt,
                 "password_hash": pw_hash,
-                "password_plain": password[:80],
                 "active": True,
                 "protected": False,
                 "created_at": iso_now(),
@@ -547,7 +574,7 @@ class AuthStore:
             salt, pw_hash = hash_pw(new_password)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
-            user["password_plain"] = (new_password or "")[:80]
+            user.pop("password_plain", None)
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
                     self.sessions.pop(sid, None)
@@ -569,7 +596,7 @@ class AuthStore:
             salt, pw_hash = hash_pw(new_pw)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
-            user["password_plain"] = (new_pw or "")[:80]
+            user.pop("password_plain", None)
             self._audit(data, "pw_self", user["username"], "")
             self._write(data)
             return True, None
@@ -949,6 +976,7 @@ class OfficeStore:
             "host": cfg["host"],
             "user": cfg["user"],
             "hasToken": bool(cfg.get("token")),
+            "hasPassword": bool(cfg.get("password")),
         }
 
     def save_gps_config(self, body, saved_by=""):
@@ -1839,10 +1867,24 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         super().end_headers()
 
     def client_ip(self):
         return self.client_address[0] if self.client_address else ""
+
+    def is_https(self):
+        proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+        if proto == "https":
+            return True
+        return False
+
+    def cookie_attrs(self, max_age=SESSION_TTL):
+        parts = ["HttpOnly", "Path=/", "SameSite=Lax", f"Max-Age={int(max_age)}"]
+        if self.is_https():
+            parts.append("Secure")
+        return "; ".join(parts)
 
     def read_sid(self):
         raw = self.headers.get("Cookie") or ""
@@ -1863,12 +1905,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if set_cookie:
             self.send_header(
                 "Set-Cookie",
-                f"{COOKIE}={set_cookie}; HttpOnly; Path=/; SameSite=Lax; Max-Age={SESSION_TTL}",
+                f"{COOKIE}={set_cookie}; {self.cookie_attrs()}",
             )
         if clear_cookie:
             self.send_header(
                 "Set-Cookie",
-                f"{COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0",
+                f"{COOKIE}=; {self.cookie_attrs(0)}",
             )
         self.end_headers()
         self.wfile.write(raw)
@@ -1931,6 +1973,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
     def is_blocked(self, path):
         name = os.path.basename(path).lower()
         if name in BLOCKED_NAMES:
+            return True
+        if name.startswith(".env"):
             return True
         ext = os.path.splitext(path)[1].lower()
         if ext in BLOCKED_EXT:
@@ -2640,16 +2684,14 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         parsed_target = urllib.parse.urlparse(target_url)
-        host = parsed_target.netloc
+        if parsed_target.scheme not in ("http", "https"):
+            self.send_error(403, "Faqat http/https ruxsat")
+            return
+        host = (parsed_target.hostname or "").lower()
+        # SSRF himoya: faqat Wialon hostlari (lokal/private IP yo'q)
         if host not in ALLOWED_GPS_HOSTS:
-            if not (
-                host.startswith("192.168.")
-                or host.startswith("10.")
-                or host == "localhost"
-                or host.startswith("127.")
-            ):
-                self.send_error(403, f"Ruxsat etilmagan host: {host}")
-                return
+            self.send_error(403, f"Ruxsat etilmagan host: {host or parsed_target.netloc}")
+            return
 
         try:
             req = urllib.request.Request(
@@ -2839,8 +2881,8 @@ def main():
     if STORE.seeded:
         seed_note = f"""
   |  Admin Pro login : {SEED_USER:<22} |
-  |  Parol           : {SEED_PASS:<22} |
-  |  Parolni panelda o'zgartiring!     |"""
+  |  Parol: VM_SEED_PASS (.env)             |
+  |  Birinchi ish: panelda parolni almashtiring! |"""
 
     persist_line = "PostgreSQL (qoladi)" if persist.durable else "lokal fayl (Render da yo'qoladi)"
 

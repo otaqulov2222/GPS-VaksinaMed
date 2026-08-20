@@ -13,28 +13,54 @@ class WialonGPSClient {
     }
 
     /**
-     * Sozlamalarni LocalStorage'dan o'qish
+     * Sozlamalarni LocalStorage'dan o'qish (parol/token saqlanmaydi)
      */
     getConfig() {
         try {
             const cfg = localStorage.getItem('vaksinamed_gps_config');
-            if (cfg) return JSON.parse(cfg);
+            if (cfg) {
+                const parsed = JSON.parse(cfg);
+                return {
+                    host: parsed.host || this.defaultHost,
+                    user: parsed.user || '',
+                    password: '',
+                    token: '',
+                    authType: parsed.authType || 'login'
+                };
+            }
         } catch (e) {}
         return {
             host: this.defaultHost,
-            user: 'vaksina',
+            user: '',
             password: '',
             token: '',
-            authType: 'login' // 'login' yoki 'token'
+            authType: 'login'
         };
     }
 
     /**
-     * Sozlamalarni saqlash
+     * Sozlamalarni saqlash — faqat host/user (maxfiy maydonlar emas)
      */
     saveConfig(config) {
         try {
-            localStorage.setItem('vaksinamed_gps_config', JSON.stringify(config));
+            const safe = {
+                host: (config && config.host) || this.defaultHost,
+                user: (config && config.user) || '',
+                authType: (config && config.authType) || 'login'
+            };
+            localStorage.setItem('vaksinamed_gps_config', JSON.stringify(safe));
+        } catch (e) {}
+    }
+
+    /** Eski localStorage dagi token/parolni tozalash */
+    scrubStoredSecrets() {
+        try {
+            const raw = localStorage.getItem('vaksinamed_gps_config');
+            if (!raw) return;
+            const cfg = JSON.parse(raw);
+            if (cfg && (cfg.password || cfg.token)) {
+                this.saveConfig(cfg);
+            }
         } catch (e) {}
     }
 
@@ -130,7 +156,8 @@ class WialonGPSClient {
             if (result && result.eid) {
                 this.sessionId = result.eid;
                 this.isLoggedIn = true;
-                this.saveConfig(Object.assign({}, config, { token, user, password }));
+                // Faqat host/user saqlanadi — parol/token localStorage ga yozilmaydi
+                this.saveConfig({ host, user, authType: token ? 'token' : 'login' });
                 return result;
             }
             throw new Error("Wialon tizimiga kirib bo'lmadi. Ma'lumotlarni qayta tekshiring.");
@@ -757,3 +784,4 @@ class WialonGPSClient {
 
 // Global Wialon obyekti
 window.wialonGPS = new WialonGPSClient();
+window.wialonGPS.scrubStoredSecrets();

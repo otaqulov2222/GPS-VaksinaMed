@@ -41,7 +41,7 @@ timeout /t 3 /nobreak >nul
 start "" "http://localhost:8080/login.html"
 
 echo  [OK] Kirish oynasi: http://localhost:8080/login.html
-echo  [OK] Admin Pro: adminpro
+echo  [OK] Admin Pro login: adminpro  (parol: VM_SEED_PASS yoki .env)
 echo.
 pause >nul
 
