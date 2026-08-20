@@ -166,9 +166,19 @@ function normalizeMeta(meta) {
   return m;
 }
 
+function vehicleMetaRec(plate) {
+  const map = STATE.meta.vehicles || {};
+  if (map[plate]) return map[plate];
+  const compact = plateCompact(plate);
+  for (const k of Object.keys(map)) {
+    if (plateCompact(k) === compact) return map[k];
+  }
+  return {};
+}
+
 function vehicleInfo(plate) {
   const base = DEFAULT_FLEET.find(d => d.car === plate) || { car: plate, name: plate, short: plate };
-  const extra = (STATE.meta.vehicles || {})[plate] || {};
+  const extra = vehicleMetaRec(plate);
   const diesel = (extra.fuelType || base.fuelType) === 'dizel';
   return {
     car: plate,
@@ -515,7 +525,24 @@ function setMonthLabel() {
   if (mi) mi.title = monthTitle(STATE.month);
 }
 
+function readCarsTableToMeta() {
+  document.querySelectorAll('#panel-cars tr[data-plate]').forEach(tr => {
+    const plate = tr.getAttribute('data-plate');
+    if (!plate) return;
+    const rec = ensureVehicleMeta(plate);
+    tr.querySelectorAll('[data-v]').forEach(el => {
+      const k = el.getAttribute('data-v');
+      rec[k] = (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') ? el.value : n(el.value);
+      if (k === 'name') rec.short = (String(el.value || '').trim().split(' ')[0] || rec.short);
+      if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
+        getCar(plate)[k] = rec[k];
+      }
+    });
+  });
+}
+
 function flushFormToState() {
+  readCarsTableToMeta();
   if (STATE.car) readParamsIntoCar();
   document.querySelectorAll('#daily-body [data-d][data-f]').forEach(el => {
     const d = el.getAttribute('data-d');
@@ -581,11 +608,40 @@ async function saveMonth() {
 }
 
 async function saveMeta() {
+  readCarsTableToMeta();
+  fleet().forEach(f => ensureVehicleMeta(f.car));
   const d = await vmApi('/api/office/fuel/meta', {
     method: 'POST',
     body: JSON.stringify(STATE.meta)
   });
   STATE.meta = normalizeMeta(d.meta || STATE.meta);
+}
+
+function applyCarField(plate, el) {
+  const rec = ensureVehicleMeta(plate);
+  const k = el.getAttribute('data-v');
+  rec[k] = (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') ? el.value : n(el.value);
+  if (k === 'name') rec.short = (String(el.value || '').trim().split(/\s+/)[0] || rec.short);
+  if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
+    getCar(plate)[k] = rec[k];
+    markDirty();
+  }
+}
+
+async function saveCarsMeta() {
+  const st = document.getElementById('nv-save-st');
+  try {
+    readCarsTableToMeta();
+    await saveMeta();
+    await saveMonth();
+    if (st) st.textContent = 'Saqlandi';
+    toast('Haydovchi ismlari va mashina ma\'lumotlari saqlandi');
+    renderChips();
+    if (STATE.car) writeParams();
+  } catch (err) {
+    if (st) st.textContent = err.message || 'Saqlanmadi';
+    toast(err.message || 'Saqlanmadi');
+  }
 }
 
 function readParamsIntoCar() {
@@ -1279,12 +1335,14 @@ function renderCars() {
   document.getElementById('panel-cars').innerHTML = `
     <div class="card"><div class="card-h"><h3>Mashina va narx — qo'lda tahrirlash</h3></div>
       <div class="card-b">
-        <div class="hint">Butun oy uchun haydovchi/marka/norma/narx shu yerda o'zgaradi. Oy o'rtasida haydovchi almashtirish uchun kunlik kiritishdagi <b>Haydovchini kun belgilab almashtirish</b> tugmasini bosing — zanjir buzilmaydi.</div>
+        <div class="hint">Ism-familiya, marka, norma va narxni o‘zgartiring, keyin <b>O‘zgarishlarni saqlash</b> ni bosing. Oy o‘rtasida haydovchi almashtirish uchun kunlik kiritishdagi <b>Haydovchini kun belgilab almashtirish</b> tugmasini ishlating.</div>
         <div class="row-btns add-row" style="margin:0 0 12px;">
           <input id="nv-car" class="j-search" placeholder="01 000 AAA">
           <input id="nv-name" class="j-search" placeholder="Haydovchi F.I.O.">
           <input id="nv-brand" class="j-search" placeholder="Marka">
           <button class="btn btn-gold btn-sm" type="button" id="nv-add">Mashina qo'shish</button>
+          <button class="btn btn-ok btn-sm" type="button" id="nv-save">O'zgarishlarni saqlash</button>
+          <span class="save-st" id="nv-save-st"></span>
         </div>
         <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
@@ -1321,26 +1379,25 @@ function renderCars() {
     rec.short = (name.split(' ')[0] || car);
     rec.brand = brand;
     rec.hidden = false;
-    await saveMeta();
+    try {
+      await saveMeta();
+      toast('Mashina qo\'shildi');
+    } catch (err) {
+      toast(err.message || 'Saqlanmadi');
+      return;
+    }
     renderChips();
     renderCars();
   };
+  const saveBtn = document.getElementById('nv-save');
+  if (saveBtn) saveBtn.onclick = () => saveCarsMeta();
   document.querySelectorAll('#panel-cars tr[data-plate]').forEach(tr => {
     const plate = tr.getAttribute('data-plate');
     tr.querySelectorAll('[data-v]').forEach(el => {
-      el.addEventListener('change', async () => {
-        const rec = ensureVehicleMeta(plate);
-        const k = el.getAttribute('data-v');
-        rec[k] = (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') ? el.value : n(el.value);
-        if (k === 'name') rec.short = (el.value.split(' ')[0] || rec.short);
-        const monthCar = getCar(plate);
-        if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
-          monthCar[k] = rec[k];
-          markDirty();
-        }
-        await saveMeta();
-        if (plate === STATE.car) writeParams();
-        renderChips();
+      el.addEventListener('change', () => {
+        applyCarField(plate, el);
+        const st = document.getElementById('nv-save-st');
+        if (st) st.textContent = 'Saqlanmagan... «O\'zgarishlarni saqlash» ni bosing';
       });
     });
     const hide = tr.querySelector('.car-hide');

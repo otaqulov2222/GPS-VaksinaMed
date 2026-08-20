@@ -987,7 +987,7 @@ class OfficeStore:
         if isinstance(body.get("vehicles"), dict):
             vehicles = {}
             for i, (plate, rec) in enumerate(body["vehicles"].items()):
-                if i >= 50:
+                if i >= 80:
                     break
                 p = str(plate).strip()[:24]
                 if not p or not isinstance(rec, dict):
@@ -1090,7 +1090,7 @@ class OfficeStore:
         cur = self.fuel_month(month) or {}
         cars = dict(cur.get("cars") or {}) if isinstance(cur.get("cars"), dict) else {}
         for i, (car, rec) in enumerate(cars_in.items()):
-            if i >= 50:
+            if i >= 80:
                 break
             plate = str(car).strip()[:24]
             if not plate or not isinstance(rec, dict):
