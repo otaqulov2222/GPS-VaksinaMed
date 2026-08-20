@@ -1224,6 +1224,7 @@ class OfficeStore:
                     mode = "gaz"
                 days[str(di)] = {
                     "km": as_num(row.get("km")),
+                    "gasKm": as_num(row.get("gasKm")) if row.get("gasKm") not in (None, "") else None,
                     "odo": as_num(row.get("odo")),
                     "mode": mode,
                     "station": str(row.get("station") or "")[:80],
@@ -1236,6 +1237,8 @@ class OfficeStore:
                     "note": str(row.get("note") or "")[:120],
                     "kmSrc": str(row.get("kmSrc") or "")[:8],
                 }
+                if days[str(di)]["gasKm"] is None:
+                    del days[str(di)]["gasKm"]
             changes = []
             raw_ch = rec.get("changes") if isinstance(rec.get("changes"), list) else []
             for ch in raw_ch[:40]:
@@ -1516,20 +1519,40 @@ class OfficeStore:
                 odo_prev = odo_prev + km
             mode = str(src.get("mode") or "gaz")
             gas_used = ben_used = 0.0
+            gas_km = None
+            if "gasKm" in src and src.get("gasKm") not in (None, ""):
+                try:
+                    gas_km = float(src.get("gasKm"))
+                except (TypeError, ValueError):
+                    gas_km = None
+            liq_km = 0.0
             if km > 0:
-                if mode == "gaz":
+                if gas_km is not None:
+                    gas_km = max(0.0, min(km, gas_km))
+                    liq_km = max(0.0, km - gas_km)
+                    gas_used = gas_km * gas_norm / 100.0
+                    ben_used = liq_km * ben_norm / 100.0
+                elif mode == "gaz":
+                    gas_km = km
+                    liq_km = 0.0
                     gas_used = km * gas_norm / 100.0
                 elif mode in ("benzin", "dizel"):
+                    gas_km = 0.0
+                    liq_km = km
                     ben_used = km * ben_norm / 100.0
                 elif mode == "aralash":
-                    gas_used = km * gas_norm / 100.0 * mix / 100.0
-                    ben_used = km * ben_norm / 100.0 * (100.0 - mix) / 100.0
+                    gas_km = km * mix / 100.0
+                    liq_km = km - gas_km
+                    gas_used = gas_km * gas_norm / 100.0
+                    ben_used = liq_km * ben_norm / 100.0
             gas_in = as_num(src.get("gasIn"))
             ben_in = as_num(src.get("benzinIn"))
             gas_r = gas_r + gas_in - gas_used
             ben_r = ben_r + ben_in - ben_used
             last = {
                 "km": km,
+                "gasKm": gas_km if gas_km is not None else 0.0,
+                "liqKm": liq_km,
                 "mode": mode,
                 "station": str(src.get("station") or ""),
                 "gasIn": gas_in,

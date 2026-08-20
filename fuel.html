@@ -482,25 +482,26 @@ html, body { overflow-x: hidden; max-width: 100%; }
         <span class="save-st" id="save-st">—</span>
       </div>
       <div class="card-b">
-        <div class="params">
-          <div class="fld"><label>Gaz normasi (100 km)</label><input id="p-gasNorm" data-p="gasNorm" type="number" step="0.1"></div>
-          <div class="fld"><label>Benzin / dizel normasi (100 km)</label><input id="p-benzinNorm" data-p="benzinNorm" type="number" step="0.1"></div>
+        <div class="params" id="daily-params">
+          <div class="fld fuel-gaz"><label id="lbl-gasNorm">Gaz normasi (100 km)</label><input id="p-gasNorm" data-p="gasNorm" type="number" step="0.1"></div>
+          <div class="fld fuel-liq"><label id="lbl-benzinNorm">Benzin / dizel normasi (100 km)</label><input id="p-benzinNorm" data-p="benzinNorm" type="number" step="0.1"></div>
           <div class="fld"><label>Spidometr oy boshi</label><input id="p-odoStart" data-p="odoStart" type="number" step="0.1"></div>
-          <div class="fld"><label>Gaz oy boshi qoldiq (m³)</label><input id="p-gasStart" data-p="gasStart" type="number" step="0.0001"></div>
-          <div class="fld"><label>Benzin oy boshi qoldiq (l)</label><input id="p-benzinStart" data-p="benzinStart" type="number" step="0.0001"></div>
-          <div class="fld"><label>1 m³ gaz narxi (so'm)</label><input id="p-gasPrice" data-p="gasPrice" type="number" step="1"></div>
-          <div class="fld"><label>1 l benzin / dizel narxi (so'm)</label><input id="p-benzinPrice" data-p="benzinPrice" type="number" step="1"></div>
-          <div class="fld"><label>Aralashda gaz foizi (%)</label><input id="p-mixPct" data-p="mixPct" type="number" step="1" min="0" max="100"></div>
+          <div class="fld fuel-gaz"><label id="lbl-gasStart">Gaz oy boshi qoldiq (m³)</label><input id="p-gasStart" data-p="gasStart" type="number" step="0.0001"></div>
+          <div class="fld fuel-liq"><label id="lbl-benzinStart">Benzin oy boshi qoldiq (l)</label><input id="p-benzinStart" data-p="benzinStart" type="number" step="0.0001"></div>
+          <div class="fld fuel-gaz"><label id="lbl-gasPrice">1 m³ gaz narxi (so'm)</label><input id="p-gasPrice" data-p="gasPrice" type="number" step="1"></div>
+          <div class="fld fuel-liq"><label id="lbl-benzinPrice">1 l benzin / dizel narxi (so'm)</label><input id="p-benzinPrice" data-p="benzinPrice" type="number" step="1"></div>
+          <div class="fld fuel-mix"><label>Aralashda gaz foizi (%)</label><input id="p-mixPct" data-p="mixPct" type="number" step="1" min="0" max="100"></div>
           <div class="fld"><label>Yoqilg'i turi</label>
             <select id="p-fuelType" data-p="fuelType">
               <option value="mixed">Gaz + benzin</option>
               <option value="dizel_gaz">Dizel + gaz</option>
               <option value="gaz">Faqat gaz</option>
               <option value="benzin">Faqat benzin</option>
-              <option value="dizel">Dizel</option>
+              <option value="dizel">Faqat dizel</option>
             </select>
           </div>
         </div>
+        <p class="note" id="fuel-type-hint" style="margin-top:8px;display:none;"></p>
         <div class="row-btns">
           <button class="btn btn-ink btn-sm" type="button" id="btn-prev-bal">Oldingi oydan qoldiqni yig'ish</button>
           <button class="btn btn-ink btn-sm" type="button" id="btn-recalc">Barchasini yangilash</button>
@@ -511,7 +512,7 @@ html, body { overflow-x: hidden; max-width: 100%; }
           <button class="btn btn-ink btn-sm" type="button" id="btn-drv-change">Haydovchini kun belgilab almashtirish</button>
           <button class="btn btn-gold btn-sm" type="button" id="btn-save">Saqlash</button>
         </div>
-        <div class="hint" style="margin-top:10px;">GPS km va sarf/qoldiq avtomatik. Sariq katakni o'zgartirsangiz — sizniki qoladi. Zapravka (olingan gaz/benzin) ni qo'lda yozasiz.</div>
+        <div class="hint" style="margin-top:10px;">Jami km + <b>Gaz km</b> yozing — Dizel/Benzin km avtomatik (jami − gaz). Sarf shu km bo‘yicha hisoblanadi. Exceldan ham gaz km ustuni olinadi.</div>
         <div id="changes-box" class="note" style="margin-top:8px;"></div>
       </div>
     </div>
@@ -522,19 +523,21 @@ html, body { overflow-x: hidden; max-width: 100%; }
           <tr>
             <th>Kun</th>
             <th>Yurgan masofa (km)</th>
+            <th id="th-gas-km">Gaz km</th>
+            <th id="th-liq-km">Dizel/Benzin km</th>
             <th>Spidometr (km)</th>
             <th>Nimada yurdi</th>
             <th>Zapravka nomi</th>
             <th>Olingan gaz (m³)</th>
             <th>1 m³ gaz narxi</th>
             <th>Gaz summa</th>
-            <th>Olingan benzin (l)</th>
-            <th>1 l narxi</th>
-            <th>Benzin summa</th>
+            <th id="th-liq-in">Olingan benzin (l)</th>
+            <th id="th-liq-price">1 l narxi</th>
+            <th id="th-liq-sum">Benzin summa</th>
             <th>Sarf gaz</th>
-            <th>Sarf benzin</th>
+            <th id="th-liq-used">Sarf benzin</th>
             <th>Gaz qoldiq</th>
-            <th>Benzin qoldiq</th>
+            <th id="th-liq-rem">Benzin qoldiq</th>
             <th>Qo'shimcha (so'm)</th>
             <th>Nimaga sarflandi</th>
             <th>Izoh</th>
@@ -626,7 +629,7 @@ html, body { overflow-x: hidden; max-width: 100%; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="fleet-data.js?v=3"></script>
 <script src="auth.js?v=9"></script>
-<script src="fuel.js?v=24"></script>
+<script src="fuel.js?v=27"></script>
 <script src="journal.js?v=7"></script>
 </body>
 </html>

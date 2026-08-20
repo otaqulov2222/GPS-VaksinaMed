@@ -351,9 +351,12 @@ function driverOnDay(info, car, day) {
 
 function dayRow(car, d) {
   const src = (car.days && (car.days[d] || car.days[String(d)])) || {};
-  const defMode = car.fuelType === 'dizel' ? 'dizel' : (car.fuelType === 'benzin' ? 'benzin' : 'gaz');
+  const defMode = car.fuelType === 'dizel' || car.fuelType === 'dizel_gaz'
+    ? (car.fuelType === 'dizel' ? 'dizel' : 'gaz')
+    : (car.fuelType === 'benzin' ? 'benzin' : 'gaz');
   return {
     km: n(src.km),
+    gasKm: src.gasKm != null && src.gasKm !== '' ? n(src.gasKm) : null,
     odo: n(src.odo),
     mode: src.mode || defMode,
     station: src.station || '',
@@ -365,6 +368,28 @@ function dayRow(car, d) {
     extraWhy: src.extraWhy || '',
     note: src.note || ''
   };
+}
+
+function splitDayKm(src, km, mix) {
+  const mode = src.mode || 'gaz';
+  let gasKm = 0;
+  let liqKm = 0;
+  const hasGasKm = src.gasKm != null && src.gasKm !== '' && Number.isFinite(n(src.gasKm));
+  if (hasGasKm) {
+    gasKm = Math.max(0, Math.min(km, n(src.gasKm)));
+    liqKm = Math.max(0, km - gasKm);
+  } else if (mode === 'gaz') {
+    gasKm = km;
+    liqKm = 0;
+  } else if (mode === 'benzin' || mode === 'dizel') {
+    gasKm = 0;
+    liqKm = km;
+  } else if (mode === 'aralash') {
+    const pct = Math.max(0, Math.min(100, n(mix) || 70));
+    gasKm = km * pct / 100;
+    liqKm = km - gasKm;
+  }
+  return { gasKm, liqKm };
 }
 
 function applyChanges(car, d, field, fallback) {
@@ -394,19 +419,17 @@ function calcCar(car) {
     }
     if (src.odo > 0) odoPrev = src.odo;
     else if (km > 0) odoPrev = odoPrev + km;
+    const split = splitDayKm(src, km, mix);
     let gasUsed = 0, benUsed = 0;
     if (km > 0) {
-      if (src.mode === 'gaz') gasUsed = km * gasNorm / 100;
-      else if (src.mode === 'benzin' || src.mode === 'dizel') benUsed = km * benNorm / 100;
-      else if (src.mode === 'aralash') {
-        gasUsed = km * gasNorm / 100 * mix / 100;
-        benUsed = km * benNorm / 100 * (100 - mix) / 100;
-      }
+      gasUsed = split.gasKm * gasNorm / 100;
+      benUsed = split.liqKm * benNorm / 100;
     }
     gasR = gasR + src.gasIn - gasUsed;
     benR = benR + src.benzinIn - benUsed;
     rows.push({
-      d, km, odo: src.odo, mode: src.mode, station: src.station,
+      d, km, gasKm: split.gasKm, liqKm: split.liqKm,
+      odo: src.odo, mode: src.mode, station: src.station,
       gasIn: src.gasIn, gasPrice, gasSum: src.gasIn * gasPrice,
       benzinIn: src.benzinIn, benzinPrice: benPrice, benzinSum: src.benzinIn * benPrice,
       gasUsed, benUsed, gasR, benR, gasNorm, benNorm,
@@ -417,9 +440,13 @@ function calcCar(car) {
 }
 
 function totals(rows) {
-  const t = { km: 0, gasIn: 0, benzinIn: 0, gasUsed: 0, benUsed: 0, gasSum: 0, benzinSum: 0, extra: 0, gasR: 0, benR: 0, odo: 0 };
+  const t = {
+    km: 0, gasKm: 0, liqKm: 0, gasIn: 0, benzinIn: 0,
+    gasUsed: 0, benUsed: 0, gasSum: 0, benzinSum: 0, extra: 0, gasR: 0, benR: 0, odo: 0
+  };
   rows.forEach(r => {
-    t.km += r.km; t.gasIn += r.gasIn; t.benzinIn += r.benzinIn;
+    t.km += r.km; t.gasKm += n(r.gasKm); t.liqKm += n(r.liqKm);
+    t.gasIn += r.gasIn; t.benzinIn += r.benzinIn;
     t.gasUsed += r.gasUsed; t.benUsed += r.benUsed;
     t.gasSum += r.gasSum; t.benzinSum += r.benzinSum; t.extra += r.extra;
     if (r.odo > t.odo) t.odo = r.odo;
@@ -686,12 +713,65 @@ function writeParams() {
   });
   const ft = document.getElementById('p-fuelType');
   if (ft) ft.value = car.fuelType || 'mixed';
+  applyFuelTypeUi(car.fuelType || 'mixed');
   const info = vehicleInfo(STATE.car);
   document.getElementById('car-title').textContent = plateDisp(info.car) + ' — ' + (info.name || info.short || '');
   const bits = [];
   (car.changes || []).forEach(c => bits.push(c.day + '-kun ' + c.field + '=' + c.value));
   (car.driverChanges || []).forEach(c => bits.push(c.day + '-kundan haydovchi: ' + c.name));
   document.getElementById('changes-box').innerHTML = bits.length ? ('Zanjir o\'zgarishlari: ' + bits.map(esc).join(' · ')) : '';
+}
+
+function isDieselFuel(ft) {
+  return ft === 'dizel' || ft === 'dizel_gaz';
+}
+
+function applyFuelTypeUi(ft) {
+  ft = ft || 'mixed';
+  const showGaz = ft === 'mixed' || ft === 'gaz' || ft === 'dizel_gaz';
+  const showLiq = ft === 'mixed' || ft === 'benzin' || ft === 'dizel' || ft === 'dizel_gaz';
+  const showMix = ft === 'mixed' || ft === 'dizel_gaz';
+  const diesel = isDieselFuel(ft);
+  const liqName = diesel ? 'Dizel' : 'Benzin';
+  const liqUnit = 'l';
+
+  document.querySelectorAll('.fuel-gaz').forEach(el => { el.style.display = showGaz ? '' : 'none'; });
+  document.querySelectorAll('.fuel-liq').forEach(el => { el.style.display = showLiq ? '' : 'none'; });
+  document.querySelectorAll('.fuel-mix').forEach(el => { el.style.display = showMix ? '' : 'none'; });
+
+  const setLbl = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  setLbl('lbl-benzinNorm', liqName + ' normasi (100 km)');
+  setLbl('lbl-benzinStart', liqName + ' oy boshi qoldiq (' + liqUnit + ')');
+  setLbl('lbl-benzinPrice', '1 ' + liqUnit + ' ' + liqName.toLowerCase() + ' narxi (so\'m)');
+  setLbl('th-liq-in', 'Olingan ' + liqName.toLowerCase() + ' (' + liqUnit + ')');
+  setLbl('th-liq-price', '1 ' + liqUnit + ' narxi');
+  setLbl('th-liq-sum', liqName + ' summa');
+  setLbl('th-liq-used', 'Sarf ' + liqName.toLowerCase());
+  setLbl('th-liq-rem', liqName + ' qoldiq');
+  setLbl('th-liq-km', liqName + ' km');
+  setLbl('th-gas-km', 'Gaz km');
+
+  const hint = document.getElementById('fuel-type-hint');
+  if (hint) {
+    const map = {
+      mixed: 'Gaz + benzin: ikkala bo‘lim ham ochiq. Kunlikda «Nimada yurdi» — Gaz / Benzin / Aralash.',
+      dizel_gaz: 'Dizel + gaz: gaz va dizel bo‘limlari ochiq. Kunlikda «Nimada yurdi» — Gaz / Dizel / Aralash.',
+      gaz: 'Faqat gaz: benzin/dizel maydonlari yashirilgan.',
+      benzin: 'Faqat benzin: gaz maydonlari yashirilgan.',
+      dizel: 'Faqat dizel: gaz maydonlari yashirilgan. Norma, qoldiq, narx va jadval — dizel uchun.'
+    };
+    hint.style.display = 'block';
+    hint.textContent = map[ft] || '';
+  }
+}
+
+function modesForCar(car) {
+  const ft = (car && car.fuelType) || 'mixed';
+  if (ft === 'dizel') return MODES.filter(m => m.v === 'dizel');
+  if (ft === 'benzin') return MODES.filter(m => m.v === 'benzin');
+  if (ft === 'gaz') return MODES.filter(m => m.v === 'gaz');
+  if (ft === 'dizel_gaz') return MODES.filter(m => m.v === 'gaz' || m.v === 'dizel' || m.v === 'aralash');
+  return MODES.filter(m => m.v !== 'dizel');
 }
 
 function renderChips() {
@@ -704,8 +784,10 @@ function renderChips() {
 }
 
 function modeSelect(d, mode) {
-  return `<select data-d="${d}" data-f="mode">${MODES.map(m =>
-    `<option value="${m.v}"${m.v === mode ? ' selected' : ''}>${m.t}</option>`
+  const modes = modesForCar(getCar(STATE.car));
+  const ok = modes.some(m => m.v === mode) ? mode : (modes[0] && modes[0].v) || 'gaz';
+  return `<select data-d="${d}" data-f="mode">${modes.map(m =>
+    `<option value="${m.v}"${m.v === ok ? ' selected' : ''}>${m.t}</option>`
   ).join('')}</select>`;
 }
 
@@ -730,14 +812,16 @@ function dailyJamiHtml(rows) {
   const last = rows[rows.length - 1] || {};
   return `<tr class="jami-row">
       <td class="day">JAMI</td>
-      <td><span class="out" data-j="km">${t.km ? fmt(t.km, 2) : ''}</span></td>
-      <td><span class="out" data-j="odo">${last.odo ? fmt(last.odo, 1) : ''}</span></td>
+      <td><span class="out" data-j="km">${t.km ? fmtNum(t.km) : ''}</span></td>
+      <td><span class="out" data-j="gasKm">${t.gasKm ? fmtNum(t.gasKm) : ''}</span></td>
+      <td><span class="out" data-j="liqKm">${t.liqKm ? fmtNum(t.liqKm) : ''}</span></td>
+      <td><span class="out" data-j="odo">${last.odo ? fmtNum(last.odo) : ''}</span></td>
       <td></td>
       <td></td>
-      <td><span class="out" data-j="gasIn">${t.gasIn ? fmt(t.gasIn, 4) : ''}</span></td>
+      <td><span class="out" data-j="gasIn">${t.gasIn ? fmtNum(t.gasIn) : ''}</span></td>
       <td></td>
       <td><span class="out" data-j="gasSum">${t.gasIn ? money(t.gasSum) : ''}</span></td>
-      <td><span class="out" data-j="benzinIn">${t.benzinIn ? fmt(t.benzinIn, 4) : ''}</span></td>
+      <td><span class="out" data-j="benzinIn">${t.benzinIn ? fmtNum(t.benzinIn) : ''}</span></td>
       <td></td>
       <td><span class="out" data-j="benzinSum">${t.benzinIn ? money(t.benzinSum) : ''}</span></td>
       <td><span class="out" data-j="gasUsed">${t.gasUsed ? fmtNum(t.gasUsed) : ''}</span></td>
@@ -759,11 +843,13 @@ function paintDailyJami(rows) {
     el.textContent = v;
     if (cls != null) el.className = 'out ' + cls;
   };
-  set('km', t.km ? fmt(t.km, 2) : '');
-  set('odo', last.odo ? fmt(last.odo, 1) : '');
-  set('gasIn', t.gasIn ? fmt(t.gasIn, 4) : '');
+  set('km', t.km ? fmtNum(t.km) : '');
+  set('gasKm', t.gasKm ? fmtNum(t.gasKm) : '');
+  set('liqKm', t.liqKm ? fmtNum(t.liqKm) : '');
+  set('odo', last.odo ? fmtNum(last.odo) : '');
+  set('gasIn', t.gasIn ? fmtNum(t.gasIn) : '');
   set('gasSum', t.gasIn ? money(t.gasSum) : '');
-  set('benzinIn', t.benzinIn ? fmt(t.benzinIn, 4) : '');
+  set('benzinIn', t.benzinIn ? fmtNum(t.benzinIn) : '');
   set('benzinSum', t.benzinIn ? money(t.benzinSum) : '');
   set('gasUsed', t.gasUsed ? fmtNum(t.gasUsed) : '');
   set('benUsed', t.benUsed ? fmtNum(t.benUsed) : '');
@@ -776,12 +862,16 @@ function renderDailyTable() {
   const car = getCar(STATE.car);
   const rows = calcCar(car);
   stationDatalist();
+  applyFuelTypeUi(car.fuelType || 'mixed');
   const body = document.getElementById('daily-body');
   body.innerHTML = rows.map(r => {
     const src = dayRow(car, r.d);
+    const gasKmVal = src.gasKm != null ? src.gasKm : (r.mode === 'gaz' ? src.km : (r.mode === 'aralash' ? r.gasKm : ''));
     return `<tr>
       <td class="day">${r.d}</td>
-      <td><input data-d="${r.d}" data-f="km" type="number" step="0.01" value="${vin(src.km)}"></td>
+      <td><input data-d="${r.d}" data-f="km" type="number" step="0.01" value="${vin(src.km)}" title="Jami km"></td>
+      <td><input data-d="${r.d}" data-f="gasKm" type="number" step="0.01" value="${vin(gasKmVal)}" title="Shu kunda gazda yurgan km"></td>
+      <td><span class="out" data-liq-km="${r.d}">${r.liqKm ? fmtNum(r.liqKm) : ''}</span></td>
       <td><input data-d="${r.d}" data-f="odo" type="number" step="0.1" value="${vin(src.odo)}"></td>
       <td>${modeSelect(r.d, src.mode)}</td>
       <td>${stationSelect(r.d, src.station)}</td>
@@ -791,8 +881,8 @@ function renderDailyTable() {
       <td><input data-d="${r.d}" data-f="benzinIn" type="number" step="0.0001" value="${vin(src.benzinIn)}"></td>
       <td><input data-d="${r.d}" data-f="benzinPrice" type="number" step="1" value="${vin(r.benzinPrice)}"></td>
       <td><span class="out">${r.benzinIn ? money(r.benzinSum) : ''}</span></td>
-      <td><span class="out">${r.km ? fmtNum(r.gasUsed) : ''}</span></td>
-      <td><span class="out">${r.km ? fmtNum(r.benUsed) : ''}</span></td>
+      <td><span class="out">${(r.gasKm || r.gasUsed) ? fmtNum(r.gasUsed) : ''}</span></td>
+      <td><span class="out">${(r.liqKm || r.benUsed) ? fmtNum(r.benUsed) : ''}</span></td>
       <td><span class="out ${remainClass(r.gasR)}">${(r.km || r.gasIn) ? fmtNum(r.gasR) : ''}</span></td>
       <td><span class="out ${remainClass(r.benR)}">${(r.km || r.benzinIn) ? fmtNum(r.benR) : ''}</span></td>
       <td><input data-d="${r.d}" data-f="extra" type="number" step="1" value="${vin(src.extra)}"></td>
@@ -807,18 +897,24 @@ function paintCalc() {
   document.querySelectorAll('#daily-body tr:not(.jami-row)').forEach((tr, i) => {
     const r = rows[i];
     if (!r) return;
-    const outs = tr.querySelectorAll('.out');
-    if (outs[0]) outs[0].textContent = r.gasIn ? money(r.gasSum) : '';
-    if (outs[1]) outs[1].textContent = r.benzinIn ? money(r.benzinSum) : '';
-    if (outs[2]) outs[2].textContent = r.km ? fmtNum(r.gasUsed) : '';
-    if (outs[3]) outs[3].textContent = r.km ? fmtNum(r.benUsed) : '';
-    if (outs[4]) {
-      outs[4].textContent = (r.km || r.gasIn) ? fmtNum(r.gasR) : '';
-      outs[4].className = 'out ' + remainClass(r.gasR);
+    const liq = tr.querySelector('[data-liq-km]');
+    if (liq) liq.textContent = r.liqKm ? fmtNum(r.liqKm) : '';
+    const outs = tr.querySelectorAll('.out:not([data-liq-km])');
+    // outs after liqKm: gasSum, benzinSum, gasUsed, benUsed, gasR, benR
+    const spans = [...tr.querySelectorAll('td > span.out')];
+    // order: liqKm, gasSum, benSum, gasUsed, benUsed, gasR, benR
+    if (spans[0]) spans[0].textContent = r.liqKm ? fmtNum(r.liqKm) : '';
+    if (spans[1]) spans[1].textContent = r.gasIn ? money(r.gasSum) : '';
+    if (spans[2]) spans[2].textContent = r.benzinIn ? money(r.benzinSum) : '';
+    if (spans[3]) spans[3].textContent = (r.gasKm || r.gasUsed) ? fmtNum(r.gasUsed) : '';
+    if (spans[4]) spans[4].textContent = (r.liqKm || r.benUsed) ? fmtNum(r.benUsed) : '';
+    if (spans[5]) {
+      spans[5].textContent = (r.km || r.gasIn) ? fmtNum(r.gasR) : '';
+      spans[5].className = 'out ' + remainClass(r.gasR);
     }
-    if (outs[5]) {
-      outs[5].textContent = (r.km || r.benzinIn) ? fmtNum(r.benR) : '';
-      outs[5].className = 'out ' + remainClass(r.benR);
+    if (spans[6]) {
+      spans[6].textContent = (r.km || r.benzinIn) ? fmtNum(r.benR) : '';
+      spans[6].className = 'out ' + remainClass(r.benR);
     }
   });
   paintDailyJami(rows);
@@ -919,10 +1015,13 @@ function renderDayRep() {
       <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
       <div class="scroll-x" style="margin-top:10px;">
       <table class="gtable">
-        <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Yurdi (km)</th><th>Nimada</th><th>Zapravka</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Sarf gaz</th><th>Sarf benzin</th><th>Qo'shimcha</th><th>Izoh</th></tr></thead>
+        <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Yurdi (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Nimada</th><th>Zapravka</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Sarf gaz</th><th>Sarf benzin</th><th>Qo'shimcha</th><th>Izoh</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
           <td>${r.n}</td><td>${esc(plateDisp(r.plate))}</td><td>${esc(r.name)}</td>
-          <td class="num">${r.km ? fmt(r.km, 2) : ''}</td><td>${esc(r.mode || '')}</td><td>${esc(r.station || '')}</td>
+          <td class="num">${r.km ? fmt(r.km, 2) : ''}</td>
+          <td class="num">${r.gasKm ? fmt(r.gasKm, 2) : ''}</td>
+          <td class="num">${r.liqKm ? fmt(r.liqKm, 2) : ''}</td>
+          <td>${esc(r.mode || '')}</td><td>${esc(r.station || '')}</td>
           <td class="num">${r.gasIn ? fmt(r.gasIn, 4) : ''}</td><td class="num">${r.gasIn ? money(r.gasSum) : ''}</td>
           <td class="num">${r.benzinIn ? fmt(r.benzinIn, 4) : ''}</td><td class="num">${r.benzinIn ? money(r.benzinSum) : ''}</td>
           <td class="num">${r.gasUsed ? fmtNum(r.gasUsed) : ''}</td>
@@ -930,7 +1029,10 @@ function renderDayRep() {
           <td class="num">${r.extra ? money(r.extra) : ''}</td><td>${esc(r.note || r.extraWhy || '')}</td>
         </tr>`).join('')}
         <tr><td colspan="3"><b>JAMI</b></td>
-          <td class="num"><b>${fmt(sum.km, 2)}</b></td><td></td><td></td>
+          <td class="num"><b>${fmt(sum.km, 2)}</b></td>
+          <td class="num"><b>${fmt(sum.gasKm, 2)}</b></td>
+          <td class="num"><b>${fmt(sum.liqKm, 2)}</b></td>
+          <td></td><td></td>
           <td class="num"><b>${fmt(sum.gasIn, 2)}</b></td><td class="num"><b>${money(sum.gasSum)}</b></td>
           <td class="num"><b>${fmt(sum.benzinIn, 2)}</b></td><td class="num"><b>${money(sum.benzinSum)}</b></td>
           <td class="num"><b>${fmt(sum.gasUsed, 2)}</b></td><td class="num"><b>${fmt(sum.benUsed, 2)}</b></td>
@@ -952,19 +1054,22 @@ function renderMonth() {
     return Object.assign({ n: i + 1, plate: f.car, name: f.name, short: f.short }, t);
   });
   const sum = rows.reduce((a, r) => {
-    a.km += r.km || 0; a.gasIn += r.gasIn || 0; a.benzinIn += r.benzinIn || 0;
+    a.km += r.km || 0; a.gasKm += r.gasKm || 0; a.liqKm += r.liqKm || 0;
+    a.gasIn += r.gasIn || 0; a.benzinIn += r.benzinIn || 0;
     a.gasSum += r.gasSum || 0; a.benzinSum += r.benzinSum || 0; a.extra += r.extra || 0; a.cost += r.cost || 0;
     return a;
-  }, { km: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0 });
+  }, { km: 0, gasKm: 0, liqKm: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0 });
   document.getElementById('panel-month').innerHTML = `
     <div class="card"><div class="card-h"><h3>Oylik jamlanma — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-month">PDF yuklab olish</button></div>
     <div class="card-b scroll-x">
       <table class="gtable">
-        <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
+        <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
           <td>${r.n}</td><td>${esc(plateDisp(r.plate))}</td><td>${esc(r.name)}</td>
           <td class="num">${fmt(r.km, 2)}</td>
+          <td class="num">${fmt(r.gasKm, 2)}</td>
+          <td class="num">${fmt(r.liqKm, 2)}</td>
           <td class="num">${fmt(r.gasIn, 4)}</td><td class="num">${money(r.gasSum)}</td>
           <td class="num">${fmt(r.benzinIn, 4)}</td><td class="num">${money(r.benzinSum)}</td>
           <td class="num">${money(r.extra)}</td><td class="num">${money(r.cost)}</td>
@@ -973,6 +1078,8 @@ function renderMonth() {
         </tr>`).join('')}
         <tr><td colspan="3"><b>JAMI</b></td>
           <td class="num"><b>${fmt(sum.km, 2)}</b></td>
+          <td class="num"><b>${fmt(sum.gasKm, 2)}</b></td>
+          <td class="num"><b>${fmt(sum.liqKm, 2)}</b></td>
           <td class="num"><b>${fmt(sum.gasIn, 2)}</b></td><td class="num"><b>${money(sum.gasSum)}</b></td>
           <td class="num"><b>${fmt(sum.benzinIn, 2)}</b></td><td class="num"><b>${money(sum.benzinSum)}</b></td>
           <td class="num"><b>${money(sum.extra)}</b></td><td class="num"><b>${money(sum.cost)}</b></td>
@@ -1373,7 +1480,7 @@ function renderCars() {
         <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
           <table class="gtable">
-            <thead><tr><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin/DT norma</th><th>Gaz narxi</th><th>Benzin/DT narxi</th><th></th></tr></thead>
+            <thead><tr><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th></th></tr></thead>
             <tbody>${list.map((f, i) => `<tr data-plate="${esc(f.car)}">
               <td>${i + 1}</td>
               <td>${esc(plateDisp(f.car))}</td>
@@ -1388,7 +1495,7 @@ function renderCars() {
                 <option value="dizel"${f.fuelType==='dizel'?' selected':''}>Dizel</option>
               </select></td>
               <td><input data-v="gasNorm" type="number" step="0.1" value="${vin(f.gasNorm)}"></td>
-              <td><input data-v="benzinNorm" type="number" step="0.1" value="${vin(f.benzinNorm)}"></td>
+              <td><input data-v="benzinNorm" type="number" step="0.1" value="${vin(f.benzinNorm)}" title="${['dizel','dizel_gaz'].includes(f.fuelType) ? 'Dizel norma' : 'Benzin norma'}"></td>
               <td><input data-v="gasPrice" type="number" step="1" value="${vin(f.gasPrice)}"></td>
               <td><input data-v="benzinPrice" type="number" step="1" value="${vin(f.benzinPrice)}"></td>
               <td><button type="button" class="btn btn-ink btn-sm car-hide">O'chirish</button></td>
@@ -1628,15 +1735,15 @@ function addDriverChange() {
 function exportExcel() {
   if (typeof XLSX === 'undefined') { toast('Excel kutubxonasi yuklanmadi'); return; }
   const wb = XLSX.utils.book_new();
-  const monthRows = [['№','Mashina','Haydovchi','Km','Gaz m3','Gaz summa','Benzin l','Benzin summa','Qoshimcha','Jami','Gaz qoldiq','Benzin qoldiq']];
+  const monthRows = [['№','Mashina','Haydovchi','Km','Gaz km','Dizel/Benzin km','Gaz m3','Gaz summa','Benzin l','Benzin summa','Qoshimcha','Jami','Gaz qoldiq','Benzin qoldiq']];
   fleet().forEach((f, i) => {
     const t = totals(calcCar(getCar(f.car)));
-    monthRows.push([i + 1, f.car, f.name, t.km, t.gasIn, t.gasSum, t.benzinIn, t.benzinSum, t.extra, t.cost, t.gasR, t.benR]);
+    monthRows.push([i + 1, f.car, f.name, t.km, t.gasKm, t.liqKm, t.gasIn, t.gasSum, t.benzinIn, t.benzinSum, t.extra, t.cost, t.gasR, t.benR]);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(monthRows), 'Oylik');
-  const daily = [['Kun','Km','Spidometr','Rejim','Zapravka','Gaz m3','Gaz summa','Benzin l','Benzin summa','Sarf gaz','Sarf benzin','Gaz qoldiq','Benzin qoldiq','Qoshimcha','Izoh']];
+  const daily = [['Kun','Km','Gaz km','Dizel/Benzin km','Spidometr','Rejim','Zapravka','Gaz m3','Gaz summa','Benzin l','Benzin summa','Sarf gaz','Sarf benzin','Gaz qoldiq','Benzin qoldiq','Qoshimcha','Izoh']];
   calcCar(getCar(STATE.car)).forEach(r => {
-    daily.push([r.d, r.km, r.odo, r.mode, r.station, r.gasIn, r.gasSum, r.benzinIn, r.benzinSum, r.gasUsed, r.benUsed, r.gasR, r.benR, r.extra, r.note]);
+    daily.push([r.d, r.km, r.gasKm, r.liqKm, r.odo, r.mode, r.station, r.gasIn, r.gasSum, r.benzinIn, r.benzinSum, r.gasUsed, r.benUsed, r.gasR, r.benR, r.extra, r.note]);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(daily), 'Kunlik');
   const fills = [['Kun','Mashina','Zapravka','Tur','Miqdor','Narx','Summa']];
@@ -1774,6 +1881,7 @@ function parseWaybillAoa(aoa, carHint) {
       km: n(row[9]),
       mode: inferImportMode(row, carHint || {})
     };
+    if (n(row[10]) || row[10] === 0 || row[10] === '0') day.gasKm = n(row[10]);
     if (n(row[13])) day.extra = n(row[13]);
     if (day.km) day.kmSrc = 'user';
     if (firstFilled) {
@@ -1918,6 +2026,7 @@ function applyExcelImport(parsed, plate, replaceDays) {
     const row = ensureDay(car, d);
     let touched = false;
     if (src.km) { row.km = src.km; row.kmSrc = src.kmSrc || 'user'; touched = true; }
+    if (src.gasKm != null && src.gasKm !== '') { row.gasKm = n(src.gasKm); touched = true; }
     if (src.odo) { row.odo = src.odo; touched = true; }
     if (src.mode) { row.mode = src.mode; touched = true; }
     if (src.station) {
@@ -2283,8 +2392,8 @@ async function downloadFuelPdf(kind) {
     startY = fuelPdfKpis(doc, startY + 12, [
       ['MASHINA', String(rows.length)],
       ['JAMI KM', fmt(sum.km, 2)],
-      ['GAZ (m3)', fmt(sum.gasIn, 2)],
-      ['BENZIN (l)', fmt(sum.benzinIn, 2)],
+      ['GAZ KM', fmt(sum.gasKm, 2)],
+      ['DIZEL/BENZIN KM', fmt(sum.liqKm, 2)],
       ['JAMI XARAJAT', money(sum.cost)]
     ], w);
     const body = rows.map(r => [
@@ -2292,6 +2401,8 @@ async function downloadFuelPdf(kind) {
       plateDisp(r.plate),
       r.name,
       fmt(r.km, 2),
+      fmt(r.gasKm, 2),
+      fmt(r.liqKm, 2),
       fmt(r.gasIn, 3),
       money(r.gasSum),
       fmt(r.benzinIn, 3),
@@ -2303,27 +2414,29 @@ async function downloadFuelPdf(kind) {
     ]);
     body.push([
       { content: 'JAMI', colSpan: 3, styles: { fontStyle: 'bold' } },
-      fmt(sum.km, 2), fmt(sum.gasIn, 2), money(sum.gasSum),
+      fmt(sum.km, 2), fmt(sum.gasKm, 2), fmt(sum.liqKm, 2),
+      fmt(sum.gasIn, 2), money(sum.gasSum),
       fmt(sum.benzinIn, 2), money(sum.benzinSum), money(sum.extra), money(sum.cost), '', ''
     ]);
     fuelPdfTable(doc, w, {
       pageLabel,
       startY,
-      head: [['№', 'Mashina', 'Haydovchi', 'Probeg (km)', 'Olingan gaz (m³)', 'Gaz summa', 'Olingan benzin (l)', 'Benzin summa', "Qo'shimcha", 'Umumiy xarajat', 'Gaz qoldiq', 'Benzin qoldiq']],
+      head: [['№', 'Mashina', 'Haydovchi', 'Probeg', 'Gaz km', 'Dizel/Benzin km', 'Olingan gaz (m³)', 'Gaz summa', 'Olingan benzin (l)', 'Benzin summa', "Qo'shimcha", 'Umumiy xarajat', 'Gaz qoldiq', 'Benzin qoldiq']],
       body,
       columnStyles: {
         0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 24 },
-        2: { cellWidth: 36 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 30 },
         3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' },
         6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' },
-        9: { halign: 'right', fontStyle: 'bold' },
-        10: { halign: 'right' }, 11: { halign: 'right' }
+        9: { halign: 'right' }, 10: { halign: 'right' },
+        11: { halign: 'right', fontStyle: 'bold' },
+        12: { halign: 'right' }, 13: { halign: 'right' }
       },
       didParseCell: (data) => {
         if (data.section !== 'body' || data.row.index >= rows.length) return;
-        if (data.column.index === 10 && n(rows[data.row.index].gasR) < 0) data.cell.styles.textColor = [155, 28, 28];
-        if (data.column.index === 11 && n(rows[data.row.index].benR) < 0) data.cell.styles.textColor = [155, 28, 28];
+        if (data.column.index === 12 && n(rows[data.row.index].gasR) < 0) data.cell.styles.textColor = [155, 28, 28];
+        if (data.column.index === 13 && n(rows[data.row.index].benR) < 0) data.cell.styles.textColor = [155, 28, 28];
       }
     });
     const fy = (doc.lastAutoTable && doc.lastAutoTable.finalY) || startY + 20;
@@ -2353,23 +2466,26 @@ async function downloadFuelPdf(kind) {
     startY = fuelPdfKpis(doc, startY + 12, [
       ['MASHINA', String(rows.length)],
       ['KM', fmt(sum.km, 2)],
-      ['GAZ', fmt(sum.gasIn, 2) + ' m3'],
-      ['BENZIN', fmt(sum.benzinIn, 2) + ' l'],
+      ['GAZ KM', fmt(sum.gasKm, 2)],
+      ['DIZEL/BENZIN KM', fmt(sum.liqKm, 2)],
       ['XARAJAT', money(sum.gasSum + sum.benzinSum + sum.extra)]
     ], w);
     fuelPdfTable(doc, w, {
       pageLabel,
       startY,
-      head: [['№', 'Mashina', 'Haydovchi', 'Km', 'Nimada', 'Zapravka', 'Gaz m³', 'Gaz summa', 'Benzin l', 'Benzin summa', 'Sarf gaz', 'Sarf benzin', "Qo'shimcha", 'Izoh']],
+      head: [['№', 'Mashina', 'Haydovchi', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Nimada', 'Zapravka', 'Gaz m³', 'Gaz summa', 'Benzin l', 'Benzin summa', 'Sarf gaz', 'Sarf benzin', "Qo'shimcha", 'Izoh']],
       body: rows.map(r => [
-        r.n, plateDisp(r.plate), r.name, r.km ? fmt(r.km, 2) : '', r.mode || '', r.station || '',
+        r.n, plateDisp(r.plate), r.name,
+        r.km ? fmt(r.km, 2) : '', r.gasKm ? fmt(r.gasKm, 2) : '', r.liqKm ? fmt(r.liqKm, 2) : '',
+        r.mode || '', r.station || '',
         r.gasIn ? fmt(r.gasIn, 3) : '', r.gasIn ? money(r.gasSum) : '',
         r.benzinIn ? fmt(r.benzinIn, 3) : '', r.benzinIn ? money(r.benzinSum) : '',
         r.gasUsed ? fmt(r.gasUsed, 3) : '', r.benUsed ? fmt(r.benUsed, 3) : '',
         r.extra ? money(r.extra) : '', r.note || r.extraWhy || ''
       ]).concat([[
         { content: 'JAMI', colSpan: 3, styles: { fontStyle: 'bold' } },
-        fmt(sum.km, 2), '', '', fmt(sum.gasIn, 2), money(sum.gasSum), fmt(sum.benzinIn, 2), money(sum.benzinSum),
+        fmt(sum.km, 2), fmt(sum.gasKm, 2), fmt(sum.liqKm, 2), '', '',
+        fmt(sum.gasIn, 2), money(sum.gasSum), fmt(sum.benzinIn, 2), money(sum.benzinSum),
         fmt(sum.gasUsed, 2), fmt(sum.benUsed, 2), money(sum.extra), ''
       ]])
     });
@@ -2580,7 +2696,20 @@ function bind() {
     el.addEventListener('input', () => {
       readParamsIntoCar();
       syncParamsToMeta(STATE.car, getCar(STATE.car));
-      paintCalc();
+      if (el.getAttribute('data-p') === 'fuelType') {
+        applyFuelTypeUi(el.value);
+        renderDailyTable();
+      } else {
+        paintCalc();
+      }
+      markDirty();
+    });
+    el.addEventListener('change', () => {
+      if (el.getAttribute('data-p') !== 'fuelType') return;
+      readParamsIntoCar();
+      syncParamsToMeta(STATE.car, getCar(STATE.car));
+      applyFuelTypeUi(el.value);
+      renderDailyTable();
       markDirty();
     });
   });
@@ -2592,6 +2721,21 @@ function bind() {
     const row = ensureDay(getCar(STATE.car), d);
     row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
     if (f === 'km' || f === 'odo') row.kmSrc = 'user';
+    if (f === 'gasKm') row.gasKm = n(el.value);
+    const syncGasKmInput = (val) => {
+      const gInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="gasKm"]');
+      if (gInp && gInp !== el) gInp.value = val === '' || val == null ? '' : String(val);
+    };
+    if (f === 'mode') {
+      const km = n(row.km);
+      if (el.value === 'gaz' && km) { row.gasKm = km; syncGasKmInput(km); }
+      else if (el.value === 'benzin' || el.value === 'dizel') { row.gasKm = 0; syncGasKmInput(0); }
+    }
+    if (f === 'km') {
+      const km = n(el.value);
+      if (row.mode === 'gaz') { row.gasKm = km; syncGasKmInput(km || ''); }
+      else if (row.mode === 'benzin' || row.mode === 'dizel') { row.gasKm = 0; syncGasKmInput(0); }
+    }
     if (f === 'station' && el.value) {
       STATE.meta.stations = STATE.meta.stations || [];
       if (!STATE.meta.stations.includes(el.value)) {
