@@ -832,7 +832,7 @@ class OfficeStore:
             return data if isinstance(data, dict) else None
 
     def pharmacy_place_suggestions(self, limit_days=60):
-        """GPS hisobotlaridagi to'xtash joy nomlaridan dorixona takliflari."""
+        """GPS hisobotlaridagi to'xtash joylari: nom + o'rtacha koordinata + eng ko'p kelgan mashina."""
         dates = self.report_dates()[: max(1, min(int(limit_days or 60), 120))]
         bag = {}
         for date in dates:
@@ -850,7 +850,6 @@ class OfficeStore:
                     place = str(st.get("phName") or st.get("place") or "").strip()
                     if not place or len(place) < 3:
                         continue
-                    # Skip raw coord-only places
                     if place.replace(".", "").replace(",", "").replace(" ", "").replace("-", "").isdigit():
                         continue
                     if "," in place and all(
@@ -861,32 +860,56 @@ class OfficeStore:
                     key = place.lower()
                     item = bag.get(key)
                     if not item:
-                        item = {"name": place[:80], "count": 0, "cars": {}}
+                        item = {
+                            "name": place[:80],
+                            "count": 0,
+                            "cars": {},
+                            "lat_sum": 0.0,
+                            "lng_sum": 0.0,
+                            "coord_n": 0,
+                        }
                         bag[key] = item
                     item["count"] += 1
                     car = str(plate or "")[:24]
                     if car:
                         item["cars"][car] = item["cars"].get(car, 0) + 1
-        known = {
-            str(p.get("name") or "").strip().lower()
-            for p in (self.pharmacies() or [])
-            if isinstance(p, dict) and p.get("name")
-        }
+                    try:
+                        lat = float(st.get("lat") or 0)
+                        lng = float(st.get("lng") or 0)
+                    except (TypeError, ValueError):
+                        lat = lng = 0.0
+                    if abs(lat) > 0.1 and abs(lng) > 0.1:
+                        item["lat_sum"] += lat
+                        item["lng_sum"] += lng
+                        item["coord_n"] += 1
+        known_map = {}
+        for p in self.pharmacies() or []:
+            if not isinstance(p, dict) or not p.get("name"):
+                continue
+            known_map[str(p.get("name") or "").strip().lower()] = str(p.get("car") or "")
         out = []
         for item in bag.values():
             top_car = ""
             if item["cars"]:
                 top_car = max(item["cars"].items(), key=lambda x: x[1])[0]
+            lat = lng = None
+            if item["coord_n"] > 0:
+                lat = round(item["lat_sum"] / item["coord_n"], 6)
+                lng = round(item["lng_sum"] / item["coord_n"], 6)
+            name_key = item["name"].lower()
             out.append(
                 {
                     "name": item["name"],
                     "count": item["count"],
                     "topCar": top_car,
-                    "assigned": item["name"].lower() in known,
+                    "lat": lat,
+                    "lng": lng,
+                    "assigned": name_key in known_map,
+                    "assignedCar": known_map.get(name_key) or "",
                 }
             )
         out.sort(key=lambda x: (-x["count"], x["name"].lower()))
-        return out[:300]
+        return out[:400]
 
     def save_report(self, date, cars, saved_by=""):
         if not valid_date(date):
