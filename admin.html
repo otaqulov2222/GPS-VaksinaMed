@@ -155,6 +155,22 @@ a { color: inherit; }
 .msg.show { display: block; }
 .msg.ok { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
 .msg.bad { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
+.ph-toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 200;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 14px 16px; background: #0c1016; color: #f4f4f2;
+  border-left: 4px solid var(--gold); box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  font-size: 13px; line-height: 1.45; display: none;
+}
+.ph-toast.on { display: block; }
+.ph-toast.bad { border-left-color: #c45a5a; }
+.ph-toast b { color: var(--gold); }
+tr.ph-new td { background: #eef6f0 !important; }
+@keyframes phFlash {
+  from { background: #bfe0c8; }
+  to { background: #eef6f0; }
+}
+tr.ph-new td { animation: phFlash 1.8s ease; }
 
 .card { background: var(--card); border: 1px solid #12151c; overflow: hidden; }
 .head {
@@ -524,6 +540,10 @@ body { overflow-x: clip; }
       </div>
 
       <div style="margin-top:4px;overflow-x:auto">
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">Biriktirilgan dorixonalar</div>
+          <span class="muted" id="ph-assigned-hint">Pastki jadval — saqlangan ro‘yxat. VHK shu yerdan o‘qiydi.</span>
+        </div>
         <table>
           <thead>
             <tr>
@@ -614,6 +634,39 @@ function show(id, text, ok) {
 }
 function hide(id) {
   document.getElementById(id).className = 'msg';
+}
+function phNotify(text, ok) {
+  show('msg-ph', text, ok !== false);
+  const t = document.getElementById('ph-toast');
+  if (!t) return;
+  t.className = 'ph-toast on' + (ok === false ? ' bad' : '');
+  t.innerHTML = ok === false
+    ? ('<b>Xato</b><br>' + esc(text))
+    : ('<b>✓ Biriktirildi</b><br>' + esc(text));
+  clearTimeout(phNotify._t);
+  phNotify._t = setTimeout(() => { t.className = 'ph-toast'; }, 5000);
+}
+function highlightAssigned(name) {
+  const search = document.getElementById('ph-search');
+  if (search) {
+    search.value = name || '';
+    renderPharms();
+    renderGpsPlaces();
+  }
+  const box = document.getElementById('tb-ph');
+  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const row = [...document.querySelectorAll('#tb-ph tr[data-ph-id]')].find(tr => {
+    const cell = tr.querySelector('td b');
+    return cell && cell.textContent.trim().toLowerCase() === String(name || '').toLowerCase();
+  });
+  if (row) {
+    row.classList.add('ph-new');
+    setTimeout(() => row.classList.remove('ph-new'), 4000);
+  }
+  const hint = document.getElementById('ph-assigned-hint');
+  if (hint && name) {
+    hint.textContent = '"' + name + '" pastki jadvalda · VHK shu biriktirishni ishlatadi';
+  }
 }
 function esc(s) {
   return String(s == null ? '' : s)
@@ -1139,6 +1192,8 @@ async function assignPharmacy(name, car, lat, lng) {
     }
   });
   renderGpsPlaces();
+  highlightAssigned(name);
+  return { name, car };
 }
 
 document.getElementById('btn-ph-add').addEventListener('click', async () => {
@@ -1153,9 +1208,9 @@ document.getElementById('btn-ph-add').addEventListener('click', async () => {
     document.getElementById('ph-name').value = '';
     document.getElementById('ph-lat').value = '';
     document.getElementById('ph-lng').value = '';
-    show('msg-ph', 'Dorixona biriktirildi (koordinata GPS dan).', true);
+    phNotify('"' + name + '" → ' + carLabel(car) + '. Pastki jadvalda ko‘ring. VHK yangilanganda hisobga olinadi.');
   } catch (err) {
-    show('msg-ph', err.message, false);
+    phNotify(err.message, false);
   }
 });
 
@@ -1197,10 +1252,10 @@ document.getElementById('tb-ph-gps').addEventListener('click', async (e) => {
   const sel = tr && tr.querySelector('select[data-gps-car]');
   const car = sel ? sel.value : '';
   try {
-    await assignPharmacy(hit.name, car, hit.lat, hit.lng);
-    show('msg-ph', '"' + hit.name + '" → ' + carLabel(car) + ' (GPS manzil bilan).', true);
+    const r = await assignPharmacy(hit.name, car, hit.lat, hit.lng);
+    phNotify('"' + r.name + '" → ' + carLabel(r.car) + '. Pastki «Biriktirilgan dorixonalar» jadvalida. VHK da ball shu ro‘yxat bo‘yicha.');
   } catch (err) {
-    show('msg-ph', err.message, false);
+    phNotify(err.message, false);
   }
 });
 
@@ -1341,5 +1396,6 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
   setInterval(loadAll, 45000);
 })();
 </script>
+<div class="ph-toast" id="ph-toast"></div>
 </body>
 </html>
