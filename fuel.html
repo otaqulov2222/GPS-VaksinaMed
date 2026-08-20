@@ -295,6 +295,33 @@ table.gtable input, table.gtable select {
 }
 .toast.on { display: block; }
 
+.modal-bg {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(12,16,22,.55); align-items: center; justify-content: center; padding: 16px;
+}
+.modal-bg.open { display: flex; }
+.modal-box {
+  width: min(480px, 100%); background: #fff; border: 1px solid var(--line);
+  box-shadow: 8px 8px 0 rgba(12,16,22,.12);
+}
+.modal-head {
+  display: flex; align-items: flex-start; gap: 12px; padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head h3 { font-size: 18px; font-weight: 700; color: var(--accent); }
+.modal-head p { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+.modal-body { padding: 16px 18px; display: grid; gap: 12px; }
+.modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-foot {
+  display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px 18px;
+}
+.modal-file {
+  border: 1px dashed var(--line); background: #f7f8fa; padding: 14px; text-align: center;
+  font-size: 12px; color: var(--muted); cursor: pointer;
+}
+.modal-file.has { border-color: var(--ok); color: var(--ok); background: #eef6f0; }
+.modal-file input { display: none; }
+
 html { -webkit-text-size-adjust: 100%; }
 html, body { overflow-x: hidden; max-width: 100%; }
 .tb-page { border-left: 1px solid #2a323c; padding-left: 12px; margin-left: 4px; }
@@ -415,7 +442,8 @@ html, body { overflow-x: hidden; max-width: 100%; }
   <div class="acts">
     <span class="badge badge-bad" id="docs-badge" style="display:none">0 hujjat muddati</span>
     <input type="month" id="month-input" class="btn btn-sm month-pick" title="Oy">
-    <button class="btn btn-sm" type="button" id="btn-excel">Excel yuklash</button>
+    <button class="btn btn-sm" type="button" id="btn-excel">Excel yuklab olish</button>
+    <button class="btn btn-sm btn-ok" type="button" id="btn-excel-import">Excel to'ldirish</button>
     <button class="btn btn-sm" type="button" id="btn-backup">Zaxira saqlash</button>
     <button class="btn btn-sm" type="button" id="btn-restore">Zaxiradan tiklash</button>
     <button class="btn btn-sm" type="button" id="btn-reload">Asl ma'lumot</button>
@@ -478,6 +506,7 @@ html, body { overflow-x: hidden; max-width: 100%; }
           <button class="btn btn-ink btn-sm" type="button" id="btn-recalc">Barchasini yangilash</button>
           <button class="btn btn-ink btn-sm" type="button" id="btn-fill-odo">Spidometr bo'yicha kunlarni to'ldirish</button>
           <button class="btn btn-ok btn-sm" type="button" id="btn-gps-km">GPS dan km</button>
+          <button class="btn btn-ok btn-sm" type="button" id="btn-import-excel">Excel orqali to'ldirish</button>
           <button class="btn btn-ink btn-sm" type="button" id="btn-add-change">Norma/narx o'zgarishi</button>
           <button class="btn btn-ink btn-sm" type="button" id="btn-drv-change">Haydovchini kun belgilab almashtirish</button>
           <button class="btn btn-gold btn-sm" type="button" id="btn-save">Saqlash</button>
@@ -530,12 +559,49 @@ html, body { overflow-x: hidden; max-width: 100%; }
 <div class="toast" id="toast"></div>
 <datalist id="station-list"></datalist>
 
+<div class="modal-bg" id="modal-excel-import">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div style="font-size:28px;line-height:1;">📊</div>
+      <div>
+        <h3>Excel orqali to'ldirish</h3>
+        <p>Putevoy list (.xlsx) yuklang — km, zapravka, qoldiq va norma kunlik jadvalga avtomatik tushadi. Faqat tanlangan mashina va oy yangilanadi.</p>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row">
+        <div class="fld">
+          <label>Oy</label>
+          <select id="import-month"></select>
+        </div>
+        <div class="fld">
+          <label>Yil</label>
+          <input type="number" id="import-year" min="2020" max="2035" step="1">
+        </div>
+      </div>
+      <div class="fld">
+        <label>Mashina</label>
+        <input type="text" id="import-car" readonly>
+      </div>
+      <label class="modal-file" id="import-file-label">
+        <input type="file" id="import-excel-file" accept=".xlsx,.xls,.xlsm">
+        <span id="import-file-text">Excel faylni tanlang (.xlsx)</span>
+      </label>
+      <div class="note" id="import-preview" style="display:none;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ink btn-sm" type="button" id="import-cancel">Bekor</button>
+      <button class="btn btn-ok btn-sm" type="button" id="import-apply">Yuklash</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="fleet-data.js?v=3"></script>
 <script src="auth.js?v=9"></script>
-<script src="fuel.js?v=20"></script>
+<script src="fuel.js?v=21"></script>
 <script src="journal.js?v=7"></script>
 </body>
 </html>

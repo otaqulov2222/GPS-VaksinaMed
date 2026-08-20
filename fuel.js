@@ -1649,6 +1649,304 @@ function exportExcel() {
   XLSX.writeFile(wb, 'yoqilgi-' + STATE.month + '.xlsx');
 }
 
+const CYR_MONTHS = {
+  yanvar: 1, fevral: 2, mart: 3, aprel: 4, may: 5, iyun: 6,
+  iyul: 7, avgust: 8, sentabr: 9, oktabr: 10, noyabr: 11, dekabr: 12
+};
+const IMPORT = { file: null, parsed: null };
+
+function cellStr(v) {
+  if (v == null) return '';
+  return String(v).trim();
+}
+
+function isJamiRow(row) {
+  const t = cellStr(row && row[0]).toLowerCase();
+  return /^(жами|jami|итого|jami\b)/.test(t) || t.includes('жами');
+}
+
+function sheetToAoa(sheet) {
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+}
+
+function detectMonthYearFromAoa(aoa) {
+  for (let i = 0; i < Math.min(8, aoa.length); i++) {
+    const line = (aoa[i] || []).map(cellStr).join(' ').toLowerCase();
+    const yearM = line.match(/20\d{2}/);
+    if (!yearM) continue;
+    let month = null;
+    Object.keys(CYR_MONTHS).forEach(k => {
+      if (line.includes(k)) month = CYR_MONTHS[k];
+    });
+    if (month) return { year: Number(yearM[0]), month };
+  }
+  return null;
+}
+
+function detectPlateFromAoa(aoa) {
+  for (let i = 0; i < Math.min(8, aoa.length); i++) {
+    const line = (aoa[i] || []).map(cellStr).join(' ');
+    const m = line.match(/(\d{2}\s*\d{3}\s*[A-Za-zА-Яа-я]{2,4})/);
+    if (m) return canonicalPlate(m[1].replace(/\s+/g, ' ').toUpperCase());
+  }
+  return '';
+}
+
+function rowHasWaybillData(row) {
+  if (!row) return false;
+  if (isJamiRow(row)) return false;
+  const day = n(row[0]);
+  if (day < 1 || day > 31) return false;
+  return n(row[3]) || n(row[4]) || n(row[9]) || n(row[10]) || cellStr(row[2]);
+}
+
+function findWaybillStart(aoa) {
+  for (let i = 0; i < Math.min(25, aoa.length); i++) {
+    const line = (aoa[i] || []).map(cellStr).join(' ').toLowerCase();
+    if (/иш\s*куни|kun\b|операция/.test(line)) return i + 1;
+  }
+  for (let i = 0; i < aoa.length; i++) {
+    if (rowHasWaybillData(aoa[i])) return i;
+  }
+  return -1;
+}
+
+function inferImportMode(row, car) {
+  const gasIn = n(row[3]);
+  const benIn = n(row[4]);
+  const gasKm = n(row[10]);
+  const benUsed = n(row[12]);
+  if (car.fuelType === 'dizel' || car.fuelType === 'dizel_gaz') {
+    if (gasIn > 0 || gasKm > 0) return car.fuelType === 'dizel_gaz' ? 'aralash' : 'dizel';
+    return 'dizel';
+  }
+  if (benIn > 0 && (gasIn > 0 || gasKm > 0)) return 'aralash';
+  if (benIn > 0 || benUsed > 0) return 'benzin';
+  return 'gaz';
+}
+
+function parseWaybillAoa(aoa, car) {
+  const start = findWaybillStart(aoa);
+  if (start < 0) return null;
+  const days = {};
+  const params = {};
+  let first = true;
+  for (let i = start; i < aoa.length; i++) {
+    const row = aoa[i] || [];
+    if (isJamiRow(row)) break;
+    if (!rowHasWaybillData(row)) continue;
+    const d = n(row[0]);
+    const day = {
+      station: cellStr(row[2]),
+      gasIn: n(row[3]),
+      benzinIn: n(row[4]),
+      km: n(row[9]),
+      mode: inferImportMode(row, car)
+    };
+    if (n(row[13])) day.extra = n(row[13]);
+    if (day.km) day.kmSrc = 'user';
+    if (first) {
+      if (n(row[5])) params.gasStart = n(row[5]);
+      if (n(row[6])) params.benzinStart = n(row[6]);
+      if (n(row[7])) params.gasNorm = n(row[7]);
+      if (n(row[8])) params.benzinNorm = n(row[8]);
+      first = false;
+    }
+    days[d] = day;
+  }
+  if (!Object.keys(days).length) return null;
+  return {
+    days,
+    params,
+    meta: {
+      monthYear: detectMonthYearFromAoa(aoa),
+      plate: detectPlateFromAoa(aoa),
+      sheetType: 'waybill'
+    }
+  };
+}
+
+function parseKunlikAoa(aoa) {
+  let start = 0;
+  const h = cellStr(aoa[0] && aoa[0][0]).toLowerCase();
+  if (h === 'kun' || h === 'кun') start = 1;
+  const days = {};
+  for (let i = start; i < aoa.length; i++) {
+    const row = aoa[i] || [];
+    if (isJamiRow(row)) break;
+    const d = n(row[0]);
+    if (d < 1 || d > 31) continue;
+    const day = {
+      km: n(row[1]),
+      odo: n(row[2]),
+      mode: cellStr(row[3]) || undefined,
+      station: cellStr(row[4]),
+      gasIn: n(row[5]),
+      benzinIn: n(row[7]),
+      extra: n(row[13]),
+      note: cellStr(row[14])
+    };
+    if (day.km) day.kmSrc = 'user';
+    if (!day.km && !day.odo && !day.gasIn && !day.benzinIn && !day.station) continue;
+    days[d] = day;
+  }
+  if (!Object.keys(days).length) return null;
+  return { days, params: {}, meta: { sheetType: 'kunlik' } };
+}
+
+function pickImportSheet(wb, plate) {
+  if (wb.SheetNames.includes('Kunlik')) {
+    return { name: 'Kunlik', kind: 'kunlik' };
+  }
+  const code = plateCode(plate);
+  if (code) {
+    const hit = wb.SheetNames.find(n => n.includes(code));
+    if (hit) return { name: hit, kind: 'waybill' };
+  }
+  for (const name of wb.SheetNames) {
+    const aoa = sheetToAoa(wb.Sheets[name]);
+    if (findWaybillStart(aoa) >= 0) return { name, kind: 'waybill' };
+  }
+  return { name: wb.SheetNames[0], kind: 'waybill' };
+}
+
+function parseExcelWorkbook(wb, plate) {
+  const pick = pickImportSheet(wb, plate);
+  const aoa = sheetToAoa(wb.Sheets[pick.name]);
+  const car = getCar(plate);
+  let parsed = pick.kind === 'kunlik' ? parseKunlikAoa(aoa) : parseWaybillAoa(aoa, car);
+  if (!parsed && pick.kind === 'waybill') parsed = parseKunlikAoa(aoa);
+  if (!parsed) throw new Error('Excel formati tanilmadi (putevoy list yoki Kunlik varaq kerak)');
+  parsed.meta = Object.assign({ sheet: pick.name }, parsed.meta || {});
+  return parsed;
+}
+
+function applyExcelImport(parsed, plate) {
+  const car = getCar(plate);
+  const p = parsed.params || {};
+  if (p.gasNorm) car.gasNorm = p.gasNorm;
+  if (p.benzinNorm) car.benzinNorm = p.benzinNorm;
+  if (p.gasStart || p.gasStart === 0) car.gasStart = p.gasStart;
+  if (p.benzinStart || p.benzinStart === 0) car.benzinStart = p.benzinStart;
+  if (p.odoStart) car.odoStart = p.odoStart;
+  let nDays = 0;
+  Object.keys(parsed.days).forEach(k => {
+    const d = Number(k);
+    const src = parsed.days[k];
+    const row = ensureDay(car, d);
+    let touched = false;
+    if (src.km) { row.km = src.km; row.kmSrc = src.kmSrc || 'user'; touched = true; }
+    if (src.odo) { row.odo = src.odo; touched = true; }
+    if (src.mode) { row.mode = src.mode; touched = true; }
+    if (src.station) {
+      row.station = src.station;
+      STATE.meta.stations = STATE.meta.stations || [];
+      if (!STATE.meta.stations.includes(src.station)) STATE.meta.stations.push(src.station);
+      touched = true;
+    }
+    if (src.gasIn) { row.gasIn = src.gasIn; touched = true; }
+    if (src.benzinIn) { row.benzinIn = src.benzinIn; touched = true; }
+    if (src.gasPrice) row.gasPrice = src.gasPrice;
+    if (src.benzinPrice) row.benzinPrice = src.benzinPrice;
+    if (src.extra) { row.extra = src.extra; touched = true; }
+    if (src.note) { row.note = src.note; touched = true; }
+    if (touched) nDays += 1;
+  });
+  syncParamsToMeta(plate, car);
+  return nDays;
+}
+
+function importPreviewText(parsed, plate) {
+  const nDays = Object.keys(parsed.days).length;
+  const my = parsed.meta && parsed.meta.monthYear;
+  const bits = [nDays + ' kun topildi', 'varaq: ' + (parsed.meta.sheet || '—')];
+  if (my) bits.push(UZ_M_LOW[my.month - 1] + ' ' + my.year);
+  if (parsed.meta.plate && plateCompact(parsed.meta.plate) !== plateCompact(plate)) {
+    bits.push('Eslatma: Excelda ' + parsed.meta.plate);
+  }
+  return bits.join(' · ');
+}
+
+function fillImportMonthSelect() {
+  const sel = document.getElementById('import-month');
+  if (!sel || sel.options.length) return;
+  UZ_M_LOW.forEach((m, i) => {
+    const o = document.createElement('option');
+    o.value = String(i + 1);
+    o.textContent = m.charAt(0).toUpperCase() + m.slice(1);
+    sel.appendChild(o);
+  });
+}
+
+function openImportModal() {
+  if (typeof XLSX === 'undefined') { toast('Excel kutubxonasi yuklanmadi'); return; }
+  fillImportMonthSelect();
+  const modal = document.getElementById('modal-excel-import');
+  const [y, m] = (STATE.month || todayYmd().slice(0, 7)).split('-').map(Number);
+  document.getElementById('import-month').value = String(m);
+  document.getElementById('import-year').value = String(y);
+  document.getElementById('import-car').value = STATE.car || '';
+  IMPORT.file = null;
+  IMPORT.parsed = null;
+  const fileIn = document.getElementById('import-excel-file');
+  if (fileIn) fileIn.value = '';
+  const lbl = document.getElementById('import-file-label');
+  const txt = document.getElementById('import-file-text');
+  if (lbl) lbl.classList.remove('has');
+  if (txt) txt.textContent = 'Excel faylni tanlang (.xlsx)';
+  const prev = document.getElementById('import-preview');
+  if (prev) { prev.style.display = 'none'; prev.textContent = ''; }
+  if (modal) modal.classList.add('open');
+}
+
+function closeImportModal() {
+  const modal = document.getElementById('modal-excel-import');
+  if (modal) modal.classList.remove('open');
+  IMPORT.file = null;
+  IMPORT.parsed = null;
+}
+
+async function previewImportFile(file) {
+  if (!file) return;
+  IMPORT.file = file;
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data, { type: 'array' });
+  const plate = document.getElementById('import-car').value || STATE.car;
+  IMPORT.parsed = parseExcelWorkbook(wb, plate);
+  const prev = document.getElementById('import-preview');
+  const txt = document.getElementById('import-file-text');
+  const lbl = document.getElementById('import-file-label');
+  if (txt) txt.textContent = file.name;
+  if (lbl) lbl.classList.add('has');
+  if (prev) {
+    prev.style.display = 'block';
+    prev.textContent = importPreviewText(IMPORT.parsed, plate);
+  }
+}
+
+async function applyExcelImportModal() {
+  if (!IMPORT.parsed) { toast('Avval Excel fayl tanlang'); return; }
+  const plate = document.getElementById('import-car').value || STATE.car;
+  if (!plate) { toast('Mashina tanlanmagan'); return; }
+  const ym = document.getElementById('import-year').value + '-' +
+    String(document.getElementById('import-month').value).padStart(2, '0');
+  flushFormToState();
+  if (STATE.month !== ym) await changeMonth(ym);
+  if (STATE.car !== plate) {
+    STATE.car = plate;
+    renderChips();
+  }
+  const nDays = applyExcelImport(IMPORT.parsed, plate);
+  markDirty();
+  writeParams();
+  renderDailyTable();
+  paintCalc();
+  await saveMeta();
+  await saveMonth();
+  closeImportModal();
+  toast(nDays + ' kun Excel dan yuklandi');
+}
+
 let FUEL_PDF_FONTS = null;
 let FUEL_PDF_FONT = 'helvetica';
 
@@ -2167,6 +2465,28 @@ function bind() {
   document.getElementById('btn-add-change').onclick = addChange;
   document.getElementById('btn-drv-change').onclick = addDriverChange;
   document.getElementById('btn-excel').onclick = exportExcel;
+  const openImp = () => openImportModal();
+  const btnImp = document.getElementById('btn-excel-import');
+  const btnImp2 = document.getElementById('btn-import-excel');
+  if (btnImp) btnImp.onclick = openImp;
+  if (btnImp2) btnImp2.onclick = openImp;
+  const impCancel = document.getElementById('import-cancel');
+  if (impCancel) impCancel.onclick = closeImportModal;
+  const impApply = document.getElementById('import-apply');
+  if (impApply) impApply.onclick = () => applyExcelImportModal().catch(err => toast(err.message));
+  const impFile = document.getElementById('import-excel-file');
+  if (impFile) {
+    impFile.onchange = e => {
+      const f = e.target.files && e.target.files[0];
+      if (f) previewImportFile(f).catch(err => toast(err.message));
+    };
+  }
+  const impModal = document.getElementById('modal-excel-import');
+  if (impModal) {
+    impModal.addEventListener('click', e => {
+      if (e.target === impModal) closeImportModal();
+    });
+  }
   document.getElementById('btn-backup').onclick = downloadBackup;
   document.getElementById('btn-restore').onclick = () => document.getElementById('restore-file').click();
   document.getElementById('restore-file').onchange = e => {
