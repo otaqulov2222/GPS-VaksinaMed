@@ -565,7 +565,7 @@ html, body { overflow-x: hidden; max-width: 100%; }
       <div style="font-size:28px;line-height:1;">📊</div>
       <div>
         <h3>Excel orqali to'ldirish</h3>
-        <p>Putevoy list (.xlsx) yuklang — km, zapravka, qoldiq va norma kunlik jadvalga avtomatik tushadi. Faqat tanlangan mashina va oy yangilanadi.</p>
+        <p>Putevoy list (.xlsx) yuklang. Fayldagi barcha mashina varaqlaridan km, zapravka, qoldiq va norma avtomatik tushadi. Spidometr kunlik km bo'yicha hisoblanadi.</p>
       </div>
     </div>
     <div class="modal-body">
@@ -578,10 +578,6 @@ html, body { overflow-x: hidden; max-width: 100%; }
           <label>Yil</label>
           <input type="number" id="import-year" min="2020" max="2035" step="1">
         </div>
-      </div>
-      <div class="fld">
-        <label>Mashina</label>
-        <input type="text" id="import-car" readonly>
       </div>
       <label class="modal-file" id="import-file-label">
         <input type="file" id="import-excel-file" accept=".xlsx,.xls,.xlsm">
@@ -596,12 +592,41 @@ html, body { overflow-x: hidden; max-width: 100%; }
   </div>
 </div>
 
+<div class="modal-bg" id="modal-excel-confirm">
+  <div class="modal-box" style="width:min(420px,100%)">
+    <div class="modal-head">
+      <div>
+        <h3>Amalni tasdiqlang</h3>
+        <p id="import-confirm-text"></p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ink btn-sm" type="button" id="import-confirm-no">Bekor</button>
+      <button class="btn btn-ok btn-sm" type="button" id="import-confirm-yes">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-excel-result">
+  <div class="modal-box" style="width:min(480px,100%)">
+    <div class="modal-head">
+      <div>
+        <h3>Amalni tasdiqlang</h3>
+        <p id="import-result-text" style="white-space:pre-wrap;line-height:1.5;"></p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ok btn-sm" type="button" id="import-result-ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="fleet-data.js?v=3"></script>
 <script src="auth.js?v=9"></script>
-<script src="fuel.js?v=21"></script>
+<script src="fuel.js?v=22"></script>
 <script src="journal.js?v=7"></script>
 </body>
 </html>
