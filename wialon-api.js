@@ -332,7 +332,28 @@ class WialonGPSClient {
     roundKm(v) {
         const x = Number(v);
         if (!Number.isFinite(x) || x <= 0) return 0;
-        return x;
+        // Boomerang UI bilan bir xil: 2 xona (81.36)
+        return Math.round((x + 1e-12) * 100) / 100;
+    }
+
+    kmFromWialon(num, label, valueText) {
+        let n = Number(num);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        const low = (String(label || '') + ' ' + String(valueText || '')).toLowerCase();
+        const isKm = /км|\bkm\b/.test(low);
+        const isM = /метр|(^|[^kк])m\b|(^|[^kк])м\b/.test(low);
+        if (isM && !isKm) n = n / 1000;
+        else if (n >= 10000) n = n / 1000;
+        return this.roundKm(n);
+    }
+
+    mileagePref(label) {
+        const k = String(label || '').toLowerCase();
+        if (k.includes('время') || k.includes('duration') || k.includes('скорост') || k.includes('speed')) return -1;
+        if (!(k.includes('пробег') || k.includes('mileage') || k.includes('masofa'))) return -1;
+        if (k.includes('поездк') || k.includes('in trips') || k.includes('в поезд')) return 3;
+        if (k.includes('всег') || k.includes('total') || k.includes('счетчик') || k.includes('counter')) return 1;
+        return 2;
     }
 
     roundSpd(v) {
@@ -366,8 +387,8 @@ class WialonGPSClient {
         return this.roundKm(inMeters ? rawSum / 1000 : rawSum);
     }
 
-    async resolveReportTemplate() {
-        if (this._reportTpl) return this._reportTpl;
+    async resolveReportTemplates() {
+        if (this._reportTpls) return this._reportTpls;
         const reportParams = {
             spec: {
                 itemsType: "avl_resource",
@@ -381,31 +402,30 @@ class WialonGPSClient {
             to: 0
         };
         const resResp = await this.sendRequest('core/search_items', reportParams);
-        let resourceId = null;
-        let templateId = null;
+        let trip = null, chrono = null, anyTpl = null;
         if (resResp && resResp.items && resResp.items.length > 0) {
             for (const res of resResp.items) {
-                if (res.rep) {
-                    for (const tid in res.rep) {
-                        const repName = (res.rep[tid].n || '').toLowerCase();
-                        if (repName.includes('поездк') || repName.includes('хронолог') || repName.includes('xronologiya') || repName.includes('trip')) {
-                            resourceId = res.id;
-                            templateId = tid;
-                            break;
-                        }
-                    }
+                if (!res.rep) continue;
+                for (const tid in res.rep) {
+                    const repName = (res.rep[tid].n || '').toLowerCase();
+                    const pair = { resourceId: res.id, templateId: parseInt(tid, 10) };
+                    if (!anyTpl) anyTpl = pair;
+                    if (!trip && (repName.includes('поездк') || repName.includes('trip'))) trip = pair;
+                    if (!chrono && (repName.includes('хронолог') || repName.includes('xronologiya') || repName.includes('chronolog'))) chrono = pair;
                 }
-                if (resourceId) break;
-            }
-            if (!resourceId && resResp.items[0].rep) {
-                resourceId = resResp.items[0].id;
-                templateId = Object.keys(resResp.items[0].rep)[0];
             }
         }
-        if (!resourceId || !templateId) {
-            throw new Error("Wialon tizimida 'Поездки' hisobot shabloni topilmadi.");
+        if (!anyTpl) {
+            throw new Error("Wialon tizimida hisobot shabloni topilmadi.");
         }
-        this._reportTpl = { resourceId, templateId: parseInt(templateId, 10) };
+        this._reportTpls = { trip, chrono, any: anyTpl };
+        return this._reportTpls;
+    }
+
+    async resolveReportTemplate() {
+        if (this._reportTpl) return this._reportTpl;
+        const t = await this.resolveReportTemplates();
+        this._reportTpl = t.chrono || t.trip || t.any;
         return this._reportTpl;
     }
 
@@ -435,37 +455,43 @@ class WialonGPSClient {
     }
 
     async reportDayMetrics(unitId, timeFrom, timeTo) {
-        const { resourceId, templateId } = await this.resolveReportTemplate();
+        const tpls = await this.resolveReportTemplates();
+        const tpl = tpls.trip || tpls.chrono || tpls.any;
         const execResp = await this.sendRequest('report/exec_report', {
-            reportResourceId: resourceId,
-            reportTemplateId: templateId,
+            reportResourceId: tpl.resourceId,
+            reportTemplateId: tpl.templateId,
             reportObjectId: unitId,
             reportObjectSecId: 0,
             interval: { flags: 0, from: timeFrom, to: timeTo }
         });
         const rr = (execResp && execResp.reportResult) || {};
-        const stats = this.emptyChronology().stats;
-        this.parseReportStats(rr.stats, { stats });
+        const bag = this.emptyChronology();
+        this.parseReportStats(rr.stats, bag);
         try { await this.sendRequest('report/cleanup_result', {}); } catch (e) {}
-        const km = this.roundKm(stats.probeg);
-        if (!km) return null;
+        const s = bag.stats;
+        if (!s.probeg && !s.poezdok && !s.maxSpeed) return null;
         return {
-            km,
-            maxSpeed: stats.maxSpeed || 0,
-            avgSpeed: stats.avgSpeed || 0,
-            trips: stats.poezdok || 0
+            km: this.roundKm(s.probeg),
+            maxSpeed: s.maxSpeed || 0,
+            avgSpeed: s.avgSpeed || 0,
+            trips: s.poezdok || 0,
+            stops: s.stoyanok || 0,
+            totalStop: s.totalStop || '—',
+            motoChas: s.motoChas || '—',
+            gas: s.gas || 0,
+            benzin: s.benzin || 0
         };
     }
 
     async dayMetrics(unitId, timeFrom, timeTo) {
-        const fromTrips = await this.officialDayMetrics(unitId, timeFrom, timeTo);
-        if (fromTrips && fromTrips.km) return fromTrips;
+        // Boomerang hisobot (Отчёт по поездкам) — to'liq stats
         try {
-            return await this.reportDayMetrics(unitId, timeFrom, timeTo);
+            const fromReport = await this.reportDayMetrics(unitId, timeFrom, timeTo);
+            if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) return fromReport;
         } catch (e) {
-            console.warn('report km:', e);
-            return null;
+            console.warn('report stats:', e);
         }
+        return await this.officialDayMetrics(unitId, timeFrom, timeTo);
     }
 
     async getTripMetrics(unitId, timeFrom, timeTo) {
@@ -474,36 +500,42 @@ class WialonGPSClient {
 
     async applyTripMetrics(unitId, timeFrom, timeTo, chronology) {
         if (!chronology || !chronology.stats) return chronology;
-        const reportKm = this.roundKm(chronology.stats.probeg);
         try {
-            const m = await this.dayMetrics(unitId, timeFrom, timeTo);
-            if (m && m.km) {
-                chronology.stats.probeg = m.km;
+            const m = await this.reportDayMetrics(unitId, timeFrom, timeTo);
+            if (m) {
+                if (m.km) chronology.stats.probeg = m.km;
                 if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(Math.max(chronology.stats.maxSpeed || 0, m.maxSpeed));
                 if (m.avgSpeed) chronology.stats.avgSpeed = m.avgSpeed;
                 if (m.trips) chronology.stats.poezdok = m.trips;
-            } else if (reportKm) {
-                chronology.stats.probeg = reportKm;
+                if (m.stops && !chronology.stats.stoyanok) chronology.stats.stoyanok = m.stops;
+                if (m.totalStop && m.totalStop !== '—') chronology.stats.totalStop = m.totalStop;
+                if (m.motoChas && m.motoChas !== '—') chronology.stats.motoChas = m.motoChas;
+                if (m.gas && !chronology.stats.gas) chronology.stats.gas = m.gas;
+                if (m.benzin && !chronology.stats.benzin) chronology.stats.benzin = m.benzin;
             }
         } catch (e) {
             console.warn('day metrics:', e);
-            if (reportKm) chronology.stats.probeg = reportKm;
         }
         return chronology;
     }
 
     parseReportStats(statsPairs, chronology) {
+        let bestPref = -1;
+        let bestKm = 0;
         (statsPairs || []).forEach(pair => {
             if (!Array.isArray(pair) || pair.length < 2) return;
             const k = String(this.cellText(pair[0]) || pair[0] || '').toLowerCase();
             const raw = pair[1];
-            const v = this.cellText(raw);
+            const v = String(this.cellText(raw) || '').trim();
             const num = this.cellNum(raw);
             const blob = k + ' ' + v;
-            if ((k.includes('пробег') || k.includes('mileage') || k.includes('masofa')) && !k.includes('время') && num > 0) {
-                let km = num;
-                if (num > 500 && /m\b|метр/i.test(v)) km = num / 1000;
-                chronology.stats.probeg = this.roundKm(km);
+            const pref = this.mileagePref(k);
+            if (pref >= 0 && num > 0) {
+                const km = this.kmFromWialon(num, k, v);
+                if (km > 0 && pref >= bestPref) {
+                    bestPref = pref;
+                    bestKm = km;
+                }
             }
             if ((k.includes('средн') || k.includes('avg') || k.includes('average') || k.includes("o'rtacha") || k.includes('ortacha')) && (k.includes('скорост') || k.includes('speed') || k.includes('tezlik'))) {
                 if (num > 0) chronology.stats.avgSpeed = this.roundSpd(num);
@@ -511,24 +543,46 @@ class WialonGPSClient {
             if ((k.includes('макс') || k.includes('max')) && (k.includes('скорост') || k.includes('speed') || k.includes('tezlik') || /km\/h|км\/ч/i.test(v))) {
                 if (num > 0) chronology.stats.maxSpeed = this.roundSpd(num);
             }
-            if (k.includes('поезд') && !k.includes('пробег') && !k.includes('скорост')) {
-                if (num > 0) chronology.stats.poezdok = Math.round(num);
+            if ((k.includes('количество') || k.includes('count') || k.includes('soni')) && (k.includes('поезд') || k.includes('trip')) && num > 0) {
+                chronology.stats.poezdok = Math.round(num);
+            } else if (k.includes('поезд') && !k.includes('пробег') && !k.includes('скорост') && num > 0 && !chronology.stats.poezdok) {
+                chronology.stats.poezdok = Math.round(num);
             }
             if (k.includes('стоян') || k.includes('parking') || k.includes('stay')) {
-                if (k.includes('длитель') || k.includes('duration') || k.includes('время')) {
-                    if (v.match(/\d+:\d+/)) chronology.stats.totalStop = v.trim();
+                if (k.includes('длитель') || k.includes('продолж') || k.includes('duration') || k.includes('время')) {
+                    const m = v.match(/\d+:\d+(?::\d+)?/);
+                    if (m) chronology.stats.totalStop = m[0];
                 } else if (num > 0) {
                     chronology.stats.stoyanok = Math.round(num);
                 }
             }
-            if (k.includes('движен') || k.includes('мото') || k.includes('moto')) {
-                if (v.match(/\d+:\d+/)) chronology.stats.motoChas = v.trim();
+            if ((k.includes('движен') || k.includes('мото') || k.includes('moto') || k.includes('engine')) && !k.includes('стоян')) {
+                const m = v.match(/\d+:\d+(?::\d+)?/);
+                if (m) chronology.stats.motoChas = m[0];
             }
             if ((k.includes('расход') || k.includes('потрач') || k.includes('fuel') || k.includes('топлив') || k.includes('sarf')) && num > 0) {
                 if (/м³|m3|куб|газ|метан|cнг|cng/i.test(blob)) chronology.stats.gas = this.roundFuel(num);
                 else if (/л\b|литр|бензин|дизел|diesel|petrol/i.test(blob)) chronology.stats.benzin = this.roundFuel(num);
             }
         });
+        if (bestKm > 0) chronology.stats.probeg = bestKm;
+    }
+
+    mergeReportStats(base, extra) {
+        if (!extra || !extra.stats) return base;
+        const out = base || this.emptyChronology();
+        const s = out.stats;
+        const e = extra.stats;
+        if (e.probeg) s.probeg = e.probeg;
+        if (e.maxSpeed) s.maxSpeed = e.maxSpeed;
+        if (e.avgSpeed) s.avgSpeed = e.avgSpeed;
+        if (e.poezdok) s.poezdok = e.poezdok;
+        if (e.stoyanok && !s.stoyanok) s.stoyanok = e.stoyanok;
+        if (e.totalStop && e.totalStop !== '—') s.totalStop = e.totalStop;
+        if (e.motoChas && e.motoChas !== '—') s.motoChas = e.motoChas;
+        if (e.gas && !s.gas) s.gas = e.gas;
+        if (e.benzin && !s.benzin) s.benzin = e.benzin;
+        return out;
     }
 
     parseChronologyRow(r) {
@@ -614,27 +668,54 @@ class WialonGPSClient {
             .forEach(applyChrono);
 
         if (!chronology.stops.length) {
-            loaded.filter(x => x.tbl.name === 'unit_stays')
-                .forEach(block => {
-                    block.rows.forEach(r => {
-                        const c = r.c || [];
-                        const startCell = c[2];
-                        const endCell = c[3];
-                        const loc = this.cellCoord(startCell);
-                        chronology.stops.push({
-                            num: chronology.stops.length + 1,
-                            type: 'stop',
-                            place: this.cellText(c[5]) || this.cellText(c[1]) || 'Noma\'lum manzil',
-                            inTime: this.formatClock(this.cellText(startCell)),
-                            outTime: this.formatClock(this.cellText(endCell)),
-                            duration: this.cellText(c[4] || c[5] || ''),
-                            lat: loc.lat,
-                            lng: loc.lng
-                        });
+            loaded.filter(x =>
+                x.tbl.name === 'unit_stays' ||
+                x.tblName.includes('стоян') ||
+                x.tblName.includes('parking') ||
+                x.tblName.includes('stay')
+            ).forEach(block => {
+                const headers = (block.tbl.header || []).map(h => this.cellText(h).toLowerCase());
+                const col = (...keys) => {
+                    for (let i = 0; i < headers.length; i++) {
+                        if (keys.some(k => headers[i].includes(k))) return i;
+                    }
+                    return -1;
+                };
+                const iBegin = col('начал', 'begin', 'start', 'kirish', 'from');
+                const iEnd = col('окончан', 'конец', 'end', 'finish', 'chiqish', 'to');
+                const iDur = col('длитель', 'продолж', 'duration', 'davom');
+                const iLoc = col('местополож', 'location', 'адрес', 'address', 'joy');
+                block.rows.forEach(r => {
+                    const c = r.c || [];
+                    const pick = (i, fb) => (i >= 0 && i < c.length ? c[i] : fb);
+                    const begin = pick(iBegin, c[0]);
+                    const end = pick(iEnd, c[1]);
+                    const durC = pick(iDur, c[2]);
+                    let loc = pick(iLoc, c[3] || c[2]);
+                    let locXY = this.cellCoord(loc);
+                    if (!locXY.lat && !locXY.lng) {
+                        for (const cell of c) {
+                            const xy = this.cellCoord(cell);
+                            if (xy.lat || xy.lng) { locXY = xy; loc = cell; break; }
+                        }
+                    }
+                    chronology.stops.push({
+                        num: chronology.stops.length + 1,
+                        type: 'stop',
+                        place: this.cellText(loc) || 'Noma\'lum manzil',
+                        inTime: this.formatClock(this.cellText(begin)),
+                        outTime: this.formatClock(this.cellText(end)),
+                        duration: this.cellText(durC || ''),
+                        lat: locXY.lat,
+                        lng: locXY.lng
                     });
                 });
+            });
         }
 
+        let statsKmPref = this.mileagePref(
+            ((rr.stats || []).map(p => String(this.cellText(p && p[0]) || '')).find(k => this.mileagePref(k) >= 0)) || ''
+        );
         loaded.forEach(block => {
             const isTripTbl = block.tbl.name === 'unit_trips' || (block.tblName.includes('поезд') && !block.tblName.includes('хронолог') && block.tbl.name !== 'unit_chronology');
             if (!isTripTbl) return;
@@ -652,20 +733,24 @@ class WialonGPSClient {
                 const n = this.cellNum(cell);
                 const t = this.cellText(cell);
                 if (!n || n <= 0) return;
-                let km = n;
-                if (n > 500 && /m\b|метр/i.test(t)) km = n / 1000;
-                if (km > 0 && km < 800) sum += km;
+                const km = this.kmFromWialon(n, headers[kmIdx] || '', t);
+                if (km > 0 && km < 2000) sum += km;
             });
-            if (sum > 0) chronology.stats.probeg = this.roundKm(sum);
             const tot = block.tbl.total;
             const totCells = Array.isArray(tot) ? tot : (tot && tot.c) || [];
+            let totKm = 0;
             if (totCells[kmIdx] != null) {
-                const tn = this.cellNum(totCells[kmIdx]);
-                if (tn > 0 && tn < 800) chronology.stats.probeg = this.roundKm(tn > 500 ? tn / 1000 : tn);
+                totKm = this.kmFromWialon(this.cellNum(totCells[kmIdx]), headers[kmIdx] || '', this.cellText(totCells[kmIdx]));
+            }
+            const tripKm = this.roundKm(totKm || sum);
+            // Statsda «poezdkalardagi yurish» bo'lsa — jadval yig'indisi bilan pastroq/noaniq qiymatga almashtirmaslik
+            if (tripKm > 0 && (!chronology.stats.probeg || statsKmPref < 3)) {
+                chronology.stats.probeg = tripKm;
             }
         });
 
-        if (!chronology.stats.stoyanok) chronology.stats.stoyanok = chronology.stops.length;
+        if (chronology.stops.length) chronology.stats.stoyanok = chronology.stops.length;
+        else if (!chronology.stats.stoyanok) chronology.stats.stoyanok = 0;
         if (!chronology.stats.poezdok) chronology.stats.poezdok = chronology.trips.length;
 
         try { await this.sendRequest('report/cleanup_result', {}); } catch (e) {}

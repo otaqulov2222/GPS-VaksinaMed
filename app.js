@@ -946,20 +946,28 @@ async function refreshDayKm(dateVal) {
             const oldKm = Number(st.probeg) || 0;
             let metrics = null;
             try {
-                metrics = await wialonGPS.getTripMetrics(unit.id, timeFrom, timeTo);
+                metrics = await wialonGPS.reportDayMetrics(unit.id, timeFrom, timeTo);
+                if (!metrics || !metrics.km) {
+                    metrics = await wialonGPS.getTripMetrics(unit.id, timeFrom, timeTo);
+                }
             } catch (e) {}
-            if (!metrics || !metrics.km) continue;
-            st.probeg = metrics.km;
+            if (!metrics || !(metrics.km || metrics.trips || metrics.maxSpeed)) continue;
+            if (metrics.km) st.probeg = metrics.km;
             if (metrics.maxSpeed) st.maxSpeed = Math.max(Number(st.maxSpeed) || 0, metrics.maxSpeed);
             if (metrics.avgSpeed) st.avgSpeed = metrics.avgSpeed;
             if (metrics.trips) st.poezdok = metrics.trips;
+            if (metrics.stops && !st.stoyanok) st.stoyanok = metrics.stops;
+            if (metrics.totalStop && metrics.totalStop !== '—') st.totalStop = metrics.totalStop;
+            if (metrics.motoChas && metrics.motoChas !== '—') st.motoChas = metrics.motoChas;
+            if (metrics.gas && !st.gas) st.gas = metrics.gas;
+            if (metrics.benzin && !st.benzin) st.benzin = metrics.benzin;
             if (Math.abs((st.probeg || 0) - oldKm) >= 0.01) nFix += 1;
         }
         if (nFix) {
             saveAll();
             if (window.VMOffice) VMOffice.saveReport(dateVal);
             if (STATE.currentDate === dateVal) refreshUI();
-            showToast('GPS km yangilandi: ' + nFix + ' ta mashina', 'success');
+            showToast('GPS ko\'rsatkichlar yangilandi: ' + nFix + ' ta mashina', 'success');
         }
     } catch (e) {
         console.warn('km refresh:', e);

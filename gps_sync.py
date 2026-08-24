@@ -231,7 +231,7 @@ class WialonClient:
         )
         return r.get("items") or []
 
-    def resolve_template(self):
+    def resolve_templates(self):
         if self._tpl:
             return self._tpl
         r = self._call(
@@ -250,25 +250,59 @@ class WialonClient:
             },
         )
         resources = r.get("items") or []
-        resource_id = template_id = None
+        trip = chrono = any_tpl = None
         for res in resources:
             rep = res.get("rep") or {}
             for tid, tdata in rep.items():
                 name = str((tdata or {}).get("n") or "").lower()
-                if "хронолог" in name or "xronologiya" in name or "поездк" in name:
-                    resource_id, template_id = res["id"], tid
-                    break
-            if resource_id:
-                break
-        if not resource_id and resources:
-            rep = resources[0].get("rep") or {}
-            if rep:
-                resource_id = resources[0]["id"]
-                template_id = next(iter(rep.keys()))
-        if not resource_id:
+                pair = (res["id"], tid)
+                if not any_tpl:
+                    any_tpl = pair
+                if "поездк" in name or "trip" in name:
+                    if not trip:
+                        trip = pair
+                if "хронолог" in name or "xronologiya" in name or "chronolog" in name:
+                    if not chrono:
+                        chrono = pair
+        if not any_tpl:
             raise RuntimeError("Wialon report template topilmadi")
-        self._tpl = (resource_id, template_id)
+        self._tpl = {"trip": trip, "chrono": chrono, "any": any_tpl}
         return self._tpl
+
+    def resolve_template(self):
+        t = self.resolve_templates()
+        return t.get("chrono") or t.get("trip") or t.get("any")
+
+    @staticmethod
+    def km_from_wialon(num, label="", value_text=""):
+        """Boomerang qiymatini o'zgartirmasdan km ga o'tkazish (metr bo'lsa /1000)."""
+        try:
+            n = float(num)
+        except (TypeError, ValueError):
+            return 0.0
+        if n <= 0:
+            return 0.0
+        blob = ("%s %s" % (label, value_text)).lower()
+        is_m = bool(re.search(r"метр|(?<![kк])m\b|(?<![kк])м\b", blob))
+        is_km = "км" in blob or "km" in blob
+        if is_m and not is_km:
+            n = n / 1000.0
+        elif n >= 10000:
+            n = n / 1000.0
+        return round(n + 1e-12, 2)
+
+    @staticmethod
+    def mileage_pref(label):
+        k = str(label or "").lower()
+        if "время" in k or "duration" in k or "скорост" in k or "speed" in k:
+            return -1
+        if "пробег" not in k and "mileage" not in k and "masofa" not in k:
+            return -1
+        if "поездк" in k or "in trips" in k or "в поезд" in k:
+            return 3
+        if "всег" in k or "total" in k or "счетчик" in k or "counter" in k:
+            return 1
+        return 2
 
     @staticmethod
     def cell_text(v):
@@ -321,22 +355,7 @@ class WialonClient:
         rr = (exec_resp or {}).get("reportResult") or {}
         stats = {"probeg": 0, "maxSpeed": 0, "avgSpeed": 0, "poezdok": 0, "stoyanok": 0, "gas": 0, "benzin": 0, "motoChas": "—", "totalStop": "—"}
         stops = []
-        for pair in rr.get("stats") or []:
-            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
-                continue
-            k = self.cell_text(pair[0]).lower()
-            num = self.cell_num(pair[1])
-            if "пробег" in k or "masofa" in k or "mileage" in k:
-                if num > 0:
-                    stats["probeg"] = round(num if num < 500 else num / 1000, 2)
-            if "макс" in k and ("скорост" in k or "speed" in k or "tezlik" in k) and num > 0:
-                stats["maxSpeed"] = round(num, 1)
-            if ("средн" in k or "avg" in k) and ("скорост" in k or "speed" in k) and num > 0:
-                stats["avgSpeed"] = round(num, 1)
-            if "поезд" in k and num > 0:
-                stats["poezdok"] = int(num)
-            if "стоян" in k and num > 0:
-                stats["stoyanok"] = int(num)
+        self.apply_report_stats(rr.get("stats") or [], stats)
 
         tables = rr.get("tables") or []
         loaded = []
@@ -344,7 +363,7 @@ class WialonClient:
             name = (str(tbl.get("name") or "") + " " + str(tbl.get("label") or "")).lower()
             loaded.append({"name": name, "tbl": tbl, "rows": self.fetch_rows(i, int(tbl.get("rows") or 0))})
 
-        def parse_row(r):
+        def parse_chrono_row(r):
             c = r.get("c") or []
             type_raw = self.cell_text(c[1] if len(c) > 1 else c[0]).lower()
             is_stop = bool(re.search(r"park|стоян|stop|останов|stay", type_raw))
@@ -353,49 +372,217 @@ class WialonClient:
             end_cell = c[4] if len(c) > 4 else None
             lat, lng = self.cell_coord(loc_cell or start_cell)
             place = self.cell_text(loc_cell) or self.cell_text(c[5] if len(c) > 5 else "") or "Noma'lum manzil"
-            in_t = re.search(r"\d{1,2}:\d{2}", self.cell_text(start_cell))
-            out_t = re.search(r"\d{1,2}:\d{2}", self.cell_text(end_cell))
+            if is_coord_place(place) and (lat or lng):
+                place = "%.5f, %.5f" % (lat, lng)
+            in_t = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", self.cell_text(start_cell))
+            out_t = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", self.cell_text(end_cell))
+            dur = self.cell_text(c[6] if len(c) > 6 else c[5] if len(c) > 5 else "")
             return {
                 "is_stop": is_stop,
                 "place": place,
-                "inTime": in_t.group(0) if in_t else "",
-                "outTime": out_t.group(0) if out_t else "",
-                "duration": self.cell_text(c[6] if len(c) > 6 else c[5] if len(c) > 5 else ""),
+                "inTime": (in_t.group(0)[:5] if in_t else ""),
+                "outTime": (out_t.group(0)[:5] if out_t else ""),
+                "duration": dur,
                 "lat": lat,
                 "lng": lng,
             }
 
+        def parse_stays_block(block):
+            headers = [self.cell_text(h).lower() for h in (block["tbl"].get("header") or [])]
+            def col(*keys):
+                for i, h in enumerate(headers):
+                    if any(k in h for k in keys):
+                        return i
+                return -1
+            i_begin = col("начал", "begin", "start", "kirish", "from")
+            i_end = col("окончан", "конец", "end", "finish", "chiqish", "to")
+            i_dur = col("длитель", "продолж", "duration", "davom")
+            i_loc = col("местополож", "location", "адрес", "address", "joy", "манзил")
+            out = []
+            for r in block["rows"]:
+                c = r.get("c") or []
+                def cell(i, fallback=None):
+                    if i is not None and i >= 0 and i < len(c):
+                        return c[i]
+                    return fallback
+                begin = cell(i_begin, c[0] if c else None)
+                end = cell(i_end, c[1] if len(c) > 1 else None)
+                dur_c = cell(i_dur, c[2] if len(c) > 2 else None)
+                loc = cell(i_loc, c[3] if len(c) > 3 else (c[2] if len(c) > 2 else None))
+                lat, lng = self.cell_coord(loc)
+                if not lat and not lng:
+                    for cell_v in c:
+                        y, x = self.cell_coord(cell_v)
+                        if y or x:
+                            lat, lng = y, x
+                            if not self.cell_text(loc):
+                                loc = cell_v
+                            break
+                place = self.cell_text(loc) or "Noma'lum manzil"
+                if is_coord_place(place) and (lat or lng):
+                    place = "%.5f, %.5f" % (lat, lng)
+                in_t = re.search(r"\d{1,2}:\d{2}", self.cell_text(begin))
+                out_t = re.search(r"\d{1,2}:\d{2}", self.cell_text(end))
+                out.append({
+                    "place": place,
+                    "inTime": in_t.group(0) if in_t else "",
+                    "outTime": out_t.group(0) if out_t else "",
+                    "duration": self.cell_text(dur_c),
+                    "lat": lat,
+                    "lng": lng,
+                })
+            return out
+
         for block in loaded:
-            if "chron" in block["name"] or "хронолог" in block["name"]:
+            if "chron" in block["name"] or "хронолог" in block["name"] or block["tbl"].get("name") == "unit_chronology":
                 for r in block["rows"]:
-                    p = parse_row(r)
+                    p = parse_chrono_row(r)
                     if p["is_stop"]:
-                        stops.append(p)
+                        stops.append({k: v for k, v in p.items() if k != "is_stop"})
 
         if not stops:
             for block in loaded:
-                if block["tbl"].get("name") == "unit_stays":
-                    for r in block["rows"]:
-                        c = r.get("c") or []
-                        lat, lng = self.cell_coord(c[2] if len(c) > 2 else None)
-                        in_t = re.search(r"\d{1,2}:\d{2}", self.cell_text(c[2] if len(c) > 2 else ""))
-                        out_t = re.search(r"\d{1,2}:\d{2}", self.cell_text(c[3] if len(c) > 3 else ""))
-                        stops.append({
-                            "place": self.cell_text(c[5] if len(c) > 5 else c[1] if len(c) > 1 else "") or "Noma'lum manzil",
-                            "inTime": in_t.group(0) if in_t else "",
-                            "outTime": out_t.group(0) if out_t else "",
-                            "duration": self.cell_text(c[4] if len(c) > 4 else ""),
-                            "lat": lat,
-                            "lng": lng,
-                        })
+                tname = str(block["tbl"].get("name") or "")
+                if tname == "unit_stays" or "стоян" in block["name"] or "parking" in block["name"] or "stay" in block["name"]:
+                    stops.extend(parse_stays_block(block))
 
-        if not stats["stoyanok"]:
+        # Haqiqiy to'xtashlar soni — Boomerang chronologiyadan
+        if stops:
             stats["stoyanok"] = len(stops)
+        elif not stats["stoyanok"]:
+            stats["stoyanok"] = 0
         try:
             self._call("report/cleanup_result", {})
         except Exception:
             pass
+        trip_stats = self.fetch_trip_report_stats(unit_id, date_str)
+        if trip_stats:
+            # stoyanok ni trip hisobotidan ustidan yozmaslik — chronologiya asosiy
+            trip_stats = dict(trip_stats)
+            if stops:
+                trip_stats.pop("stoyanok", None)
+            stats = self.merge_stats(stats, trip_stats)
         return {"stats": stats, "stops": stops}
+
+    def apply_report_stats(self, pairs, stats):
+        best_pref, best_km = -1, 0.0
+        for pair in pairs or []:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            k = self.cell_text(pair[0]).lower()
+            val = pair[1]
+            num = self.cell_num(val)
+            txt = self.cell_text(val).strip()
+            pref = self.mileage_pref(k)
+            if pref >= 0 and num > 0:
+                km = self.km_from_wialon(num, k, txt)
+                if km > 0 and pref >= best_pref:
+                    best_pref, best_km = pref, km
+            if "макс" in k and ("скорост" in k or "speed" in k or "tezlik" in k) and num > 0:
+                stats["maxSpeed"] = round(num, 1)
+            if ("средн" in k or "avg" in k or "average" in k) and ("скорост" in k or "speed" in k or "tezlik" in k) and num > 0:
+                stats["avgSpeed"] = round(num, 1)
+            if ("количество" in k or "count" in k or "soni" in k) and ("поезд" in k or "trip" in k) and num > 0:
+                stats["poezdok"] = int(num)
+            elif "поезд" in k and "пробег" not in k and "скорост" not in k and num > 0 and not stats.get("poezdok"):
+                stats["poezdok"] = int(num)
+            if "стоян" in k or "parking" in k or "stay" in k:
+                if ("длитель" in k or "продолж" in k or "duration" in k or "время" in k) and re.search(r"\d+:\d+", txt):
+                    stats["totalStop"] = re.search(r"\d+:\d+(?::\d+)?", txt).group(0)
+                elif num > 0 and "длитель" not in k and "продолж" not in k and "время" not in k:
+                    stats["stoyanok"] = int(num)
+            if ("движен" in k or "мото" in k or "moto" in k or "engine" in k) and re.search(r"\d+:\d+", txt):
+                if "стоян" not in k:
+                    stats["motoChas"] = re.search(r"\d+:\d+(?::\d+)?", txt).group(0)
+            blob = k + " " + txt
+            if ("расход" in k or "потрач" in k or "fuel" in k or "топлив" in k or "sarf" in k) and num > 0:
+                if re.search(r"м³|m3|куб|газ|метан|cнг|cng", blob, re.I):
+                    stats["gas"] = num
+                elif re.search(r"л\b|литр|бензин|дизел|diesel|petrol", blob, re.I):
+                    stats["benzin"] = num
+        if best_km > 0:
+            stats["probeg"] = best_km
+
+    def merge_stats(self, base, extra):
+        """Boomerang «Отчёт по поездкам» stats ustuvor."""
+        if not extra:
+            return base
+        out = dict(base or {})
+        for key in ("probeg", "maxSpeed", "avgSpeed", "poezdok"):
+            if extra.get(key):
+                out[key] = extra[key]
+        if extra.get("stoyanok") and not out.get("stoyanok"):
+            out["stoyanok"] = extra["stoyanok"]
+        for key in ("motoChas", "totalStop"):
+            if extra.get(key) and extra[key] not in ("", "—"):
+                out[key] = extra[key]
+        for key in ("gas", "benzin"):
+            if extra.get(key) and not out.get(key):
+                out[key] = extra[key]
+        return out
+
+    def fetch_trip_report_stats(self, unit_id, date_str):
+        tpls = self.resolve_templates()
+        trip = tpls.get("trip")
+        chrono = tpls.get("chrono") or tpls.get("any")
+        if not trip:
+            return None
+        # Bir xil shablon bo'lsa ham stats qayta o'qish foydali emas — skip
+        if trip == chrono:
+            return None
+        t_from, t_to = day_bounds_tashkent(date_str)
+        try:
+            exec_resp = self._call(
+                "report/exec_report",
+                {
+                    "reportResourceId": trip[0],
+                    "reportTemplateId": trip[1],
+                    "reportTemplate": None,
+                    "reportObjectId": unit_id,
+                    "reportObjectSecId": 0,
+                    "interval": {"from": t_from, "to": t_to, "flags": 0},
+                },
+            )
+            rr = (exec_resp or {}).get("reportResult") or {}
+            stats = {
+                "probeg": 0,
+                "maxSpeed": 0,
+                "avgSpeed": 0,
+                "poezdok": 0,
+                "stoyanok": 0,
+                "gas": 0,
+                "benzin": 0,
+                "motoChas": "—",
+                "totalStop": "—",
+            }
+            self.apply_report_stats(rr.get("stats") or [], stats)
+            # Jadval jami — qo'shimcha manba
+            for i, tbl in enumerate(rr.get("tables") or []):
+                name = (str(tbl.get("name") or "") + " " + str(tbl.get("label") or "")).lower()
+                if "поезд" not in name and tbl.get("name") != "unit_trips":
+                    continue
+                headers = [self.cell_text(h).lower() for h in (tbl.get("header") or [])]
+                km_idx = -1
+                for hi, h in enumerate(headers):
+                    if ("пробег" in h or "mileage" in h or "masofa" in h or "км" in h or "km" in h) and "скорост" not in h and "speed" not in h:
+                        km_idx = hi
+                        break
+                tot = tbl.get("total")
+                tot_cells = tot if isinstance(tot, list) else ((tot or {}).get("c") or [])
+                if km_idx >= 0 and km_idx < len(tot_cells):
+                    km = self.km_from_wialon(self.cell_num(tot_cells[km_idx]), headers[km_idx], self.cell_text(tot_cells[km_idx]))
+                    if km > 0:
+                        stats["probeg"] = km
+                rows_n = int(tbl.get("rows") or 0)
+                if rows_n and not stats.get("poezdok"):
+                    stats["poezdok"] = rows_n
+            try:
+                self._call("report/cleanup_result", {})
+            except Exception:
+                pass
+            return stats if stats.get("probeg") or stats.get("poezdok") or stats.get("maxSpeed") else None
+        except Exception:
+            return None
 
 
 def build_pharm_index(drivers, pharmacies):
