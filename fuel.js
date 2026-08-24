@@ -536,12 +536,9 @@ async function loadAll() {
   const serverCars = (month.data && month.data.cars) || {};
   const local = readLocalMonth(STATE.month);
   const adopted = adoptCars(serverCars);
-  const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
   const localCars = (local && local.cars) || {};
-  const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
-  // Server bo'sh qolib ketgan (deploy/restartdan keyin) holatlarda localStorage'dagi oxirgi kiritilgan
-  // ma'lumotni majburan qayta tiklash kerak.
-  if ((Object.keys(adopted || {}).length === 0 && localN > 0) || (localN > serverN)) {
+  const preferLocal = shouldPreferLocalMonth(local, serverCars, month.data && month.data.savedAt);
+  if (preferLocal) {
     STATE.cars = mergeCarMaps(adoptCars(localCars), adopted);
     STATE.dirty = true;
   } else {
@@ -558,7 +555,7 @@ async function loadAll() {
     clearTimeout(STATE.saveTimer);
     await saveMonth();
   }
-  renderAll();
+  await renderAll();
 }
 
 async function changeMonth(ym) {
@@ -575,16 +572,13 @@ async function changeMonth(ym) {
   const local = readLocalMonth(ym);
   const adopted = adoptCars(serverCars);
   const localCars = (local && local.cars) || {};
-  const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
-  const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
-  const localRestore = (Object.keys(adopted || {}).length === 0 && localN > 0);
-  STATE.cars =
-    (localRestore || localN > serverN)
-      ? mergeCarMaps(adoptCars(localCars), adopted)
-      : mergeCarMaps(adopted, localCars);
+  const preferLocal = shouldPreferLocalMonth(local, serverCars, month.data && month.data.savedAt);
+  STATE.cars = preferLocal
+    ? mergeCarMaps(adoptCars(localCars), adopted)
+    : mergeCarMaps(adopted, localCars);
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.gpsKm = gps.days || {};
-  STATE.dirty = localRestore || localN > serverN;
+  STATE.dirty = preferLocal;
   STATE.dayRep = 1;
   setMonthLabel();
   await autoChainMonth();
@@ -593,7 +587,7 @@ async function changeMonth(ym) {
     clearTimeout(STATE.saveTimer);
     await saveMonth();
   }
-  renderAll();
+  await renderAll();
 }
 
 function setMonthLabel() {
@@ -640,7 +634,34 @@ function flushFormToState() {
 function stripLocalFlags(car) {
   const out = Object.assign({}, car);
   delete out._fromServer;
+  delete out._replaceDays;
   return out;
+}
+
+function liquidFuelLabel(fuelType) {
+  if (fuelType === 'dizel' || fuelType === 'dizel_gaz') return 'DIZEL (l)';
+  return 'BENZIN (l)';
+}
+
+function parseSavedAt(v) {
+  if (!v) return 0;
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Local faqat: server bo'sh yoki local aniqroq yangi bo'lsa. */
+function shouldPreferLocalMonth(local, serverCars, serverSavedAt) {
+  const adopted = adoptCars(serverCars);
+  const localCars = (local && local.cars) || {};
+  const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
+  const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
+  if (localN === 0) return false;
+  if (serverN === 0 && Object.keys(adopted).length === 0) return true;
+  if (serverN === 0 && localN > 0) return true;
+  const localAt = parseSavedAt(local && local.savedAt);
+  const serverAt = parseSavedAt(serverSavedAt);
+  if (localAt > 0 && serverAt > 0) return localAt > serverAt + 2000;
+  return false;
 }
 
 function syncParamsToMeta(plate, car) {
@@ -662,9 +683,15 @@ function carsToSave(opts) {
   }
   const out = {};
   Object.keys(STATE.cars || {}).forEach(k => {
-    out[k] = stripLocalFlags(STATE.cars[k]);
+    const stripped = stripLocalFlags(STATE.cars[k]);
+    if (STATE.cars[k] && STATE.cars[k]._replaceDays) stripped.replaceDays = true;
+    out[k] = stripped;
   });
-  if (STATE.car) out[STATE.car] = stripLocalFlags(getCar(STATE.car));
+  if (STATE.car) {
+    const stripped = stripLocalFlags(getCar(STATE.car));
+    if (STATE.cars[STATE.car] && STATE.cars[STATE.car]._replaceDays) stripped.replaceDays = true;
+    out[STATE.car] = stripped;
+  }
   return out;
 }
 
@@ -680,7 +707,10 @@ async function saveMonth() {
       body: JSON.stringify(payload)
     });
     try { await saveMeta(); } catch (e) {}
-    Object.keys(STATE.cars || {}).forEach(k => { STATE.cars[k]._fromServer = true; });
+    Object.keys(STATE.cars || {}).forEach(k => {
+      STATE.cars[k]._fromServer = true;
+      delete STATE.cars[k]._replaceDays;
+    });
     STATE.dirty = false;
     STATE.yearMonths = {};
     writeLocalMonth();
@@ -1199,6 +1229,7 @@ function renderOfficial() {
           <tbody>${list.map((x, i) => {
             const gNeg = x.t.gasR < -0.0001 ? 'neg' : '';
             const bNeg = x.t.benR < -0.0001 ? 'neg' : '';
+            const liqLabel = liquidFuelLabel(x.car.fuelType);
             return `<tr class="row-gaz">
               <td rowspan="2">${i + 1}</td>
               <td rowspan="2">${esc(x.f.brand || '—')}</td>
@@ -1215,7 +1246,7 @@ function renderOfficial() {
               <td class="num" rowspan="2">${money(x.t.cost)}</td>
             </tr>
             <tr class="row-ben">
-              <td>BENZIN (l)</td>
+              <td>${esc(liqLabel)}</td>
               <td class="num">${fmt(x.car.benzinNorm, 2)}</td>
               <td class="num">${fmt(x.car.benzinStart, 4)}</td>
               <td class="num">${fmt(x.t.benzinIn, 4)}</td>
@@ -1341,7 +1372,7 @@ function renderGasAct() {
     return { n: i + 1, f, car, t };
   });
   const sum = rows.reduce((a, r) => {
-    a.start += n(r.car.gasStart); a.in += r.t.gasIn; a.km += r.t.km; a.used += r.t.gasUsed; a.end += r.t.gasR;
+    a.start += n(r.car.gasStart); a.in += r.t.gasIn; a.km += r.t.gasKm; a.used += r.t.gasUsed; a.end += r.t.gasR;
     return a;
   }, { start: 0, in: 0, km: 0, used: 0, end: 0 });
   document.getElementById('panel-gasact').innerHTML = `
@@ -1356,14 +1387,14 @@ function renderGasAct() {
           <thead><tr>
             <th>№</th><th>Mas'ul haydovchi F.I.Sh.</th><th>Avtomobil markasi</th><th>Davlat raqami</th>
             <th>${esc(startStr)} qoldiq (m³)</th><th>To'ldirilgan (m³)</th><th>Meyyor (100km, m³)</th>
-            <th>Bosib o'tgan (km)</th><th>Meyyor bo'yicha sarf (m³)</th><th>${esc(nextStr)} qoldiq (m³)</th>
+            <th>Gazda bosib o'tgan (km)</th><th>Meyyor bo'yicha sarf (m³)</th><th>${esc(nextStr)} qoldiq (m³)</th>
           </tr></thead>
           <tbody>${rows.map(r => `<tr>
             <td>${r.n}</td><td>${esc(r.f.name)}</td><td>${esc(r.f.brand || '—')}</td><td>${esc(plateDisp(r.f.car))}</td>
             <td class="num">${fmt(r.car.gasStart, 4)}</td>
             <td class="num">${fmt(r.t.gasIn, 4)}</td>
             <td class="num">${fmt(r.car.gasNorm, 2)}</td>
-            <td class="num">${fmt(r.t.km, 2)}</td>
+            <td class="num">${fmt(r.t.gasKm, 2)}</td>
             <td class="num">${fmt(r.t.gasUsed, 4)}</td>
             <td class="num ${remainClass(r.t.gasR)}">${fmt(r.t.gasR, 4)}</td>
           </tr>`).join('')}
@@ -1610,7 +1641,7 @@ function renderCars() {
   });
 }
 
-function renderAll() {
+async function renderAll() {
   renderDocsBadge();
   renderChips();
   writeParams();
@@ -1621,21 +1652,21 @@ function renderAll() {
   if (STATE.tab === 'official') renderOfficial();
   if (STATE.tab === 'stations') renderStations();
   if (STATE.tab === 'gasact') renderGasAct();
-  if (STATE.tab === 'year') renderYear();
+  if (STATE.tab === 'year') await renderYear();
   if (STATE.tab === 'docs') renderDocs();
   if (STATE.tab === 'journal' && window.VMJournal) window.VMJournal.render();
   if (STATE.tab === 'cars') renderCars();
 }
 
-function setTab(tab) {
+async function setTab(tab) {
   flushFormToState();
-  if (STATE.dirty) saveMonth();
+  if (STATE.dirty) await saveMonth();
   STATE.tab = tab;
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.getAttribute('data-tab') === tab));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
   const panel = document.getElementById('panel-' + tab);
   if (panel) panel.classList.add('on');
-  renderAll();
+  await renderAll();
 }
 
 function ensureDay(car, d) {
@@ -2402,7 +2433,10 @@ function fillOdoFromKm(car) {
 
 function applyExcelImport(parsed, plate, replaceDays) {
   const car = getCar(plate);
-  if (replaceDays) car.days = {};
+  if (replaceDays) {
+    car.days = {};
+    car._replaceDays = true;
+  }
   const p = parsed.params || {};
   if (p.gasNorm) car.gasNorm = p.gasNorm;
   if (p.benzinNorm) car.benzinNorm = p.benzinNorm;
@@ -2594,7 +2628,7 @@ async function runExcelImportPack(pack) {
   if (pack.cars[0] && pack.cars[0].plate) STATE.car = canonicalPlate(pack.cars[0].plate);
   markDirty();
   writeParams();
-  renderAll();
+  await renderAll();
   await saveMeta();
   await saveMonth();
   let msg = '✓ Fayl yuklandi — ' + filled + ' mashina to\'ldirildi.';
@@ -2934,7 +2968,7 @@ async function downloadFuelPdf(kind) {
       body.push([i + 1, x.f.brand || '—', plateDisp(x.f.car), x.f.name, 'GAZ (m³)',
         fmt(x.car.gasNorm, 2), fmt(x.car.gasStart, 3), fmt(x.t.gasIn, 3), money(x.t.gasSum),
         fmt(x.t.km, 2), fmt(x.t.gasUsed, 3), fmt(x.t.gasR, 3), money(x.t.cost)]);
-      body.push(['', '', '', '', 'BENZIN (l)',
+      body.push(['', '', '', '', liquidFuelLabel(x.car.fuelType),
         fmt(x.car.benzinNorm, 2), fmt(x.car.benzinStart, 3), fmt(x.t.benzinIn, 3), money(x.t.benzinSum),
         '', fmt(x.t.benUsed, 3), fmt(x.t.benR, 3), '']);
     });
@@ -2962,7 +2996,7 @@ async function downloadFuelPdf(kind) {
       return { n: i + 1, f, car, t };
     });
     const sum = rows.reduce((a, r) => {
-      a.start += n(r.car.gasStart); a.in += r.t.gasIn; a.km += r.t.km; a.used += r.t.gasUsed; a.end += r.t.gasR;
+      a.start += n(r.car.gasStart); a.in += r.t.gasIn; a.km += r.t.gasKm; a.used += r.t.gasUsed; a.end += r.t.gasR;
       return a;
     }, { start: 0, in: 0, km: 0, used: 0, end: 0 });
     doc.text('Gaz dalolatnomasi', 12, startY);
@@ -2972,11 +3006,11 @@ async function downloadFuelPdf(kind) {
     fuelPdfTable(doc, w, {
       pageLabel,
       startY: startY + 12,
-      head: [['№', 'Haydovchi', 'Marka', 'Raqam', startStr + ' qoldiq', "To'ldirilgan", 'Meyyor', 'Km', 'Sarf', nextStr + ' qoldiq']],
+      head: [['№', 'Haydovchi', 'Marka', 'Raqam', startStr + ' qoldiq', "To'ldirilgan", 'Meyyor', 'Gaz km', 'Sarf', nextStr + ' qoldiq']],
       body: rows.map(r => [
         r.n, r.f.name, r.f.brand || '—', plateDisp(r.f.car),
         fmt(r.car.gasStart, 3), fmt(r.t.gasIn, 3), fmt(r.car.gasNorm, 2),
-        fmt(r.t.km, 2), fmt(r.t.gasUsed, 3), fmt(r.t.gasR, 3)
+        fmt(r.t.gasKm, 2), fmt(r.t.gasUsed, 3), fmt(r.t.gasR, 3)
       ]).concat([[
         { content: 'JAMI', colSpan: 4, styles: { fontStyle: 'bold' } },
         fmt(sum.start, 2), fmt(sum.in, 2), '', fmt(sum.km, 2), fmt(sum.used, 2), fmt(sum.end, 2)

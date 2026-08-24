@@ -1362,10 +1362,26 @@ class OfficeStore:
             plate = self._existing_plate_key(cars, plate)
             old = cars.get(plate) if isinstance(cars.get(plate), dict) else {}
             old_days = old.get("days") if isinstance(old.get("days"), dict) else {}
-            merged_days = dict(old_days)
-            merged_days.update(days)
+            replace_days = bool(
+                (body or {}).get("replaceDays")
+                or rec.get("replaceDays")
+            )
+            if replace_days:
+                merged_days = dict(days)
+            else:
+                merged_days = dict(old_days)
+                merged_days.update(days)
             old_changes = old.get("changes") if isinstance(old.get("changes"), list) else []
             old_dch = old.get("driverChanges") if isinstance(old.get("driverChanges"), list) else []
+            # Bo'sh [] ham saqlansin (Excel/tozalash) — `or` ishlatilmaydi
+            if "changes" in rec and isinstance(rec.get("changes"), list):
+                final_changes = changes
+            else:
+                final_changes = changes or old_changes
+            if "driverChanges" in rec and isinstance(rec.get("driverChanges"), list):
+                final_dch = dch
+            else:
+                final_dch = dch or old_dch
             cars[plate] = {
                 "gasNorm": as_num(rec.get("gasNorm"), old.get("gasNorm", 12)),
                 "benzinNorm": as_num(rec.get("benzinNorm"), old.get("benzinNorm", 4)),
@@ -1376,8 +1392,8 @@ class OfficeStore:
                 "benzinPrice": as_num(rec.get("benzinPrice"), old.get("benzinPrice", 11000)),
                 "mixPct": as_num(rec.get("mixPct"), old.get("mixPct", 70)),
                 "fuelType": ft,
-                "changes": changes or old_changes,
-                "driverChanges": dch or old_dch,
+                "changes": final_changes,
+                "driverChanges": final_dch,
                 "days": merged_days,
             }
         cars = self._dedupe_cars(cars)
