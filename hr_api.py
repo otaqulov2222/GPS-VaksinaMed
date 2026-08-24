@@ -71,8 +71,6 @@ def _status(score, problem_stops):
         return "muammo"
     if pr >= 1 or sc < 8:
         return "diqqat"
-    if sc <= 0 and pr == 0:
-        return "malumot_yoq"
     return "ok"
 
 

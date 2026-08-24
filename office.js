@@ -224,18 +224,23 @@ const VMOffice = {
     matchGeo(currentCar, lat, lng) {
         const y = Number(lat), x = Number(lng);
         if (!y || !x) return null;
-        let best = null, bestD = 1e12;
+        let bestOwn = null, bestOwnD = 1e12;
+        let bestAny = null, bestAnyD = 1e12;
         (STATE.pharmacies || []).forEach(ph => {
             if (ph.lat == null || ph.lng == null) return;
             const d = vmHaversineM(y, x, Number(ph.lat), Number(ph.lng));
             const r = Number(ph.radiusM) || 120;
-            if (d <= r && d < bestD) {
-                bestD = d;
-                best = ph;
-            } else if (d <= r && d === bestD && ph.car === currentCar) {
-                best = ph;
+            if (d > r) return;
+            if (d < bestAnyD) {
+                bestAnyD = d;
+                bestAny = ph;
+            }
+            if (ph.car === currentCar && d < bestOwnD) {
+                bestOwnD = d;
+                bestOwn = ph;
             }
         });
+        const best = bestOwn || bestAny;
         if (!best) return null;
         const owners = (STATE.pharmacies || [])
             .filter(p => p.name === best.name || (p.lat === best.lat && p.lng === best.lng))

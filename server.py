@@ -48,6 +48,47 @@ BLOCKED_NAMES = {
 }
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
+
+# Login brute-force himoya (IP bo'yicha)
+_LOGIN_FAILS = {}
+_LOGIN_RL_LOCK = threading.Lock()
+_LOGIN_MAX_FAILS = 8
+_LOGIN_WINDOW_SEC = 15 * 60
+_LOGIN_LOCK_SEC = 15 * 60
+
+
+def _login_rate_ok(ip):
+    ip = (ip or "unknown").strip() or "unknown"
+    now = time.time()
+    with _LOGIN_RL_LOCK:
+        bag = _LOGIN_FAILS.get(ip) or {"fails": [], "locked_until": 0}
+        if bag.get("locked_until", 0) > now:
+            left = int(bag["locked_until"] - now)
+            return False, f"Juda ko'p urinish. {left} soniyadan keyin qayta urining"
+        fails = [t for t in bag.get("fails") or [] if now - t < _LOGIN_WINDOW_SEC]
+        bag["fails"] = fails
+        _LOGIN_FAILS[ip] = bag
+        return True, None
+
+
+def _login_rate_fail(ip):
+    ip = (ip or "unknown").strip() or "unknown"
+    now = time.time()
+    with _LOGIN_RL_LOCK:
+        bag = _LOGIN_FAILS.get(ip) or {"fails": [], "locked_until": 0}
+        fails = [t for t in bag.get("fails") or [] if now - t < _LOGIN_WINDOW_SEC]
+        fails.append(now)
+        bag["fails"] = fails
+        if len(fails) >= _LOGIN_MAX_FAILS:
+            bag["locked_until"] = now + _LOGIN_LOCK_SEC
+            bag["fails"] = []
+        _LOGIN_FAILS[ip] = bag
+
+
+def _login_rate_ok_clear(ip):
+    ip = (ip or "unknown").strip() or "unknown"
+    with _LOGIN_RL_LOCK:
+        _LOGIN_FAILS.pop(ip, None)
 YEAR_RE = re.compile(r"^\d{4}$")
 STAFF_ROLES = ("admin_pro", "admin")
 
@@ -156,20 +197,22 @@ class FilePersist:
 
     def get(self, key, default=None):
         path = self._path(key)
-        if not os.path.isfile(path):
-            return default
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError):
-            return default
+        with self.lock:
+            if not os.path.isfile(path):
+                return default
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (OSError, json.JSONDecodeError):
+                return default
 
     def put(self, key, value):
         path = self._path(key)
         tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(value, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        with self.lock:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(value, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, path)
 
     def keys(self, prefix=""):
         out = []
@@ -2410,15 +2453,22 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         body = self.read_json()
 
         if path == "/api/login":
+            ip = self.client_ip()
+            ok_rl, rl_err = _login_rate_ok(ip)
+            if not ok_rl:
+                self.send_json({"ok": False, "error": rl_err}, 429)
+                return
             sess, err = STORE.login(
                 body.get("username"),
                 body.get("password"),
-                self.client_ip(),
+                ip,
                 self.headers.get("User-Agent"),
             )
             if err:
+                _login_rate_fail(ip)
                 self.send_json({"ok": False, "error": err}, 401)
                 return
+            _login_rate_ok_clear(ip)
             self.send_json(
                 {
                     "ok": True,
@@ -2598,9 +2648,15 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
                 return
-            if body.get("status") == "allowed" and body.get("phName") and body.get("lat") is not None:
-                try:
-                    import gps_sync
+            # Har qanday review o'zgarishi (Ruxsat / Qoidabuzarlik / bekor) reportni yangilasin
+            try:
+                import gps_sync
+
+                if (
+                    body.get("status") == "allowed"
+                    and body.get("phName")
+                    and body.get("lat") is not None
+                ):
                     pharms = list(OFFICE.pharmacies())
                     if gps_sync.learn_geozone(
                         pharms,
@@ -2610,10 +2666,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         body.get("lng"),
                     ):
                         OFFICE.save_pharmacies(pharms)
-                    if valid_date(date_val):
-                        gps_sync.reprocess_day(OFFICE, DIRECTORY, date_val)
-                except Exception:
-                    pass
+                if valid_date(date_val):
+                    gps_sync.reprocess_day(OFFICE, DIRECTORY, date_val)
+            except Exception:
+                pass
             self.send_json({"ok": True, "reviews": data})
             return
 
@@ -2978,6 +3034,11 @@ def main():
   |  Birinchi ish: panelda parolni almashtiring! |"""
 
     persist_line = "PostgreSQL (qoladi)" if persist.durable else "lokal fayl (Render da yo'qoladi)"
+    if not persist.durable and os.environ.get("PORT") and os.environ.get("RENDER"):
+        print(
+            "\n  [DIQQAT] Render da DATABASE_URL yo'q — ma'lumotlar deploydan keyin yo'qoladi.\n"
+            "  Persistent uchun PostgreSQL (DATABASE_URL) ulang.\n"
+        )
     import hr_api as _hr
 
     hr_line = "yoqilgan (VM_HR_API_KEY)" if _hr.hr_api_key() else "ochiq emas — VM_HR_API_KEY qo'ying"

@@ -33,7 +33,7 @@ function gpsConfigSafe(cfg) {
         user: cfg.user || '',
         hasToken: !!(cfg.token || cfg.hasToken),
         hasPassword: !!(cfg.password || cfg.hasPassword),
-        serverConfigured: !!(cfg.serverConfigured || cfg.configured || cfg.token || cfg.password || cfg.hasToken || cfg.hasPassword || cfg.user)
+        serverConfigured: !!(cfg.serverConfigured || cfg.configured || cfg.token || cfg.password || cfg.hasToken || cfg.hasPassword)
     };
 }
 
@@ -566,15 +566,19 @@ function parseStats(rows, stops) {
 }
 
 // ── 5. TAHLIL VA BALL HISOBLASH ─────────────────────────────
+function stopIsProblem(st, carKey, dateVal) {
+    const day = dateVal || STATE.currentDate;
+    const car = carKey || STATE.currentCar;
+    if (window.VMOffice && typeof VMOffice.isProblem === 'function') {
+        return VMOffice.isProblem(day, car, st);
+    }
+    return !!(st && st.isProblem);
+}
+
 function analyzeData(stops, carKey, stats, dateVal) {
     const day = dateVal || STATE.currentDate;
     const ownPharms = uniquePhNames(ownPharmacyList(carKey));
-    const problemOf = (s) => {
-        if (window.VMOffice && typeof VMOffice.isProblem === 'function') {
-            return VMOffice.isProblem(day, carKey, s);
-        }
-        return !!s.isProblem;
-    };
+    const problemOf = (s) => stopIsProblem(s, carKey, day);
 
     const visitedNorms = new Set(
         stops.filter(s => s.matchType === 'own').map(s => normPh(s.phName || s.place || '')).filter(Boolean)
@@ -735,7 +739,7 @@ function stopColor(st) {
     if (rev && rev.status === 'violation') return '#9b1c1c';
     if (st.isOffice) return '#2a303a';
     if (st.isOutside) return '#4a3d73';
-    if (st.isProblem) return '#9b1c1c';
+    if (stopIsProblem(st, car, dateVal)) return '#9b1c1c';
     if (st.matchType === 'own') return '#1a5c3a';
     if (st.matchType === 'other') return '#1a4a78';
     return '#8b939e';
@@ -749,7 +753,7 @@ function stopStatusLabel(st) {
     if (rev && rev.status === 'violation') return 'Qoidabuzarlik';
     if (st.isOffice) return 'Ofis / sklad';
     if (st.isOutside) return 'Shahardan tashqari';
-    if (st.isProblem) return 'Muammo';
+    if (stopIsProblem(st, car, dateVal)) return 'Muammo';
     if (st.matchType === 'own') return "O'z dorixonasi";
     if (st.matchType === 'other') return "Boshqa yo'nalish";
     return 'To\'xtash';
@@ -757,7 +761,9 @@ function stopStatusLabel(st) {
 
 function setMapStats(stops, pts) {
     const n = stops ? stops.length : 0;
-    const prob = stops ? stops.filter(s => s.isProblem).length : 0;
+    const car = STATE.currentCar;
+    const dateVal = STATE.currentDate;
+    const prob = stops ? stops.filter(s => stopIsProblem(s, car, dateVal)).length : 0;
     const elS = document.getElementById('map-stat-stops');
     const elP = document.getElementById('map-stat-pts');
     const elM = document.getElementById('map-stat-prob');
@@ -1289,7 +1295,7 @@ function renderPharmacy(data) {
     data.stops.forEach((s, i) => {
         const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
         if (rev && rev.status === 'allowed') allowedIdx.push(i);
-        else if ((rev && rev.status === 'violation') || s.isProblem) problemIdx.push(i);
+        else if (stopIsProblem(s, car, dateVal)) problemIdx.push(i);
     });
 
     if (problemIdx.length > 0) {
@@ -1362,7 +1368,7 @@ function renderStops(stops) {
         } else if (st.isOutside) {
             rowCls = 'row-outside';
             badge = '<span class="badge b-outside">Shahar tashqarisi</span>';
-        } else if (st.isProblem) {
+        } else if (stopIsProblem(st, car, dateVal)) {
             rowCls = 'row-problem';
             badge = '<span class="badge b-problem">Muammo</span>';
         } else if (st.matchType === 'own') {
@@ -1375,7 +1381,7 @@ function renderStops(stops) {
             badge = '<span class="badge">—</span>';
         }
 
-        const canReview = st.isProblem || (rev && rev.status);
+        const canReview = true;
         html += `
         <tr class="${rowCls}">
             <td class="font-mono text-muted">${i+1}</td>
@@ -1470,7 +1476,7 @@ function hasGpsConfig() {
     const c = STATE.gpsConfig;
     if (!c) return false;
     if (c.serverConfigured || c.hasToken || c.hasPassword) return true;
-    return !!((c.token && String(c.token).trim()) || (c.user && String(c.user).trim()));
+    return !!((c.token && String(c.token).trim()) || (c.password && String(c.password).trim()));
 }
 
 const GPS_AUTO_MS = 5 * 60 * 1000;
@@ -1754,10 +1760,15 @@ function pdfDateLabel(ds) {
     return `${d.getDate()} ${UZ_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function pdfStopStatus(st) {
+function pdfStopStatus(st, carKey, dateVal) {
+    const day = dateVal || STATE.currentDate;
+    const car = carKey || STATE.currentCar;
+    const rev = window.VMOffice ? VMOffice.reviewOf(day, car, st) : null;
+    if (rev && rev.status === 'allowed') return 'Ruxsat';
+    if (rev && rev.status === 'violation') return 'Qoidabuzarlik';
     if (st.isOffice) return 'Ofis';
     if (st.isOutside) return 'Tashqari';
-    if (st.isProblem) return 'Muammo';
+    if (stopIsProblem(st, car, day)) return 'Muammo';
     if (st.matchType === 'own') return 'Dorixona';
     if (st.matchType === 'other') return 'Boshqa';
     return '—';
@@ -2029,7 +2040,7 @@ function exportDayExcel() {
                 st.place || '',
                 st.duration || '',
                 st.matchType || '',
-                st.isProblem ? 'ha' : ''
+                stopIsProblem(st, drv.car, dateVal) ? 'ha' : ''
             ]);
         });
         let sheetName = String(drv.car || ('m' + idx)).replace(/\s+/g, '_').slice(0, 31);
@@ -2234,7 +2245,7 @@ async function downloadPdfReport() {
             const missed = a.missedList.length ? a.missedList : ["Yo'q — barcha o'z dorixonalariga borilgan yoki royxat yo'q"];
             const visited = stops.filter(t => t.matchType === 'own')
                 .map(t => (t.phName || t.place || '—') + (t.inTime ? '  (' + t.inTime + (t.duration ? ', ' + t.duration : '') + ')' : ''));
-            const probs = stops.filter(t => t.isProblem)
+            const probs = stops.filter(t => stopIsProblem(t, x.drv.car, dateVal))
                 .map(t => (t.place || '—') + (t.duration ? '  (' + t.duration + ')' : ''));
             const vis = visited.length ? visited : ["Yo'q"];
             const pr = probs.length ? probs : ["Yo'q"];
@@ -2268,7 +2279,7 @@ async function downloadPdfReport() {
                 t.inTime || '—',
                 t.outTime || '—',
                 t.duration || '—',
-                pdfStopStatus(t)
+                pdfStopStatus(t, x.drv.car, dateVal)
             ]);
             y = pdfTable(doc, dateLabel, {
                 startY: y,

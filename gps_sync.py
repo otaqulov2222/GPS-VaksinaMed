@@ -23,6 +23,7 @@ OFFICE_KEYWORDS = (
 OUTSIDE_MARKERS = (
     "kibray", "кибрай", "parkent", "паркент", "yangiyo", "янгийўл",
     "zangiota", "зангиота", "qibray", "chirchiq", "чирчиқ",
+    "bo'ka", "бўка", "urtachirchiq",
 )
 
 
@@ -422,16 +423,20 @@ def match_geo(current_car, lat, lng, pharmacies):
     y, x = float(lat or 0), float(lng or 0)
     if not y or not x:
         return None
-    best, best_d = None, 1e12
+    best_own, best_own_d = None, 1e12
+    best_any, best_any_d = None, 1e12
     for ph in pharmacies or []:
         if not isinstance(ph, dict) or ph.get("lat") is None or ph.get("lng") is None:
             continue
         d = haversine_m(y, x, float(ph["lat"]), float(ph["lng"]))
         r = float(ph.get("radiusM") or 120)
-        if d <= r and d < best_d:
-            best_d, best = d, ph
-        elif d <= r and d == best_d and ph.get("car") == current_car:
-            best = ph
+        if d > r:
+            continue
+        if d < best_any_d:
+            best_any_d, best_any = d, ph
+        if ph.get("car") == current_car and d < best_own_d:
+            best_own_d, best_own = d, ph
+    best = best_own or best_any
     if not best:
         return None
     return {
@@ -797,7 +802,9 @@ def analyze_data(stops, car_key, stats, drivers, pharmacies, reviews=None):
         breakdown.append(f"-{deduct:.1f}: {len(missed)} ta dorixona o'tkazib yuborilgan")
         recs.append("O'tkazib yuborilgan: " + ", ".join(missed[:3]) + ("..." if len(missed) > 3 else ""))
     if other_dir > 0:
-        score -= min(other_dir * 0.3, 1.5)
+        deduct = min(other_dir * 0.3, 1.5)
+        score -= deduct
+        breakdown.append(f"-{deduct:.1f}: {other_dir} ta boshqa yo'nalish")
     max_speed = float((stats or {}).get("maxSpeed") or 0)
     if max_speed > 90:
         score -= 0.5
@@ -886,7 +893,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
             done += 1
         if done:
             office.save_report(date_str, cars, saved_by=saved_by)
-            reprocess_day(office, base_dir, date_str)
+            # Reviews allaqachon apply_review_problem_flags + analyze_data da hisoblangan
         office.set_gps_status(running=False, cars=done, error="", date=date_str, message="Tayyor")
         return {"ok": True, "date": date_str, "cars": done}
     except Exception as e:
