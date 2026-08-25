@@ -823,11 +823,14 @@ function refreshMap(stops) {
     setMapStats(list, withGeo.length);
 
     if (latlngs.length > 1) {
+        // Yupqa marshrut: yengil halo + nozik asosiy chiziq (xarita ustida aniqroq)
         STATE.mapLine = L.polyline(latlngs, {
-            color: '#0b1f3a', weight: 6, opacity: 0.22, lineJoin: 'round', lineCap: 'round'
+            color: '#0b1f3a', weight: 3.5, opacity: 0.14, lineJoin: 'round', lineCap: 'round',
+            interactive: false
         }).addTo(STATE.map);
         STATE.mapMarkers.push(L.polyline(latlngs, {
-            color: '#1a5fb4', weight: 3, opacity: 0.95, lineJoin: 'round', lineCap: 'round'
+            color: '#1a5fb4', weight: 1.75, opacity: 0.92, lineJoin: 'round', lineCap: 'round',
+            interactive: false
         }).addTo(STATE.map));
     }
 
@@ -999,13 +1002,16 @@ function renderDriverTabs() {
 
 /** Sichqoncha gildiragi → gorizontal scroll (haydovchilar qatori) */
 function enableDriverStripWheelScroll() {
+    if (typeof vmEnableWheelXScroll === 'function') {
+        vmEnableWheelXScroll(document.querySelector('.driver-strip-wrap'));
+        return;
+    }
     const wrap = document.querySelector('.driver-strip-wrap');
     if (!wrap || wrap.dataset.wheelScroll === '1') return;
     wrap.dataset.wheelScroll = '1';
     wrap.addEventListener('wheel', (e) => {
         const dx = e.deltaX;
         const dy = e.deltaY;
-        // Vertikal gildirak yoki trackpad: asosiy siljishni gorizontalga
         const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
         if (!delta) return;
         const max = wrap.scrollWidth - wrap.clientWidth;
@@ -1464,9 +1470,15 @@ function renderEval(score) {
 
     const scoreBox = document.querySelector('.eval-score-box');
     if (scoreBox) {
-        scoreBox.style.background = '#0b1f3a';
+        scoreBox.classList.remove('is-good', 'is-mid', 'is-bad');
+        scoreBox.style.background = '';
         const numEl = document.getElementById('eval-final-score');
-        if (numEl) numEl.style.color = f >= 8 ? '#1a5fb4' : f >= 5 ? '#1a5fb4' : '#0b1f3a';
+        if (numEl) {
+            numEl.style.color = '';
+            if (f >= 8) scoreBox.classList.add('is-good');
+            else if (f >= 5) scoreBox.classList.add('is-mid');
+            else scoreBox.classList.add('is-bad');
+        }
     }
 
     const recEl = document.getElementById('eval-recommendations');
@@ -2039,6 +2051,27 @@ async function syncReportsToServer(dates) {
     return { ok, fail };
 }
 
+function excelStopTypeLabel(st) {
+    if (!st) return '—';
+    if (st.isOffice) return 'Ofis';
+    if (st.isOutside) return 'Shahar tashqari';
+    if (st.matchType === 'own') return 'O\'z dorixonasi';
+    if (st.matchType === 'other') return 'Boshqa yo\'nalish';
+    return 'Noma\'lum';
+}
+
+function excelRoutePath(stops) {
+    const parts = [];
+    (stops || []).forEach(st => {
+        if (st.isOffice) return;
+        const name = String(st.phName || st.place || '').trim();
+        if (!name) return;
+        if (parts.length && parts[parts.length - 1] === name) return;
+        parts.push(name);
+    });
+    return parts.length ? parts.join(' → ') : '—';
+}
+
 function exportDayExcel() {
     const dateVal = STATE.currentDate;
     const dayData = dateVal && STATE.data[dateVal];
@@ -2050,41 +2083,101 @@ function exportDayExcel() {
         showToast('Excel kutubxonasi yuklanmadi', 'error');
         return;
     }
+    const makeSheet = (typeof excelSheetFromAoa === 'function')
+        ? excelSheetFromAoa
+        : (aoa) => XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
-    const summary = [['Haydovchi', 'Raqam', 'Km', 'Max tezlik', 'Ball', 'Dorixona', 'Muammo', 'Ish vaqti']];
     const entries = collectDayEntries(dayData);
+
+    // 1) Jamlanma — saytdagi asosiy ko'rsatkichlar + yo'nalish
+    const summary = [
+        ['VHK kunlik jamlanma — ' + dateVal],
+        ['Haydovchi', 'Raqam', 'Yo\'nalish', 'Km', 'Max tezlik', 'Ball', 'Dorixona', 'Boshqa yo\'nalish', 'Muammo', 'Ish vaqti', 'Ball izohi']
+    ];
     entries.forEach(({ drv, data }) => {
         const a = data.analysis || {};
         const sc = a.score || {};
         const st = data.stats || {};
+        const breakdown = Array.isArray(sc.breakdown) ? sc.breakdown.join('; ') : '';
         summary.push([
-            drv.shortName || drv.fullName,
-            drv.car,
+            drv.fullName || drv.shortName || '',
+            drv.car || '',
+            drv.routes || '—',
             st.probeg || 0,
             st.maxSpeed || 0,
             sc.final != null ? sc.final : '',
             `${a.ownVisited || 0}/${a.totalOwn || 0}`,
+            a.otherDirection != null ? a.otherDirection : (a.otherDir || 0),
             a.problemStops || 0,
-            st.motoChas || ''
+            st.motoChas || '',
+            breakdown
         ]);
     });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'Jamlanma');
+    XLSX.utils.book_append_sheet(wb, makeSheet(summary, {
+        titleRow: 0,
+        headerRow: 1,
+        centerCols: [1, 5, 6, 7, 8],
+        numberCols: [3, 4],
+        minWidths: [24, 12, 22, 9, 11, 8, 10, 14, 9, 12, 28]
+    }), 'Jamlanma');
+
+    // 2) Marshrutlar — saytdagi chiziq o'rniga to'xtashlar ketma-ketligi
+    const routesSheet = [
+        ['Kunlik marshrutlar (to\'xtashlar ketma-ketligi) — ' + dateVal],
+        ['Haydovchi', 'Raqam', 'Yo\'nalish', 'To\'xtashlar soni', 'Marshrut (joylar ketma-ketligi)']
+    ];
+    entries.forEach(({ drv, data }) => {
+        const stops = data.stops || [];
+        routesSheet.push([
+            drv.fullName || drv.shortName || '',
+            drv.car || '',
+            drv.routes || '—',
+            stops.length,
+            excelRoutePath(stops)
+        ]);
+    });
+    XLSX.utils.book_append_sheet(wb, makeSheet(routesSheet, {
+        titleRow: 0,
+        headerRow: 1,
+        centerCols: [1, 3],
+        numberCols: [3],
+        minWidths: [24, 12, 22, 12, 60],
+        maxWidth: 80
+    }), 'Marshrutlar');
+
+    // 3) Har mashina — batafsil to'xtashlar (xarita o'rniga jadval)
     entries.forEach(({ drv, data }, idx) => {
-        const rows = [['Vaqt', 'Joy', 'Davomiylik', 'Turi', 'Muammo']];
-        (data.stops || []).forEach(st => {
+        const name = drv.fullName || drv.shortName || '';
+        const route = drv.routes || '—';
+        const rows = [
+            [name + ' — ' + (drv.car || '') + ' | Yo\'nalish: ' + route],
+            ['№', 'Kirish', 'Chiqish', 'Joy / dorixona', 'Davomiylik', 'Turi', 'Muammo', 'Lat', 'Lng']
+        ];
+        (data.stops || []).forEach((st, i) => {
             rows.push([
+                i + 1,
                 st.inTime || '',
-                st.place || '',
+                st.outTime || '',
+                st.phName || st.place || '',
                 st.duration || '',
-                st.matchType || '',
-                stopIsProblem(st, drv.car, dateVal) ? 'ha' : ''
+                excelStopTypeLabel(st),
+                stopIsProblem(st, drv.car, dateVal) ? 'ha' : '',
+                st.lat != null && st.lat !== '' ? st.lat : '',
+                st.lng != null && st.lng !== '' ? st.lng : ''
             ]);
         });
         let sheetName = String(drv.car || ('m' + idx)).replace(/\s+/g, '_').slice(0, 31);
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName);
+        XLSX.utils.book_append_sheet(wb, makeSheet(rows, {
+            titleRow: 0,
+            headerRow: 1,
+            centerCols: [0, 1, 2, 4, 5, 6],
+            numberCols: [7, 8],
+            minWidths: [5, 10, 10, 28, 12, 16, 9, 11, 11]
+        }), sheetName);
     });
+
     XLSX.writeFile(wb, 'vhk_' + dateVal + '.xlsx');
-    showToast('Excel yuklab olindi', 'success');
+    showToast('Excel yuklab olindi (jamlanma + marshrutlar + to\'xtashlar)', 'success');
 }
 
 async function downloadPdfReport() {

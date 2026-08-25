@@ -649,18 +649,22 @@ body.app-body::before {
       max(12px, env(safe-area-inset-right, 0px))
       10px
       max(12px, env(safe-area-inset-left, 0px));
-    flex-wrap: wrap;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
     gap: 8px;
     border-bottom: 1px solid #d7e3f0;
     box-shadow: 0 4px 16px rgba(11, 31, 58, 0.06);
   }
   .nav-burger {
     display: inline-flex !important;
+    align-self: center;
     min-width: 44px;
-    min-height: 44px;
-    height: 44px;
-    padding: 0 14px;
-    border-radius: 12px;
+    min-height: 40px;
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 10px;
     flex-shrink: 0;
   }
   .nav-scrim {
@@ -715,34 +719,62 @@ body.app-body::before {
       max(12px, env(safe-area-inset-left, 0px));
   }
 
-  /* App-like action row: horizontal scroll, no stack-of-death */
+  /* App-like action row: Menyu yonida, gorizontal scroll */
   .app-main .topbar .acts,
   .app-main .topbar .tb-actions {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    max-width: none;
     display: flex !important;
     flex-wrap: nowrap !important;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
-    padding-bottom: 2px;
+    padding: 0;
     margin-left: 0 !important;
     scrollbar-width: none;
   }
+  /* desktop: yupqa scrollbar — gildirak bilan ham scroll */
+  .app-main .topbar .acts,
+  .app-main .topbar .tb-actions {
+    scrollbar-width: thin;
+    scrollbar-color: #9bb4d0 transparent;
+  }
   .app-main .topbar .acts::-webkit-scrollbar,
-  .app-main .topbar .tb-actions::-webkit-scrollbar { display: none; height: 0; }
+  .app-main .topbar .tb-actions::-webkit-scrollbar {
+    display: block;
+    height: 4px;
+  }
+  .app-main .topbar .acts::-webkit-scrollbar-thumb,
+  .app-main .topbar .tb-actions::-webkit-scrollbar-thumb {
+    background: #9bb4d0;
+    border-radius: 4px;
+  }
   .app-main .topbar .acts > .btn,
   .app-main .topbar .tb-actions > .btn,
   .app-main .topbar .acts > .month-pick,
   .app-main .topbar .acts > input {
     flex: 0 0 auto;
-    min-height: 42px;
-    height: 42px;
+    min-height: 38px;
+    height: 38px;
+    padding: 0 10px;
     white-space: nowrap;
     max-width: none;
+    overflow-wrap: normal;
+    line-height: 1;
+    box-sizing: border-box;
   }
+  .app-main .topbar .acts > .month-pick {
+    min-width: 128px;
+    max-width: 140px;
+    padding: 0 8px;
+  }
+  .app-main .topbar .lbl-full { display: none !important; }
+  .app-main .topbar .lbl-short { display: inline !important; }
   .app-main .topbar .tb-title {
     font-size: 15px;
     overflow-wrap: anywhere;

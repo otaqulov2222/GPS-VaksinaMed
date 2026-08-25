@@ -14,7 +14,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="shell.css?v=9"/>
+<link rel="stylesheet" href="shell.css?v=12"/>
 
 <style>
 
@@ -798,15 +798,17 @@ table.dtable td.day {
 
   .topbar {
     height: auto; min-height: 52px;
-    flex-direction: column; align-items: stretch;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
     gap: 8px;
   }
 
-  .brand { width: 100%; flex-wrap: nowrap; align-items: center; gap: 8px; }
+  .brand { flex-wrap: nowrap; align-items: center; gap: 8px; }
   .tb-page { display: none; }
 
-  /* shell.css handles .acts as horizontal scroll — keep month full-friendly */
-  .acts .month-pick { min-width: 148px; }
+  .acts .month-pick { min-width: 120px; max-width: 136px; }
+  .lbl-short { display: none; }
 
   .tb-user { margin-left: 0; padding-left: 0; border-left: 0; justify-content: space-between; flex-wrap: wrap; }
   .tb-user .btn { min-height: 42px; flex: 1; }
@@ -906,15 +908,26 @@ table.dtable td.day {
   }
 
   .chips {
-    gap: 8px;
-    padding: 8px;
-    max-height: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 6px;
+    max-height: min(38dvh, 260px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   .chip-car {
-    flex: 1 1 calc(50% - 8px);
-    min-width: calc(50% - 8px);
-    min-height: 52px;
-    padding: 10px 8px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 7px 8px;
+    text-align: left;
+  }
+  .chip-car i {
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -963,7 +976,7 @@ table.dtable td.day {
   .tb-line, .tb-sub { display: none; }
   .brand img { width: 30px; height: 30px; }
   .params { grid-template-columns: 1fr; }
-  .chip-car { flex: 1 1 calc(50% - 6px); min-width: calc(50% - 6px); }
+  .chips { grid-template-columns: 1fr 1fr; }
   .jl-two { grid-template-columns: 1fr !important; }
   .day-pill { width: 40px; height: 40px; }
   .kpis { grid-template-columns: 1fr 1fr; }
@@ -976,10 +989,13 @@ table.dtable td.day {
 
 @media (max-width: 420px) {
   .kpis, .kpis[style] { grid-template-columns: 1fr !important; }
-  .acts, .row-btns { grid-template-columns: 1fr; }
-  .daily-primary { grid-template-columns: 1fr; }
-  .daily-primary #btn-save { grid-column: auto; }
-  .chip-car { flex: 1 1 100%; min-width: 100%; }
+  .row-btns { grid-template-columns: 1fr; }
+  .chips { grid-template-columns: 1fr 1fr; max-height: min(34dvh, 220px); }
+  .chip-car { min-width: 0; min-height: 42px; }
+  .daily-primary {
+    grid-template-columns: 1fr 1fr 1fr !important;
+  }
+  .daily-primary #btn-save { grid-column: auto !important; }
 }
 
 </style>
@@ -1065,7 +1081,7 @@ table.dtable td.day {
 
         <div class="tb-title" style="color:var(--ink)">Boshqaruv</div>
 
-        <div class="tb-sub" style="color:var(--muted)">Park В· hisobot В· hujjat В· narx</div>
+        <div class="tb-sub" style="color:var(--muted)">Park · hisobot · hujjat · narx</div>
 
       </div>
 
@@ -1075,15 +1091,15 @@ table.dtable td.day {
 
         <input type="month" id="month-input" class="btn btn-sm month-pick" title="Oy">
 
-        <button class="btn btn-sm" type="button" id="btn-excel">Excel yuklab olish</button>
+        <button class="btn btn-sm" type="button" id="btn-excel" title="Excel yuklab olish"><span class="lbl-full">Excel yuklab olish</span><span class="lbl-short">Excel ↓</span></button>
 
-        <button class="btn btn-sm btn-ok" type="button" id="btn-excel-import">Excel to'ldirish</button>
+        <button class="btn btn-sm btn-ok" type="button" id="btn-excel-import" title="Excel to'ldirish"><span class="lbl-full">Excel to'ldirish</span><span class="lbl-short">Excel ↑</span></button>
 
-        <button class="btn btn-sm" type="button" id="btn-backup">Zaxira saqlash</button>
+        <button class="btn btn-sm" type="button" id="btn-backup" title="Zaxira saqlash"><span class="lbl-full">Zaxira saqlash</span><span class="lbl-short">Zaxira</span></button>
 
-        <button class="btn btn-sm" type="button" id="btn-restore">Zaxiradan tiklash</button>
+        <button class="btn btn-sm" type="button" id="btn-restore" title="Zaxiradan tiklash"><span class="lbl-full">Zaxiradan tiklash</span><span class="lbl-short">Tiklash</span></button>
 
-        <button class="btn btn-sm" type="button" id="btn-reload">Asl ma'lumot</button>
+        <button class="btn btn-sm" type="button" id="btn-reload" title="Asl ma'lumot"><span class="lbl-full">Asl ma'lumot</span><span class="lbl-short">Asl</span></button>
 
         <input type="file" id="restore-file" accept=".json" style="display:none">
 
@@ -1398,21 +1414,14 @@ table.dtable td.day {
 
 
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
-
+<script src="excel-style.js?v=1"></script>
 <script src="fleet-data.js?v=3"></script>
-
-<script src="auth.js?v=12"></script>
-
-<script src="fuel.js?v=38"></script>
-
-<script src="journal.js?v=8"></script>
-
+<script src="auth.js?v=14"></script>
+<script src="fuel.js?v=43"></script>
+<script src="journal.js?v=11"></script>
 </body>
-
 </html>
 

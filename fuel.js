@@ -860,7 +860,8 @@ function renderChips() {
   box.innerHTML = fleet().map(f => {
     const on = f.car === STATE.car ? ' on' : '';
     const warn = carHasWarn(f.car) ? ' warn' : '';
-    return `<div class="chip-car${on}${warn}" data-car="${esc(f.car)}"><b>${esc(plateCode(f.car))}</b><i>${esc(f.short || f.name)}</i></div>`;
+    const name = String(f.name || f.short || '').trim();
+    return `<div class="chip-car${on}${warn}" data-car="${esc(f.car)}"><b>${esc(plateCode(f.car))}</b><i>${esc(name)}</i></div>`;
   }).join('');
 }
 
@@ -937,6 +938,23 @@ function paintDailyJami(rows) {
   set('gasR', (t.gasR || t.gasR === 0) ? fmtNum(t.gasR) : '', remainClass(t.gasR));
   set('benR', (t.benR || t.benR === 0) ? fmtNum(t.benR) : '', remainClass(t.benR));
   set('extra', t.extra ? money(t.extra) : '');
+  paintMobileJami(t);
+}
+
+function paintMobileJami(t) {
+  const box = document.getElementById('daily-mobile-jami');
+  if (!box) return;
+  const put = (k, v) => {
+    const el = box.querySelector('[data-mj="' + k + '"]');
+    if (el) el.textContent = v || '—';
+  };
+  put('km', t.km ? fmtNum(t.km) : '');
+  put('gasKm', t.gasKm ? fmtNum(t.gasKm) : '');
+  put('liqKm', t.liqKm ? fmtNum(t.liqKm) : '');
+  put('gasUsed', t.gasUsed ? fmtNum(t.gasUsed) : '');
+  put('benUsed', t.benUsed ? fmtNum(t.benUsed) : '');
+  put('gasR', (t.gasR || t.gasR === 0) ? fmtNum(t.gasR) : '');
+  put('benR', (t.benR || t.benR === 0) ? fmtNum(t.benR) : '');
 }
 
 function renderDailyTable() {
@@ -1052,6 +1070,10 @@ function renderDocsBadge() {
   el.textContent = count + ' hujjat muddati!';
 }
 
+function mobSwipeHint() {
+  return '<p class="mob-swipe-hint no-print">Keng jadval — barmoq bilan chap-o‘ng suring. <b>JAMI</b> pastida.</p>';
+}
+
 function renderHome() {
   const t = fleetTotals();
   const alerts = collectDocAlerts();
@@ -1077,9 +1099,9 @@ function renderHome() {
       <div class="kpi"><i>Zapravka</i><b>${(STATE.meta.stations || []).length}</b><s>reestr</s></div>
     </div>
     <div class="card"><div class="card-h"><h3>GPS bor — kunlik km tushmagan</h3></div>
-      <div class="card-b scroll-x">${missing.length ? `<table class="gtable"><thead><tr><th>Sana</th><th>Mashina</th><th>GPS km</th></tr></thead><tbody>
+      <div class="card-b">${missing.length ? mobSwipeHint() + `<div class="scroll-x"><table class="gtable"><thead><tr><th>Sana</th><th>Mashina</th><th>GPS km</th></tr></thead><tbody>
         ${missing.slice(0, 80).map(m => `<tr><td>${esc(m.dt)}</td><td>${esc(plateDisp(m.car))} ${esc(m.short)}</td><td class="num">${m.km}</td></tr>`).join('')}
-      </tbody></table>` : '<p class="note">Oy ochilganda GPS km avtomatik tushadi. Sariq katakni tahrirlash mumkin. Zapravka qo\'lda.</p>'}
+      </tbody></table></div>` : '<p class="note">Oy ochilganda GPS km avtomatik tushadi. Sariq katakni tahrirlash mumkin. Zapravka qo\'lda.</p>'}
       </div></div>`;
 }
 
@@ -1107,7 +1129,7 @@ function renderDayRep() {
       <div class="day-pills no-print">${Array.from({length: dim}, (_, i) => i + 1).map(d =>
         `<button type="button" class="day-pill${d === day ? ' on' : ''}" data-day="${d}">${d}</button>`
       ).join('')}</div>
-      <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+      <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring. Pastida <b>JAMI</b> qatori bor.</p>
       <div class="scroll-x" style="margin-top:10px;">
       <table class="gtable">
         <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Yurdi (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Nimada</th><th>Zapravka</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Sarf gaz</th><th>Sarf benzin</th><th>Qo'shimcha</th><th>Izoh</th></tr></thead>
@@ -1157,7 +1179,7 @@ function renderMonth() {
   document.getElementById('panel-month').innerHTML = `
     <div class="card"><div class="card-h"><h3>Oylik jamlanma — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-month">PDF yuklab olish</button></div>
-    <div class="card-b scroll-x">
+    <div class="card-b">${mobSwipeHint()}<div class="scroll-x">
       <table class="gtable">
         <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
@@ -1181,7 +1203,7 @@ function renderMonth() {
           <td></td><td></td></tr>
         </tbody>
       </table>
-    </div></div>`;
+    </div></div></div>`;
   const pdfMonth = document.getElementById('btn-pdf-month');
   if (pdfMonth) pdfMonth.onclick = () => downloadFuelPdf('month').catch(err => toast(err.message));
 }
@@ -1218,7 +1240,7 @@ function renderOfficial() {
           ОТЧЕТ об израсходовании топлива автотранспортными средствами<br>
           ${esc(firm.name || 'VAKSINA HEALTHCARE MChJ')} за ${esc(titleM)} ${y} г.
         </div>
-        <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+        <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
         <table class="gtable">
           <thead><tr>
@@ -1315,10 +1337,11 @@ function renderStations() {
           <button type="button" class="subtab${filt==='gaz'?' on':''}" data-f="gaz">Faqat gaz</button>
           <button type="button" class="subtab${filt==='benzin'?' on':''}" data-f="benzin">Faqat benzin/dizel</button>
         </div>
+        ${Object.keys(groups).length ? mobSwipeHint() : ''}
         ${Object.keys(groups).map(p => {
           const g = groups[p];
           return `<div style="margin-bottom:14px;">
-            <div style="font-weight:700;margin:6px 0;">${esc(plateDisp(g.plate))} — ${esc(g.name)}</div>
+            <div style="font-weight:700;margin:6px 0;overflow-wrap:anywhere;">${esc(plateDisp(g.plate))} — ${esc(g.name)}</div>
             <div class="scroll-x"><table class="gtable"><thead><tr><th>Kun</th><th>Zapravka</th><th>Tur</th><th>Miqdor</th><th>Narx</th><th>Summa</th></tr></thead>
             <tbody>${g.rows.map(r => `<tr>
               <td>${r.d}</td><td>${esc(r.station)}</td><td>${esc(r.type)}</td>
@@ -1381,7 +1404,7 @@ function renderGasAct() {
         <button class="btn btn-gold btn-sm" type="button" id="btn-pdf-gasact">PDF yuklab olish</button></div>
       <div class="card-b">
         <div style="text-align:center;font-weight:700;margin-bottom:12px;">GAZ DALOLATNOMASI</div>
-        <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+        <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring. Pastida <b>JAMI</b>.</p>
         <div class="scroll-x">
         <table class="gtable">
           <thead><tr>
@@ -1454,7 +1477,7 @@ async function renderYear() {
     </div>
     <div class="card"><div class="card-h"><h3>${esc(year)} yil — oyma-oy jamlanma</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-year">PDF yuklab olish</button></div>
-    <div class="card-b scroll-x">
+    <div class="card-b">${mobSwipeHint()}<div class="scroll-x">
       <table class="gtable">
         <thead><tr><th>Oy</th><th>Probeg (km)</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Jami (so'm)</th></tr></thead>
         <tbody>${perMonth.map(r => `<tr>
@@ -1475,7 +1498,7 @@ async function renderYear() {
           <td class="num"><b>${money(ysum.cost)}</b></td></tr>
         </tbody>
       </table>
-    </div></div>`;
+    </div></div></div>`;
   const pdfYear = document.getElementById('btn-pdf-year');
   if (pdfYear) pdfYear.onclick = () => downloadFuelPdf('year').catch(err => toast(err.message));
 }
@@ -1512,7 +1535,7 @@ function renderDocs() {
         ${alerts.length ? `<div class="alert-box">${alerts.slice(0, 12).map(a =>
           `<div><b>${esc(plateDisp(a.car))}</b> ${esc(a.name)} — ${esc(a.title)} → ${a.left < 0 ? 'muddati o\'tgan' : (a.left + ' kun qoldi')}</div>`
         ).join('')}</div>` : ''}
-        <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+        <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
           <table class="gtable">
             <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th>${DOC_KEYS.map(d => `<th>${esc(d.t)}</th>`).join('')}</tr></thead>
@@ -1573,7 +1596,7 @@ function renderCars() {
           <button class="btn btn-ok btn-sm" type="button" id="nv-save">O'zgarishlarni saqlash</button>
           <span class="save-st" id="nv-save-st"></span>
         </div>
-        <p class="swipe-hint">Jadvalni chap-o‘ng suring.</p>
+        <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
           <table class="gtable">
             <thead><tr><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th></th></tr></thead>
@@ -1831,22 +1854,58 @@ function addDriverChange() {
 
 function exportExcel() {
   if (typeof XLSX === 'undefined') { toast('Excel kutubxonasi yuklanmadi'); return; }
+  if (typeof excelSheetFromAoa !== 'function') { toast('Excel stil moduli yuklanmadi'); return; }
   const wb = XLSX.utils.book_new();
-  const monthRows = [['№','Mashina','Haydovchi','Km','Gaz km','Dizel/Benzin km','Gaz m3','Gaz summa','Benzin l','Benzin summa','Qoshimcha','Jami','Gaz qoldiq','Benzin qoldiq']];
+  const monthLabel = (typeof monthLow === 'function' ? monthLow(STATE.month) : STATE.month) + ' ' + String(STATE.month || '').slice(0, 4);
+  const monthRows = [
+    ['Yoqilg\'i oylik hisobot — ' + monthLabel],
+    ['№', 'Mashina', 'Haydovchi', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Gaz m3', 'Gaz summa', 'Benzin l', 'Benzin summa', 'Qoshimcha', 'Jami', 'Gaz qoldiq', 'Benzin qoldiq']
+  ];
   fleet().forEach((f, i) => {
     const t = totals(calcCar(getCar(f.car)));
     monthRows.push([i + 1, f.car, f.name, t.km, t.gasKm, t.liqKm, t.gasIn, t.gasSum, t.benzinIn, t.benzinSum, t.extra, t.cost, t.gasR, t.benR]);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(monthRows), 'Oylik');
-  const daily = [['Kun','Km','Gaz km','Dizel/Benzin km','Spidometr','Rejim','Zapravka','Gaz m3','Gaz summa','Benzin l','Benzin summa','Sarf gaz','Sarf benzin','Gaz qoldiq','Benzin qoldiq','Qoshimcha','Izoh']];
+  XLSX.utils.book_append_sheet(wb, excelSheetFromAoa(monthRows, {
+    titleRow: 0,
+    headerRow: 1,
+    centerCols: [0, 1],
+    numberCols: [3, 4, 5, 6, 8, 12, 13],
+    moneyCols: [7, 9, 10, 11],
+    minWidths: [5, 12, 24, 9, 9, 14, 9, 11, 9, 12, 10, 11, 11, 12]
+  }), 'Oylik');
+
+  const daily = [
+    ['Kunlik — ' + (STATE.car || '') + ' — ' + monthLabel],
+    ['Kun', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Spidometr', 'Rejim', 'Zapravka', 'Gaz m3', 'Gaz summa', 'Benzin l', 'Benzin summa', 'Sarf gaz', 'Sarf benzin', 'Gaz qoldiq', 'Benzin qoldiq', 'Qoshimcha', 'Izoh']
+  ];
   calcCar(getCar(STATE.car)).forEach(r => {
     daily.push([r.d, r.km, r.gasKm, r.liqKm, r.odo, r.mode, r.station, r.gasIn, r.gasSum, r.benzinIn, r.benzinSum, r.gasUsed, r.benUsed, r.gasR, r.benR, r.extra, r.note]);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(daily), 'Kunlik');
-  const fills = [['Kun','Mashina','Zapravka','Tur','Miqdor','Narx','Summa']];
+  XLSX.utils.book_append_sheet(wb, excelSheetFromAoa(daily, {
+    titleRow: 0,
+    headerRow: 1,
+    centerCols: [0, 5],
+    numberCols: [1, 2, 3, 4, 7, 9, 11, 12, 13, 14],
+    moneyCols: [8, 10, 15],
+    minWidths: [6, 9, 9, 14, 11, 10, 14, 9, 11, 10, 12, 10, 11, 11, 12, 11, 16]
+  }), 'Kunlik');
+
+  const fills = [
+    ['Zapravka reestri — ' + monthLabel],
+    ['Kun', 'Mashina', 'Zapravka', 'Tur', 'Miqdor', 'Narx', 'Summa']
+  ];
   collectFills().forEach(f => fills.push([f.d, f.plate, f.station, f.type, f.qty, f.price, f.sum]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fills), 'Zapravka');
+  XLSX.utils.book_append_sheet(wb, excelSheetFromAoa(fills, {
+    titleRow: 0,
+    headerRow: 1,
+    centerCols: [0, 1, 3],
+    numberCols: [4, 5],
+    moneyCols: [6],
+    minWidths: [6, 12, 16, 10, 10, 10, 12]
+  }), 'Zapravka');
+
   XLSX.writeFile(wb, 'yoqilgi-' + STATE.month + '.xlsx');
+  toast('Excel yuklab olindi');
 }
 
 const CYR_MONTHS = {

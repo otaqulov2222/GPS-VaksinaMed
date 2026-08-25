@@ -104,9 +104,123 @@ function vmCloseNav() {
     if (cb) cb.checked = false;
 }
 
+/** Gorizontal scroll kerak bo‘ladigan konteynerlar */
+var VM_HSCROLL_SEL = [
+    '.app-main .topbar .acts',
+    '.app-main .topbar .tb-actions',
+    '.driver-strip-wrap',
+    '.scroll-x',
+    '.table-wrap',
+    '.subtabs',
+    '.day-pills',
+    '.chips',
+    '.row-btns',
+    '.daily-tools',
+    '.jl-actions',
+    '.card-h .row-btns'
+].join(', ');
+
+/** Faqat gorizontal — vertikal gildirakni ham chap-o‘ngga */
+var VM_HSCROLL_ALWAYS = [
+    '.app-main .topbar .acts',
+    '.app-main .topbar .tb-actions',
+    '.driver-strip-wrap',
+    '.subtabs',
+    '.day-pills'
+].join(', ');
+
+function vmCanScrollX(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.scrollWidth <= el.clientWidth + 1) return false;
+    const st = window.getComputedStyle(el);
+    const ox = st.overflowX;
+    return ox === 'auto' || ox === 'scroll' || ox === 'overlay';
+}
+
+function vmCanScrollY(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.scrollHeight <= el.clientHeight + 1) return false;
+    const st = window.getComputedStyle(el);
+    const oy = st.overflowY;
+    return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
+}
+
+/** Sichqoncha gildiragi → gorizontal scroll (bitta element) */
+function vmEnableWheelXScroll(el) {
+    if (!el || el.dataset.wheelScroll === '1') return;
+    el.dataset.wheelScroll = '1';
+    el.addEventListener('wheel', (e) => {
+        if (!vmCanScrollX(el)) return;
+        const dx = e.deltaX;
+        const dy = e.deltaY;
+        const always = el.matches(VM_HSCROLL_ALWAYS);
+        const canY = vmCanScrollY(el);
+        let delta;
+        if (Math.abs(dx) > Math.abs(dy)) delta = dx;
+        else if (!canY || always || e.shiftKey) delta = dy;
+        else return;
+        if (!delta) return;
+        const max = el.scrollWidth - el.clientWidth;
+        const next = Math.max(0, Math.min(max, el.scrollLeft + delta));
+        if (next !== el.scrollLeft) {
+            e.preventDefault();
+            el.scrollLeft = next;
+        }
+    }, { passive: false });
+}
+
+function vmBindHScrollWheels(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll(VM_HSCROLL_SEL).forEach(vmEnableWheelXScroll);
+}
+
+/** Dinamik jadvallar (scroll-x) uchun ham ishlasin */
+function vmInstallHScrollDelegation() {
+    if (window._vmHScrollDelegated) return;
+    window._vmHScrollDelegated = true;
+    document.addEventListener('wheel', (e) => {
+        if (e.ctrlKey || e.defaultPrevented) return;
+        let el = e.target;
+        if (el && el.nodeType !== 1) el = el.parentElement;
+        while (el && el !== document.body && el !== document.documentElement) {
+            if (el.matches && el.matches(VM_HSCROLL_SEL) && vmCanScrollX(el)) {
+                const dx = e.deltaX;
+                const dy = e.deltaY;
+                const always = el.matches(VM_HSCROLL_ALWAYS);
+                const canY = vmCanScrollY(el);
+                let delta;
+                if (Math.abs(dx) > Math.abs(dy)) delta = dx;
+                else if (!canY || always || e.shiftKey) delta = dy;
+                else {
+                    el = el.parentElement;
+                    continue;
+                }
+                if (!delta) return;
+                const max = el.scrollWidth - el.clientWidth;
+                const next = Math.max(0, Math.min(max, el.scrollLeft + delta));
+                if (next !== el.scrollLeft) {
+                    e.preventDefault();
+                    el.scrollLeft = next;
+                }
+                return;
+            }
+            el = el.parentElement;
+        }
+    }, { passive: false, capture: true });
+}
+
 document.addEventListener('click', (e) => {
     const t = e.target && e.target.closest
         ? e.target.closest('.nav-rail a.nav-link, .nav-rail .tab, .nav-rail button.tab')
         : null;
     if (t) vmCloseNav();
 }, true);
+
+function vmInitHScroll() {
+    vmInstallHScrollDelegation();
+    vmBindHScrollWheels(document);
+}
+
+document.addEventListener('DOMContentLoaded', vmInitHScroll);
+if (document.readyState !== 'loading') vmInitHScroll();
+

@@ -365,6 +365,7 @@ function renderJournal() {
               <div class="kpi"><i>Obyektlar</i><b>${objects}</b></div>
               <div class="kpi"><i>Jami (hammasi)</i><b>${all.length}</b></div>
             </div>
+            <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
             <div class="scroll-x">
               <table class="gtable">
                 <thead><tr><th>Turi</th><th>Kim / nima</th><th>Mashina</th><th>GPS km</th><th>Vaqt</th><th>Sabab</th><th>Baho</th><th>Izoh</th><th></th></tr></thead>
@@ -476,12 +477,28 @@ function renderJournal() {
 
 function exportJournalXlsx() {
   if (typeof XLSX === 'undefined') { toast('Excel kutubxonasi yuklanmadi'); return; }
-  const rows = [['Turi', 'Kategoriya', 'Haydovchi', 'Mashina', 'Dorixona', 'Sabab', 'Daraja', 'Boshlanish', 'Tugash', 'Izoh']];
+  const label = STATE.month || 'barcha';
+  const rows = [
+    ['Jurnal — ' + label],
+    ['Turi', 'Kategoriya', 'Haydovchi', 'Mashina', 'Dorixona', 'Sabab', 'Daraja', 'Boshlanish', 'Tugash', 'Izoh']
+  ];
   filtered().forEach(it => {
-    rows.push([it.kind, it.category, currentDriver(it.car) || it.driver, it.car, it.pharmacy, it.reason, it.level, it.start, it.end, it.note]);
+    rows.push([
+      it.kind === 'good' ? 'Maktov' : (it.kind === 'bad' ? 'Kamchilik' : it.kind),
+      it.category === 'pharmacy' ? 'Dorixona' : (it.category === 'driver' ? 'Haydovchi' : it.category),
+      currentDriver(it.car) || it.driver, it.car, it.pharmacy, it.reason, it.level, it.start, it.end, it.note
+    ]);
   });
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Jurnal');
+  const ws = (typeof excelSheetFromAoa === 'function')
+    ? excelSheetFromAoa(rows, {
+        titleRow: 0,
+        headerRow: 1,
+        centerCols: [0, 1, 3, 6],
+        minWidths: [12, 12, 24, 12, 14, 16, 10, 12, 12, 18]
+      })
+    : XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Jurnal');
   XLSX.writeFile(wb, 'jurnal-' + (STATE.month || 'all') + '.xlsx');
   toast('Excel yuklab olindi');
 }

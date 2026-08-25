@@ -264,7 +264,7 @@ ul.plain li:last-child { border-bottom: 0; }
 
         <div class="tb-title">Haydovchi kabineti</div>
 
-        <div class="tb-sub" id="who-line">Faqat koвЂrish</div>
+        <div class="tb-sub" id="who-line">Faqat koʻrish</div>
 
       </div>
 
@@ -272,7 +272,7 @@ ul.plain li:last-child { border-bottom: 0; }
 
     </header>
 
-<div class="note">Bu sahifada hech narsa oвЂzgartirilmaydi. Faqat oвЂzingizga biriktirilgan kunlik natija koвЂrinadi.</div>
+<div class="note">Bu sahifada hech narsa oʻzgartirilmaydi. Faqat oʻzingizga biriktirilgan kunlik natija koʻrinadi.</div>
 
 <div class="wrap">
 
@@ -292,19 +292,19 @@ ul.plain li:last-child { border-bottom: 0; }
 
   <div class="kpis">
 
-    <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys / toвЂxtash</s></div>
+    <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys / toʻxtash</s></div>
 
     <div class="kpi"><i>Ball</i><b id="k-score">—</b><s id="k-grade">Kunlik baho</s></div>
 
-    <div class="kpi"><i>OвЂtkazib yuborilgan</i><b id="k-miss">—</b><s>nuqta</s></div>
+    <div class="kpi"><i>Oʻtkazib yuborilgan</i><b id="k-miss">—</b><s>nuqta</s></div>
 
-    <div class="kpi"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan toвЂxtash</s></div>
+    <div class="kpi"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan toʻxtash</s></div>
 
   </div>
 
   <div class="card">
 
-    <div class="card-h">Xarita — yoвЂnalish va toвЂxtashlar</div>
+    <div class="card-h">Xarita — yoʻnalish va toʻxtashlar</div>
 
     <div class="card-b" style="padding:0">
 
@@ -318,9 +318,9 @@ ul.plain li:last-child { border-bottom: 0; }
 
   <div class="card">
 
-    <div class="card-h">YoqilgвЂi</div>
+    <div class="card-h">Yoqilgʻi</div>
 
-    <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilgвЂi yozuvi yoвЂq</div></div>
+    <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilgʻi yozuvi yoʻq</div></div>
 
   </div>
 
@@ -334,7 +334,7 @@ ul.plain li:last-child { border-bottom: 0; }
 
   <div class="card">
 
-    <div class="card-h">YoвЂnalish va toвЂxtashlar</div>
+    <div class="card-h">Yoʻnalish va toʻxtashlar</div>
 
     <div class="card-b" id="stop-box"></div>
 
@@ -356,7 +356,7 @@ ul.plain li:last-child { border-bottom: 0; }
 
 <script src="fleet-data.js?v=3"></script>
 
-<script src="auth.js?v=12"></script>
+<script src="auth.js?v=14"></script>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -394,11 +394,11 @@ function stopKind(st) {
 
   if (st.isProblem) return ['Muammo', 'tag-bad'];
 
-  if (st.matchType === 'own') return ['OвЂz nuqtasi', 'tag-ok'];
+  if (st.matchType === 'own') return ['Oʻz nuqtasi', 'tag-ok'];
 
-  if (st.matchType === 'other') return ['Boshqa yoвЂnalish', 'tag-warn'];
+  if (st.matchType === 'other') return ['Boshqa yoʻnalish', 'tag-warn'];
 
-  return ['ToвЂxtash', ''];
+  return ['Toʻxtash', ''];
 
 }
 
@@ -584,7 +584,7 @@ function refreshDriverMap(day) {
 
     const [lab] = stopKind(st);
 
-    mk.bindPopup(`<b>${esc(stopLabel(st))}</b><br>${esc(st.inTime || '')}${st.outTime ? ' в†’ ' + esc(st.outTime) : ''}<br>${st.duration ? esc(st.duration) : ''}<br><span style="color:var(--mark)">${esc(lab)}</span>`);
+    mk.bindPopup(`<b>${esc(stopLabel(st))}</b><br>${esc(st.inTime || '')}${st.outTime ? ' → ' + esc(st.outTime) : ''}<br>${st.duration ? esc(st.duration) : ''}<br><span style="color:var(--mark)">${esc(lab)}</span>`);
 
     drvMapLayers.push(mk);
 
@@ -624,7 +624,7 @@ async function loadDay() {
 
     let txt = 'Yangilandi: ' + new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
 
-    if (day.updatedAt) txt += ' В· GPS: ' + day.updatedAt.slice(11, 16);
+    if (day.updatedAt) txt += ' · GPS: ' + day.updatedAt.slice(11, 16);
 
     upd.textContent = txt;
 
@@ -672,7 +672,7 @@ function paint(day) {
 
   const whoEl = document.getElementById('who-line');
 
-  if (whoEl) whoEl.textContent = [titleName, titleCar].filter(Boolean).join(' В· ') || 'Faqat koвЂrish';
+  if (whoEl) whoEl.textContent = [titleName, titleCar].filter(Boolean).join(' · ') || 'Faqat koʻrish';
 
   const missed = Array.isArray(a.missedList) ? a.missedList : [];
 
@@ -682,11 +682,11 @@ function paint(day) {
 
   document.getElementById('k-km').textContent = st.km ? Number(st.km).toFixed(1) + ' km' : '—';
 
-  document.getElementById('k-trips').textContent = (st.trips || 0) + ' reys В· ' + (st.stops || 0) + ' toвЂxtash';
+  document.getElementById('k-trips').textContent = (st.trips || 0) + ' reys · ' + (st.stops || 0) + ' toʻxtash';
 
   document.getElementById('k-score').textContent = day.hasGps && a.score != null ? Number(a.score).toFixed(1) : '—';
 
-  document.getElementById('k-grade').textContent = a.grade && a.grade !== '—' ? ('Bahosi ' + a.grade) : 'GPS hisobot yoвЂq';
+  document.getElementById('k-grade').textContent = a.grade && a.grade !== '—' ? ('Bahosi ' + a.grade) : 'GPS hisobot yoʻq';
 
   document.getElementById('k-miss').textContent = String(missed.length);
 
@@ -698,7 +698,7 @@ function paint(day) {
 
   if (!fuel) {
 
-    fb.innerHTML = '<div class="empty">Bu kun uchun yoqilgвЂi yozuvi yoвЂq</div>';
+    fb.innerHTML = '<div class="empty">Bu kun uchun yoqilgʻi yozuvi yoʻq</div>';
 
   } else {
 
@@ -734,13 +734,13 @@ function paint(day) {
 
   let th = '';
 
-  if (day.routes) th += `<div class="row"><span class="nm">YoвЂnalish</span><span class="meta">${esc(day.routes)}</span></div>`;
+  if (day.routes) th += `<div class="row"><span class="nm">Yoʻnalish</span><span class="meta">${esc(day.routes)}</span></div>`;
 
   const geoCount = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo.length : 0;
 
   if (hasGps && ph.length && !geoCount) {
 
-    th += '<div class="empty" style="color:var(--warn);margin:8px 0">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi. Dashboard da toвЂxtashga В«RuxsatВ» bering (dorixona tanlang).</div>';
+    th += '<div class="empty" style="color:var(--warn);margin:8px 0">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi. Dashboard da toʻxtashga «Ruxsat» bering (dorixona tanlang).</div>';
 
   } else if (hasGps && geoCount) {
 
@@ -772,7 +772,7 @@ function paint(day) {
 
   if (tasks.length) {
 
-    th += '<div style="margin:10px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Admin topshirigвЂi</div>';
+    th += '<div style="margin:10px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Admin topshirigʻi</div>';
 
     th += '<div class="task-cards">' + tasks.map(t => {
 
@@ -792,7 +792,7 @@ function paint(day) {
 
   if (missed.length) {
 
-    th += '<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--warn)">OвЂtkazib yuborilgan: ' + missed.map(esc).join(', ') + '</div>';
+    th += '<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--warn)">Oʻtkazib yuborilgan: ' + missed.map(esc).join(', ') + '</div>';
 
   }
 
@@ -806,11 +806,11 @@ function paint(day) {
 
   if (!day.hasGps) {
 
-    sb.innerHTML = '<div class="empty">Bu kun uchun GPS hisobot hali yuklanmagan. Admin Dashboard dan yuklagach shu yerda koвЂrinadi.</div>';
+    sb.innerHTML = '<div class="empty">Bu kun uchun GPS hisobot hali yuklanmagan. Admin Dashboard dan yuklagach shu yerda koʻrinadi.</div>';
 
   } else if (!stops.length) {
 
-    sb.innerHTML = '<div class="empty">ToвЂxtashlar roвЂyxati yoвЂq</div>';
+    sb.innerHTML = '<div class="empty">Toʻxtashlar roʻyxati yoʻq</div>';
 
   } else {
 
@@ -830,7 +830,7 @@ function paint(day) {
 
           <div class="nm">${esc(stopLabel(s))}</div>
 
-          <div class="meta">${esc(s.inTime || '')}${s.outTime ? ' в†’ ' + esc(s.outTime) : ''}</div>
+          <div class="meta">${esc(s.inTime || '')}${s.outTime ? ' → ' + esc(s.outTime) : ''}</div>
 
           ${durHtml}
 
@@ -858,7 +858,7 @@ function paint(day) {
 
     ? jr.map(j => `<div class="row"><div><div class="nm">${esc(j.reason || (j.kind === 'good' ? 'Maktov' : 'Kamchilik'))}</div><div class="meta">${esc(j.note || '')}</div></div><span class="tag ${j.kind==='good'?'tag-ok':'tag-bad'}">${j.kind==='good'?'Yaxshi':'Kamchilik'}</span></div>`).join('')
 
-    : '<div class="empty">Jurnal yozuvi yoвЂq</div>';
+    : '<div class="empty">Jurnal yozuvi yoʻq</div>';
 
 }
 
