@@ -1,151 +1,302 @@
 <!DOCTYPE html>
+
 <html lang="uz">
+
 <head>
+
 <meta charset="UTF-8">
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>VaksinaMed — Fleet Control</title>
+
+<title>Dashboard — VaksinaMed</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
+
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+
+<link rel="stylesheet" href="shell.css?v=9"/>
+
 <style>
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
-* { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+
+html { scrollbar-width: thin; scrollbar-color: #8aa0b8 #e4e7ec; }
+
+* { scrollbar-width: thin; scrollbar-color: #8aa0b8 #e4e7ec; }
+
 *::-webkit-scrollbar { width: 8px; height: 8px; }
+
 *::-webkit-scrollbar-track { background: #e8ebf0; }
+
 *::-webkit-scrollbar-thumb {
-  background: #9aa3ae; border-radius: 8px; border: 2px solid #e8ebf0;
+
+  background: #a8bdd4; border-radius: 8px; border: 2px solid #e8ebf0;
+
 }
+
 *::-webkit-scrollbar-thumb:hover { background: #5c6573; }
+
 *::-webkit-scrollbar-button,
+
 *::-webkit-scrollbar-button:start:decrement,
+
 *::-webkit-scrollbar-button:end:increment {
+
   display: none !important; width: 0; height: 0;
+
 }
+
 *::-webkit-scrollbar-corner { background: #e8ebf0; }
-.tabs, .topbar, .driver-strip-wrap {
-  scrollbar-color: #5a6470 #161c24;
+
+.tabs, .topbar, .driver-strip-wrap, .nav-rail, .nav-links {
+  scrollbar-width: thin;
+  scrollbar-color: #9bb4d0 #eef3f9;
+}
+.tabs::-webkit-scrollbar,
+.topbar::-webkit-scrollbar,
+.driver-strip-wrap::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 .tabs::-webkit-scrollbar-track,
 .topbar::-webkit-scrollbar-track,
-.driver-strip-wrap::-webkit-scrollbar-track { background: #161c24; }
+.driver-strip-wrap::-webkit-scrollbar-track {
+  background: #eef3f9;
+  border-radius: 8px;
+}
 .tabs::-webkit-scrollbar-thumb,
 .topbar::-webkit-scrollbar-thumb,
 .driver-strip-wrap::-webkit-scrollbar-thumb {
-  background: #4a5460; border-color: #161c24;
+  background: #9bb4d0;
+  border-radius: 8px;
+  border: 2px solid #eef3f9;
 }
+.tabs::-webkit-scrollbar-thumb:hover,
+.topbar::-webkit-scrollbar-thumb:hover,
+.driver-strip-wrap::-webkit-scrollbar-thumb:hover {
+  background: #1a5fb4;
+}
+.tabs::-webkit-scrollbar-button,
+.topbar::-webkit-scrollbar-button,
+.driver-strip-wrap::-webkit-scrollbar-button,
+.tabs::-webkit-scrollbar-button:start:decrement,
+.tabs::-webkit-scrollbar-button:end:increment,
+.topbar::-webkit-scrollbar-button:start:decrement,
+.topbar::-webkit-scrollbar-button:end:increment,
+.driver-strip-wrap::-webkit-scrollbar-button:start:decrement,
+.driver-strip-wrap::-webkit-scrollbar-button:end:increment {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+
 
 :root {
-  --bg: #c9ced6;
-  --surface: #f3f4f6;
+
+  /* 3-color: White + Blue + Navy */
+
+  --bg: #eef3f9;
+
+  --surface: #f7fafc;
+
   --card: #ffffff;
-  --ink: #12151c;
-  --ink-2: #2a303a;
-  --muted: #5c6573;
-  --faint: #8b939e;
-  --line: #b7bec8;
-  --line-2: #9aa3ae;
-  --header: #0c1016;
-  --header-2: #161c24;
-  --accent: #1a4a78;
-  --accent-2: #163d64;
-  --ok: #1a5c3a;
-  --ok-bg: #e8f0eb;
-  --warn: #8a5a12;
-  --warn-bg: #f4ecd8;
-  --bad: #9b1c1c;
-  --bad-bg: #f3e4e4;
-  --info: #1a4a78;
-  --info-bg: #e6edf4;
-  --r: 2px;
+
+  --ink: #0b1f3a;
+
+  --ink-2: #1a3558;
+
+  --muted: #5a7190;
+
+  --faint: #8aa0b8;
+
+  --line: #c5d4e6;
+
+  --line-2: #a8bdd4;
+
+  --header: #0b1f3a;
+
+  --header-2: #123050;
+
+  --on-header: #ffffff;
+
+  --on-header-dim: #8eb6df;
+
+  --accent: #1a5fb4;
+
+  --accent-2: #144a8f;
+
+  --accent-soft: #e3eef9;
+
+  --ok: #1a5fb4;
+
+  --ok-bg: #e3eef9;
+
+  --warn: #0b1f3a;
+
+  --warn-bg: #e8eef5;
+
+  --bad: #0b1f3a;
+
+  --bad-bg: #e8eef5;
+
+  --info: #1a5fb4;
+
+  --info-bg: #e3eef9;
+
+  --mark: #1a5fb4;
+
+  --mark-2: #ffffff;
+
+  --mark-ink: #0b1f3a;
+
+  --brand: #8eb6df;
+
+  --brand-2: #ffffff;
+
+  --r: 3px;
+
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
+
 }
+
+
 
 html { scroll-behavior: auto; }
+
 body {
+
   font-family: var(--sans);
+
   background: var(--bg);
+
   color: var(--ink);
+
   font-size: 13px;
+
   line-height: 1.45;
+
   min-height: 100vh;
+
   -webkit-font-smoothing: antialiased;
+
   letter-spacing: .01em;
+
 }
 
-/* ── TOPBAR ── */
+
+
+/* ── TOPBAR (slim; shell.css glass) ── */
+
 .topbar {
-  position: sticky; top: 0; z-index: 200;
-  background: var(--header);
-  display: flex; align-items: center;
-  justify-content: space-between;
-  padding: 0 16px 0 12px;
-  height: 52px;
-  gap: 16px;
-  border-bottom: 2px solid #c9a227;
+
+  /* shell overrides dark sticky bar */
+
 }
+
 .tb-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
 .tb-brand img { width: 36px; height: 36px; display: block; }
+
 .tb-name {
+
   font-size: 14px; font-weight: 700; letter-spacing: .04em;
-  color: #c4a0de; line-height: 1;
+
+  color: var(--brand); line-height: 1;
+
 }
-.tb-name span { color: #e8b423; }
+
+.tb-name span { color: var(--ink); }
+
 .tb-line {
+
   font-size: 8px; font-weight: 600; letter-spacing: .16em;
-  color: #9b7ab3; margin-top: 3px;
+
+  color: var(--muted); margin-top: 3px;
+
 }
+
 .tb-title {
-  font-size: 13px; font-weight: 700; color: #f4f4f2;
+
+  font-size: 13px; font-weight: 700; color: var(--ink);
+
   letter-spacing: .08em; text-transform: uppercase; line-height: 1.15;
+
 }
+
 .tb-sub {
-  font-size: 10px; color: #8b939e;
+
+  font-size: 10px; color: var(--muted);
+
   font-weight: 500; letter-spacing: .16em;
+
   text-transform: uppercase; line-height: 1.2; margin-top: 1px;
+
 }
+
 .tb-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
 .tb-user {
+
   display: flex; align-items: center; gap: 8px;
-  margin-left: 6px; padding-left: 10px;
-  border-left: 1px solid #2a323c;
+
 }
+
 .tb-user-name {
-  font-size: 12px; font-weight: 600; color: #f4f4f2;
+
+  font-size: 12px; font-weight: 600; color: var(--ink);
+
   max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+
 }
+
 .tb-role {
+
   font-family: var(--mono); font-size: 9px; font-weight: 700;
-  letter-spacing: .08em; padding: 2px 6px; border: 1px solid #3a4450;
+
+  letter-spacing: .08em; padding: 2px 6px; border: 1px solid var(--line);
+
 }
-.tb-role-pro { background: #c9a227; color: #0c1016; border-color: #c9a227; }
-.tb-role-admin { color: #c8ced6; }
+
+.tb-role-pro { background: var(--mark); color: #fff; border-color: var(--mark); }
+
+.tb-role-admin { color: var(--muted); }
+
+
 
 /* ── DRIVER STRIP ── */
+
 .driver-strip-wrap {
-  background: var(--header-2);
-  border-bottom: 1px solid #2a323c;
+  background: #ffffff;
+  border-bottom: 1px solid #c5d4e6;
   padding: 0 12px;
   overflow-x: auto;
 }
+
 .driver-strip { display: flex; align-items: stretch; min-width: max-content; }
+
+
 
 .dtab {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 14px;
-  font-size: 12px; font-weight: 600; color: #9aa3ae;
+  font-size: 12px; font-weight: 600; color: #5a7190;
   cursor: pointer; white-space: nowrap;
-  border-right: 1px solid #2a323c;
+  border-right: 1px solid #c5d4e6;
   border-bottom: 2px solid transparent;
   user-select: none;
 }
-.dtab:hover { color: #e8eaed; background: #1c232c; }
+.dtab:hover { color: #0b1f3a; background: #eef3f9; }
 .dtab.active {
-  color: #f4f4f2;
-  background: #1c232c;
-  border-bottom-color: #c9a227;
+  color: #0b1f3a;
+  background: #e3eef9;
+  border-bottom-color: #1a5fb4;
 }
 .dtab .dtab-dot {
   width: 6px; height: 6px; flex-shrink: 0;
@@ -154,1045 +305,2064 @@ body {
   font-family: var(--mono);
   font-size: 10px; font-weight: 500;
   letter-spacing: .04em;
-  color: #6b7380;
-  border: 1px solid #3a4450;
+  color: #5a7190;
+  border: 1px solid #c5d4e6;
   padding: 1px 5px;
 }
-.dtab.active .dtab-car { color: #c9a227; border-color: #6a5818; }
+.dtab.active .dtab-car { color: #1a5fb4; border-color: #1a5fb4; }
+
+
 
 /* ── LAYOUT ── */
+
 .page-wrap {
+
   display: grid;
+
   grid-template-columns: 248px 1fr;
+
   gap: 12px;
+
   max-width: 1480px;
+
   margin: 12px auto 28px;
+
   padding: 0 12px;
+
 }
+
 @media(max-width:900px){ .page-wrap{grid-template-columns:1fr;} }
+
 .sidebar { display: flex; flex-direction: column; gap: 10px; }
 
+
+
 .card {
+
   background: var(--card);
+
   border: 1px solid var(--line);
+
   overflow: hidden;
+
 }
+
 .card-head {
+
   display: flex; align-items: center; justify-content: space-between;
+
   padding: 8px 12px;
+
   background: var(--surface);
+
   border-bottom: 1px solid var(--line);
+
 }
+
 .card-head h3 {
+
   font-size: 10px; font-weight: 700; color: var(--ink-2);
+
   letter-spacing: .14em; text-transform: uppercase;
+
 }
+
+
 
 .chip {
+
   display: inline-flex; align-items: center;
+
   font-family: var(--mono);
+
   font-size: 10px; font-weight: 600;
+
   letter-spacing: .06em;
+
   padding: 2px 7px;
+
   border: 1px solid var(--line);
+
   background: var(--surface);
+
   color: var(--muted);
+
   text-transform: uppercase;
+
 }
+
 .chip-blue { background: var(--info-bg); color: var(--accent); border-color: #c5d0dc; }
-.chip-green{ background: var(--ok-bg); color: var(--ok); border-color: #c5d6cc; }
-.chip-red  { background: var(--bad-bg); color: var(--bad); border-color: #ddc8c8; }
+
+.chip-green{ background: var(--ok-bg); color: var(--ok); border-color: #c5d4e6; }
+
+.chip-red  { background: var(--bad-bg); color: var(--bad); border-color: #c5d4e6; }
+
 .chip-gray { background: var(--surface); color: var(--muted); }
 
+
+
 /* calendar */
+
 .cal-nav {
+
   display: flex; align-items: center; justify-content: space-between;
+
   padding: 8px 12px 6px;
+
   font-size: 12px; font-weight: 600; color: var(--ink-2);
+
   letter-spacing: .06em; text-transform: uppercase;
+
 }
+
 .cal-nav button {
+
   background: var(--surface); border: 1px solid var(--line);
+
   width: 24px; height: 24px;
+
   cursor: pointer; color: var(--muted); font-size: 11px;
+
 }
+
 .cal-nav button:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+
 .cal-week-labels {
+
   display: grid; grid-template-columns: repeat(7, 1fr);
+
   gap: 1px; margin-bottom: 2px; text-align: center;
+
 }
+
 .cal-week-labels span {
+
   font-size: 9px; font-weight: 700; color: var(--faint);
+
   letter-spacing: .08em; text-transform: uppercase; padding: 3px 0;
+
 }
+
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--line); }
+
 .cal-day {
+
   aspect-ratio: 1;
+
   display: flex; align-items: center; justify-content: center;
+
   font-family: var(--mono);
+
   font-size: 11px; font-weight: 500;
+
   cursor: pointer; color: var(--ink-2);
+
   background: #fff;
+
   user-select: none;
+
   position: relative;
+
 }
+
 .cal-day:hover:not(.cal-day-empty):not(.cal-day-future) { background: var(--surface); }
+
 .cal-day.cal-day-empty { background: var(--surface); cursor: default; }
+
 .cal-day.cal-day-future { color: var(--faint); cursor: default; background: var(--surface); }
+
 .cal-day.has-data { font-weight: 700; }
+
 .cal-day.has-data::after {
+
   content: '';
+
   position: absolute; bottom: 3px; left: 50%;
+
   transform: translateX(-50%);
+
   width: 3px; height: 3px; background: var(--ok);
+
 }
+
 .cal-day.is-today { outline: 1px solid var(--accent); outline-offset: -1px; color: var(--accent); font-weight: 700; }
+
 .cal-day.active {
+
   background: var(--header) !important;
+
   color: #fff !important;
+
   font-weight: 700;
+
 }
-.cal-day.active::after { background: #c9a227; }
+
+.cal-day.active::after { background: var(--mark); }
+
 .cal-selected-box {
+
   background: var(--surface);
+
   border-top: 1px solid var(--line);
+
   padding: 8px 12px;
+
   display: flex; align-items: center; justify-content: space-between;
+
   font-size: 12px; font-weight: 600; color: var(--ink-2);
+
 }
+
+
 
 /* banner */
+
 .driver-banner {
+
   background: var(--card);
+
   border: 1px solid var(--line);
+
   border-left: 4px solid var(--header);
+
   padding: 14px 16px;
+
   display: flex; align-items: center;
+
   justify-content: space-between;
+
   gap: 16px; flex-wrap: wrap;
+
 }
+
 .db-left { display: flex; align-items: center; gap: 12px; }
+
 .db-avatar {
+
   width: 40px; height: 40px;
+
   background: var(--header);
-  color: #c9a227;
+
+  color: var(--mark);
+
   display: flex; align-items: center; justify-content: center;
+
   font-family: var(--mono);
+
   font-size: 12px; font-weight: 700;
+
   letter-spacing: .04em;
+
   flex-shrink: 0;
+
 }
+
 .db-name {
+
   font-size: 18px; font-weight: 700;
+
   letter-spacing: -.01em; color: var(--ink);
+
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+
 }
+
 .car-badge {
+
   background: var(--header); color: #f4f4f2;
+
   font-family: var(--mono);
+
   font-size: 11px; font-weight: 500;
+
   padding: 3px 8px;
+
   letter-spacing: .08em;
+
 }
+
 .db-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
 .db-meta strong { color: var(--ink-2); font-weight: 600; }
+
 .db-score {
+
   display: flex; flex-direction: column;
+
   align-items: flex-end; justify-content: center;
+
   background: var(--header);
+
   padding: 10px 16px;
+
   min-width: 96px;
+
 }
+
 .db-score-num {
+
   font-size: 28px; font-weight: 600;
+
   color: #f4f4f2; font-family: var(--mono);
+
   line-height: 1; letter-spacing: -.02em;
+
 }
+
 .db-score-lbl {
+
   font-size: 9px; font-weight: 700;
-  color: #c9a227; text-transform: uppercase;
+
+  color: var(--mark); text-transform: uppercase;
+
   letter-spacing: .16em; margin-top: 4px;
+
 }
+
+
 
 /* KPI */
+
 #kpi-container .kpi-grid {
+
   display: grid;
+
   grid-template-columns: repeat(6, 1fr);
+
   gap: 8px;
+
 }
+
 @media(max-width:1100px){ #kpi-container .kpi-grid{grid-template-columns:repeat(3,1fr);} }
+
 @media(max-width:600px){  #kpi-container .kpi-grid{grid-template-columns:repeat(2,1fr);} }
+
 .kpi-card {
+
   background: var(--card);
+
   border: 1px solid var(--line);
+
   border-left: 3px solid var(--line-2);
+
   padding: 12px 12px 10px;
+
 }
+
 .kpi-card.c-blue   { border-left-color: var(--accent); }
+
 .kpi-card.c-green  { border-left-color: var(--ok); }
-.kpi-card.c-purple { border-left-color: #4a3d73; }
+
+.kpi-card.c-purple { border-left-color: #243b5a; }
+
 .kpi-card.c-red    { border-left-color: var(--bad); }
+
 .kpi-card.c-orange { border-left-color: var(--warn); }
-.kpi-card.c-teal   { border-left-color: #1a5c5c; }
+
+.kpi-card.c-teal   { border-left-color: #1a5fb4; }
+
 .kpi-title {
+
   font-size: 9px; font-weight: 700; color: var(--faint);
+
   text-transform: uppercase; letter-spacing: .12em; margin-bottom: 6px;
+
 }
+
 .kpi-value {
+
   font-size: 22px; font-weight: 600; color: var(--ink);
+
   font-family: var(--mono); line-height: 1.1; margin-bottom: 3px;
+
   font-variant-numeric: tabular-nums;
+
 }
+
 .kpi-unit { font-size: 10px; font-weight: 600; color: var(--faint); letter-spacing: .08em; text-transform: uppercase; }
 
+
+
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
 @media(max-width:800px){ .two-col{grid-template-columns:1fr;} }
 
+
+
 .stat-list { padding: 0; }
+
 .stat-row {
+
   display: flex; align-items: center; gap: 10px;
+
   padding: 8px 12px;
+
   border-bottom: 1px solid #eceff2;
+
 }
+
 .stat-row:last-child { border-bottom: none; }
+
 .stat-icon-wrap {
+
   width: 22px; height: 22px;
+
   display: flex; align-items: center; justify-content: center;
+
   font-family: var(--mono);
+
   font-size: 9px; font-weight: 700;
+
   letter-spacing: 0;
+
   color: var(--muted);
+
   background: var(--surface);
+
   border: 1px solid var(--line);
+
   flex-shrink: 0;
+
 }
+
 .stat-label { flex: 1; font-size: 12px; color: var(--ink-2); font-weight: 500; }
+
 .stat-value {
+
   font-size: 12px; font-weight: 600; color: var(--ink);
+
   font-family: var(--mono);
+
 }
+
+
 
 .analysis-body { padding: 10px 12px 12px; }
+
 .ph-block { margin-bottom: 12px; }
+
 .ph-block:last-child { margin-bottom: 0; }
+
 .ph-h {
+
   font-size: 9px; font-weight: 700; letter-spacing: .12em;
+
   text-transform: uppercase; margin-bottom: 6px; color: var(--muted);
+
 }
+
 .ph-h.warn { color: var(--warn); }
+
 .ph-h.ok { color: var(--ok); }
+
 .ph-h.bad { color: var(--bad); }
+
 .ph-list { border: 1px solid var(--line); }
+
 .ph-row {
+
   display: flex; align-items: baseline; gap: 8px;
+
   padding: 6px 10px;
+
   border-bottom: 1px solid #eceff2;
+
   font-size: 12px;
+
 }
+
 .ph-row:last-child { border-bottom: none; }
+
 .ph-row .nm { font-weight: 600; color: var(--ink); flex: 1; }
+
 .ph-row .tm { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
 .ph-note {
+
   border: 1px solid var(--line);
+
   padding: 8px 10px;
+
   font-size: 12px; font-weight: 600;
+
 }
-.ph-note.ok { background: var(--ok-bg); color: var(--ok); border-color: #c5d6cc; }
+
+.ph-note.ok { background: var(--ok-bg); color: var(--ok); border-color: #c5d4e6; }
+
 .ph-note.warn { background: var(--warn-bg); color: var(--warn); border-color: #e0d4b8; }
-.ph-note.bad { background: var(--bad-bg); color: var(--bad); border-color: #ddc8c8; }
+
+.ph-note.bad { background: var(--bad-bg); color: var(--bad); border-color: #c5d4e6; }
+
+
 
 .table-wrap { overflow-x: auto; }
+
 table.gtable { width: 100%; border-collapse: collapse; font-size: 12px; }
+
 table.gtable th {
+
   background: var(--surface); color: var(--muted);
+
   font-size: 9px; font-weight: 700; text-transform: uppercase;
+
   letter-spacing: .12em; padding: 8px 12px;
+
   border-bottom: 1px solid var(--line);
+
   white-space: nowrap; text-align: left;
+
 }
+
 table.gtable td {
+
   padding: 7px 12px;
+
   border-bottom: 1px solid #eceff2;
+
   color: var(--ink-2); vertical-align: middle;
+
 }
-table.gtable tbody tr:hover td { background: #f7f8fa; }
+
+table.gtable tbody tr:hover td { background: #ffffff; }
+
 table.gtable tr.row-own td    { background: #f4f8f5; }
+
 table.gtable tr.row-other td  { background: #f7f4ec; }
+
 table.gtable tr.row-problem td{ background: #f8f1f1; }
+
 table.gtable tr.row-office td { background: #f4f5f7; }
+
 table.gtable tr.rank-row { cursor: pointer; }
+
 table.gtable tr.rank-row.is-active td { background: #e6edf4; }
-table.gtable tr.rank-row.is-empty td { color: #8b939e; }
+
+table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
+
 .rk-ok { color: var(--ok); font-weight: 700; font-family: var(--mono); }
-.rk-mid { color: #8a5a12; font-weight: 700; font-family: var(--mono); }
+
+.rk-mid { color: #0b1f3a; font-weight: 700; font-family: var(--mono); }
+
 .rk-bad { color: var(--bad); font-weight: 700; font-family: var(--mono); }
 
+
+
 .plan-box {
+
   margin: 10px 12px 8px; padding: 10px 12px;
+
   border: 1px solid var(--line); background: var(--surface);
+
 }
+
 .plan-k { font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+
 .plan-v { font-family: var(--mono); font-size: 18px; font-weight: 600; margin-top: 4px; }
+
 .plan-s { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
 
+
+
 .rev-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+
 .rev-btn {
+
   height: 24px; padding: 0 7px; border: 1px solid var(--line);
+
   background: #fff; color: var(--ink-2); font: 700 9px/1 var(--sans);
+
   letter-spacing: .04em; cursor: pointer;
+
 }
+
 .rev-btn:hover { background: #f3f4f6; }
+
 .rev-btn.on-ok { background: var(--ok); color: #fff; border-color: var(--ok); }
+
 .rev-btn.on-bad { background: var(--bad); color: #fff; border-color: var(--bad); }
+
 .ph-row.ph-rev { flex-wrap: wrap; gap: 6px; align-items: center; }
 
+
+
 .badge {
+
   display: inline-flex; align-items: center;
+
   padding: 2px 7px;
+
   font-family: var(--mono);
+
   font-size: 9px; font-weight: 700;
+
   letter-spacing: .08em;
+
   text-transform: uppercase;
+
   border: 1px solid;
+
   white-space: nowrap;
+
 }
-.b-own     { background: var(--ok-bg); color: var(--ok); border-color: #c5d6cc; }
+
+.b-own     { background: var(--ok-bg); color: var(--ok); border-color: #c5d4e6; }
+
 .b-other   { background: var(--info-bg); color: var(--accent); border-color: #c5d0dc; }
-.b-problem { background: var(--bad-bg); color: var(--bad); border-color: #ddc8c8; }
+
+.b-problem { background: var(--bad-bg); color: var(--bad); border-color: #c5d4e6; }
+
 .b-office  { background: var(--header); color: #f4f4f2; border-color: var(--header); }
-.b-outside { background: #eeeaf4; color: #4a3d73; border-color: #d4cde0; }
+
+.b-outside { background: #e8eef5; color: #243b5a; border-color: #c5d4e6; }
+
 .b-other-dir{ background: var(--warn-bg); color: var(--warn); border-color: #e0d4b8; }
 
-.map-card { border-color: #12151c; }
+
+
+.map-card {
+  position: relative;
+  border: 1px solid #c5d4e6 !important;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.8) inset,
+    0 14px 36px rgba(11, 31, 58, 0.08);
+}
+.map-card::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: linear-gradient(180deg, #1a5fb4 0%, #0b1f3a 100%);
+  z-index: 2; pointer-events: none;
+}
 .map-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 16px;
-  background: #0c1016;
-  border-bottom: 2px solid #c9a227;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 16px 18px 16px 22px;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(26,95,180,.08), transparent 55%),
+    linear-gradient(180deg, #ffffff 0%, #f3f7fc 100%);
+  border-bottom: 1px solid #c5d4e6;
 }
 .map-kicker {
-  font-size: 9px; font-weight: 700; color: #c9a227;
-  letter-spacing: .2em; text-transform: uppercase; margin-bottom: 3px;
+  font-size: 9px; font-weight: 700; color: #1a5fb4;
+  letter-spacing: .2em; text-transform: uppercase; margin-bottom: 5px;
 }
 .map-head h3 {
-  font-size: 13px; font-weight: 700; color: #f4f4f2;
-  letter-spacing: .1em; text-transform: uppercase; margin: 0;
+  font-size: 15px; font-weight: 700; color: #0b1f3a;
+  letter-spacing: .08em; text-transform: uppercase; margin: 0;
+  line-height: 1.2;
 }
 .map-head-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .map-stat {
-  min-width: 64px;
-  padding: 5px 8px;
-  background: #161c24;
-  border: 1px solid #2a323c;
+  min-width: 76px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #c5d4e6;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(11, 31, 58, 0.04);
 }
 .map-stat i {
   display: block; font-style: normal;
-  font-size: 8px; font-weight: 700; color: #8b939e;
+  font-size: 8px; font-weight: 700; color: #5a7190;
   letter-spacing: .12em; text-transform: uppercase;
 }
 .map-stat b {
   display: block; font-family: var(--mono);
-  font-size: 14px; font-weight: 600; color: #f4f4f2; margin-top: 1px;
+  font-size: 17px; font-weight: 700; color: #0b1f3a; margin-top: 3px;
+  letter-spacing: -.02em;
 }
+.map-stat.is-warn b { color: #1a5fb4; }
+.map-stat.is-bad {
+  border-color: #b8c9dc;
+  background: linear-gradient(180deg, #fff 0%, #eef3f9 100%);
+}
+.map-stat.is-bad b { color: #0b1f3a; }
 .map-legend {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  padding: 8px 12px;
-  background: #161c24;
-  border-bottom: 1px solid #2a323c;
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 11px 18px 11px 22px;
+  background: #f6f9fc;
+  border-bottom: 1px solid #c5d4e6;
 }
 .leg-item {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 8px;
-  font-size: 10px; font-weight: 600; color: #c8ced6;
-  letter-spacing: .04em;
-  background: #0c1016;
-  border: 1px solid #2a323c;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px;
+  font-size: 10px; font-weight: 600; color: #1a3558;
+  letter-spacing: .02em;
+  background: #fff;
+  border: 1px solid #c5d4e6;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(11, 31, 58, 0.03);
 }
-.leg-dot { width: 8px; height: 8px; flex-shrink: 0; }
+.leg-dot {
+  width: 9px; height: 9px; flex-shrink: 0;
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(26, 95, 180, 0.1);
+}
+.leg-dot.is-line {
+  width: 16px; height: 3px; border-radius: 2px;
+}
 .map-frame {
   position: relative;
-  background: #0c1016;
+  background: #dce6f0;
+  border-top: 0;
+  isolation: isolate;
 }
-.map-frame.is-active {
-  box-shadow: inset 0 0 0 2px #c9a227;
+.map-frame::before {
+  content: "Bosing — zoom va surish ochiladi";
+  position: absolute; left: 14px; bottom: 14px; z-index: 450;
+  pointer-events: none;
+  padding: 8px 12px;
+  font-size: 11px; font-weight: 600; letter-spacing: .03em;
+  color: #0b1f3a;
+  background: rgba(255,255,255,.96);
+  border: 1px solid #c5d4e6;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(11, 31, 58, 0.12);
+}
+.map-frame::after {
+  content: "";
+  position: absolute; inset: 0; z-index: 400;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(11, 31, 58, 0.06);
+  transition: box-shadow .18s ease;
+}
+.map-frame.is-active::before { display: none; }
+.map-frame.is-active::after {
+  box-shadow: inset 0 0 0 2px #1a5fb4;
 }
 #leaflet-map {
   width: 100%;
-  height: 460px;
-  min-height: 360px;
-  background: #c5ccd6;
+  height: min(62vh, 580px);
+  min-height: 420px;
+  background: #dce6f0;
   z-index: 1;
+  border-radius: 0;
 }
-.leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #c5ccd6; }
+.leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #dce6f0; }
 .leaflet-popup-content-wrapper {
-  border-radius: 0; box-shadow: none;
-  border: 1px solid #12151c;
-  background: #0c1016; color: #f4f4f2;
+  border-radius: 12px !important;
+  box-shadow: 0 14px 32px rgba(11, 31, 58, 0.22) !important;
+  border: 1px solid rgba(197, 212, 230, 0.35);
+  background: #0b1f3a; color: #e8eef5;
   font-family: var(--sans);
 }
-.leaflet-popup-content { margin: 10px 12px; font-size: 12px; line-height: 1.45; }
-.leaflet-popup-content b { color: #f4f4f2; }
-.leaflet-popup-tip { background: #0c1016; box-shadow: none; }
-.leaflet-bar { border: 1px solid #12151c !important; box-shadow: none !important; }
-.leaflet-bar a { border-radius: 0 !important; color: #12151c !important; }
+.leaflet-popup-content { margin: 12px 14px; font-size: 12px; line-height: 1.5; }
+.leaflet-popup-content b { color: #fff; }
+.leaflet-popup-tip { background: #0b1f3a; box-shadow: none; }
+.leaflet-control-zoom { margin: 14px 0 0 14px !important; }
+.leaflet-bar {
+  border: 1px solid #c5d4e6 !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 8px 18px rgba(11, 31, 58, 0.12) !important;
+}
+.leaflet-bar a {
+  border-radius: 0 !important;
+  color: #0b1f3a !important;
+  background: #fff !important;
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  font-size: 16px !important;
+  border-bottom: 1px solid #c5d4e6 !important;
+}
+.leaflet-bar a:hover { background: #e3eef9 !important; color: #1a5fb4 !important; }
+.map-card #btn-refresh-map {
+  background: #1a5fb4 !important;
+  color: #fff !important;
+  border-color: #1a5fb4 !important;
+  border-radius: 11px;
+  height: 38px;
+  padding: 0 14px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 16px rgba(26, 95, 180, 0.28);
+}
+.map-card #btn-refresh-map:hover {
+  background: #2a74c9 !important;
+  border-color: #2a74c9 !important;
+}
 .vm-pin { background: none !important; border: none !important; }
 .vm-pin-dot {
   display: flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px;
+  width: 24px; height: 24px;
   font-family: var(--mono);
-  font-size: 8px; font-weight: 700; color: #fff;
-  border: 1.5px solid #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,.45);
+  font-size: 10px; font-weight: 700; color: #fff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(11, 31, 58, 0.32);
 }
 .vm-pin-end {
-  width: 24px; height: 24px; font-size: 8px;
-  background: #0c1016 !important;
-  border-color: #c9a227;
-  color: #c9a227;
+  width: 28px; height: 28px;
+  background: #0b1f3a !important;
+  border-color: #fff;
+  color: #fff;
+  border-radius: 9px;
+}
+.map-stops {
+  border-top: 1px solid #c5d4e6;
+  background: #fff;
+}
+.map-stops .sec-head {
+  padding: 12px 18px 12px 22px;
+  background: linear-gradient(180deg, #f7fafc 0%, #ffffff 100%);
+  border-bottom: 1px solid #e4ecf5;
+}
+.map-stops .sec-head h3 {
+  font-size: 11px;
+  letter-spacing: .14em;
+}
+.map-stops .table-wrap { max-height: 320px; overflow: auto; }
+.map-stops table.gtable th {
+  position: sticky; top: 0; z-index: 1;
+  background: #f3f7fc;
 }
 
 .eval-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; padding: 12px; }
+
 @media(max-width:700px){ .eval-grid{grid-template-columns:1fr;} }
+
 .eval-block {
+
   background: var(--surface);
+
   border: 1px solid var(--line);
+
   padding: 10px 12px;
+
 }
+
 .eval-block-title {
+
   font-size: 9px; font-weight: 700; color: var(--muted);
+
   letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px;
+
 }
+
 .eval-block ul { list-style: none; }
+
 .eval-block li {
+
   font-size: 12px; color: var(--ink-2); padding: 3px 0;
+
   border-bottom: 1px solid #eceff2;
+
   font-family: var(--mono);
+
 }
+
 .eval-block li:last-child { border-bottom: none; }
+
 .eval-final {
+
   display: flex; align-items: stretch; gap: 12px;
+
   margin: 0 12px 12px; padding: 0;
+
   flex-wrap: wrap;
+
 }
+
 .eval-score-box {
+
   display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+
   min-width: 120px; background: var(--header);
+
   padding: 14px 16px;
+
 }
+
 .eval-score-num { font-size: 32px; font-weight: 600; color: #f4f4f2; font-family: var(--mono); line-height: 1; }
-.eval-score-max { font-size: 9px; color: #c9a227; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; margin-top: 6px; }
+
+.eval-score-max { font-size: 9px; color: var(--mark); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; margin-top: 6px; }
+
 .eval-right { flex: 1; min-width: 200px; border: 1px solid var(--line); padding: 12px; background: var(--surface); }
+
 .eval-right ul { list-style: none; margin-bottom: 10px; }
+
 .eval-right li { font-size: 12px; color: var(--ink-2); padding: 3px 0; border-bottom: 1px solid #eceff2; }
+
 .eval-right li:last-child { border-bottom: none; }
+
 .eval-summary-box {
+
   padding: 8px 10px; font-size: 12px; font-weight: 600;
+
   border: 1px solid var(--line); margin-top: 4px;
+
   font-family: var(--mono);
+
 }
-.eval-summary-box.good  { background: var(--ok-bg); border-color: #c5d6cc; color: var(--ok); }
+
+.eval-summary-box.good  { background: var(--ok-bg); border-color: #c5d4e6; color: var(--ok); }
+
 .eval-summary-box.ok    { background: var(--warn-bg); border-color: #e0d4b8; color: var(--warn); }
-.eval-summary-box.bad   { background: var(--bad-bg); border-color: #ddc8c8; color: var(--bad); }
+
+.eval-summary-box.bad   { background: var(--bad-bg); border-color: #c5d4e6; color: var(--bad); }
+
+
 
 .empty-state {
+
   display: flex; flex-direction: column; align-items: flex-start;
+
   padding: 28px 16px;
+
 }
+
 .empty-icon { display: none; }
+
 .empty-title {
+
   font-size: 11px; font-weight: 700; color: var(--ink-2);
+
   letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px;
+
 }
+
 .empty-desc { font-size: 12px; color: var(--muted); max-width: 380px; line-height: 1.55; }
 
+
+
 .btn {
+
   display: inline-flex; align-items: center; gap: 7px;
+
   font-family: var(--sans); font-size: 11px; font-weight: 700;
+
   padding: 0 12px; height: 30px;
+
   border: 1px solid transparent;
+
   cursor: pointer; white-space: nowrap;
+
   user-select: none; line-height: 1;
+
   letter-spacing: .08em; text-transform: uppercase;
+
   text-decoration: none;
+
 }
+
 .btn:active { transform: none; }
+
 .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 .btn-primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+
 .btn-success { background: var(--ok); color: #fff; border-color: var(--ok); }
-.btn-success:hover { background: #154d31; }
+
+.btn-success:hover { background: #144a8f; }
+
 .btn-dark { background: #f4f4f2; color: var(--header); border-color: #f4f4f2; }
+
 .btn-dark:hover { background: #fff; }
+
 .btn-light {
+
   background: transparent; color: #d5d8dc;
+
   border-color: #3a4450;
+
 }
+
 .btn-light:hover { background: #1c232c; color: #fff; border-color: #6b7380; }
+
 .btn-gold {
-  background: #e8b423;
-  color: #0c1016;
-  border-color: #e8b423;
+
+  background: var(--mark);
+
+  color: #ffffff;
+
+  border-color: var(--mark);
+
 }
+
 .btn-gold:hover, .btn-gold:visited {
-  background: #f0c44a;
-  color: #0c1016;
-  border-color: #f0c44a;
+
+  background: #2a74c9;
+
+  color: #ffffff;
+
+  border-color: #2a74c9;
+
 }
+
 .btn-nav-fuel {
+
   height: 30px;
+
   padding: 0 12px;
+
   font-size: 11px;
+
   font-weight: 700;
+
   letter-spacing: .1em;
+
   box-shadow: 0 0 0 1px rgba(232,180,35,.35);
+
 }
+
 .btn-outline { background: #fff; color: var(--ink-2); border-color: var(--line-2); }
+
 .btn-outline:hover { background: var(--header); color: #fff; border-color: var(--header); }
+
 .btn-sm { font-size: 10px; padding: 0 10px; height: 26px; }
+
 .btn-icon { padding: 0 8px; min-width: 30px; justify-content: center; font-size: 9px; }
 
+
+
 .modal-bg {
+
   position: fixed; inset: 0; z-index: 800;
+
   background: rgba(12,16,22,.72);
+
   display: none; align-items: center; justify-content: center; padding: 20px;
+
 }
+
 .modal-bg.open { display: flex; }
+
 .modal-box {
+
   background: #fff; width: 100%;
+
   max-width: 520px; max-height: 92vh; overflow-y: auto;
+
   padding: 0; border: 1px solid var(--header);
+
 }
+
 .modal-head {
+
   display: flex; align-items: center; justify-content: space-between;
+
   padding: 12px 16px;
+
   background: var(--header);
+
   color: #f4f4f2;
+
 }
+
 .modal-head h3 {
+
   font-size: 11px; font-weight: 700; color: #f4f4f2;
+
   letter-spacing: .14em; text-transform: uppercase;
+
 }
+
 .modal-close {
+
   background: transparent; border: 1px solid #3a4450;
+
   width: 26px; height: 26px;
-  cursor: pointer; font-size: 14px; color: #9aa3ae;
+
+  cursor: pointer; font-size: 14px; color: #a8bdd4;
+
   display: flex; align-items: center; justify-content: center;
+
 }
+
 .modal-close:hover { background: var(--bad); color: #fff; border-color: var(--bad); }
+
 .modal-box .form-row, .modal-inner { padding: 0 16px; }
+
 .form-row { margin: 14px 16px; }
+
 .form-row label {
+
   display: block; font-size: 10px; font-weight: 700;
+
   color: var(--muted); text-transform: uppercase;
+
   letter-spacing: .12em; margin-bottom: 5px;
+
 }
+
 .form-row input, .form-row select {
+
   width: 100%; padding: 8px 10px;
+
   border: 1px solid var(--line); 
+
   font-family: var(--mono); font-size: 13px; color: var(--ink);
+
   background: var(--surface);
+
 }
+
 .form-row input:focus, .form-row select:focus {
+
   outline: none; border-color: var(--accent); background: #fff;
+
 }
+
 .form-hint { font-size: 11px; color: var(--faint); margin-top: 4px; line-height: 1.5; }
+
 .modal-footer {
+
   display: flex; justify-content: flex-end; gap: 6px;
+
   padding: 12px 16px;
+
   border-top: 1px solid var(--line);
+
   background: var(--surface);
+
   margin-top: 8px;
+
 }
+
 .progress-wrap { background: var(--surface); height: 3px; overflow: hidden; margin: 12px 16px; display: none; }
+
 .progress-fill { height: 100%; background: var(--ok); }
+
 .progress-status { font-size: 12px; color: var(--muted); padding: 0 16px; font-family: var(--mono); }
+
 .progress-list { font-size: 11px; color: var(--muted); max-height: 140px; overflow-y: auto; list-style: none; margin: 8px 16px 0; font-family: var(--mono); }
+
 .progress-list li { padding: 3px 0; border-bottom: 1px solid #eceff2; }
 
+
+
 .sec-head {
+
   display: flex; align-items: center; justify-content: space-between;
+
   padding: 8px 12px; gap: 10px;
+
   background: var(--surface);
+
   border-bottom: 1px solid var(--line);
+
 }
+
 .sec-head h3 {
+
   font-size: 10px; font-weight: 700; color: var(--ink);
+
   letter-spacing: .14em; text-transform: uppercase;
+
 }
+
 .sec-head .cnt {
+
   font-family: var(--mono);
+
   font-size: 10px; font-weight: 600; color: var(--muted);
+
   border: 1px solid var(--line); padding: 2px 7px;
+
 }
+
+
 
 #drop-overlay {
+
   position: fixed; inset: 0; z-index: 700;
+
   background: rgba(12,16,22,.78);
-  border: 2px dashed #c9a227;
+
+  border: 2px dashed var(--mark);
+
   display: none; align-items: center; justify-content: center;
+
   flex-direction: column; gap: 8px;
+
   font-size: 14px; font-weight: 700; color: #f4f4f2;
+
   letter-spacing: .12em; text-transform: uppercase;
+
 }
+
+
 
 .mb-0  { margin-bottom: 0 !important; }
+
 .text-green { color: var(--ok); }
+
 .text-red   { color: var(--bad); }
+
 .text-blue  { color: var(--accent); }
+
 .text-muted { color: var(--faint); }
+
 .font-mono  { font-family: var(--mono); }
+
 .fw-700 { font-weight: 700; }
 
+
+
 .row { display: flex; flex-wrap: wrap; margin: -6px; }
+
 .g-3>*{ padding: 8px; }
+
 .col-md-6 { flex: 0 0 50%; padding: 6px; min-width:0; }
+
 .col-md-2 { flex: 0 0 16.666%; padding: 6px; min-width:0; }
+
 .col-sm-4 { flex: 0 0 33.333%; padding: 6px; min-width:0; }
+
 @media(max-width:640px){ .col-md-6{flex:0 0 100%;} }
+
 @media(max-width:900px){ .col-md-2{flex:0 0 33.333%;} }
+
 @media(max-width:500px){ .col-md-2{flex:0 0 50%;} }
+
 .mb-3 { margin-bottom: 16px; }
+
 .mb-4 { margin-bottom: 20px; }
+
 .text-center { text-align: center; }
+
 .p-2 { padding: 8px !important; }
+
 .p-3 { padding: 14px !important; }
 
+
+
 .gps-meta {
+
   font-family: var(--mono);
+
   font-size: 10px; color: var(--muted);
+
   line-height: 1.7; padding: 10px 12px 12px;
+
   border-top: 1px solid var(--line);
+
   background: var(--surface);
+
 }
+
 .gps-meta b { color: var(--ink-2); font-weight: 600; }
+
 .sidebar-actions { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 
+
+
 .toast-msg {
+
   position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+
   background: var(--header); color: #f4f4f2;
+
   padding: 10px 14px;
+
   font-size: 12px; font-weight: 600;
+
   max-width: 360px; line-height: 1.45;
-  border-left: 3px solid #c9a227;
+
+  border-left: 3px solid var(--mark);
+
   font-family: var(--sans);
+
 }
 
+
+
 html { -webkit-text-size-adjust: 100%; }
+
 body { overflow-x: clip; }
+
 .table-wrap { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+
 input, select, textarea { max-width: 100%; }
+
 .btn, .dtab, .cal-day, .rev-btn { touch-action: manipulation; }
 
-@media (max-width: 900px) {
+
+
+@media (max-width: 980px) {
   .topbar {
     height: auto; min-height: 52px;
     flex-wrap: wrap; align-items: center;
-    padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
     gap: 8px;
   }
-  .tb-actions { width: 100%; justify-content: flex-start; gap: 6px; }
+  .tb-actions { width: 100%; }
   .tb-user {
     margin-left: 0; padding-left: 0; border-left: 0;
-    width: 100%; flex-wrap: wrap;
+    width: auto; flex-wrap: wrap;
   }
-  .tb-user-name { max-width: 40vw; }
-  .page-wrap {
-    margin: 8px auto 20px;
-    padding: 0 max(10px, env(safe-area-inset-right)) 16px max(10px, env(safe-area-inset-left));
-    gap: 10px;
+  .tb-user-name { max-width: 42vw; overflow-wrap: anywhere; }
+  .tb-title { overflow-wrap: anywhere; }
+  .tb-sub { display: none; }
+
+  .driver-strip-wrap {
+    padding: 0 max(8px, env(safe-area-inset-left));
+    -webkit-overflow-scrolling: touch;
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    background: #fff;
+    border-bottom: 1px solid #d7e3f0;
   }
-  .driver-strip-wrap { padding: 0 max(8px, env(safe-area-inset-left)); -webkit-overflow-scrolling: touch; }
-  .dtab { padding: 12px 12px; min-height: 44px; }
-  .driver-banner { padding: 12px; gap: 10px; }
+  .dtab {
+    padding: 12px 14px;
+    min-height: 46px;
+    white-space: nowrap;
+  }
+
+  .driver-banner { padding: 12px; gap: 10px; flex-wrap: wrap; }
   .db-score { width: 100%; align-items: flex-start; min-width: 0; }
-  .db-name { font-size: 16px; }
+  .db-name { font-size: 16px; overflow-wrap: anywhere; }
+  .db-meta { overflow-wrap: anywhere; line-height: 1.4; }
+
   .kpi-value { font-size: 18px; }
-  .map-head { flex-direction: column; align-items: flex-start; padding: 10px 12px; }
-  .map-head-meta { width: 100%; }
-  #leaflet-map { height: 280px; min-height: 240px; }
-  .modal-bg { padding: 8px; align-items: flex-end; }
-  .modal-box { max-height: min(92dvh, 92vh); max-width: 100%; }
+  #kpi-container .kpi-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi-card { min-width: 0; }
+  .kpi-title { overflow-wrap: anywhere; line-height: 1.3; }
+
+  .map-head { flex-direction: column; align-items: flex-start; padding: 12px; gap: 10px; }
+  .map-head h3 { overflow-wrap: anywhere; }
+  .map-head-meta { width: 100%; gap: 8px; }
+  .map-stat { min-width: 0; flex: 1 1 30%; }
+  #leaflet-map { height: min(48dvh, 360px); min-height: 260px; }
+  .map-frame::before { font-size: 10px; left: 10px; bottom: 10px; max-width: calc(100% - 20px); }
+  .map-stops .table-wrap { max-height: min(42dvh, 280px); }
+  .map-legend { gap: 6px; }
+  .leg-item { white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+
+  .sec-head { flex-wrap: wrap; gap: 8px; }
+  .sec-head h3 { overflow-wrap: anywhere; }
+
+  .modal-bg { padding: 0; align-items: flex-end; }
+  .modal-box { max-height: min(92dvh, 92vh); max-width: 100%; width: 100%; border-radius: 18px 18px 0 0; }
   .modal-footer { flex-wrap: wrap; }
-  .modal-footer .btn { flex: 1 1 auto; min-height: 40px; justify-content: center; }
+  .modal-footer .btn { flex: 1 1 auto; min-height: 44px; justify-content: center; }
+
   .toast { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: none; }
-  table.gtable { min-width: 640px; }
+
+  .table-wrap { border-radius: 12px; }
+  table.gtable { min-width: 560px; }
+  table.gtable th, table.gtable td {
+    padding: 8px 6px;
+    overflow-wrap: anywhere;
+  }
+
+  .btn { min-height: 42px; height: auto; padding: 8px 12px; white-space: normal; line-height: 1.25; }
+  .btn-sm { min-height: 40px; height: auto; }
 }
 
 @media (max-width: 640px) {
   .tb-line { display: none; }
-  .tb-brand img { width: 30px; height: 30px; }
+  .tb-brand img, .brand img { width: 30px; height: 30px; }
   .tb-name { font-size: 13px; }
-  .btn { height: 36px; padding: 0 10px; }
-  .btn-sm { height: 32px; }
   #kpi-container .kpi-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
   .kpi-card { padding: 10px 8px 8px; }
-  .eval-final { margin: 0 8px 10px; }
+  .eval-final { margin: 0 0 10px; }
   .eval-score-box { min-width: 0; width: 100%; }
+  .two-col { grid-template-columns: 1fr !important; }
+  .eval-grid { grid-template-columns: 1fr !important; }
   input, select, textarea { font-size: 16px !important; }
   .form-row input, .form-row select { font-size: 16px; min-height: 42px; }
 }
 
 @media print {
+
   body { background: #fff; }
+
   .topbar, .driver-strip-wrap, .btn, .modal-bg,
-  .sidebar, .sec-head .btn, .cal-nav { display: none !important; }
+
+  .sidebar, .sec-head .btn, .cal-nav, .nav-rail, .nav-burger, .nav-scrim { display: none !important; }
+
   .page-wrap { grid-template-columns: 1fr !important; padding: 0; margin: 0; max-width: 100%; }
+
+  .app-shell { display: block !important; }
+
   .card, .driver-banner, .kpi-card { border: 1px solid #bbb !important; }
+
   #leaflet-map { height: 260px !important; }
+
   #kpi-container .kpi-grid { grid-template-columns: repeat(6,1fr) !important; }
+
   .two-col { grid-template-columns: 1fr 1fr !important; }
+
   .eval-grid { grid-template-columns: repeat(3,1fr) !important; }
+
 }
+
 </style>
+
 </head>
-<body>
+
+<body class="app-body">
+
+
 
 <div id="drop-overlay">
+
   <div>Excel faylni tashlang</div>
+
   <div style="font-size:11px;font-weight:500;opacity:.65;letter-spacing:.08em">XLSX / XLS</div>
+
 </div>
 
-<header class="topbar">
-  <div class="tb-brand">
-    <img src="/logo/mark.svg?v=3" alt="">
-    <div>
-      <div class="tb-name">VAKSINA <span>MED</span></div>
-      <div class="tb-line">MACHINE CONTROL</div>
-    </div>
-  </div>
-  <div class="tb-actions">
-    <button class="btn btn-success" id="btn-gps-sync">GPS yuklash</button>
-    <button class="btn btn-light" id="btn-excel-upload" title="Excel import">Excel ↓</button>
-    <button class="btn btn-light" id="btn-excel-export" title="Excel export">Excel ↑</button>
-    <button class="btn btn-light" id="btn-print">PDF</button>
-    <button class="btn btn-light btn-icon" id="btn-settings" title="Sozlamalar">CFG</button>
-    <div class="tb-user" id="tb-user">
-      <span class="tb-user-name" id="tb-user-name">—</span>
-      <span class="tb-role" id="tb-user-role" hidden></span>
-      <a class="btn btn-gold btn-nav-fuel" href="/fuel.html">Boshqaruv</a>
-      <a class="btn btn-light btn-sm" id="btn-admin-panel" href="/admin.html" style="display:none">Panel</a>
-      <button class="btn btn-light btn-sm" id="btn-logout">Chiqish</button>
-    </div>
-    <input type="file" id="file-input" multiple accept=".xlsx,.xls" style="display:none">
-  </div>
-</header>
 
-<div class="driver-strip-wrap">
-  <div class="driver-strip" id="drivers-strip"></div>
-</div>
 
-<div class="page-wrap">
-  <aside class="sidebar">
-    <div class="card">
-      <div class="card-head">
-        <h3>Kalendar</h3>
-        <span class="chip chip-blue" id="calendar-count">0 kun</span>
+<input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
+
+<label for="nav-open" class="nav-scrim" aria-hidden="true"></label>
+
+
+
+<div class="app-shell">
+
+  <aside class="nav-rail">
+
+    <div class="nav-brand">
+
+      <img src="/logo/mark.svg?v=3" alt="">
+
+      <div>
+
+        <div class="tb-name">VAKSINA <span>MED</span></div>
+
+        <div class="tb-line">MACHINE CONTROL</div>
+
       </div>
-      <div class="cal-nav">
-        <button id="cal-prev" title="Oldingi oy">‹</button>
-        <span id="cal-month-label">Avgust 2026</span>
-        <button id="cal-next" title="Keyingi oy">›</button>
-      </div>
-      <div style="padding:0 8px 8px;">
-        <div class="cal-week-labels">
-          <span>Du</span><span>Se</span><span>Ch</span><span>Pa</span><span>Ju</span><span>Sh</span><span>Ya</span>
-        </div>
-        <div class="cal-grid" id="cal-grid"></div>
-      </div>
-      <div id="cal-selected-info" style="display:none;">
-        <div class="cal-selected-box">
-          <span id="cal-selected-label">—</span>
-          <span class="chip chip-gray" id="cal-day-status">Ma'lumot yo'q</span>
-        </div>
-      </div>
+
     </div>
 
-    <div class="card">
-      <div class="card-head">
-        <h3>GPS tizimi</h3>
-        <span class="chip chip-gray" id="gps-status-chip">Ulanmagan</span>
-      </div>
-      <div class="sidebar-actions">
-        <button class="btn btn-success" style="width:100%; justify-content:center;" id="btn-gps-sync-2">Ulanish</button>
-        <button class="btn btn-outline btn-sm" style="width:100%; justify-content:center;" id="btn-excel-upload-2">Excel yuklash</button>
-      </div>
-      <div class="gps-meta">
-        <b>HOST</b> bms1.gpsavto.uz<br>
-        <b>PROTO</b> Wialon / xronologiya<br>
-        <span style="display:block;margin-top:6px">Avto yangilanish: har 5 daqiqa</span>
-        <span id="gps-last-sync" style="display:block;margin-top:2px">—</span>
-      </div>
+    <nav class="nav-links">
+
+      <a class="nav-link on" href="/" aria-current="page">Dashboard</a>
+
+      <a class="nav-link" href="/fuel.html">Boshqaruv</a>
+
+    </nav>
+
+    <div class="nav-foot">
+      <a class="nav-link" href="/profile.html">Profil</a>
     </div>
 
-    <div class="card" id="sidebar-stats-card">
-      <div class="card-head"><h3>Bugungi umumiy</h3></div>
-      <div id="sidebar-stats" style="padding:10px 12px 12px; font-size:12px; color:var(--muted); line-height:1.7;">Ma'lumot yo'q</div>
-    </div>
+
   </aside>
 
-  <main style="display:flex; flex-direction:column; gap:10px; min-width:0;">
-    <div class="driver-banner" id="driver-banner">
-      <div class="db-left">
-        <div class="db-avatar" id="db-avatar">—</div>
-        <div>
-          <div class="db-name" id="db-name">
-            Haydovchi tanlanmagan
-            <span class="car-badge" id="db-car">— — —</span>
-          </div>
-          <div class="db-meta" id="db-meta">Haydovchi tanlang yoki GPS dan kunlik ma'lumot yuklang</div>
+
+
+  <div class="app-main">
+
+    <header class="topbar">
+
+      <label for="nav-open" class="nav-burger">Menyu</label>
+
+      <div class="tb-actions">
+
+        <button class="btn btn-success" id="btn-gps-sync">GPS yuklash</button>
+
+        <button class="btn btn-light" id="btn-excel-upload" title="Excel import">Excel ↓</button>
+
+        <button class="btn btn-light" id="btn-excel-export" title="Excel export">Excel ↑</button>
+
+        <button class="btn btn-light" id="btn-print">PDF</button>
+
+        <button class="btn btn-light btn-icon" id="btn-settings" title="Sozlamalar">CFG</button>
+
+        <input type="file" id="file-input" multiple accept=".xlsx,.xls" style="display:none">
+
+      </div>
+
+    </header>
+
+
+
+<div class="driver-strip-wrap">
+
+  <div class="driver-strip" id="drivers-strip"></div>
+
+</div>
+
+
+
+<div class="page-wrap">
+
+  <aside class="sidebar">
+
+    <div class="card">
+
+      <div class="card-head">
+
+        <h3>Kalendar</h3>
+
+        <span class="chip chip-blue" id="calendar-count">0 kun</span>
+
+      </div>
+
+      <div class="cal-nav">
+
+        <button id="cal-prev" title="Oldingi oy">‹</button>
+
+        <span id="cal-month-label">Avgust 2026</span>
+
+        <button id="cal-next" title="Keyingi oy">›</button>
+
+      </div>
+
+      <div style="padding:0 8px 8px;">
+
+        <div class="cal-week-labels">
+
+          <span>Du</span><span>Se</span><span>Ch</span><span>Pa</span><span>Ju</span><span>Sh</span><span>Ya</span>
+
         </div>
+
+        <div class="cal-grid" id="cal-grid"></div>
+
       </div>
-      <div class="db-score" id="db-score-box">
-        <div class="db-score-num" id="db-score-num">—</div>
-        <div class="db-score-lbl">Kunlik ball</div>
+
+      <div id="cal-selected-info" style="display:none;">
+
+        <div class="cal-selected-box">
+
+          <span id="cal-selected-label">—</span>
+
+          <span class="chip chip-gray" id="cal-day-status">Ma'lumot yo'q</span>
+
+        </div>
+
       </div>
+
     </div>
+
+
+
+    <div class="card">
+
+      <div class="card-head">
+
+        <h3>GPS tizimi</h3>
+
+        <span class="chip chip-gray" id="gps-status-chip">Ulanmagan</span>
+
+      </div>
+
+      <div class="sidebar-actions">
+
+        <button class="btn btn-success" style="width:100%; justify-content:center;" id="btn-gps-sync-2">Ulanish</button>
+
+        <button class="btn btn-outline btn-sm" style="width:100%; justify-content:center;" id="btn-excel-upload-2">Excel yuklash</button>
+
+      </div>
+
+      <div class="gps-meta">
+
+        <b>HOST</b> bms1.gpsavto.uz<br>
+
+        <b>PROTO</b> Wialon / xronologiya<br>
+
+        <span style="display:block;margin-top:6px">Avto yangilanish: har 5 daqiqa</span>
+
+        <span id="gps-last-sync" style="display:block;margin-top:2px">—</span>
+
+      </div>
+
+    </div>
+
+
+
+    <div class="card" id="sidebar-stats-card">
+
+      <div class="card-head"><h3>Bugungi umumiy</h3></div>
+
+      <div id="sidebar-stats" style="padding:10px 12px 12px; font-size:12px; color:var(--muted); line-height:1.7;">Ma'lumot yo'q</div>
+
+    </div>
+
+  </aside>
+
+
+
+  <main style="display:flex; flex-direction:column; gap:10px; min-width:0;">
+
+    <div class="driver-banner" id="driver-banner">
+
+      <div class="db-left">
+
+        <div class="db-avatar" id="db-avatar">—</div>
+
+        <div>
+
+          <div class="db-name" id="db-name">
+
+            Haydovchi tanlanmagan
+
+            <span class="car-badge" id="db-car">— — —</span>
+
+          </div>
+
+          <div class="db-meta" id="db-meta">Haydovchi tanlang yoki GPS dan kunlik ma'lumot yuklang</div>
+
+        </div>
+
+      </div>
+
+      <div class="db-score" id="db-score-box">
+
+        <div class="db-score-num" id="db-score-num">—</div>
+
+        <div class="db-score-lbl">Kunlik ball</div>
+
+      </div>
+
+    </div>
+
+
 
     <div class="card" id="fleet-board">
+
       <div class="sec-head">
+
         <h3>Barcha mashinalar</h3>
+
         <span class="cnt" id="fleet-board-meta">—</span>
+
       </div>
+
       <div class="table-wrap">
+
         <table class="gtable">
+
           <thead>
+
             <tr>
+
               <th>#</th>
+
               <th>Haydovchi</th>
+
               <th>Raqam</th>
+
               <th>Ball</th>
+
               <th>Km</th>
+
               <th>Reja</th>
+
               <th>Boshqa</th>
+
               <th>Muammo</th>
+
               <th>Tezlik</th>
+
             </tr>
+
           </thead>
+
           <tbody id="fleet-board-body">
-            <tr><td colspan="9" style="text-align:center;padding:22px;color:#8b939e;">GPS yuklangandan so'ng reyting chiqadi.</td></tr>
+
+            <tr><td colspan="9" style="text-align:center;padding:22px;color:#8aa0b8;">GPS yuklangandan so'ng reyting chiqadi.</td></tr>
+
           </tbody>
+
         </table>
+
       </div>
+
     </div>
+
+
 
     <div id="kpi-container">
+
       <div class="kpi-grid">
+
         <div class="kpi-card c-blue"><div class="kpi-title">Yurilgan masofa</div><div class="kpi-value">—</div><div class="kpi-unit">km</div></div>
+
         <div class="kpi-card c-green"><div class="kpi-title">Dorixona</div><div class="kpi-value">—</div><div class="kpi-unit">Tashrif</div></div>
+
         <div class="kpi-card c-purple"><div class="kpi-title">Boshqa yo'nalish</div><div class="kpi-value">—</div><div class="kpi-unit">To'xtash</div></div>
+
         <div class="kpi-card c-red"><div class="kpi-title">Muammoli</div><div class="kpi-value">—</div><div class="kpi-unit">To'xtash</div></div>
+
         <div class="kpi-card c-orange"><div class="kpi-title">Maks. tezlik</div><div class="kpi-value">—</div><div class="kpi-unit">km/soat</div></div>
+
         <div class="kpi-card c-teal"><div class="kpi-title">Yoqilg'i</div><div class="kpi-value">—</div><div class="kpi-unit">Gaz + benzin</div></div>
+
       </div>
+
     </div>
+
+
 
     <div class="two-col">
+
       <div class="card">
+
         <div class="sec-head"><h3>Harakat ko'rsatkichlari</h3></div>
+
         <div class="stat-list" id="detailed-stats">
+
           <div class="stat-row"><div class="stat-icon-wrap">KM</div><div class="stat-label">Yurilgan masofa</div><div class="stat-value" id="stat-probeg">—</div></div>
+
           <div class="stat-row"><div class="stat-icon-wrap">TM</div><div class="stat-label">Ish vaqti</div><div class="stat-value" id="stat-worktime">—</div></div>
+
           <div class="stat-row"><div class="stat-icon-wrap">AV</div><div class="stat-label">O'rtacha tezlik</div><div class="stat-value" id="stat-avgspeed">—</div></div>
+
           <div class="stat-row"><div class="stat-icon-wrap">MH</div><div class="stat-label">Harakatda (motochasi)</div><div class="stat-value" id="stat-motochas">—</div></div>
+
           <div class="stat-row"><div class="stat-icon-wrap">TR</div><div class="stat-label">Jami poezdka</div><div class="stat-value" id="stat-trips">—</div></div>
+
           <div class="stat-row"><div class="stat-icon-wrap">ST</div><div class="stat-label">Jami to'xtash</div><div class="stat-value" id="stat-stops">—</div></div>
+
           <div class="stat-row"><div class="stat-icon-wrap">FL</div><div class="stat-label">Yoqilg'i sarfi</div><div class="stat-value" id="stat-fuel">—</div></div>
+
           <div class="stat-row"><div class="stat-icon-wrap">PK</div><div class="stat-label">Jami to'xtab turgan</div><div class="stat-value" id="stat-stoptime">—</div></div>
+
         </div>
+
       </div>
+
       <div class="card">
+
         <div class="sec-head"><h3>Dorixona tahlili</h3></div>
+
         <div id="pharmacy-analysis">
+
           <div class="empty-state">
+
             <div class="empty-title">Ma'lumot yo'q</div>
+
             <div class="empty-desc">GPS yoki Excel yuklangandan so'ng tahlil chiqadi.</div>
+
           </div>
+
         </div>
+
       </div>
+
     </div>
 
+
+
     <div class="card map-card">
+
       <div class="map-head">
         <div>
+          <div class="map-kicker">GPS · yo‘nalish</div>
           <h3>Marshrut xaritasi</h3>
         </div>
         <div class="map-head-meta">
           <div class="map-stat"><i>To'xtash</i><b id="map-stat-stops">0</b></div>
           <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
-          <div class="map-stat"><i>Muammo</i><b id="map-stat-prob">0</b></div>
+          <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
           <button class="btn btn-light btn-sm" id="btn-refresh-map">Yangilash</button>
         </div>
       </div>
       <div class="map-legend">
-        <span class="leg-item"><span class="leg-dot" style="background:#1a5c3a"></span> O'z dorixonasi / geozona</span>
-        <span class="leg-item"><span class="leg-dot" style="background:#1a4a78"></span> Boshqa yo'nalish</span>
-        <span class="leg-item"><span class="leg-dot" style="background:#9b1c1c"></span> Muammo</span>
-        <span class="leg-item"><span class="leg-dot" style="background:#4a3d73"></span> Shahardan tashqari</span>
-        <span class="leg-item"><span class="leg-dot" style="background:#2a303a"></span> Ofis / sklad</span>
-        <span class="leg-item"><span class="leg-dot" style="background:#c9a227"></span> Marshrut</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#1a5fb4"></span> O'z dorixonasi / geozona</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#5b9fe0"></span> Boshqa yo'nalish</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a"></span> Muammo</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#8eb6df"></span> Shahardan tashqari</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#123050"></span> Ofis / sklad</span>
+        <span class="leg-item"><span class="leg-dot is-line" style="background:#1a5fb4"></span> Marshrut</span>
       </div>
+
       <div class="map-frame" id="map-frame">
         <div id="leaflet-map"></div>
       </div>
+
+      <div class="map-stops">
+        <div class="sec-head">
+          <h3>Barcha to'xtashlar</h3>
+          <span class="cnt" id="stops-count">0</span>
+        </div>
+        <div class="table-wrap">
+          <table class="gtable">
+            <thead>
+              <tr>
+                <th>№</th>
+                <th>Joy / manzil</th>
+                <th>Kirish</th>
+                <th>Chiqish</th>
+                <th>Turgani</th>
+                <th>Holat</th>
+                <th>Ofis</th>
+              </tr>
+            </thead>
+            <tbody id="stops-table-body">
+              <tr>
+                <td colspan="7">
+                  <div class="empty-state">
+                    <div class="empty-title">To'xtashlar yo'q</div>
+                    <div class="empty-desc">Ma'lumot yuklangandan so'ng ro'yxat shu yerda chiqadi.</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="sec-head">
-        <h3>Barcha to'xtashlar</h3>
-        <span class="cnt" id="stops-count">0</span>
-      </div>
-      <div class="table-wrap">
-        <table class="gtable">
-          <thead>
-            <tr>
-              <th>№</th>
-              <th>Joy / manzil</th>
-              <th>Kirish</th>
-              <th>Chiqish</th>
-              <th>Turgani</th>
-              <th>Holat</th>
-              <th>Ofis</th>
-            </tr>
-          </thead>
-          <tbody id="stops-table-body">
-            <tr>
-              <td colspan="7">
-                <div class="empty-state">
-                  <div class="empty-title">To'xtashlar yo'q</div>
-                  <div class="empty-desc">Ma'lumot yuklangandan so'ng ro'yxat shu yerda chiqadi.</div>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+
 
     <div class="card" id="evaluation-section">
+
       <div class="sec-head"><h3>Kunlik baholash</h3></div>
+
       <div class="eval-grid">
+
         <div class="eval-block" id="eval-base-score">
+
           <div class="eval-block-title">Hisoblash</div>
+
           <ul><li>Belgilanmagan</li></ul>
+
         </div>
+
         <div class="eval-block" id="eval-deductions">
+
           <div class="eval-block-title">Jarima</div>
+
           <ul><li>Ma'lumot yo'q</li></ul>
+
         </div>
+
         <div class="eval-block" id="eval-bonuses">
+
           <div class="eval-block-title">Bonus</div>
+
           <ul><li>Ma'lumot yo'q</li></ul>
+
         </div>
+
       </div>
+
       <div class="eval-final">
+
         <div class="eval-score-box">
+
           <div class="eval-score-num" id="eval-final-score">—</div>
+
           <div class="eval-score-max">/ 10 ball</div>
+
         </div>
+
         <div class="eval-right">
+
           <ul id="eval-recommendations"><li>Yuklangandan keyin xulosa chiqadi</li></ul>
+
           <div class="eval-summary-box ok" id="eval-summary">Ma'lumot yuklanmagan.</div>
+
         </div>
+
       </div>
+
     </div>
+
   </main>
+
 </div>
+
+  </div><!-- /.app-main -->
+
+</div><!-- /.app-shell -->
+
+
 
 <div class="modal-bg" id="modal-gps">
+
   <div class="modal-box">
+
     <div class="modal-head">
+
       <h3>GPS ulanish</h3>
+
       <button class="modal-close" onclick="document.getElementById('modal-gps').classList.remove('open')">×</button>
+
     </div>
+
     <div class="form-row">
+
       <label>Qaysi kun yuklansin</label>
+
       <input type="date" id="gps-date">
+
       <div style="display:flex;gap:6px;margin-top:8px;">
+
         <button type="button" class="btn btn-outline btn-sm" id="gps-date-yesterday">Kecha</button>
+
         <button type="button" class="btn btn-outline btn-sm" id="gps-date-today">Bugun</button>
+
       </div>
+
       <div class="form-hint">Faqat tanlangan sana tortiladi. Avval Kecha yoki Bugun ni bosing, keyin yuklang.</div>
+
     </div>
+
     <div class="form-row">
+
       <label>Server URL</label>
+
       <input type="text" id="gps-host" placeholder="http://bms1.gpsavto.uz" value="http://bms1.gpsavto.uz">
+
       <div class="form-hint">Wialon / Boomerang host manzili</div>
+
     </div>
+
     <div class="form-row">
+
       <label>Login</label>
+
       <input type="text" id="gps-user" placeholder="foydalanuvchi">
+
     </div>
+
     <div class="form-row">
+
       <label>Parol</label>
+
       <input type="password" id="gps-password" placeholder="••••••••">
+
     </div>
+
     <div class="form-row">
+
       <label>API token — ixtiyoriy</label>
+
       <input type="text" id="gps-token" placeholder="Parol ishlamasa token kiriting">
+
       <div class="form-hint">
+
         <a href="http://bms1.gpsavto.uz/login.html?client_id=VaksinaMedGPS&access_type=0x100&activation_time=0&duration=0&flags=1" target="_blank" style="color:var(--accent);font-weight:600;">Token olish — yangi oyna</a>
+
       </div>
+
     </div>
+
     <div class="progress-wrap" id="sync-progress">
+
       <div class="progress-fill" id="sync-progress-bar" style="width:0%"></div>
+
     </div>
+
     <div class="progress-status" id="sync-status"></div>
+
     <ul class="progress-list" id="sync-details"></ul>
+
     <div class="modal-footer">
+
       <button class="btn btn-outline" onclick="document.getElementById('modal-gps').classList.remove('open')">Bekor</button>
+
       <button class="btn btn-success" id="btn-gps-connect">Shu kunni yuklash</button>
+
     </div>
+
   </div>
+
 </div>
+
+
 
 <div class="modal-bg" id="modal-settings">
+
   <div class="modal-box" style="max-width:640px;">
+
     <div class="modal-head">
+
       <h3>Sozlamalar</h3>
+
       <button class="modal-close" onclick="document.getElementById('modal-settings').classList.remove('open')">×</button>
+
     </div>
+
     <div style="margin:16px;">
+
       <h4 style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Yoqilg'i normalari / 100 km</h4>
+
       <div style="overflow-x:auto;">
+
         <table class="gtable">
+
           <thead><tr><th>Haydovchi</th><th>Mashina</th><th>Gaz (m³)</th><th>Benzin (L)</th></tr></thead>
+
           <tbody id="fuel-norms-table"></tbody>
+
         </table>
+
       </div>
+
     </div>
+
     <div style="margin:0 16px 8px;">
+
       <h4 style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Ma'lumotlar</h4>
+
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
+
         <button class="btn btn-outline btn-sm" id="btn-export-json">JSON saqlash</button>
+
         <button class="btn btn-outline btn-sm" id="btn-import-json">JSON yuklash</button>
-        <button class="btn btn-outline btn-sm" style="color:var(--bad);border-color:#ddc8c8;" id="btn-clear-data">Tozalash</button>
+
+        <button class="btn btn-outline btn-sm" style="color:var(--bad);border-color:#c5d4e6;" id="btn-clear-data">Tozalash</button>
+
       </div>
+
       <input type="file" id="import-input" accept=".json" style="display:none">
+
     </div>
+
     <div class="modal-footer">
+
       <button class="btn btn-outline" onclick="document.getElementById('modal-settings').classList.remove('open')">Yopish</button>
+
       <button class="btn btn-primary" id="btn-save-settings">Saqlash</button>
+
     </div>
+
   </div>
+
 </div>
 
+
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>if (typeof L === 'undefined') { document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>'); }</script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
+
 <script src="wialon-api.js?v=18"></script>
+
 <script src="fleet-data.js?v=3"></script>
-<script src="auth.js?v=9"></script>
-<script src="app.js?v=37"></script>
+
+<script src="auth.js?v=12"></script>
+
+<script src="app.js?v=39"></script>
+
 <script src="office.js?v=11"></script>
+
 <script>
+
 document.querySelectorAll('.modal-bg').forEach(m => {
+
   m.addEventListener('click', function(e) {
+
     if (e.target === this) this.classList.remove('open');
+
   });
+
 });
+
 const gpsDateEl = document.getElementById('gps-date');
+
 if (gpsDateEl) gpsDateEl.valueAsDate = new Date();
+
 </script>
+
 </body>
+
 </html>
+

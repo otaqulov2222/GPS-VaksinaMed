@@ -50,8 +50,9 @@ function vmIsDriver(user) {
 function vmGatePage(user) {
     const path = (location.pathname || '').replace(/\\/g, '/');
     const onDriver = path.endsWith('/driver.html');
+    const onProfile = path.endsWith('/profile.html');
     if (vmIsDriver(user)) {
-        if (!onDriver) location.replace('/driver.html');
+        if (!onDriver && !onProfile) location.replace('/driver.html');
         return;
     }
     if (onDriver && !vmIsStaff(user)) {
@@ -96,3 +97,16 @@ function vmStartHeartbeat() {
             .catch(() => {});
     }, 25000);
 }
+
+/** Mobil menyuni yopish (tab/link bosilganda) */
+function vmCloseNav() {
+    const cb = document.getElementById('nav-open');
+    if (cb) cb.checked = false;
+}
+
+document.addEventListener('click', (e) => {
+    const t = e.target && e.target.closest
+        ? e.target.closest('.nav-rail a.nav-link, .nav-rail .tab, .nav-rail button.tab')
+        : null;
+    if (t) vmCloseNav();
+}, true);

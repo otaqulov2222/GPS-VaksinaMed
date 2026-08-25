@@ -2227,16 +2227,25 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            pub = None
+            try:
+                with STORE.lock:
+                    data = STORE._read()
+                    u = STORE.find_user(data, uid=sess["user_id"])
+                    pub = STORE.public_user(u) if u else None
+            except Exception:
+                pub = None
+            user = pub or {
+                "id": sess["user_id"],
+                "username": sess["username"],
+                "name": sess["name"],
+                "role": sess["role"],
+                "car": sess.get("car") or "",
+            }
             self.send_json(
                 {
                     "ok": True,
-                    "user": {
-                        "id": sess["user_id"],
-                        "username": sess["username"],
-                        "name": sess["name"],
-                        "role": sess["role"],
-                        "car": sess.get("car") or "",
-                    },
+                    "user": user,
                     "persist": STORE.persist_info(),
                     "vehicles": (OFFICE.fuel_meta() or {}).get("vehicles") or {},
                 }

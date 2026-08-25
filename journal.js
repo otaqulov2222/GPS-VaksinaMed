@@ -212,7 +212,10 @@ function onCarChange() {
   const lab = document.getElementById('j-car-lab');
   const drv = document.getElementById('j-driver');
   const gps = document.getElementById('j-gps');
-  if (lab) lab.textContent = plate ? (typeof plateDisp === 'function' ? plateDisp(plate) : plate) : '—';
+  if (lab) {
+    lab.textContent = plate ? (typeof plateDisp === 'function' ? plateDisp(plate) : plate) : '—';
+    lab.classList.toggle('is-empty', !plate);
+  }
   if (drv && plate && !J.editId) drv.value = currentDriver(plate);
   if (gps) {
     const g = gpsForPlate(plate);
@@ -255,9 +258,14 @@ function renderJournal() {
   const topGood = countBy(rows.filter(x => x.kind === 'good'), x => x.car || x.pharmacy);
   const editing = J.items.find(x => x.id === J.editId);
 
+  const carLab = editing && editing.car
+    ? esc(typeof plateDisp === 'function' ? plateDisp(editing.car) : editing.car)
+    : '—';
+  const carLabEmpty = !(editing && editing.car);
+
   panel.innerHTML = `
     <div class="jl">
-      <div class="card">
+      <div class="card jl-form">
         <div class="card-h"><h3>${J.editId ? 'Qaydni tahrirlash' : 'Yangi qayd'}</h3></div>
         <div class="card-b">
           <div class="hint">Asosiy kalit — <b>mashina raqami</b>. Haydovchi o'zgarsa ham GPS va jurnal shu raqamda qoladi. Hozirgi haydovchini admin shu yerda almashtiradi.</div>
@@ -269,87 +277,89 @@ function renderJournal() {
             <button type="button" class="${J.category==='driver'?'on':''}" data-jc="driver">Haydovchi</button>
             <button type="button" class="${J.category==='pharmacy'?'on':''}" data-jc="pharmacy">Dorixona</button>
           </div>
-          <div class="fld" style="margin-bottom:8px;">
+          <div class="fld">
             <label>Mashina raqami (o'zgarmaydi)</label>
             <select id="j-car">${['<option value="">— tanlang —</option>'].concat(cars.map(c =>
               `<option value="${esc(c.car)}"${editing && editing.car===c.car?' selected':''}>${esc((typeof plateDisp==='function'?plateDisp(c.car):c.car) + ' — ' + (c.name||''))}</option>`
             )).join('')}</select>
-            <div class="jl-car" id="j-car-lab" style="margin-top:6px;">${editing && editing.car ? esc(typeof plateDisp==='function'?plateDisp(editing.car):editing.car) : '—'}</div>
-            <div class="muted" id="j-gps" style="margin-top:4px;font-size:11px;">GPS mashina raqami bo'yicha</div>
+            <div class="jl-car${carLabEmpty ? ' is-empty' : ''}" id="j-car-lab" style="margin-top:8px;">${carLab}</div>
+            <div class="muted" id="j-gps" style="margin-top:6px;font-size:11px;">GPS mashina raqami bo'yicha</div>
           </div>
-          <div class="fld" style="margin-bottom:8px;${J.category==='pharmacy'?'display:none':''}">
+          <div class="fld" style="${J.category==='pharmacy'?'display:none':''}">
             <label>Hozirgi haydovchi (admin o'zgartira oladi)</label>
             <input id="j-driver" value="${esc(editing ? (editing.driver||'') : '')}" placeholder="F.I.Sh.">
-            <label class="chk" style="margin-top:6px;">
+            <label class="chk" style="margin-top:8px;">
               <input id="j-assign" type="checkbox" checked> Shu mashinaga haydovchini yangilash
             </label>
           </div>
-          <div class="fld" style="margin-bottom:8px;${J.category==='driver'?'display:none':''}">
+          <div class="fld" style="${J.category==='driver'?'display:none':''}">
             <label>Dorixona</label>
             <input id="j-pharm" list="j-pharm-list" value="${esc(editing ? (editing.pharmacy||'') : '')}" placeholder="Nomi">
             <datalist id="j-pharm-list">${uniquePharms().map(p => `<option value="${esc(p.name)}">`).join('')}</datalist>
           </div>
-          <div class="fld" style="margin-bottom:8px;">
+          <div class="fld">
             <label>${J.kind==='good'?'Maktov turi':'Kamchilik turi'}</label>
             <select id="j-reason">${reasons.map(x => `<option${editing && editing.reason===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
           </div>
-          <div class="fld" style="margin-bottom:8px;">
+          <div class="fld">
             <label>Darajasi</label>
             <select id="j-level">${LEVELS.map(l => `<option value="${l.v}"${(editing?editing.level:'orta')===l.v?' selected':''}>${l.t}</option>`).join('')}</select>
           </div>
-          <div class="fld" style="margin-bottom:8px;">
+          <div class="fld">
             <label>Boshlanish</label>
             <div class="now-row">
               <input id="j-start" type="datetime-local" value="${esc(editing ? dtVal(editing.start) : nowLocal())}">
               <button type="button" class="btn btn-ink btn-sm" id="j-start-now">Hozir</button>
             </div>
           </div>
-          <div class="fld" style="margin-bottom:8px;">
+          <div class="fld">
             <label>Tugash (ixtiyoriy)</label>
             <div class="now-row">
               <input id="j-end" type="datetime-local" value="${esc(editing ? dtVal(editing.end) : '')}">
               <button type="button" class="btn btn-ink btn-sm" id="j-end-now">Hozir</button>
             </div>
           </div>
-          <div class="fld" style="margin-bottom:10px;">
+          <div class="fld" style="margin-bottom:14px;">
             <label>Izoh</label>
             <textarea id="j-note" placeholder="Tafsilotlar...">${esc(editing ? (editing.note||'') : '')}</textarea>
           </div>
-          <button type="button" class="btn ${J.kind==='good'?'btn-ink':'btn-gold'}" style="width:100%;height:40px;${J.kind==='bad'?'background:#9b1c1c;border-color:#9b1c1c;color:#fff':''}" id="j-save">
+          <button type="button" class="btn ${J.kind==='good'?'btn-ok':'btn-gold'}" style="width:100%;height:42px;${J.kind==='bad'?'background:#0b1f3a;border-color:#0b1f3a;color:#fff':''}" id="j-save">
             ${J.editId ? 'O\'zgarishni saqlash' : (J.kind==='good' ? "Maktov qo'shish" : "Kamchilik qo'shish")}
           </button>
-          ${J.editId ? '<button type="button" class="btn btn-ink" style="width:100%;margin-top:6px;" id="j-cancel">Bekor</button>' : ''}
+          ${J.editId ? '<button type="button" class="btn btn-ink" style="width:100%;margin-top:8px;height:40px;" id="j-cancel">Bekor</button>' : ''}
         </div>
       </div>
-      <div>
+      <div class="jl-main">
         <div class="card">
           <div class="card-h">
             <div>
               <h3>Haydovchilar jurnali</h3>
               <div class="muted">${esc(r.from)} — ${esc(r.to)}</div>
             </div>
-            <div class="row-btns" style="margin:0;">
+            <div class="jl-actions">
               <button type="button" class="btn btn-ink btn-sm" id="j-csv">CSV</button>
               <button type="button" class="btn btn-ink btn-sm" id="j-xlsx">Excel</button>
               <button type="button" class="btn btn-ink btn-sm" id="j-pdf">PDF yuklab olish</button>
             </div>
           </div>
           <div class="card-b">
-            <div class="subtabs" id="j-period">
-              ${[['day','Kun'],['week','Hafta'],['month','Oy'],['year','Yil'],['range','Oraliq'],['all','Barchasi']].map(([v,t]) =>
-                `<button type="button" class="subtab${J.period===v?' on':''}" data-p="${v}">${t}</button>`
-              ).join('')}
+            <div class="jl-toolbar">
+              <div class="subtabs" id="j-period">
+                ${[['day','Kun'],['week','Hafta'],['month','Oy'],['year','Yil'],['range','Oraliq'],['all','Barchasi']].map(([v,t]) =>
+                  `<button type="button" class="subtab${J.period===v?' on':''}" data-p="${v}">${t}</button>`
+                ).join('')}
+              </div>
+              <div class="jl-search-row" id="j-range-row">
+                ${J.period==='range' ? `<input id="j-from" type="date" value="${esc(J.from||r.from)}"><input id="j-to" type="date" value="${esc(J.to||r.to)}">` : ''}
+                <input id="j-q" class="j-search" placeholder="Qidirish..." value="${esc(J.q)}">
+              </div>
+              <div class="subtabs" id="j-filt">
+                ${[['all','Hammasi'],['bad','Faqat kamchilik'],['good','Faqat maktov'],['driver','Haydovchilar'],['pharmacy','Dorixonalar']].map(([v,t]) =>
+                  `<button type="button" class="subtab${J.filter===v?' on':''}" data-f="${v}">${t}</button>`
+                ).join('')}
+              </div>
             </div>
-            <div class="row-btns" style="margin:0 0 10px;" id="j-range-row">
-              ${J.period==='range' ? `<input id="j-from" type="date" value="${esc(J.from||r.from)}"><input id="j-to" type="date" value="${esc(J.to||r.to)}">` : ''}
-              <input id="j-q" class="j-search" placeholder="Qidirish..." value="${esc(J.q)}">
-            </div>
-            <div class="subtabs" id="j-filt">
-              ${[['all','Hammasi'],['bad','Faqat kamchilik'],['good','Faqat maktov'],['driver','Haydovchilar'],['pharmacy','Dorixonalar']].map(([v,t]) =>
-                `<button type="button" class="subtab${J.filter===v?' on':''}" data-f="${v}">${t}</button>`
-              ).join('')}
-            </div>
-            <div class="kpis" style="margin-top:10px;">
+            <div class="kpis" style="margin-top:12px;">
               <div class="kpi"><i>Kamchilik (davr)</i><b>${badN}</b></div>
               <div class="kpi"><i>Maktov (davr)</i><b>${goodN}</b></div>
               <div class="kpi"><i>Obyektlar</i><b>${objects}</b></div>

@@ -1,1390 +1,2818 @@
 <!DOCTYPE html>
+
 <html lang="uz">
+
 <head>
+
 <meta charset="UTF-8">
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
 <title>Admin — VaksinaMed</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
+
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="shell.css?v=9"/>
+
 <style>
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
-* { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+
+html { scrollbar-width: thin; scrollbar-color: #8aa0b8 #e4e7ec; }
+
+* { scrollbar-width: thin; scrollbar-color: #8aa0b8 #e4e7ec; }
+
 *::-webkit-scrollbar { width: 8px; height: 8px; }
+
 *::-webkit-scrollbar-track { background: #e8ebf0; }
+
 *::-webkit-scrollbar-thumb {
-  background: #9aa3ae; border-radius: 8px; border: 2px solid #e8ebf0;
+
+  background: #a8bdd4; border-radius: 8px; border: 2px solid #e8ebf0;
+
 }
+
 *::-webkit-scrollbar-thumb:hover { background: #5c6573; }
+
 *::-webkit-scrollbar-button,
+
 *::-webkit-scrollbar-button:start:decrement,
+
 *::-webkit-scrollbar-button:end:increment {
+
   display: none !important; width: 0; height: 0;
+
 }
+
 *::-webkit-scrollbar-corner { background: #e8ebf0; }
+
 .tabs, .topbar {
-  scrollbar-color: #5a6470 #161c24;
+  scrollbar-width: thin;
+  scrollbar-color: #9bb4d0 #eef3f9;
 }
 .tabs::-webkit-scrollbar-track,
-.topbar::-webkit-scrollbar-track { background: #161c24; }
+.topbar::-webkit-scrollbar-track {
+  background: #eef3f9;
+  border-radius: 8px;
+}
 .tabs::-webkit-scrollbar-thumb,
 .topbar::-webkit-scrollbar-thumb {
-  background: #4a5460; border-color: #161c24;
+  background: #9bb4d0;
+  border-radius: 8px;
+  border: 2px solid #eef3f9;
 }
+.tabs::-webkit-scrollbar-button,
+.topbar::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 :root {
-  --bg: #c5cad3;
-  --card: #fff;
-  --ink: #12151c;
-  --muted: #5c6573;
-  --line: #b7bec8;
-  --header: #0c1016;
-  --gold: #c9a227;
-  --ok: #1a5c3a;
-  --warn: #8a5a12;
-  --bad: #9b1c1c;
+
+  --bg: #eef3f9;
+
+  --card: #ffffff;
+
+  --ink: #0b1f3a;
+
+  --muted: #5a7190;
+
+  --line: #c5d4e6;
+
+  --header: #0b1f3a;
+
+  --header-2: #123050;
+
+  --on-header-dim: #8eb6df;
+
+  --accent: #1a5fb4;
+
+  --info: #1a5fb4;
+
+  --mark: #1a5fb4;
+
+  --mark-2: #ffffff;
+
+  --brand: #8eb6df;
+
+  --gold: var(--mark);
+
+  --ok: #1a5fb4;
+
+  --warn: #0b1f3a;
+
+  --bad: #0b1f3a;
+
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
+
 }
+
 body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 13px; min-height: 100vh; }
+
 a { color: inherit; }
 
-.topbar {
-  position: sticky; top: 0; z-index: 40;
-  height: 52px; padding: 0 16px 0 12px;
-  background: var(--header); color: #f4f4f2;
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  border-bottom: 2px solid var(--gold);
-}
+
+
+.topbar { /* glass via shell.css */ }
+
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
 .brand img { width: 36px; height: 36px; display: block; flex-shrink: 0; }
+
 .tb-name {
+
   font-size: 14px; font-weight: 700; letter-spacing: .04em;
-  color: #c4a0de; line-height: 1;
+
+  color: var(--brand); line-height: 1;
+
 }
-.tb-name span { color: #e8b423; }
+
+.tb-name span { color: var(--ink); }
+
 .tb-line {
+
   font-size: 8px; font-weight: 600; letter-spacing: .16em;
-  color: #9b7ab3; margin-top: 3px;
+
+  color: var(--muted); margin-top: 3px;
+
 }
-.tb-title { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.tb-sub { font-size: 10px; color: #8b939e; letter-spacing: .12em; text-transform: uppercase; margin-top: 2px; }
-.acts { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-.who { font-family: var(--mono); font-size: 11px; color: #9aa3ae; }
+
+.tb-title { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink); }
+
+.tb-sub { font-size: 10px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-top: 2px; }
+
+.acts { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+
+.who { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+
 
 .btn {
+
   height: 32px; padding: 0 12px;
+
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border: 1px solid #3a4450; background: transparent; color: #d5d8dc;
+
+  border: 1px solid var(--line); background: #fff; color: var(--ink);
+
   font: 700 11px/1 var(--sans); letter-spacing: .06em; cursor: pointer; text-decoration: none;
+
+  border-radius: 10px;
+
 }
-.btn:hover { background: #1c232c; color: #fff; }
-.btn-gold { background: var(--gold); color: #0c1016; border-color: var(--gold); }
-.btn-gold:hover, .btn-gold:visited { background: #d4b03a; color: #0c1016; }
-.btn-dark { background: #12151c; color: #f4f4f2; border-color: #12151c; }
-.btn-dark:hover { background: #2a303a; }
-.btn-bad { color: #c45a5a; border-color: #6a3030; background: #fff; }
+
+.btn:hover { background: #e3eef9; color: var(--ink); }
+
+.btn-gold { background: var(--gold); color: #ffffff; border-color: var(--gold); }
+
+.btn-gold:hover, .btn-gold:visited { background: #2a74c9; color: #ffffff; }
+
+.btn-dark { background: var(--ink); color: #f4f4f2; border-color: var(--ink); }
+
+.btn-dark:hover { background: #1a3558; }
+
+.btn-bad { color: var(--bad); border-color: #c5d4e6; background: #fff; }
+
 .btn-bad:hover { background: var(--bad); color: #fff; }
+
 .btn-sm { height: 28px; padding: 0 9px; font-size: 10px; }
+
 .btn-lg { height: 44px; width: 100%; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
 
-.wrap { max-width: 1240px; margin: 18px auto 40px; padding: 0 14px; }
+
+
+.wrap { max-width: none; margin: 0; padding: 14px 16px 40px; }
+
 .persist-note {
+
   margin-bottom: 12px; padding: 10px 12px; font-size: 12px; line-height: 1.45; border: 1px solid;
+
+  border-radius: 12px;
+
 }
-.persist-note.ok { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
-.persist-note.bad { background: #f4ecd8; color: var(--warn); border-color: #e0d4b8; }
+
+.persist-note.ok { background: #e3eef9; color: var(--ok); border-color: #c5d4e6; }
+
+.persist-note.bad { background: #e8eef5; color: var(--warn); border-color: #e0d4b8; }
+
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+
 @media (max-width: 720px) { .stats { grid-template-columns: 1fr 1fr; } }
+
 .stat {
-  background: var(--header); color: #f4f4f2;
+
+  background: var(--shell-glass-strong, #fff); color: var(--ink);
+
   padding: 12px 14px; border-top: 2px solid var(--gold);
+
+  border-radius: 16px;
+
 }
-.stat i { display: block; font-style: normal; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: #8b939e; font-weight: 700; }
+
+.stat i { display: block; font-style: normal; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+
 .stat b { display: block; font-family: var(--mono); font-size: 22px; margin-top: 6px; font-weight: 600; }
 
+
+
 .layout { display: grid; grid-template-columns: 400px 1fr; gap: 12px; align-items: start; }
+
 @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
 
+
+
 /* Add-admin window */
+
 .add-win {
-  background: #fff;
-  border: 1px solid #12151c;
-  box-shadow: 8px 8px 0 rgba(12,16,22,.12);
+
+  background: var(--shell-glass-strong, #fff);
+
+  border: 1px solid var(--shell-border, var(--line));
+
+  border-radius: 16px;
+
+  box-shadow: var(--shell-shadow, 0 8px 28px rgba(11,31,58,.08));
+
 }
+
 .add-win-head {
-  background: #0c1016; color: #f4f4f2;
+
+  background: var(--header); color: #f4f4f2;
+
   padding: 16px 18px 14px;
+
   border-bottom: 2px solid var(--gold);
+
+  border-radius: 16px 16px 0 0;
+
 }
+
 .add-win-head .kicker {
+
   font-size: 9px; font-weight: 700; letter-spacing: .2em;
-  text-transform: uppercase; color: var(--gold); margin-bottom: 4px;
+
+  text-transform: uppercase; color: var(--brand); margin-bottom: 4px;
+
 }
+
 .add-win-head h1 { font-size: 18px; letter-spacing: .04em; font-weight: 700; }
-.add-win-head p { font-size: 12px; color: #9aa3ae; margin-top: 6px; line-height: 1.45; }
+
+.add-win-head p { font-size: 12px; color: #a8bdd4; margin-top: 6px; line-height: 1.45; }
+
 .add-win-body { padding: 18px; }
+
 .field { margin-bottom: 14px; }
+
 .field label {
+
   display: flex; justify-content: space-between; align-items: baseline;
+
   font-size: 10px; font-weight: 700; letter-spacing: .12em;
+
   text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+
 }
-.field label em { font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: #8b939e; }
+
+.field label em { font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; color: #8aa0b8; }
+
 .field input {
+
   width: 100%; height: 42px; padding: 0 12px;
-  border: 1px solid #9aa3ae; background: #f7f8fa;
+
+  border: 1px solid #a8bdd4; background: #ffffff;
+
   font-family: var(--mono); font-size: 14px; color: var(--ink);
+
 }
+
 .field input:focus { outline: none; border-color: var(--gold); background: #fff; box-shadow: 0 0 0 3px rgba(201,162,39,.18); }
+
 .pw-wrap { position: relative; }
+
 .pw-wrap input { padding-right: 44px; }
+
 .pw-eye {
+
   position: absolute; right: 4px; top: 4px; width: 34px; height: 34px;
+
   border: 0; background: transparent; color: var(--muted); cursor: pointer;
+
   display: flex; align-items: center; justify-content: center;
+
 }
+
 .pw-eye:hover, .pw-eye.on { color: var(--gold); }
+
 .pw-eye svg { width: 18px; height: 18px; }
+
 .rules {
+
   background: #f3f4f6; border: 1px solid var(--line);
+
   padding: 10px 12px; margin: 0 0 16px;
+
   font-size: 12px; color: var(--muted); line-height: 1.55;
+
 }
+
 .rules b { color: var(--ink); }
+
 .msg { display: none; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; border: 1px solid; line-height: 1.4; }
+
 .msg.show { display: block; }
-.msg.ok { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
-.msg.bad { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
+
+.msg.ok { background: #e3eef9; color: var(--ok); border-color: #c5d4e6; }
+
+.msg.bad { background: #e8eef5; color: var(--bad); border-color: #c5d4e6; }
+
 .ph-toast {
+
   position: fixed; right: 16px; bottom: 16px; z-index: 200;
+
   max-width: min(440px, calc(100vw - 32px));
-  padding: 14px 16px; background: #0c1016; color: #f4f4f2;
+
+  padding: 14px 16px; background: var(--header); color: #f4f4f2;
+
   border-left: 4px solid var(--gold); box-shadow: 0 8px 24px rgba(0,0,0,.28);
+
   font-size: 13px; line-height: 1.45; display: none;
+
 }
+
 .ph-toast.on { display: block; }
+
 .ph-toast.bad { border-left-color: #c45a5a; }
+
 .ph-toast b { color: var(--gold); }
+
 tr.ph-new td { background: #eef6f0 !important; }
+
 @keyframes phFlash {
+
   from { background: #bfe0c8; }
+
   to { background: #eef6f0; }
+
 }
+
 tr.ph-new td { animation: phFlash 1.8s ease; }
 
+
+
 .card { background: var(--card); border: 1px solid #12151c; overflow: hidden; }
+
 .head {
-  background: #0c1016; color: #f4f4f2; padding: 12px 16px;
+
+  background: var(--header); color: #f4f4f2; padding: 12px 16px;
+
   border-bottom: 2px solid var(--gold);
+
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
+
 }
+
 .head h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+
 .stack { display: grid; gap: 12px; }
+
 table { width: 100%; border-collapse: collapse; }
+
 th {
+
   text-align: left; font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
+
   color: var(--muted); border-bottom: 1px solid var(--line); padding: 9px 12px; background: #f3f4f6;
+
 }
+
 td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middle; }
+
 .mono { font-family: var(--mono); }
+
 .chip {
+
   display: inline-flex; padding: 2px 7px; font-size: 9px; font-weight: 700;
+
   letter-spacing: .08em; text-transform: uppercase; border: 1px solid;
+
 }
-.chip-pro { background: var(--gold); color: #0c1016; border-color: var(--gold); }
-.chip-admin { background: #e6edf4; color: #1a4a78; border-color: #c5d0dc; }
-.chip-drv { background: #161c24; color: #e8b423; border-color: #3a4450; }
-.chip-on { background: #e8f0eb; color: var(--ok); border-color: #c5d6cc; }
-.chip-off { background: #f3e4e4; color: var(--bad); border-color: #ddc8c8; }
+
+.chip-pro { background: var(--gold); color: var(--header); border-color: var(--gold); }
+
+.chip-admin { background: #e3eef9; color: var(--accent); border-color: #c5d4e6; }
+
+.chip-drv { background: #123050; color: var(--mark-2); border-color: #3a4450; }
+
+.chip-on { background: #e3eef9; color: var(--ok); border-color: #c5d4e6; }
+
+.chip-off { background: #e8eef5; color: var(--bad); border-color: #c5d4e6; }
+
 .row-btns { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; }
+
 .row-btns .btn { white-space: nowrap; }
+
 .users-table { min-width: 980px; }
+
 .users-table td { padding: 12px 10px; }
+
 .cred {
+
   display: inline-block;
+
   font-family: var(--mono);
+
   font-size: 15px;
+
   font-weight: 700;
-  background: #fff4c4;
-  border: 1px solid #c9a227;
+
+  background: #e8eef5;
+
+  border: 1px solid var(--mark);
+
   padding: 6px 10px;
+
   color: #12151c;
+
   letter-spacing: .03em;
+
   min-width: 88px;
+
 }
+
 .cred.empty { background: #f3f4f6; border-color: var(--line); color: var(--muted); font-weight: 600; font-size: 12px; min-width: 0; }
-.pw-make { height: 28px; padding: 0 8px; font-size: 10px; font-weight: 700; background: var(--gold); color: #0c1016; border: 1px solid var(--gold); cursor: pointer; }
+
+.pw-make { height: 28px; padding: 0 8px; font-size: 10px; font-weight: 700; background: var(--gold); color: var(--header); border: 1px solid var(--gold); cursor: pointer; }
+
 .muted { color: var(--muted); font-size: 12px; }
+
 .body { padding: 14px 16px; }
+
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
 @media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
 
+
+
 .modal-bg {
+
   position: fixed; inset: 0; z-index: 80;
+
   background: rgba(12,16,22,.72);
+
   display: none; align-items: center; justify-content: center; padding: 20px;
+
 }
+
 .modal-bg.open { display: flex; }
+
 .modal {
+
   width: 100%; max-width: 420px; background: #fff; border: 1px solid #12151c;
+
 }
+
 .modal .head { cursor: default; }
 
+
+
 html { -webkit-text-size-adjust: 100%; }
+
 body { overflow-x: clip; }
+
 .table-scroll { overflow: auto; -webkit-overflow-scrolling: touch; }
+
 .cred {
+
   display: inline-block;
+
   font-family: var(--mono);
+
   font-size: 14px;
+
   font-weight: 700;
-  background: #fff4c4;
+
+  background: #e8eef5;
+
   border: 1px solid #ead98a;
+
   padding: 3px 8px;
+
   color: #12151c;
+
   letter-spacing: .02em;
+
 }
+
 .cred.empty { background: #f3f4f6; border-color: var(--line); color: var(--muted); font-weight: 500; font-size: 12px; }
+
 .btn { touch-action: manipulation; }
 
-@media (max-width: 900px) {
+
+
+@media (max-width: 980px) {
   .topbar {
     height: auto; min-height: 52px; flex-wrap: wrap; gap: 8px;
-    padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
   }
   .brand { min-width: 0; flex-wrap: wrap; }
-  .acts { width: 100%; flex-wrap: wrap; }
-  .wrap { padding: 12px max(10px, env(safe-area-inset-right)) 28px max(10px, env(safe-area-inset-left)); margin: 12px auto 28px; }
-  table { min-width: 640px; }
-  .modal-bg { padding: 8px; align-items: flex-end; }
-  .modal { max-width: 100%; }
-  .btn-lg { min-height: 44px; }
+  .acts { width: 100%; }
+  .tb-title, .who { overflow-wrap: anywhere; }
+  table { min-width: 560px; }
+  .table-scroll, .wrap .card { max-width: 100%; }
+  .modal-bg {
+    padding: 0; align-items: flex-end; z-index: 320;
+  }
+  .modal {
+    max-width: 100%; width: 100%;
+    border-radius: 18px 18px 0 0;
+    max-height: min(92dvh, 92vh);
+  }
+  .btn-lg, .btn { min-height: 44px; white-space: normal; line-height: 1.25; }
+  .stats { gap: 8px; }
+  .field input, .field select {
+    font-size: 16px; min-height: 44px;
+  }
+  .toast {
+    left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom));
+    max-width: none; z-index: 300;
+  }
 }
 
 @media (max-width: 640px) {
   .tb-line { display: none; }
-  .who { width: 100%; }
+  .who { width: 100%; overflow-wrap: anywhere; }
   .stats { grid-template-columns: 1fr 1fr; }
+  .grid2 { grid-template-columns: 1fr !important; }
   .field input { font-size: 16px; min-height: 44px; }
-  .btn { min-height: 36px; }
 }
+
 </style>
+
 </head>
-<body>
-<header class="topbar">
-  <div class="brand">
-    <img src="/logo/mark.svg?v=3" alt="">
-    <div>
-      <div class="tb-name">VAKSINA <span>MED</span></div>
-      <div class="tb-line">MACHINE CONTROL</div>
+
+<body class="app-body">
+
+<input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
+
+<label for="nav-open" class="nav-scrim" aria-hidden="true"></label>
+
+
+
+<div class="app-shell">
+
+  <aside class="nav-rail">
+
+    <div class="nav-brand">
+
+      <img src="/logo/mark.svg?v=3" alt="">
+
+      <div>
+
+        <div class="tb-name">VAKSINA <span>MED</span></div>
+
+        <div class="tb-line">MACHINE CONTROL</div>
+
+      </div>
+
     </div>
-    <div class="tb-title" style="border-left:1px solid #2a323c;padding-left:12px;margin-left:4px;">Admin</div>
-  </div>
-  <div class="acts">
-    <span class="who" id="who"></span>
-    <a class="btn btn-gold" href="/fuel.html">Boshqaruv</a>
-    <a class="btn btn-gold" href="/">← VHK</a>
-    <button class="btn" type="button" id="btn-out">Chiqish</button>
-  </div>
-</header>
+
+    <nav class="nav-links">
+
+      <a class="nav-link" href="/">Dashboard</a>
+
+      <a class="nav-link" href="/fuel.html">Boshqaruv</a>
+
+      <a class="nav-link on" href="/admin.html" aria-current="page">Panel</a>
+
+    </nav>
+
+    <div class="nav-foot">
+      <a class="nav-link" href="/profile.html">Profil</a>
+    </div>
+
+</aside>
+
+
+
+  <div class="app-main">
+
+    <header class="topbar">
+
+      <label for="nav-open" class="nav-burger">Menyu</label>
+
+      <div class="tb-title">Admin</div>
+
+      <div class="acts"></div>
+
+    </header>
+
+
 
 <div class="wrap">
+
   <div class="persist-note bad" id="persist-note">Saqlash holati yuklanmoqda...</div>
+
   <div class="stats">
+
     <div class="stat"><i>Adminlar</i><b id="s-users">—</b></div>
+
     <div class="stat"><i>Onlayn</i><b id="s-on">—</b></div>
+
     <div class="stat"><i>Sessiyalar</i><b id="s-sess">—</b></div>
+
     <div class="stat"><i>Sizning login</i><b style="font-size:16px" id="s-me">—</b></div>
+
   </div>
+
+
 
   <div class="layout">
+
     <aside>
+
       <div class="add-win pro-only" id="win-admin">
+
         <div class="add-win-head">
+
           <div class="kicker">Yangi hisob</div>
-          <h1>Admin qo‘shish</h1>
+
+          <h1>Admin qoвЂshish</h1>
+
           <p>Bu odam dashboardni ishlatadi. Boshqaruv huquqi faqat sizda qoladi.</p>
+
         </div>
+
         <form class="add-win-body" id="form-add" autocomplete="off">
+
           <input type="text" name="prevent_autofill_user" style="display:none" tabindex="-1" aria-hidden="true">
+
           <input type="password" name="prevent_autofill_pass" style="display:none" tabindex="-1" aria-hidden="true">
+
           <div class="msg" id="msg-add"></div>
+
           <div class="rules">
+
             Login kamida <b>3</b> belgi. Parol kamida <b>6</b> belgi. Rol: <b>Admin</b>.
+
           </div>
+
           <div class="field">
-            <label>To‘liq ism <em>majburiy emas</em></label>
+
+            <label>ToвЂliq ism <em>majburiy emas</em></label>
+
             <input id="n-name" name="new_admin_fullname" autocomplete="off" placeholder="Masalan: Jasur Karimov">
+
           </div>
+
           <div class="field">
+
             <label>Yangi login <em>kirish uchun</em></label>
+
             <input id="n-user" name="new_admin_login" autocomplete="off" spellcheck="false" placeholder="masalan: jasur">
+
           </div>
+
           <div class="field">
+
             <label>Parol</label>
+
             <div class="pw-wrap">
+
               <input id="n-pass" name="new_admin_secret" type="password" autocomplete="new-password" placeholder="kamida 6 belgi">
-              <button type="button" class="pw-eye" data-for="n-pass" title="Ko‘rsatish">
+
+              <button type="button" class="pw-eye" data-for="n-pass" title="KoвЂrsatish">
+
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+
               </button>
+
             </div>
+
           </div>
+
           <div class="field">
+
             <label>Parolni takrorlang</label>
+
             <div class="pw-wrap">
+
               <input id="n-pass2" name="new_admin_secret2" type="password" autocomplete="new-password" placeholder="qayta yozing">
-              <button type="button" class="pw-eye" data-for="n-pass2" title="Ko‘rsatish">
+
+              <button type="button" class="pw-eye" data-for="n-pass2" title="KoвЂrsatish">
+
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+
               </button>
+
             </div>
+
           </div>
+
           <button class="btn btn-gold btn-lg" type="submit" id="btn-add">Hisobni yaratish</button>
+
         </form>
+
       </div>
+
       <div class="add-win" id="win-driver" style="margin-top:12px">
+
         <div class="add-win-head">
+
           <div class="kicker">Haydovchi kabineti</div>
-          <h1>Shofyor qo‘shish</h1>
-          <p>U faqat o‘z kunini ko‘radi, hech narsani o‘zgartira olmaydi. Mashina biriktiriladi.</p>
+
+          <h1>Shofyor qoвЂshish</h1>
+
+          <p>U faqat oвЂz kunini koвЂradi, hech narsani oвЂzgartira olmaydi. Mashina biriktiriladi.</p>
+
         </div>
+
         <form class="add-win-body" id="form-drv" autocomplete="off">
+
           <div class="msg" id="msg-drv"></div>
+
           <div class="field">
+
             <label>Ism</label>
+
             <input id="d-name" autocomplete="off" placeholder="Haydovchi F.I.O.">
+
           </div>
+
           <div class="field">
+
             <label>Login</label>
+
             <input id="d-user" autocomplete="off" spellcheck="false" placeholder="masalan: hasan">
+
           </div>
+
           <div class="field">
+
             <label>Mashina</label>
-            <select id="d-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#f7f8fa;font-family:var(--mono);font-size:13px"></select>
+
+            <select id="d-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #a8bdd4;background:#ffffff;font-family:var(--mono);font-size:13px"></select>
+
           </div>
+
           <div class="field">
+
             <label>Parol</label>
+
             <input id="d-pass" type="password" autocomplete="new-password" placeholder="kamida 6 belgi">
+
           </div>
+
           <button class="btn btn-gold btn-lg" type="submit" id="btn-drv">Haydovchini yaratish</button>
+
         </form>
+
       </div>
+
       <div class="add-win" id="win-task" style="margin-top:12px">
+
         <div class="add-win-head">
+
           <div class="kicker">Topshiriq</div>
+
           <h1>Kunlik vazifa</h1>
-          <p>Haydovchi kabinetida faqat o‘qiladi.</p>
+
+          <p>Haydovchi kabinetida faqat oвЂqiladi.</p>
+
         </div>
+
         <form class="add-win-body" id="form-task">
+
           <div class="msg" id="msg-task"></div>
+
           <div class="field">
+
             <label>Mashina</label>
-            <select id="t-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#f7f8fa;font-family:var(--mono);font-size:13px"></select>
+
+            <select id="t-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #a8bdd4;background:#ffffff;font-family:var(--mono);font-size:13px"></select>
+
           </div>
+
           <div class="field">
-            <label>Sana <em>bo‘sh = har kuni</em></label>
+
+            <label>Sana <em>boвЂsh = har kuni</em></label>
+
             <input id="t-date" type="date">
+
           </div>
+
           <div class="field">
+
             <label>Matn</label>
+
             <input id="t-text" placeholder="Masalan: 12 ta nuqtani yoping">
+
           </div>
+
           <button class="btn btn-gold btn-lg" type="submit">Topshiriq yozish</button>
+
         </form>
+
       </div>
+
     </aside>
 
+
+
     <div class="stack">
+
       <div class="card">
+
         <div class="head">
+
           <h2>Foydalanuvchilar</h2>
+
           <div class="row-btns">
+
             <button class="btn btn-sm" type="button" id="btn-reload">Yangilash</button>
+
           </div>
+
         </div>
+
         <div class="msg" id="msg-users" style="margin:12px 16px 0;"></div>
+
         <div class="table-scroll">
+
         <table class="users-table">
+
           <thead>
+
             <tr><th>Ism</th><th>Login</th><th>Parol</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Oxirgi kirish</th><th>Amal</th></tr>
+
           </thead>
+
           <tbody id="tb-users"></tbody>
+
         </table>
+
         </div>
+
       </div>
 
+
+
       <div class="card">
+
         <div class="head"><h2>Berilgan vazifalar</h2></div>
+
         <div class="table-scroll">
+
         <table>
+
           <thead>
+
             <tr><th>Haydovchi</th><th>Sana</th><th>Matn</th><th>Kim berdi</th><th>Yaratilgan</th><th></th></tr>
+
           </thead>
+
           <tbody id="tb-tasks"></tbody>
+
         </table>
+
         </div>
+
       </div>
+
+
 
       <div class="card">
+
         <div class="head"><h2>Kim tizimda</h2></div>
+
         <div class="table-scroll">
+
         <table>
+
           <thead>
+
             <tr><th>Foydalanuvchi</th><th>IP</th><th>Kirgan</th><th>Oxirgi</th><th>Holat</th><th></th></tr>
+
           </thead>
+
           <tbody id="tb-sess"></tbody>
+
         </table>
+
         </div>
+
       </div>
+
     </div>
+
   </div>
 
+
+
   <div class="card" style="margin-top:12px;">
-    <div class="head"><h2>O‘z parolingizni almashtirish</h2></div>
+
+    <div class="head"><h2>OвЂz parolingizni almashtirish</h2></div>
+
     <div class="body">
+
       <div class="msg" id="msg-pw"></div>
+
       <div class="grid2">
+
         <div class="field" style="margin:0">
+
           <label>Eski parol</label>
+
           <div class="pw-wrap">
+
             <input id="pw-old" type="password" autocomplete="current-password">
+
             <button type="button" class="pw-eye" data-for="pw-old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+
           </div>
+
         </div>
+
         <div class="field" style="margin:0">
+
           <label>Yangi parol</label>
+
           <div class="pw-wrap">
+
             <input id="pw-new" type="password" autocomplete="new-password">
+
             <button type="button" class="pw-eye" data-for="pw-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+
           </div>
+
         </div>
+
       </div>
+
       <button class="btn btn-gold" type="button" id="btn-pw" style="margin-top:12px;">Parolni saqlash</button>
+
     </div>
+
   </div>
 
+
+
   <div class="card" style="margin-top:12px;">
+
     <div class="head">
+
       <h2>Dorixona biriktirish</h2>
+
       <span class="muted" id="ph-count">0</span>
+
     </div>
+
     <div class="body">
+
       <div class="msg" id="msg-ph"></div>
+
       <p class="muted" style="margin-bottom:12px;line-height:1.5">
-        GPS (Boomerang/Wialon) to‘xtashlaridan <b>nom va manzil (lat/lng)</b> avtomatik olinadi.
-        Siz faqat qaysi mashinaga tegishli ekanini tanlaysiz. Lat/lng qo‘lda yozish shart emas.
+
+        GPS (Boomerang/Wialon) toвЂxtashlaridan <b>nom va manzil (lat/lng)</b> avtomatik olinadi.
+
+        Siz faqat qaysi mashinaga tegishli ekanini tanlaysiz. Lat/lng qoвЂlda yozish shart emas.
+
       </p>
+
+
 
       <div class="grid2" style="margin-bottom:10px">
+
         <div class="field" style="margin:0">
+
           <label>Filter: mashina</label>
-          <select id="ph-filter-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#f7f8fa;font-family:var(--mono);font-size:13px">
+
+          <select id="ph-filter-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #a8bdd4;background:#ffffff;font-family:var(--mono);font-size:13px">
+
             <option value="">Barcha mashinalar</option>
+
           </select>
+
         </div>
+
         <div class="field" style="margin:0">
+
           <label>Qidiruv (dorixona nomi)</label>
+
           <input id="ph-search" placeholder="Masalan: Ganga">
+
         </div>
+
       </div>
 
-      <div style="border:1px solid #d7dbe2;background:#f7f8fa;padding:12px;margin-bottom:12px">
+
+
+      <div style="border:1px solid #d7dbe2;background:#ffffff;padding:12px;margin-bottom:12px">
+
         <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+
           <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">GPS dan tanlash</div>
+
           <button class="btn btn-sm" type="button" id="btn-ph-gps">GPS joylarini yangilash</button>
+
         </div>
-        <p class="muted" id="ph-gps-hint" style="margin-bottom:8px">«GPS joylarini yangilash» bosing — tizim hisobotlardan joy nomlari va koordinatalarni o‘zi olib keladi.</p>
+
+        <p class="muted" id="ph-gps-hint" style="margin-bottom:8px">В«GPS joylarini yangilashВ» bosing — tizim hisobotlardan joy nomlari va koordinatalarni oвЂzi olib keladi.</p>
+
         <div style="overflow-x:auto;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #d7dbe2">
+
           <table>
+
             <thead>
+
               <tr>
+
                 <th>GPS joy nomi</th>
+
                 <th>Necha marta</th>
+
                 <th>Koordinata</th>
+
                 <th>Taklif mashina</th>
+
                 <th>Biriktirish</th>
+
               </tr>
+
             </thead>
+
             <tbody id="tb-ph-gps"></tbody>
+
           </table>
+
         </div>
+
         <div class="grid2" style="margin-top:12px;margin-bottom:8px">
+
           <div class="field" style="margin:0">
-            <label>Yoki qo‘lda: mashina</label>
-            <select id="ph-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #9aa3ae;background:#fff;font-family:var(--mono);font-size:13px"></select>
+
+            <label>Yoki qoвЂlda: mashina</label>
+
+            <select id="ph-car" style="width:100%;height:42px;padding:0 12px;border:1px solid #a8bdd4;background:#fff;font-family:var(--mono);font-size:13px"></select>
+
           </div>
+
           <div class="field" style="margin:0">
+
             <label>Dorixona nomi</label>
+
             <input id="ph-name" list="ph-gps-list" placeholder="GPS dan tanlang yoki yozing">
+
             <datalist id="ph-gps-list"></datalist>
+
           </div>
+
         </div>
+
         <div class="grid2" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
+
           <div class="field" style="margin:0">
+
             <label>Kenglik (GPS avto)</label>
-            <input id="ph-lat" type="number" step="0.000001" placeholder="GPS to‘ldiradi" readonly>
+
+            <input id="ph-lat" type="number" step="0.000001" placeholder="GPS toвЂldiradi" readonly>
+
           </div>
+
           <div class="field" style="margin:0">
+
             <label>Uzunlik (GPS avto)</label>
-            <input id="ph-lng" type="number" step="0.000001" placeholder="GPS to‘ldiradi" readonly>
+
+            <input id="ph-lng" type="number" step="0.000001" placeholder="GPS toвЂldiradi" readonly>
+
           </div>
+
           <div class="field" style="margin:0">
+
             <label>Radius, m</label>
+
             <input id="ph-radius" type="number" value="120" min="40" max="500">
+
           </div>
+
         </div>
+
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+
           <button class="btn btn-gold" type="button" id="btn-ph-add">Biriktirish</button>
-          <button class="btn" type="button" id="btn-ph-learn">Geozonalarni o‘rganish va qayta hisoblash</button>
+
+          <button class="btn" type="button" id="btn-ph-learn">Geozonalarni oвЂrganish va qayta hisoblash</button>
+
         </div>
+
       </div>
+
+
 
       <div style="margin-top:4px;overflow-x:auto">
+
         <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px">
+
           <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">Biriktirilgan dorixonalar</div>
-          <span class="muted" id="ph-assigned-hint">Pastki jadval — saqlangan ro‘yxat. VHK shu yerdan o‘qiydi.</span>
+
+          <span class="muted" id="ph-assigned-hint">Pastki jadval — saqlangan roвЂyxat. Dashboard shu yerdan oвЂqiydi.</span>
+
         </div>
+
         <table>
+
           <thead>
+
             <tr>
+
               <th>Dorixona</th>
+
               <th>Hozirgi mashina</th>
+
               <th>Nuqta</th>
+
               <th>Radius</th>
-              <th>Boshqa mashinaga o‘tkazish</th>
+
+              <th>Boshqa mashinaga oвЂtkazish</th>
+
               <th></th>
+
             </tr>
+
           </thead>
+
           <tbody id="tb-ph"></tbody>
+
         </table>
+
       </div>
+
     </div>
+
   </div>
 
+
+
   <div class="card pro-only" style="margin-top:12px;">
+
     <div class="head"><h2>Telegram ogohlantirish</h2></div>
+
     <div class="body">
+
       <div class="msg" id="msg-tg"></div>
+
       <p class="muted" style="margin-bottom:12px;line-height:1.5">
+
         BotFather dan bot token oling. Chat ID — shaxsiy chat yoki guruh.
+
         GPS kun yuklangach, ball/tezlik/muammo qisqacha yuboriladi.
+
       </p>
+
       <div class="field">
+
         <label>Bot token</label>
+
         <div class="pw-wrap">
+
           <input id="tg-token" type="password" autocomplete="off" placeholder="123456:ABC...">
+
           <button type="button" class="pw-eye" data-for="tg-token"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+
         </div>
+
       </div>
+
       <div class="grid2">
+
         <div class="field" style="margin:0">
+
           <label>Chat ID</label>
+
           <input id="tg-chat" placeholder="-100... yoki shaxsiy ID">
+
         </div>
+
         <div class="field" style="margin:0">
+
           <label>Holat</label>
+
           <label style="display:flex;align-items:center;gap:8px;height:42px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600">
+
             <input id="tg-on" type="checkbox" style="width:16px;height:16px"> Yoqilgan
+
           </label>
+
         </div>
+
       </div>
+
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+
         <button class="btn btn-gold" type="button" id="btn-tg-save">Saqlash</button>
-        <button class="btn" type="button" id="btn-tg-test">Sinab ko‘rish</button>
+
+        <button class="btn" type="button" id="btn-tg-test">Sinab koвЂrish</button>
+
       </div>
+
     </div>
+
   </div>
 
+
+
   <div class="card pro-only" style="margin-top:12px;">
+
     <div class="head"><h2>Jurnal</h2></div>
+
     <table>
+
       <thead><tr><th>Vaqt</th><th>Amal</th><th>Kim</th><th>Izoh</th></tr></thead>
+
       <tbody id="tb-audit"></tbody>
+
     </table>
+
   </div>
+
 </div>
+
+  </div><!-- /.app-main -->
+
+</div><!-- /.app-shell -->
+
+
 
 <div class="modal-bg" id="modal-reset">
+
   <div class="modal">
+
     <div class="head">
+
       <h2>Parolni yangilash</h2>
+
       <button class="btn btn-sm" type="button" id="reset-close">Yopish</button>
+
     </div>
+
     <div class="body">
+
       <p class="muted" id="reset-who" style="margin-bottom:12px"></p>
+
       <div class="field">
+
         <label>Yangi parol</label>
+
         <div class="pw-wrap">
+
           <input id="reset-pass" type="text" autocomplete="new-password" style="font-family:var(--mono)">
+
           <button type="button" class="btn btn-sm" id="btn-gen-pass" style="margin-left:6px;white-space:nowrap">Tasodifiy</button>
+
         </div>
+
       </div>
+
       <button class="btn btn-gold btn-lg" type="button" id="reset-ok">Saqlash</button>
+
     </div>
+
   </div>
+
 </div>
 
+
+
 <script src="fleet-data.js?v=3"></script>
-<script src="auth.js?v=9"></script>
+
+<script src="auth.js?v=12"></script>
+
 <script>
+
 function show(id, text, ok) {
+
   const el = document.getElementById(id);
+
   el.textContent = text;
+
   el.className = 'msg show ' + (ok ? 'ok' : 'bad');
+
 }
+
 function hide(id) {
+
   document.getElementById(id).className = 'msg';
+
 }
+
 function phNotify(text, ok) {
+
   show('msg-ph', text, ok !== false);
+
   const t = document.getElementById('ph-toast');
+
   if (!t) return;
+
   t.className = 'ph-toast on' + (ok === false ? ' bad' : '');
+
   t.innerHTML = ok === false
+
     ? ('<b>Xato</b><br>' + esc(text))
-    : ('<b>✓ Biriktirildi</b><br>' + esc(text));
+
+    : ('<b>вњ“ Biriktirildi</b><br>' + esc(text));
+
   clearTimeout(phNotify._t);
+
   phNotify._t = setTimeout(() => { t.className = 'ph-toast'; }, 5000);
+
 }
+
 function highlightAssigned(name) {
+
   const search = document.getElementById('ph-search');
+
   if (search) {
+
     search.value = name || '';
+
     renderPharms();
+
     renderGpsPlaces();
+
   }
+
   const box = document.getElementById('tb-ph');
+
   if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
   const row = [...document.querySelectorAll('#tb-ph tr[data-ph-id]')].find(tr => {
+
     const cell = tr.querySelector('td b');
+
     return cell && cell.textContent.trim().toLowerCase() === String(name || '').toLowerCase();
+
   });
+
   if (row) {
+
     row.classList.add('ph-new');
+
     setTimeout(() => row.classList.remove('ph-new'), 4000);
+
   }
+
   const hint = document.getElementById('ph-assigned-hint');
+
   if (hint && name) {
-    hint.textContent = '"' + name + '" pastki jadvalda · VHK shu biriktirishni ishlatadi';
+
+    hint.textContent = '"' + name + '" pastki jadvalda В· Dashboard shu biriktirishni ishlatadi';
+
   }
+
 }
+
 function esc(s) {
+
   return String(s == null ? '' : s)
+
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
 }
+
+
 
 let resetId = null;
 
+
+
 async function loadAll() {
+
   const me = window.VM_USER || {};
+
   const reqs = [vmApi('/api/users'), vmApi('/api/sessions')];
+
   if (me.role === 'admin_pro') reqs.push(vmApi('/api/audit'));
+
   const [users, sess, audit] = await Promise.all(reqs);
+
   const drvN = (users.users || []).filter(u => u.role === 'driver').length;
-  document.getElementById('s-users').textContent = users.users.length + (drvN ? (' · ' + drvN + ' haydovchi') : '');
+
+  document.getElementById('s-users').textContent = users.users.length + (drvN ? (' В· ' + drvN + ' haydovchi') : '');
+
   document.getElementById('s-sess').textContent = sess.sessions.length;
+
   document.getElementById('s-on').textContent = sess.sessions.filter(s => s.online).length;
 
+
+
   document.getElementById('tb-users').innerHTML = users.users.map(u => {
+
     const role = u.role === 'admin_pro'
+
       ? '<span class="chip chip-pro">Pro</span>'
+
       : (u.role === 'driver' ? '<span class="chip chip-drv">Haydovchi</span>' : '<span class="chip chip-admin">Admin</span>');
+
     const st = u.active
+
       ? '<span class="chip chip-on">Faol</span>'
+
       : '<span class="chip chip-off">Blok</span>';
+
     const locked = u.protected || u.role === 'admin_pro';
+
     const canAct = u.role === 'driver' ? true : (me.role === 'admin_pro' && !locked);
+
     const view = u.role === 'driver' && u.car
-      ? `<a class="btn btn-sm" href="/driver.html?car=${encodeURIComponent(u.car)}">Ko‘rish</a>`
+
+      ? `<a class="btn btn-sm" href="/driver.html?car=${encodeURIComponent(u.car)}">KoвЂrish</a>`
+
       : '';
+
     const acts = !canAct
+
       ? `<div class="row-btns"><button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button></div>`
+
       : `<div class="row-btns">
+
           ${view}
+
           <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
+
           <button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
-          <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}">O‘chirish</button>
+
+          <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}">OвЂchirish</button>
+
         </div>`;
+
     let displayName = u.name || u.username || '';
+
     if (u.role === 'driver' && u.car && typeof resolveDriver === 'function') {
+
       const live = resolveDriver(u.car);
+
       displayName = live.fullName || live.name || displayName;
+
     }
+
     const pwCell = u.hasPassword
-      ? `<span class="cred empty" title="Parol hash sifatida saqlangan — ochiq ko‘rinmaydi">Saqlangan</span>`
+
+      ? `<span class="cred empty" title="Parol hash sifatida saqlangan — ochiq koвЂrinmaydi">Saqlangan</span>`
+
       : `<button class="pw-make" type="button" data-act="genpw" data-id="${u.id}" data-name="${esc(u.username)}">Parol yaratish</button>`;
+
     return `<tr>
+
       <td>${esc(displayName)}</td>
+
       <td><span class="cred">${esc(u.username)}</span></td>
+
       <td>${pwCell}</td>
+
       <td>${role}</td>
+
       <td class="mono">${esc(u.car || '—')}</td>
+
       <td>${st}</td>
+
       <td class="mono">${esc(u.last_login || '—')}</td>
+
       <td>${acts}</td>
+
     </tr>`;
+
   }).join('');
+
+
 
   const tbS = document.getElementById('tb-sess');
+
   if (!sess.sessions.length) {
-    tbS.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Hozir sessiya yo‘q</td></tr>';
+
+    tbS.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Hozir sessiya yoвЂq</td></tr>';
+
   } else {
+
     tbS.innerHTML = sess.sessions.map(s => {
+
       const mine = s.id === sess.me;
+
       return `<tr>
+
         <td>${vmSameLabel(s.name, s.username) ? esc(s.username) : `${esc(s.name)} <span class="mono">@${esc(s.username)}</span>`}</td>
+
         <td class="mono">${esc(s.ip)}</td>
+
         <td class="mono">${esc(s.created)}</td>
+
         <td class="mono">${esc(s.last_seen)}</td>
+
         <td>${s.online ? '<span class="chip chip-on">Onlayn</span>' : '<span class="chip chip-off">Idle</span>'}${mine ? ' <span class="chip chip-pro">Siz</span>' : ''}</td>
+
         <td>${mine ? '' : `<button class="btn btn-sm btn-bad" data-act="kick" data-id="${s.id}">Chiqarish</button>`}</td>
+
       </tr>`;
+
     }).join('');
+
   }
+
+
 
   const auditEl = document.getElementById('tb-audit');
+
   if (auditEl && audit && audit.audit) {
+
     auditEl.innerHTML = audit.audit.map(a => `<tr>
+
     <td class="mono">${esc(a.t)}</td>
+
     <td class="mono">${esc(a.act)}</td>
+
     <td>${esc(a.who)}</td>
+
     <td>${esc(a.detail || '')}</td>
+
   </tr>`).join('');
+
   }
+
+
 
   loadTasks();
+
 }
+
+
 
 async function loadTasks() {
+
   try {
+
     const d = await vmApi('/api/driver/tasks?all=1');
+
     const tasks = d.tasks || [];
+
     const fleet = window.DRIVERS || [];
+
     const tb = document.getElementById('tb-tasks');
+
     if (!tasks.length) {
+
       tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Hali vazifa yozilmagan</td></tr>';
+
       return;
+
     }
+
     tb.innerHTML = tasks.slice(0, 100).map(t => {
+
       const live = (typeof resolveDriver === 'function') ? resolveDriver(t.car) : null;
+
       const name = (live && (live.shortName || live.fullName)) || t.car || '—';
+
       const created = (t.createdAt || '').slice(0, 16).replace('T', ' ');
+
       return `<tr>
+
         <td>${esc(name)}</td>
+
         <td class="mono">${esc(t.date || 'har kuni')}</td>
+
         <td>${esc(t.text)}</td>
+
         <td class="mono">${esc(t.by || '—')}</td>
+
         <td class="mono">${esc(created)}</td>
+
         <td><button class="btn btn-sm btn-bad" data-task-del="${esc(t.id)}">O'chirish</button></td>
+
       </tr>`;
+
     }).join('');
+
   } catch (e) {}
+
 }
+
+
 
 document.getElementById('tb-tasks').addEventListener('click', async (e) => {
+
   const btn = e.target.closest('[data-task-del]');
+
   if (!btn) return;
+
   const id = btn.getAttribute('data-task-del');
+
   try {
+
     await vmApi('/api/driver/tasks', { method: 'POST', body: JSON.stringify({ deleteId: id }) });
+
     loadTasks();
+
   } catch (err) {
+
     alert(err.message);
+
   }
+
 });
+
+
 
 function clearAddForm() {
+
   document.getElementById('n-name').value = '';
+
   document.getElementById('n-user').value = '';
+
   document.getElementById('n-pass').value = '';
+
   document.getElementById('n-pass2').value = '';
+
 }
+
+
 
 function genRandomPass() {
+
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+
   let pw = '';
+
   for (let i = 0; i < 8; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+
   return pw;
+
 }
+
+
 
 document.getElementById('tb-users').addEventListener('click', async (e) => {
+
   const btn = e.target.closest('button[data-act]');
+
   if (!btn) return;
+
   const id = btn.getAttribute('data-id');
+
   const act = btn.getAttribute('data-act');
+
   hide('msg-users');
+
   try {
+
     if (act === 'toggle') {
+
       await vmApi('/api/users/toggle', { method: 'POST', body: JSON.stringify({ id, active: btn.getAttribute('data-on') === '1' }) });
+
     } else if (act === 'del') {
-      if (!confirm('Bu foydalanuvchini o‘chirish?')) return;
+
+      if (!confirm('Bu foydalanuvchini oвЂchirish?')) return;
+
       await vmApi('/api/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
+
     } else if (act === 'reset') {
+
       resetId = id;
+
       document.getElementById('reset-who').textContent = 'Login: ' + (btn.getAttribute('data-name') || '');
+
       document.getElementById('reset-pass').value = genRandomPass();
+
       document.getElementById('modal-reset').classList.add('open');
+
       return;
+
     } else if (act === 'genpw') {
+
       const pw = genRandomPass();
+
       await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id, password: pw }) });
-      show('msg-users', (btn.getAttribute('data-name') || '') + ' yangi paroli (faqat hozir ko‘rinadi): ' + pw, true);
+
+      show('msg-users', (btn.getAttribute('data-name') || '') + ' yangi paroli (faqat hozir koвЂrinadi): ' + pw, true);
+
     }
+
     await loadAll();
+
   } catch (err) {
+
     show('msg-users', err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('btn-gen-pass').addEventListener('click', () => {
+
   document.getElementById('reset-pass').value = genRandomPass();
+
 });
+
+
 
 document.getElementById('reset-close').addEventListener('click', () => {
+
   document.getElementById('modal-reset').classList.remove('open');
+
   resetId = null;
+
 });
+
 document.getElementById('modal-reset').addEventListener('click', (e) => {
+
   if (e.target.id === 'modal-reset') {
+
     document.getElementById('modal-reset').classList.remove('open');
+
     resetId = null;
+
   }
+
 });
+
 document.getElementById('reset-ok').addEventListener('click', async () => {
+
   if (!resetId) return;
+
   try {
+
     const pw = document.getElementById('reset-pass').value;
+
     await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: resetId, password: pw }) });
+
     document.getElementById('modal-reset').classList.remove('open');
-    show('msg-users', 'Parol yangilandi (faqat hozir ko‘rinadi — yozib oling): ' + pw, true);
+
+    show('msg-users', 'Parol yangilandi (faqat hozir koвЂrinadi — yozib oling): ' + pw, true);
+
     await loadAll();
+
   } catch (err) {
+
     alert(err.message);
+
   }
+
 });
+
+
 
 document.getElementById('tb-sess').addEventListener('click', async (e) => {
+
   const btn = e.target.closest('button[data-act="kick"]');
+
   if (!btn) return;
+
   if (!confirm('Bu foydalanuvchini tizimdan chiqarish?')) return;
+
   try {
+
     await vmApi('/api/sessions/kick', { method: 'POST', body: JSON.stringify({ id: btn.getAttribute('data-id') }) });
+
     await loadAll();
+
   } catch (err) {
+
     alert(err.message);
+
   }
+
 });
+
+
 
 document.getElementById('form-add').addEventListener('submit', async (e) => {
+
   e.preventDefault();
+
   hide('msg-add');
+
   const pass = document.getElementById('n-pass').value;
+
   const pass2 = document.getElementById('n-pass2').value;
+
   if (pass !== pass2) {
+
     show('msg-add', 'Parollar mos kelmadi.', false);
+
     return;
+
   }
+
   try {
+
     await vmApi('/api/users/create', {
+
       method: 'POST',
+
       body: JSON.stringify({
+
         name: document.getElementById('n-name').value.trim(),
+
         username: document.getElementById('n-user').value.trim(),
+
         password: pass
+
       })
+
     });
-    show('msg-add', 'Admin qo‘shildi. U yangi login/parol bilan asosiy oynaga kiradi.', true);
+
+    show('msg-add', 'Admin qoвЂshildi. U yangi login/parol bilan asosiy oynaga kiradi.', true);
+
     clearAddForm();
+
     await loadAll();
+
   } catch (err) {
+
     show('msg-add', err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('form-drv').addEventListener('submit', async (e) => {
+
   e.preventDefault();
+
   hide('msg-drv');
+
   try {
+
     await vmApi('/api/users/create', {
+
       method: 'POST',
+
       body: JSON.stringify({
+
         role: 'driver',
+
         name: document.getElementById('d-name').value.trim(),
+
         username: document.getElementById('d-user').value.trim(),
+
         password: document.getElementById('d-pass').value,
+
         car: document.getElementById('d-car').value
+
       })
+
     });
-    show('msg-drv', 'Haydovchi qo‘shildi. U login/parol bilan o‘z kabinetiga kiradi.', true);
+
+    show('msg-drv', 'Haydovchi qoвЂshildi. U login/parol bilan oвЂz kabinetiga kiradi.', true);
+
     document.getElementById('d-name').value = '';
+
     document.getElementById('d-user').value = '';
+
     document.getElementById('d-pass').value = '';
+
     await loadAll();
+
   } catch (err) {
+
     show('msg-drv', err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('form-task').addEventListener('submit', async (e) => {
+
   e.preventDefault();
+
   hide('msg-task');
+
   try {
+
     await vmApi('/api/driver/tasks', {
+
       method: 'POST',
+
       body: JSON.stringify({
+
         car: document.getElementById('t-car').value,
+
         date: document.getElementById('t-date').value,
+
         text: document.getElementById('t-text').value.trim()
+
       })
+
     });
-    show('msg-task', 'Topshiriq yozildi. Haydovchi kabinetida ko‘rinadi.', true);
+
+    show('msg-task', 'Topshiriq yozildi. Haydovchi kabinetida koвЂrinadi.', true);
+
     document.getElementById('t-text').value = '';
+
     loadTasks();
+
   } catch (err) {
+
     show('msg-task', err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('btn-pw').addEventListener('click', async () => {
+
   hide('msg-pw');
+
   try {
+
     await vmApi('/api/password', {
+
       method: 'POST',
+
       body: JSON.stringify({
+
         old_password: document.getElementById('pw-old').value,
+
         new_password: document.getElementById('pw-new').value
+
       })
+
     });
+
     show('msg-pw', 'Parol yangilandi.', true);
+
     document.getElementById('pw-old').value = '';
+
     document.getElementById('pw-new').value = '';
+
   } catch (err) {
+
     show('msg-pw', err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('btn-reload').addEventListener('click', () => loadAll());
+
 document.getElementById('btn-out').addEventListener('click', () => vmLogout());
 
+
+
 const OFFICE_CARS = [];
+
 let PHARMS = [];
+
 let GPS_PLACES = [];
 
+
+
 function officeCarsLive() {
+
   return (window.DRIVERS || []).map(d => [d.car, d.shortName || d.fullName || d.car]);
+
 }
+
+
 
 function carLabel(car) {
+
   const want = (typeof fleetPlateKey === 'function') ? fleetPlateKey(car) : String(car || '').replace(/\s+/g, '').toUpperCase();
+
   const hit = officeCarsLive().find(x => {
+
     const k = (typeof fleetPlateKey === 'function') ? fleetPlateKey(x[0]) : String(x[0] || '').replace(/\s+/g, '').toUpperCase();
+
     return k === want;
+
   });
-  return hit ? hit[1] + ' · ' + car : car;
+
+  return hit ? hit[1] + ' В· ' + car : car;
+
 }
+
+
 
 function fillCarSelect() {
+
   const cars = officeCarsLive();
+
   const html = cars.map(([car, name]) =>
+
     `<option value="${esc(car)}">${esc(name)} — ${esc(car)}</option>`
+
   ).join('');
+
   ['ph-car', 'd-car', 't-car'].forEach(id => {
+
     const sel = document.getElementById(id);
+
     if (sel) sel.innerHTML = html;
+
   });
+
   const filter = document.getElementById('ph-filter-car');
+
   if (filter) {
+
     const cur = filter.value;
+
     filter.innerHTML = '<option value="">Barcha mashinalar</option>' + html;
+
     filter.value = cur || '';
+
   }
+
 }
+
+
 
 function carOptionsHtml(selected) {
+
   return officeCarsLive().map(([car, name]) =>
+
     `<option value="${esc(car)}"${car === selected ? ' selected' : ''}>${esc(name)} — ${esc(car)}</option>`
+
   ).join('');
+
 }
+
+
 
 function visiblePharms() {
+
   const filterCar = (document.getElementById('ph-filter-car') || {}).value || '';
+
   const q = String((document.getElementById('ph-search') || {}).value || '').trim().toLowerCase();
+
   return [...PHARMS]
+
     .filter(p => !filterCar || p.car === filterCar)
+
     .filter(p => !q || String(p.name || '').toLowerCase().includes(q))
+
     .sort((a, b) => String(a.name).localeCompare(b.name) || String(a.car).localeCompare(b.car));
+
 }
+
+
 
 function renderPharms() {
+
   document.getElementById('ph-count').textContent = PHARMS.length + ' ta';
+
   const tb = document.getElementById('tb-ph');
+
   const list = visiblePharms();
+
   if (!list.length) {
-    tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Ro‘yxat bo‘sh yoki filterga mos kelmadi</td></tr>';
+
+    tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">RoвЂyxat boвЂsh yoki filterga mos kelmadi</td></tr>';
+
     return;
+
   }
+
   tb.innerHTML = list.map(p => {
+
     const geo = (p.lat != null && p.lng != null) ? (Number(p.lat).toFixed(4) + ', ' + Number(p.lng).toFixed(4)) : '—';
+
     return `<tr data-ph-id="${esc(p.id)}">
+
       <td><b>${esc(p.name)}</b></td>
+
       <td>${esc(carLabel(p.car))}</td>
+
       <td class="mono">${esc(geo)}</td>
+
       <td class="mono">${esc(p.radiusM || 120)}</td>
+
       <td>
+
         <div style="display:flex;gap:6px;align-items:center;min-width:220px">
-          <select data-ph-move="${esc(p.id)}" style="flex:1;height:34px;padding:0 8px;border:1px solid #9aa3ae;background:#fff;font-size:12px">
+
+          <select data-ph-move="${esc(p.id)}" style="flex:1;height:34px;padding:0 8px;border:1px solid #a8bdd4;background:#fff;font-size:12px">
+
             ${carOptionsHtml(p.car)}
+
           </select>
-          <button class="btn btn-sm btn-gold" type="button" data-ph-apply="${esc(p.id)}">O‘tkazish</button>
+
+          <button class="btn btn-sm btn-gold" type="button" data-ph-apply="${esc(p.id)}">OвЂtkazish</button>
+
         </div>
+
       </td>
-      <td><button class="btn btn-sm btn-bad" type="button" data-ph-del="${esc(p.id)}">O‘chirish</button></td>
+
+      <td><button class="btn btn-sm btn-bad" type="button" data-ph-del="${esc(p.id)}">OвЂchirish</button></td>
+
     </tr>`;
+
   }).join('');
+
 }
+
+
 
 async function loadOffice() {
+
   const d = await vmApi('/api/office/bootstrap');
+
   if (d.vehicles && typeof applyFleetNameOverrides === 'function') {
+
     applyFleetNameOverrides(d.vehicles);
+
   }
+
   fillCarSelect();
+
   PHARMS = Array.isArray(d.pharmacies) ? d.pharmacies : [];
+
   renderPharms();
+
   loadGpsPlaces().catch(() => {});
+
   const tg = d.telegram || {};
+
   document.getElementById('tg-on').checked = !!tg.enabled;
+
   document.getElementById('tg-chat').value = tg.chatId || '';
+
   const tok = document.getElementById('tg-token');
+
   tok.value = '';
-  tok.placeholder = tg.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : '123456:ABC...';
+
+  tok.placeholder = tg.hasToken ? 'Saqlangan — oвЂzgartirmasangiz qoladi' : '123456:ABC...';
+
 }
+
+
 
 async function loadPharms() {
+
   await loadOffice();
+
 }
+
+
 
 async function savePharms() {
+
   const d = await vmApi('/api/office/pharmacies', {
+
     method: 'POST',
+
     body: JSON.stringify({ pharmacies: PHARMS })
+
   });
+
   PHARMS = d.pharmacies || PHARMS;
+
   renderPharms();
+
   renderGpsPlaces();
+
 }
+
+
 
 function fillCoordsFromGpsName(name) {
+
   const hit = GPS_PLACES.find(p => String(p.name || '').toLowerCase() === String(name || '').toLowerCase());
+
   const latEl = document.getElementById('ph-lat');
+
   const lngEl = document.getElementById('ph-lng');
+
   if (!hit || hit.lat == null || hit.lng == null) {
+
     if (latEl) latEl.value = '';
+
     if (lngEl) lngEl.value = '';
+
     return;
+
   }
+
   if (latEl) latEl.value = hit.lat;
+
   if (lngEl) lngEl.value = hit.lng;
+
 }
+
+
 
 function renderGpsPlaces() {
+
   const tb = document.getElementById('tb-ph-gps');
+
   const hint = document.getElementById('ph-gps-hint');
+
   const dl = document.getElementById('ph-gps-list');
+
   if (!tb) return;
+
   const q = String((document.getElementById('ph-search') || {}).value || '').trim().toLowerCase();
+
   const list = GPS_PLACES
+
     .filter(p => !p.assigned)
+
     .filter(p => !q || String(p.name || '').toLowerCase().includes(q))
+
     .slice(0, 80);
+
   if (dl) {
+
     dl.innerHTML = GPS_PLACES.map(p =>
-      `<option value="${esc(p.name)}">${esc(p.name)} · ${p.count} marta${p.assigned ? ' (biriktirilgan)' : ''}</option>`
+
+      `<option value="${esc(p.name)}">${esc(p.name)} В· ${p.count} marta${p.assigned ? ' (biriktirilgan)' : ''}</option>`
+
     ).join('');
+
   }
+
   if (hint) {
+
     const fresh = GPS_PLACES.filter(p => !p.assigned).length;
+
     const withCoord = GPS_PLACES.filter(p => p.lat != null && p.lng != null).length;
+
     hint.textContent = GPS_PLACES.length
-      ? ('GPS: ' + GPS_PLACES.length + ' joy · ' + fresh + ' biriktirilmagan · ' + withCoord + ' ta koordinata bor. Pastdagi jadvaldan mashinani tanlab «Biriktirish».')
-      : 'Hali GPS joylari yuklanmagan. «GPS joylarini yangilash» bosing.';
+
+      ? ('GPS: ' + GPS_PLACES.length + ' joy В· ' + fresh + ' biriktirilmagan В· ' + withCoord + ' ta koordinata bor. Pastdagi jadvaldan mashinani tanlab В«BiriktirishВ».')
+
+      : 'Hali GPS joylari yuklanmagan. В«GPS joylarini yangilashВ» bosing.';
+
   }
+
   if (!GPS_PLACES.length) {
-    tb.innerHTML = '<tr><td colspan="5" class="muted" style="padding:12px">GPS joylari yo‘q — avval VHK da kun yuklang, keyin shu yerni yangilang.</td></tr>';
+
+    tb.innerHTML = '<tr><td colspan="5" class="muted" style="padding:12px">GPS joylari yoвЂq — avval Dashboard da kun yuklang, keyin shu yerni yangilang.</td></tr>';
+
     return;
+
   }
+
   if (!list.length) {
+
     tb.innerHTML = '<tr><td colspan="5" class="muted" style="padding:12px">Biriktirilmagan joy qolmadi yoki qidiruvga mos kelmadi.</td></tr>';
+
     return;
+
   }
+
   tb.innerHTML = list.map((p, i) => {
+
     const geo = (p.lat != null && p.lng != null)
+
       ? (Number(p.lat).toFixed(5) + ', ' + Number(p.lng).toFixed(5))
+
       : 'nom bilan';
+
     const car = p.topCar || (document.getElementById('ph-car') || {}).value || '';
+
     return `<tr data-gps-idx="${i}">
+
       <td><b>${esc(p.name)}</b></td>
+
       <td class="mono">${p.count}</td>
+
       <td class="mono">${esc(geo)}</td>
+
       <td>
-        <select data-gps-car style="width:100%;min-width:160px;height:34px;padding:0 8px;border:1px solid #9aa3ae;background:#fff;font-size:12px">
+
+        <select data-gps-car style="width:100%;min-width:160px;height:34px;padding:0 8px;border:1px solid #a8bdd4;background:#fff;font-size:12px">
+
           ${carOptionsHtml(car)}
+
         </select>
+
       </td>
+
       <td><button class="btn btn-sm btn-gold" type="button" data-gps-add>Biriktirish</button></td>
+
     </tr>`;
+
   }).join('');
+
 }
+
+
 
 async function loadGpsPlaces() {
+
   const d = await vmApi('/api/office/pharmacy-places?days=60');
+
   GPS_PLACES = Array.isArray(d.places) ? d.places : [];
+
   renderGpsPlaces();
+
   return GPS_PLACES;
+
 }
+
+
 
 async function assignPharmacy(name, car, lat, lng) {
+
   name = String(name || '').trim();
+
   car = String(car || '').trim();
+
   if (!name || !car) throw new Error('Mashina va dorixona nomi kerak');
+
   const exists = PHARMS.find(p => String(p.name || '').toLowerCase() === name.toLowerCase());
+
   if (exists) {
+
     exists.car = car;
+
     if (lat != null && lng != null && lat !== '' && lng !== '') {
+
       exists.lat = Number(lat);
+
       exists.lng = Number(lng);
+
     }
+
   } else {
+
     PHARMS.push({
+
       id: 'ph_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+
       car,
+
       name,
+
       lat: lat == null || lat === '' ? null : Number(lat),
+
       lng: lng == null || lng === '' ? null : Number(lng),
+
       radiusM: Number(document.getElementById('ph-radius').value) || 120,
+
       aliases: []
+
     });
+
   }
+
   await savePharms();
+
   GPS_PLACES.forEach(p => {
+
     if (String(p.name || '').toLowerCase() === name.toLowerCase()) {
+
       p.assigned = true;
+
       p.assignedCar = car;
+
     }
+
   });
+
   renderGpsPlaces();
+
   highlightAssigned(name);
+
   return { name, car };
+
 }
 
+
+
 document.getElementById('btn-ph-add').addEventListener('click', async () => {
+
   hide('msg-ph');
+
   const name = document.getElementById('ph-name').value.trim();
+
   const car = document.getElementById('ph-car').value;
+
   fillCoordsFromGpsName(name);
+
   const latRaw = document.getElementById('ph-lat').value;
+
   const lngRaw = document.getElementById('ph-lng').value;
+
   try {
+
     await assignPharmacy(name, car, latRaw === '' ? null : latRaw, lngRaw === '' ? null : lngRaw);
+
     document.getElementById('ph-name').value = '';
+
     document.getElementById('ph-lat').value = '';
+
     document.getElementById('ph-lng').value = '';
-    phNotify('"' + name + '" → ' + carLabel(car) + '. Pastki jadvalda ko‘ring. VHK yangilanganda hisobga olinadi.');
+
+    phNotify('"' + name + '" в†’ ' + carLabel(car) + '. Pastki jadvalda koвЂring. Dashboard yangilanganda hisobga olinadi.');
+
   } catch (err) {
+
     phNotify(err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('ph-name').addEventListener('change', () => {
+
   fillCoordsFromGpsName(document.getElementById('ph-name').value.trim());
+
 });
+
 document.getElementById('ph-name').addEventListener('input', () => {
+
   fillCoordsFromGpsName(document.getElementById('ph-name').value.trim());
+
 });
+
+
 
 document.getElementById('btn-ph-gps').addEventListener('click', async () => {
+
   hide('msg-ph');
+
   const btn = document.getElementById('btn-ph-gps');
+
   btn.disabled = true;
-  btn.textContent = 'Yuklanmoqda…';
+
+  btn.textContent = 'YuklanmoqdaвЂ¦';
+
   try {
+
     await loadGpsPlaces();
+
     show('msg-ph', 'GPS joylari va koordinatalar yuklandi.', true);
+
   } catch (err) {
+
     show('msg-ph', err.message, false);
+
   } finally {
+
     btn.disabled = false;
+
     btn.textContent = 'GPS joylarini yangilash';
+
   }
+
 });
+
+
 
 document.getElementById('tb-ph-gps').addEventListener('click', async (e) => {
+
   const btn = e.target.closest('[data-gps-add]');
+
   if (!btn) return;
+
   hide('msg-ph');
+
   const tr = btn.closest('tr');
+
   const idx = Number(tr && tr.getAttribute('data-gps-idx'));
+
   const q = String((document.getElementById('ph-search') || {}).value || '').trim().toLowerCase();
+
   const list = GPS_PLACES
+
     .filter(p => !p.assigned)
+
     .filter(p => !q || String(p.name || '').toLowerCase().includes(q))
+
     .slice(0, 80);
+
   const hit = list[idx] || {};
+
   const sel = tr && tr.querySelector('select[data-gps-car]');
+
   const car = sel ? sel.value : '';
+
   try {
+
     const r = await assignPharmacy(hit.name, car, hit.lat, hit.lng);
-    phNotify('"' + r.name + '" → ' + carLabel(r.car) + '. Pastki «Biriktirilgan dorixonalar» jadvalida. VHK da ball shu ro‘yxat bo‘yicha.');
+
+    phNotify('"' + r.name + '" в†’ ' + carLabel(r.car) + '. Pastki В«Biriktirilgan dorixonalarВ» jadvalida. Dashboard da ball shu roвЂyxat boвЂyicha.');
+
   } catch (err) {
+
     phNotify(err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('btn-ph-learn').addEventListener('click', async () => {
+
   hide('msg-ph');
+
   const btn = document.getElementById('btn-ph-learn');
+
   btn.disabled = true;
-  btn.textContent = 'Navbatga qo‘yildi…';
+
+  btn.textContent = 'Navbatga qoвЂyildiвЂ¦';
+
   try {
+
     const d = await vmApi('/api/office/learn-geozones', { method: 'POST', body: '{}' });
+
     await loadPharms();
+
     if (d.queued) {
-      show('msg-ph', d.message || 'Fon rejimida o‘rganilmoqda — 1–2 daqiqadan so‘ng yangilang.', true);
+
+      show('msg-ph', d.message || 'Fon rejimida oвЂrganilmoqda — 1вЂ“2 daqiqadan soвЂng yangilang.', true);
+
     } else {
+
       show('msg-ph', `Tayyor: ${d.learned || 0} geozona, ${d.days || 0} kun qayta hisoblandi.`, true);
+
     }
+
   } catch (err) {
+
     show('msg-ph', err.message, false);
+
   } finally {
+
     btn.disabled = false;
-    btn.textContent = 'Geozonalarni o‘rganish va qayta hisoblash';
+
+    btn.textContent = 'Geozonalarni oвЂrganish va qayta hisoblash';
+
   }
+
 });
+
+
 
 document.getElementById('ph-filter-car').addEventListener('change', renderPharms);
+
 document.getElementById('ph-search').addEventListener('input', () => {
+
   renderPharms();
+
   renderGpsPlaces();
+
 });
+
+
 
 document.getElementById('tb-ph').addEventListener('click', async (e) => {
+
   const del = e.target.closest('[data-ph-del]');
+
   if (del) {
+
     const id = del.getAttribute('data-ph-del');
-    if (!confirm('Bu dorixonani o‘chirasizmi?')) return;
+
+    if (!confirm('Bu dorixonani oвЂchirasizmi?')) return;
+
     PHARMS = PHARMS.filter(p => p.id !== id);
+
     try {
+
       await savePharms();
-      show('msg-ph', 'O‘chirildi.', true);
+
+      show('msg-ph', 'OвЂchirildi.', true);
+
     } catch (err) {
+
       show('msg-ph', err.message, false);
+
     }
+
     return;
+
   }
+
   const apply = e.target.closest('[data-ph-apply]');
+
   if (!apply) return;
+
   const id = apply.getAttribute('data-ph-apply');
+
   const sel = document.querySelector('select[data-ph-move="' + id + '"]');
+
   if (!sel) return;
+
   const newCar = sel.value;
+
   const rec = PHARMS.find(p => p.id === id);
+
   if (!rec) return;
+
   if (rec.car === newCar) {
+
     show('msg-ph', 'Allaqachon shu mashinada.', false);
+
     return;
+
   }
+
   const oldLabel = carLabel(rec.car);
+
   rec.car = newCar;
+
   try {
+
     await savePharms();
-    show('msg-ph', '"' + rec.name + '" ' + oldLabel + ' dan ' + carLabel(newCar) + ' ga o‘tkazildi.', true);
+
+    show('msg-ph', '"' + rec.name + '" ' + oldLabel + ' dan ' + carLabel(newCar) + ' ga oвЂtkazildi.', true);
+
   } catch (err) {
+
     show('msg-ph', err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('btn-tg-save').addEventListener('click', async () => {
+
   hide('msg-tg');
+
   try {
+
     const body = {
+
       enabled: document.getElementById('tg-on').checked,
+
       chatId: document.getElementById('tg-chat').value.trim()
+
     };
+
     const token = document.getElementById('tg-token').value.trim();
+
     if (token) body.botToken = token;
+
     await vmApi('/api/office/telegram', { method: 'POST', body: JSON.stringify(body) });
+
     document.getElementById('tg-token').value = '';
+
     show('msg-tg', 'Telegram sozlamasi saqlandi.', true);
+
     await loadOffice();
+
   } catch (err) {
+
     show('msg-tg', err.message, false);
+
   }
+
 });
+
+
 
 document.getElementById('btn-tg-test').addEventListener('click', async () => {
+
   hide('msg-tg');
+
   try {
+
     await vmApi('/api/office/telegram/test', { method: 'POST', body: '{}' });
+
     show('msg-tg', 'Test xabar yuborildi. Telegramni tekshiring.', true);
+
   } catch (err) {
+
     show('msg-tg', err.message, false);
+
   }
+
 });
+
+
 
 document.querySelectorAll('.pw-eye').forEach(btn => {
+
   btn.addEventListener('click', () => {
+
     const el = document.getElementById(btn.getAttribute('data-for'));
+
     if (!el) return;
+
     el.type = el.type === 'password' ? 'text' : 'password';
+
     btn.classList.toggle('on', el.type === 'text');
+
   });
+
 });
 
+
+
 (async () => {
+
   const me = await vmMe();
+
   if (!me || (me.role !== 'admin_pro' && me.role !== 'admin')) {
+
     location.replace('/');
+
     return;
+
   }
+
   if (me.role !== 'admin_pro') {
+
     document.querySelectorAll('.pro-only').forEach(el => { el.style.display = 'none'; });
+
   }
+
   const note = document.getElementById('persist-note');
+
   if (note) {
+
     try {
+
       const d = await vmApi('/api/me');
+
       if (d.persist && d.persist.durable) {
+
         note.className = 'persist-note ok';
-        note.textContent = 'Adminlar bazada saqlanadi. Kod yangilanganda ham yo‘qolmaydi.';
+
+        note.textContent = 'Adminlar bazada saqlanadi. Kod yangilanganda ham yoвЂqolmaydi.';
+
       } else {
+
         note.className = 'persist-note bad';
-        note.textContent = 'Hozir vaqtinchalik disk. Render Environment ga DATABASE_URL qo‘ying — aks holda yangi deployda adminlar o‘chadi.';
+
+        note.textContent = 'Hozir vaqtinchalik disk. Render Environment ga DATABASE_URL qoвЂying — aks holda yangi deployda adminlar oвЂchadi.';
+
       }
+
     } catch (e) {}
+
   }
+
   document.getElementById('who').textContent = me.username;
+
   document.getElementById('s-me').textContent = me.username;
+
   fillCarSelect();
+
   clearAddForm();
+
   setTimeout(clearAddForm, 400);
+
   vmStartHeartbeat();
+
   await loadOffice();
+
   await loadAll();
+
   if (typeof listenFleetNameOverrides === 'function') {
+
     listenFleetNameOverrides(() => {
+
       fillCarSelect();
+
       renderPharms();
+
       loadTasks();
+
       loadAll();
+
     });
+
   }
+
   setInterval(() => {
+
     const ae = document.activeElement;
+
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return;
+
     if (document.hidden) return;
+
     loadAll();
+
   }, 60000);
+
 })();
+
 </script>
+
 <div class="ph-toast" id="ph-toast"></div>
+
 </body>
+
 </html>
+

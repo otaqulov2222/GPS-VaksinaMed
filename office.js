@@ -267,16 +267,16 @@ const VMOffice = {
         list.forEach(p => {
             const circle = L.circle([p.lat, p.lng], {
                 radius: p.radiusM || 120,
-                color: '#1a5c3a',
+                color: '#1a5fb4',
                 weight: 1,
-                fillColor: '#1a5c3a',
+                fillColor: '#1a5fb4',
                 fillOpacity: 0.08,
                 interactive: false
             }).addTo(map);
             const mark = L.circleMarker([p.lat, p.lng], {
                 radius: 4,
-                color: '#1a5c3a',
-                fillColor: '#1a5c3a',
+                color: '#1a5fb4',
+                fillColor: '#1a5fb4',
                 fillOpacity: 0.9,
                 weight: 1
             }).addTo(map);
@@ -357,7 +357,7 @@ const VMOffice = {
                 : 'Bu kunda ma\'lumot yo\'q';
         }
         if (!rows.length) {
-            el.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:22px;color:#8b939e;">Haydovchilar ro'yxati topilmadi.</td></tr>`;
+            el.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:22px;color:#8aa0b8;">Haydovchilar ro'yxati topilmadi.</td></tr>`;
             return;
         }
         el.innerHTML = rows.map((r, i) => {

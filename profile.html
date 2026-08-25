@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Profil — VaksinaMed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css?v=9"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #eef3f9; --card: #ffffff; --ink: #0b1f3a; --muted: #5a7190;
+  --line: #c5d4e6; --accent: #1a5fb4; --ok: #1a5fb4; --bad: #0b1f3a;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
+.profile-wrap { max-width: 920px; margin: 0 auto; padding: 18px 16px 40px; display: flex; flex-direction: column; gap: 14px; }
+.hero {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center;
+  padding: 20px 22px; background: #fff; border: 1px solid var(--line); border-radius: 18px;
+}
+.avatar {
+  width: 64px; height: 64px; border-radius: 16px;
+  background: linear-gradient(135deg, #1a5fb4, #2a74c9);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font: 700 22px/1 var(--sans); letter-spacing: .04em;
+}
+.hero h1 { font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+.hero .sub { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.badge-role {
+  display: inline-flex; align-items: center; margin-top: 8px;
+  padding: 4px 10px; border-radius: 999px; font: 700 10px/1 var(--mono);
+  letter-spacing: .08em; text-transform: uppercase;
+  background: #e3eef9; color: var(--accent); border: 1px solid #c5d4e6;
+}
+.hero-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.btn {
+  height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line);
+  background: #fff; color: var(--ink); font: 700 11px/1 var(--sans);
+  letter-spacing: .06em; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:hover { background: #e3eef9; }
+.btn-blue { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-blue:hover { background: #2a74c9; color: #fff; }
+.btn-out { background: #0b1f3a; color: #fff; border-color: #0b1f3a; }
+.btn-out:hover { background: #1a3558; color: #fff; }
+.grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 14px; }
+@media (max-width: 980px) {
+  .hero { grid-template-columns: 1fr; gap: 12px; }
+  .grid { grid-template-columns: 1fr; }
+  .hero-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .hero-actions .btn {
+    flex: 1 1 calc(50% - 8px);
+    min-height: 46px;
+    justify-content: center;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+  }
+  .kv { grid-template-columns: 1fr; gap: 4px 0; }
+  .kv dt { margin-top: 8px; }
+  .field input {
+    font-size: 16px;
+    min-height: 46px;
+    height: 46px;
+  }
+  .card-h, .hero h1, .tb-title {
+    overflow-wrap: anywhere;
+  }
+  .btn { min-height: 44px; }
+}
+
+@media (max-width: 860px) {
+  .hero { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: 1fr; }
+}
+.card {
+  background: #fff; border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
+}
+.card-h {
+  padding: 12px 16px; border-bottom: 1px solid var(--line); background: #f7fafc;
+  font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink);
+}
+.card-b { padding: 16px; }
+.kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; align-items: baseline; }
+.kv dt { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.kv dd { font-family: var(--mono); font-size: 13px; font-weight: 600; word-break: break-word; }
+.links { display: flex; flex-direction: column; gap: 8px; }
+.links a.btn { justify-content: flex-start; }
+.field { margin-bottom: 12px; }
+.field label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+.field input {
+  width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: #fff; font: 600 14px/1 var(--mono); color: var(--ink);
+}
+.field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26,95,180,.15); }
+.msg {
+  display: none; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px;
+  font-size: 12px; border: 1px solid;
+}
+.msg.show { display: block; }
+.msg.ok { background: #e3eef9; color: var(--ok); border-color: #c5d4e6; }
+.msg.bad { background: #e8eef5; color: var(--bad); border-color: #c5d4e6; }
+.hint { font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 8px; }
+.top-title { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.top-sub { font-size: 10px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-top: 2px; }
+</style>
+</head>
+<body class="app-body">
+<input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
+<label for="nav-open" class="nav-scrim" aria-hidden="true"></label>
+
+<div class="app-shell">
+  <aside class="nav-rail">
+    <div class="nav-brand">
+      <img src="/logo/mark.svg?v=3" alt="">
+      <div>
+        <div class="tb-name">VAKSINA <span>MED</span></div>
+        <div class="tb-line">MACHINE CONTROL</div>
+      </div>
+    </div>
+    <nav class="nav-links" id="side-nav">
+      <a class="nav-link" href="/" id="nav-vhk">Dashboard</a>
+      <a class="nav-link" href="/fuel.html" id="nav-fuel">Boshqaruv</a>
+      <a class="nav-link" href="/admin.html" id="btn-admin-panel" style="display:none">Admin panel</a>
+      <a class="nav-link on" href="/profile.html" aria-current="page">Profil</a>
+    </nav>
+    <div class="nav-foot"></div>
+  </aside>
+
+  <div class="app-main">
+    <header class="topbar">
+      <label for="nav-open" class="nav-burger">Menyu</label>
+      <div>
+        <div class="top-title">Profil</div>
+        <div class="top-sub">Hisob · xavfsizlik · chiqish</div>
+      </div>
+      <div class="acts"></div>
+    </header>
+
+    <div class="profile-wrap">
+      <section class="hero">
+        <div class="avatar" id="p-avatar">—</div>
+        <div>
+          <h1 id="p-name">—</h1>
+          <div class="sub" id="p-username">@—</div>
+          <span class="badge-role" id="p-role">—</span>
+        </div>
+        <div class="hero-actions">
+          <button class="btn btn-out" type="button" id="btn-logout">Chiqish</button>
+        </div>
+      </section>
+
+      <div class="grid">
+        <section class="card">
+          <div class="card-h">Hisob ma'lumotlari</div>
+          <div class="card-b">
+            <dl class="kv">
+              <dt>To‘liq ism</dt><dd id="p-fullname2">—</dd>
+              <dt>Login</dt><dd id="p-login">—</dd>
+              <dt>Rol</dt><dd id="p-role2">—</dd>
+              <dt>Mashina</dt><dd id="p-car">—</dd>
+              <dt>Holat</dt><dd id="p-active">—</dd>
+              <dt>Yaratilgan</dt><dd id="p-created">—</dd>
+              <dt>Oxirgi kirish</dt><dd id="p-last">—</dd>
+              <dt>Saqlash</dt><dd id="p-persist">—</dd>
+            </dl>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-h">Tezkor havolalar</div>
+          <div class="card-b links">
+            <a class="btn" href="/" id="link-vhk">← Dashboard</a>
+            <a class="btn" href="/fuel.html" id="link-fuel">Boshqaruv (yoqilg‘i)</a>
+            <a class="btn btn-blue" href="/admin.html" id="link-admin" style="display:none">Admin panel</a>
+            <a class="btn" href="/driver.html" id="link-driver" style="display:none">Haydovchi kabineti</a>
+            <p class="hint">Admin panel orqali foydalanuvchilar, dorixonalar va GPS biriktirish boshqariladi.</p>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="card-h">Parolni almashtirish</div>
+        <div class="card-b">
+          <div class="msg" id="pw-msg"></div>
+          <form id="pw-form" autocomplete="off">
+            <div class="field">
+              <label for="pw-old">Joriy parol</label>
+              <input id="pw-old" type="password" autocomplete="current-password" required minlength="1">
+            </div>
+            <div class="field">
+              <label for="pw-new">Yangi parol</label>
+              <input id="pw-new" type="password" autocomplete="new-password" required minlength="6">
+            </div>
+            <div class="field">
+              <label for="pw-new2">Yangi parolni takrorlang</label>
+              <input id="pw-new2" type="password" autocomplete="new-password" required minlength="6">
+            </div>
+            <button class="btn btn-blue" type="submit" id="pw-save">Parolni saqlash</button>
+            <p class="hint">Parol kamida 6 belgi. Yangilashdan keyin joriy sessiya ochiq qoladi.</p>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="fleet-data.js?v=3"></script>
+<script src="auth.js?v=12"></script>
+<script>
+(function () {
+  const ROLE_LABEL = {
+    admin_pro: 'Admin Pro',
+    admin: 'Admin',
+    driver: 'Haydovchi'
+  };
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function setText(id, v) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = v == null || v === '' ? '—' : String(v);
+  }
+  function initials(name, user) {
+    const s = String(name || user || '?').trim();
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return s.slice(0, 2).toUpperCase();
+  }
+
+  async function load() {
+    const me = await vmApi('/api/me');
+    const u = me.user || {};
+    window.VM_USER = u;
+    vmGatePage(u);
+    vmApplyChrome(u);
+    vmStartHeartbeat();
+
+    const roleLabel = ROLE_LABEL[u.role] || u.role || '—';
+    const name = u.name || u.username || '—';
+    document.getElementById('p-avatar').textContent = initials(u.name, u.username);
+    setText('p-name', name);
+    setText('p-username', '@' + (u.username || '—'));
+    setText('p-role', roleLabel);
+    setText('p-fullname2', name);
+    setText('p-login', u.username);
+    setText('p-role2', roleLabel);
+    setText('p-car', u.car || (u.role === 'driver' ? '—' : 'Kerak emas'));
+    setText('p-active', u.active === false ? 'O‘chirilgan' : 'Faol');
+    setText('p-created', u.created_at || '—');
+    setText('p-last', u.last_login || '—');
+    const pers = me.persist || {};
+    setText('p-persist', pers.mode || pers.backend || (pers.ok ? 'OK' : '—'));
+
+    const staff = vmIsStaff(u);
+    const drv = vmIsDriver(u);
+    document.getElementById('link-admin').style.display = staff ? 'inline-flex' : 'none';
+    document.getElementById('link-driver').style.display = drv ? 'inline-flex' : 'none';
+    document.getElementById('nav-vhk').style.display = drv ? 'none' : '';
+    document.getElementById('nav-fuel').style.display = drv ? 'none' : '';
+    if (drv) {
+      document.getElementById('link-vhk').style.display = 'none';
+      document.getElementById('link-fuel').style.display = 'none';
+    }
+  }
+
+  document.getElementById('btn-logout').addEventListener('click', () => vmLogout());
+
+  document.getElementById('pw-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('pw-msg');
+    const oldPw = document.getElementById('pw-old').value;
+    const n1 = document.getElementById('pw-new').value;
+    const n2 = document.getElementById('pw-new2').value;
+    msg.className = 'msg';
+    if (n1 !== n2) {
+      msg.textContent = 'Yangi parollar mos kelmadi';
+      msg.className = 'msg show bad';
+      return;
+    }
+    if (n1.length < 6) {
+      msg.textContent = 'Yangi parol kamida 6 belgi bo‘lsin';
+      msg.className = 'msg show bad';
+      return;
+    }
+    const btn = document.getElementById('pw-save');
+    btn.disabled = true;
+    try {
+      await vmApi('/api/password', {
+        method: 'POST',
+        body: JSON.stringify({ old_password: oldPw, new_password: n1 })
+      });
+      msg.textContent = 'Parol yangilandi';
+      msg.className = 'msg show ok';
+      document.getElementById('pw-form').reset();
+    } catch (err) {
+      msg.textContent = err.message || 'Xato';
+      msg.className = 'msg show bad';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  load().catch(() => location.replace('/login.html'));
+})();
+</script>
+</body>
+</html>

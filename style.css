@@ -1,49 +1,47 @@
 /* =========================================================================
    VaksinaMed GPS Monitor — To'liq Premium CSS
    ========================================================================= */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
 :root {
-  --primary: #1084d0;
-  --primary-dark: #0b629c;
-  --primary-light: #e8f4fc;
-  --success: #10b981;
-  --success-light: #ecfdf5;
-  --success-dark: #047857;
-  --warning: #f59e0b;
-  --warning-light: #fffbeb;
-  --warning-dark: #b45309;
-  --danger: #ef4444;
-  --danger-light: #fef2f2;
-  --danger-dark: #b91c1c;
-  --purple: #8b5cf6;
-  --teal: #14b8a6;
-  --orange: #f59e0b;
-
-  --bg: #f1f5f9;
+  --primary: #1a5fb4;
+  --primary-dark: #144a8f;
+  --primary-light: #e3eef9;
+  --success: #1a5fb4;
+  --success-light: #e3eef9;
+  --success-dark: #144a8f;
+  --warning: #0b1f3a;
+  --warning-light: #e8eef5;
+  --warning-dark: #061428;
+  --danger: #0b1f3a;
+  --danger-light: #e8eef5;
+  --danger-dark: #061428;
+  --purple: #1a5fb4;
+  --teal: #1a5fb4;
+  --orange: #1a5fb4;
+  --bg: #eef3f9;
   --card: #ffffff;
-  --border: #e2e8f0;
-  --border-hover: #cbd5e1;
-  --text: #0f172a;
-  --text-2: #334155;
-  --text-muted: #64748b;
-  --text-light: #94a3b8;
-
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05);
-  --shadow-lg: 0 10px 20px rgba(0,0,0,0.08);
+  --border: #c5d4e6;
+  --border-hover: #a8bdd4;
+  --text: #0b1f3a;
+  --text-2: #1a3558;
+  --text-muted: #5a7190;
+  --text-light: #8aa0b8;
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-lg: 6px;
+  --shadow: 0 1px 2px rgba(11,31,58,0.06);
+  --shadow-md: 0 4px 10px rgba(11,31,58,0.08);
+  --shadow-lg: 0 10px 22px rgba(11,31,58,0.1);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
-* { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
+html { scrollbar-width: thin; scrollbar-color: #8aa0b8 #e4e7ec; }
+* { scrollbar-width: thin; scrollbar-color: #8aa0b8 #e4e7ec; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: #e8ebf0; }
 *::-webkit-scrollbar-thumb {
-  background: #9aa3ae; border-radius: 8px; border: 2px solid #e8ebf0;
+  background: #a8bdd4; border-radius: 8px; border: 2px solid #e8ebf0;
 }
 *::-webkit-scrollbar-thumb:hover { background: #5c6573; }
 *::-webkit-scrollbar-button,
@@ -54,7 +52,7 @@ html { scrollbar-width: thin; scrollbar-color: #8b939e #e4e7ec; }
 *::-webkit-scrollbar-corner { background: #e8ebf0; }
 
 body {
-  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -259,7 +257,7 @@ body {
   transition: all 0.12s;
   color: var(--text-2);
 }
-.date-pill:hover { background: #f1f5f9; border-color: #cbd5e1; }
+.date-pill:hover { background: #f1f5f9; border-color: #c5d4e6; }
 .date-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -356,7 +354,7 @@ body {
 .kpi-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-top: 4px solid #94a3b8;
+  border-top: 4px solid #8aa0b8;
   border-radius: var(--r-lg);
   padding: 16px;
   text-align: center;
@@ -364,12 +362,12 @@ body {
   transition: transform 0.15s, box-shadow 0.15s;
 }
 .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-.kpi-card.c-blue  { border-top-color: #1084d0; }
-.kpi-card.c-green { border-top-color: #10b981; }
-.kpi-card.c-purple{ border-top-color: #8b5cf6; }
-.kpi-card.c-red   { border-top-color: #ef4444; }
-.kpi-card.c-orange{ border-top-color: #f59e0b; }
-.kpi-card.c-teal  { border-top-color: #14b8a6; }
+.kpi-card.c-blue  { border-top-color: #1a5fb4; }
+.kpi-card.c-green { border-top-color: #1a5fb4; }
+.kpi-card.c-purple{ border-top-color: #243b5a; }
+.kpi-card.c-red   { border-top-color: #0b1f3a; }
+.kpi-card.c-orange{ border-top-color: #1a5fb4; }
+.kpi-card.c-teal  { border-top-color: #1a5fb4; }
 
 .kpi-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .kpi-value { font-size: 22px; font-weight: 800; color: #0f172a; font-family: 'JetBrains Mono', monospace; line-height: 1.1; }
@@ -475,14 +473,14 @@ body {
 .bg-warning { background: #f59e0b !important; }
 .bg-success { background: #10b981 !important; color: #fff; }
 .bg-info    { background: #0ea5e9 !important; color: #fff; }
-.bg-secondary { background: #64748b !important; color: #fff; }
+.bg-secondary { background: #5a7190 !important; color: #fff; }
 .bg-light   { background: #f8fafc !important; }
 .text-center { text-align: center; }
 .text-dark { color: #0f172a !important; }
 .text-danger { color: #ef4444 !important; }
 .text-warning { color: #b45309 !important; }
 .text-success { color: #047857 !important; }
-.text-muted { color: #64748b !important; }
+.text-muted { color: #5a7190 !important; }
 .p-2 { padding: 8px !important; }
 .p-3 { padding: 12px !important; }
 .fs-6 { font-size: 14px !important; }
@@ -557,7 +555,7 @@ body {
 .custom-table td {
   padding: 9px 12px;
   border-bottom: 1px solid #f1f5f9;
-  color: #1e293b;
+  color: #123050;
   vertical-align: middle;
 }
 
@@ -732,7 +730,7 @@ body {
   border-radius: var(--r-md);
   font-family: inherit;
   font-size: 14px;
-  color: #1e293b;
+  color: #123050;
   background: #f8fafc;
   transition: all 0.15s;
 }

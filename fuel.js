@@ -1336,7 +1336,7 @@ function renderStations() {
           <td><button class="btn btn-ink btn-sm st-del" data-i="${i}" type="button">O'chirish</button></td></tr>`).join('') || '<tr><td colspan="2" class="muted">Hali yo\'q</td></tr>'}
         </tbody></table>
       </div></div>`;
-  document.querySelectorAll('.subtab').forEach(b => {
+  document.querySelectorAll('#panel-stations .subtab').forEach(b => {
     b.onclick = () => { STATE.stationFilter = b.getAttribute('data-f'); renderStations(); };
   });
   const add = document.getElementById('st-add');
@@ -1739,7 +1739,7 @@ async function autoChainMonth() {
     writeLocalMonth();
     if (st) st.textContent = 'Avto: GPS ' + gpsN + ' kun' + (balN ? ', qoldiq ' + balN + ' mashina' : '');
   } else if (st && !gpsDays) {
-    st.textContent = 'GPS hisobot yo\'q — VHK da kun ochilsa km o\'zi tushadi';
+    st.textContent = 'GPS hisobot yo\'q — Dashboard da kun ochilsa km o\'zi tushadi';
   }
 }
 
@@ -3271,7 +3271,8 @@ function bind() {
   };
   document.getElementById('btn-reload').onclick = () => reloadOriginal().catch(err => toast(err.message));
   document.getElementById('docs-badge').onclick = () => setTab('docs');
-  document.getElementById('btn-logout').onclick = async () => {
+  const logoutBtn = document.getElementById('btn-logout');
+  if (logoutBtn) logoutBtn.onclick = async () => {
     flushFormToState();
     if (STATE.dirty) await saveMonth();
     vmLogout();

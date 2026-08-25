@@ -725,9 +725,9 @@ function mapPinIcon(label, color, isEnd) {
     return L.divIcon({
         className: 'vm-pin',
         html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color}">${label}</span>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
-        popupAnchor: [0, -12]
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -14]
     });
 }
 
@@ -735,14 +735,14 @@ function stopColor(st) {
     const dateVal = STATE.currentDate;
     const car = STATE.currentCar;
     const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, st) : null;
-    if (rev && rev.status === 'allowed') return '#1a5c3a';
-    if (rev && rev.status === 'violation') return '#9b1c1c';
-    if (st.isOffice) return '#2a303a';
-    if (st.isOutside) return '#4a3d73';
-    if (stopIsProblem(st, car, dateVal)) return '#9b1c1c';
-    if (st.matchType === 'own') return '#1a5c3a';
-    if (st.matchType === 'other') return '#1a4a78';
-    return '#8b939e';
+    if (rev && rev.status === 'allowed') return '#1a5fb4';
+    if (rev && rev.status === 'violation') return '#0b1f3a';
+    if (st.isOffice) return '#123050';
+    if (st.isOutside) return '#8eb6df';
+    if (stopIsProblem(st, car, dateVal)) return '#0b1f3a';
+    if (st.matchType === 'own') return '#1a5fb4';
+    if (st.matchType === 'other') return '#5b9fe0';
+    return '#8aa0b8';
 }
 
 function stopStatusLabel(st) {
@@ -824,10 +824,10 @@ function refreshMap(stops) {
 
     if (latlngs.length > 1) {
         STATE.mapLine = L.polyline(latlngs, {
-            color: '#0c1016', weight: 5, opacity: 0.35, lineJoin: 'round'
+            color: '#0b1f3a', weight: 6, opacity: 0.22, lineJoin: 'round', lineCap: 'round'
         }).addTo(STATE.map);
         STATE.mapMarkers.push(L.polyline(latlngs, {
-            color: '#c9a227', weight: 2.4, opacity: 0.95, lineJoin: 'round'
+            color: '#1a5fb4', weight: 3, opacity: 0.95, lineJoin: 'round', lineCap: 'round'
         }).addTo(STATE.map));
     }
 
@@ -844,13 +844,15 @@ function refreshMap(stops) {
         }).addTo(STATE.map);
 
         marker.bindPopup(`
-            <div style="min-width:180px">
-              <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#c9a227;font-weight:700;margin-bottom:4px">${stopStatusLabel(st)}</div>
-              <b>#${num} — ${st.place || '—'}</b><br>
-              Kirish: ${st.inTime || '—'}<br>
-              Chiqish: ${st.outTime || '—'}<br>
-              Turgani: ${st.duration || '—'}<br>
-              ${st.phName ? '<b>Dorixona:</b> ' + st.phName + '<br>' : ''}
+            <div style="min-width:190px">
+              <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#8eb6df;font-weight:700;margin-bottom:6px">${stopStatusLabel(st)}</div>
+              <b style="font-size:13px">#${num} — ${st.place || '—'}</b>
+              <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12);color:#c5d4e6;font-size:11px;line-height:1.55">
+                Kirish: <span style="color:#fff">${st.inTime || '—'}</span><br>
+                Chiqish: <span style="color:#fff">${st.outTime || '—'}</span><br>
+                Turgani: <span style="color:#fff">${st.duration || '—'}</span>
+                ${st.phName ? '<br>Dorixona: <span style="color:#fff">' + st.phName + '</span>' : ''}
+              </div>
             </div>
         `);
         STATE.mapMarkers.push(marker);
@@ -984,7 +986,7 @@ function renderDriverTabs() {
     DRIVERS.forEach(d => {
         const active = d.car === STATE.currentCar ? 'active' : '';
         const hasData = STATE.currentDate && STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][d.car];
-        const dotClr  = hasData ? d.color : '#cbd5e1';
+        const dotClr  = hasData ? d.color : '#c5d4e6';
         html += `
         <div class="dtab ${active}" onclick="selectDriver('${d.car}')">
             <span class="dtab-dot" style="background:${dotClr}"></span>
@@ -993,6 +995,27 @@ function renderDriverTabs() {
         </div>`;
     });
     strip.innerHTML = html;
+}
+
+/** Sichqoncha gildiragi → gorizontal scroll (haydovchilar qatori) */
+function enableDriverStripWheelScroll() {
+    const wrap = document.querySelector('.driver-strip-wrap');
+    if (!wrap || wrap.dataset.wheelScroll === '1') return;
+    wrap.dataset.wheelScroll = '1';
+    wrap.addEventListener('wheel', (e) => {
+        const dx = e.deltaX;
+        const dy = e.deltaY;
+        // Vertikal gildirak yoki trackpad: asosiy siljishni gorizontalga
+        const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+        if (!delta) return;
+        const max = wrap.scrollWidth - wrap.clientWidth;
+        if (max <= 0) return;
+        const next = Math.max(0, Math.min(max, wrap.scrollLeft + delta));
+        if (next !== wrap.scrollLeft) {
+            e.preventDefault();
+            wrap.scrollLeft = next;
+        }
+    }, { passive: false });
 }
 
 function selectDriver(carKey) {
@@ -1106,7 +1129,7 @@ function renderBanner(driver, data) {
         avaEl.textContent = initials;
         avaEl.style.background = '';
         const banner = document.getElementById('driver-banner');
-        if (banner) banner.style.borderLeftColor = driver ? driver.color : '#0c1016';
+        if (banner) banner.style.borderLeftColor = driver ? driver.color : '#0b1f3a';
     }
 
     if (scoreEl) {
@@ -1114,12 +1137,12 @@ function renderBanner(driver, data) {
         if (data && data.analysis) {
             const s = data.analysis.score.final;
             scoreEl.textContent  = s.toFixed(1);
-            scoreEl.style.color  = s >= 8 ? '#7dcea0' : s >= 5 ? '#c9a227' : '#e07070';
-            if (box) box.style.background = '#0c1016';
+            scoreEl.style.color  = s >= 8 ? '#1a5fb4' : s >= 5 ? '#1a5fb4' : '#0b1f3a';
+            if (box) box.style.background = '#0b1f3a';
         } else {
             scoreEl.textContent = '—';
             scoreEl.style.color = '#f4f4f2';
-            if (box) box.style.background = '#0c1016';
+            if (box) box.style.background = '#0b1f3a';
         }
     }
 }
@@ -1143,7 +1166,7 @@ function renderKPI(data) {
         </div>
         <div class="kpi-card c-green">
             <div class="kpi-title">O'z dorixonalari</div>
-            <div class="kpi-value">${a.ownVisited}<span style="font-size:13px;font-weight:500;color:#8b939e">/${a.totalOwn}</span></div>
+            <div class="kpi-value">${a.ownVisited}<span style="font-size:13px;font-weight:500;color:#8aa0b8">/${a.totalOwn}</span></div>
             <div class="kpi-unit">Tashrif qilingan</div>
         </div>
         <div class="kpi-card c-purple">
@@ -1354,7 +1377,7 @@ function renderStops(stops) {
     if (!tbody) return;
     if (cntEl) cntEl.textContent = (stops ? stops.length : 0) + ' ta';
     if (!stops || !stops.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;">To\'xtashlar topilmadi</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#8aa0b8;">To\'xtashlar topilmadi</td></tr>';
         return;
     }
 
@@ -1435,9 +1458,9 @@ function renderEval(score) {
 
     const scoreBox = document.querySelector('.eval-score-box');
     if (scoreBox) {
-        scoreBox.style.background = '#0c1016';
+        scoreBox.style.background = '#0b1f3a';
         const numEl = document.getElementById('eval-final-score');
-        if (numEl) numEl.style.color = f >= 8 ? '#7dcea0' : f >= 5 ? '#c9a227' : '#e07070';
+        if (numEl) numEl.style.color = f >= 8 ? '#1a5fb4' : f >= 5 ? '#1a5fb4' : '#0b1f3a';
     }
 
     const recEl = document.getElementById('eval-recommendations');
@@ -1453,7 +1476,7 @@ function renderEval(score) {
 
 // ── 10. TOAST XABARLARI ─────────────────────────────────────
 function showToast(msg, type = 'info') {
-    const accents = { info:'#1a4a78', success:'#1a5c3a', warn:'#c9a227', error:'#9b1c1c' };
+    const accents = { info:'#1a5fb4', success:'#1a5fb4', warn:'#0b1f3a', error:'#0b1f3a' };
     const t = document.createElement('div');
     t.className = 'toast-msg';
     t.style.borderLeftColor = accents[type] || accents.info;
@@ -2362,6 +2385,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!STATE.currentDate) {
         STATE.currentDate = dateStr(new Date());
     }
+    enableDriverStripWheelScroll();
 
     if (window.VMOffice) {
         await VMOffice.bootstrap();
@@ -2655,11 +2679,11 @@ function renderFuelNormsTable() {
         const ben  = typeof norm === 'object' && norm.benzin !== undefined ? (norm[d.car]?.benzin ?? norm.benzin) : 12;
         return `<tr data-fuel-car="${d.car}">
             <td style="font-size:13px;font-weight:600;">${d.shortName}</td>
-            <td style="font-size:12px;color:#64748b;font-family:monospace;">${d.car}</td>
+            <td style="font-size:12px;color:#5a7190;font-family:monospace;">${d.car}</td>
             <td><input class="fuel-gas" type="number" value="${gas}" min="5" max="30" step="0.5"
-                style="width:70px;padding:5px 8px;border:1.5px solid #dde3ec;border-radius:7px;font-family:inherit;font-size:13px;"></td>
+                style="width:70px;padding:5px 8px;border:1.5px solid #c5d4e6;border-radius:7px;font-family:inherit;font-size:13px;"></td>
             <td><input class="fuel-ben" type="number" value="${ben}" min="5" max="30" step="0.5"
-                style="width:70px;padding:5px 8px;border:1.5px solid #dde3ec;border-radius:7px;font-family:inherit;font-size:13px;"></td>
+                style="width:70px;padding:5px 8px;border:1.5px solid #c5d4e6;border-radius:7px;font-family:inherit;font-size:13px;"></td>
         </tr>`;
     }).join('');
 }
