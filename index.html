@@ -515,109 +515,79 @@ body {
 
 
 
-/* banner */
-
 .driver-banner {
-
   background: var(--card);
-
   border: 1px solid var(--line);
-
   border-left: 4px solid var(--header);
-
+  border-radius: 14px;
   padding: 14px 16px;
-
-  display: flex; align-items: center;
-
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-
-  gap: 16px; flex-wrap: wrap;
-
+  gap: 16px;
+  flex-wrap: wrap;
+  box-shadow: 0 6px 18px rgba(11, 31, 58, 0.05);
 }
-
-.db-left { display: flex; align-items: center; gap: 12px; }
-
+.db-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 220px; }
 .db-avatar {
-
-  width: 40px; height: 40px;
-
+  width: 44px; height: 44px;
   background: var(--header);
-
-  color: var(--mark);
-
+  color: #fff;
   display: flex; align-items: center; justify-content: center;
-
   font-family: var(--mono);
-
   font-size: 12px; font-weight: 700;
-
   letter-spacing: .04em;
-
   flex-shrink: 0;
-
+  border-radius: 12px;
 }
-
 .db-name {
-
   font-size: 18px; font-weight: 700;
-
   letter-spacing: -.01em; color: var(--ink);
-
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-
 }
-
 .car-badge {
-
   background: var(--header); color: #f4f4f2;
-
   font-family: var(--mono);
-
   font-size: 11px; font-weight: 500;
-
   padding: 3px 8px;
-
   letter-spacing: .08em;
-
+  border-radius: 8px;
 }
-
-.db-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
-
+.db-meta { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4; overflow-wrap: anywhere; }
 .db-meta strong { color: var(--ink-2); font-weight: 600; }
 
 .db-score {
-
-  display: flex; flex-direction: column;
-
-  align-items: flex-end; justify-content: center;
-
-  background: var(--header);
-
-  padding: 10px 16px;
-
-  min-width: 96px;
-
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: #0b1f3a;
+  padding: 12px 18px;
+  min-width: 110px;
+  min-height: 72px;
+  border-radius: 12px;
+  flex: 0 0 auto;
+  box-shadow: 0 4px 14px rgba(11, 31, 58, 0.2);
 }
-
 .db-score-num {
-
-  font-size: 28px; font-weight: 600;
-
-  color: #f4f4f2; font-family: var(--mono);
-
-  line-height: 1; letter-spacing: -.02em;
-
+  font-size: 28px; font-weight: 700;
+  color: #ffffff;
+  font-family: var(--mono);
+  line-height: 1;
+  letter-spacing: -.02em;
 }
-
 .db-score-lbl {
-
   font-size: 9px; font-weight: 700;
-
-  color: var(--mark); text-transform: uppercase;
-
-  letter-spacing: .16em; margin-top: 4px;
-
+  color: #8eb6df;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  margin-top: 6px;
+  white-space: nowrap;
 }
+.db-score.is-good .db-score-num { color: #7ec8ff; }
+.db-score.is-mid .db-score-num { color: #ffffff; }
+.db-score.is-bad .db-score-num { color: #c5d4e6; }
 
 
 
@@ -1610,8 +1580,14 @@ input, select, textarea { max-width: 100%; }
     white-space: nowrap;
   }
 
-  .driver-banner { padding: 12px; gap: 10px; flex-wrap: wrap; }
-  .db-score { width: 100%; align-items: flex-start; min-width: 0; }
+  .driver-banner { padding: 12px; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+  .db-score {
+    width: auto;
+    margin-left: auto;
+    align-items: center;
+    min-width: 100px;
+    min-height: 68px;
+  }
   .db-name { font-size: 16px; overflow-wrap: anywhere; }
   .db-meta { overflow-wrap: anywhere; line-height: 1.4; }
 
@@ -2340,7 +2316,7 @@ input, select, textarea { max-width: 100%; }
 
 <script src="auth.js?v=12"></script>
 
-<script src="app.js?v=39"></script>
+<script src="app.js?v=40"></script>
 
 <script src="office.js?v=11"></script>
 

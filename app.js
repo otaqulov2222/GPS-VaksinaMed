@@ -1133,16 +1133,22 @@ function renderBanner(driver, data) {
     }
 
     if (scoreEl) {
-        const box = document.querySelector('.db-score');
+        const box = document.getElementById('db-score-box') || document.querySelector('.db-score');
+        if (box) {
+            box.classList.remove('is-good', 'is-mid', 'is-bad');
+            box.style.background = '';
+        }
+        scoreEl.style.color = '';
         if (data && data.analysis) {
             const s = data.analysis.score.final;
-            scoreEl.textContent  = s.toFixed(1);
-            scoreEl.style.color  = s >= 8 ? '#1a5fb4' : s >= 5 ? '#1a5fb4' : '#0b1f3a';
-            if (box) box.style.background = '#0b1f3a';
+            scoreEl.textContent = s.toFixed(1);
+            if (box) {
+                if (s >= 8) box.classList.add('is-good');
+                else if (s >= 5) box.classList.add('is-mid');
+                else box.classList.add('is-bad');
+            }
         } else {
             scoreEl.textContent = '—';
-            scoreEl.style.color = '#f4f4f2';
-            if (box) box.style.background = '#0b1f3a';
         }
     }
 }
