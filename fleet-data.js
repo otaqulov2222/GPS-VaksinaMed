@@ -78,13 +78,14 @@ function resolveDriver(plate, fallback) {
     }) || null;
   }
   const fb = fallback && typeof fallback === 'object' ? fallback : {};
+  const lat = typeof uzUi === 'function' ? uzUi : (s => s);
   if (hit) {
     return {
       car: hit.car || plate,
-      fullName: hit.fullName || hit.name || fb.fullName || plate,
-      shortName: hit.shortName || hit.short || fb.shortName || plate,
-      name: hit.fullName || hit.name || fb.name || plate,
-      routes: hit.routes || fb.routes || '—',
+      fullName: lat(hit.fullName || hit.name || fb.fullName || plate),
+      shortName: lat(hit.shortName || hit.short || fb.shortName || plate),
+      name: lat(hit.fullName || hit.name || fb.name || plate),
+      routes: lat(hit.routes || fb.routes || '—'),
       pharmacies: hit.pharmacies || fb.pharmacies || '',
       color: hit.color || fb.color || '#7f8c8d',
       brand: hit.brand || fb.brand || '',
@@ -93,10 +94,10 @@ function resolveDriver(plate, fallback) {
   }
   return {
     car: plate,
-    fullName: fb.fullName || fb.name || plate,
-    shortName: fb.shortName || fb.short || plate,
-    name: fb.fullName || fb.name || plate,
-    routes: fb.routes || '—',
+    fullName: lat(fb.fullName || fb.name || plate),
+    shortName: lat(fb.shortName || fb.short || plate),
+    name: lat(fb.fullName || fb.name || plate),
+    routes: lat(fb.routes || '—'),
     pharmacies: fb.pharmacies || '',
     color: fb.color || '#7f8c8d',
     brand: fb.brand || '',

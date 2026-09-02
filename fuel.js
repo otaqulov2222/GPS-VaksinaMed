@@ -1,13 +1,28 @@
 'use strict';
 
-const UZ_M = ['YANVAR','FEVRAL','MART','APREL','MAY','IYUN','IYUL','AVGUST','SENTABR','OKTABR','NOYABR','DEKABR'];
-const UZ_M_LOW = ['yanvar','fevral','mart','aprel','may','iyun','iyul','avgust','sentabr','oktabr','noyabr','dekabr'];
+const UZ_M = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+const UZ_M_LOW = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
 const MODES = [
   { v: 'gaz', t: 'Gaz' },
   { v: 'benzin', t: 'Benzin' },
   { v: 'aralash', t: 'Aralash' },
   { v: 'dizel', t: 'Dizel' }
 ];
+
+function normalizeMode(v) {
+  const s = String(v || '').toLowerCase();
+  if (s === 'gaz' || /газ|метан|cng/.test(s)) return 'gaz';
+  if (s === 'benzin' || /бензин/.test(s)) return 'benzin';
+  if (s === 'dizel' || /дизel|дизель/.test(s)) return 'dizel';
+  if (s === 'aralash' || /смеш|aralash/.test(s)) return 'aralash';
+  return v || 'gaz';
+}
+
+function modeLabel(v) {
+  const m = MODES.find(x => x.v === normalizeMode(v));
+  if (m) return m.t;
+  return typeof uzUi === 'function' ? uzUi(v) : v;
+}
 const DOC_KEYS = [
   { k: 'insurance', t: 'Sug\'urta' },
   { k: 'tech', t: 'Texnik ko\'rik' },
@@ -190,10 +205,11 @@ function vehicleInfo(plate) {
   const base = DEFAULT_FLEET.find(d => d.car === plate) || { car: plate, name: plate, short: plate };
   const extra = vehicleMetaRec(plate);
   const diesel = ['dizel', 'dizel_gaz'].includes(extra.fuelType || base.fuelType);
+  const lat = typeof uzUi === 'function' ? uzUi : (s => s);
   return {
     car: plate,
-    name: extra.name || base.name,
-    short: extra.short || extra.name || base.short,
+    name: lat(extra.name || base.name),
+    short: lat(extra.short || extra.name || base.short),
     brand: extra.brand || base.brand || '',
     card: extra.card || '',
     fuelType: extra.fuelType || base.fuelType || 'mixed',
@@ -354,9 +370,10 @@ function getCar(plate) {
 }
 
 function driverOnDay(info, car, day) {
+  const lat = typeof uzUi === 'function' ? uzUi : (s => s);
   let name = info.name;
   (car.driverChanges || []).forEach(ch => {
-    if (n(ch.day) <= day && ch.name) name = ch.name;
+    if (n(ch.day) <= day && ch.name) name = lat(ch.name);
   });
   return name;
 }
@@ -370,7 +387,7 @@ function dayRow(car, d) {
     km: n(src.km),
     gasKm: src.gasKm != null && src.gasKm !== '' ? n(src.gasKm) : null,
     odo: n(src.odo),
-    mode: src.mode || defMode,
+    mode: normalizeMode(src.mode || defMode),
     station: src.station || '',
     gasIn: n(src.gasIn),
     gasPrice: n(src.gasPrice),
@@ -591,10 +608,13 @@ async function changeMonth(ym) {
 }
 
 function setMonthLabel() {
+  const title = monthTitle(STATE.month);
   const el = document.getElementById('month-label');
-  if (el) el.textContent = monthTitle(STATE.month);
+  if (el) el.textContent = title;
+  const lbl = document.getElementById('month-input-label');
+  if (lbl) lbl.textContent = title;
   const mi = document.getElementById('month-input');
-  if (mi) mi.title = monthTitle(STATE.month);
+  if (mi) mi.title = title;
 }
 
 function readCarsTableToMeta() {
@@ -867,7 +887,7 @@ function renderChips() {
 
 function modeSelect(d, mode) {
   const modes = modesForCar(getCar(STATE.car));
-  const ok = modes.some(m => m.v === mode) ? mode : (modes[0] && modes[0].v) || 'gaz';
+  const ok = normalizeMode(modes.some(m => m.v === mode) ? mode : ((modes[0] && modes[0].v) || 'gaz'));
   return `<select data-d="${d}" data-f="mode">${modes.map(m =>
     `<option value="${m.v}"${m.v === ok ? ' selected' : ''}>${m.t}</option>`
   ).join('')}</select>`;
@@ -1138,7 +1158,7 @@ function renderDayRep() {
           <td class="num">${r.km ? fmt(r.km, 2) : ''}</td>
           <td class="num">${r.gasKm ? fmt(r.gasKm, 2) : ''}</td>
           <td class="num">${r.liqKm ? fmt(r.liqKm, 2) : ''}</td>
-          <td>${esc(r.mode || '')}</td><td>${esc(r.station || '')}</td>
+          <td>${esc(modeLabel(r.mode))}</td><td>${esc(r.station || '')}</td>
           <td class="num">${r.gasIn ? fmt(r.gasIn, 4) : ''}</td><td class="num">${r.gasIn ? money(r.gasSum) : ''}</td>
           <td class="num">${r.benzinIn ? fmt(r.benzinIn, 4) : ''}</td><td class="num">${r.benzinIn ? money(r.benzinSum) : ''}</td>
           <td class="num">${r.gasUsed ? fmtNum(r.gasUsed) : ''}</td>

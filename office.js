@@ -274,25 +274,30 @@ const VMOffice = {
         this.geoLayers = [];
         if (!map || typeof L === 'undefined') return;
         const list = (STATE.pharmacies || []).filter(p => p.car === car && p.lat != null && p.lng != null);
+        if (!list.length) return;
+        const group = L.layerGroup();
         list.forEach(p => {
-            const circle = L.circle([p.lat, p.lng], {
+            group.addLayer(L.circle([p.lat, p.lng], {
                 radius: p.radiusM || 120,
                 color: '#1a5fb4',
                 weight: 1,
                 fillColor: '#1a5fb4',
                 fillOpacity: 0.08,
                 interactive: false
-            }).addTo(map);
+            }));
             const mark = L.circleMarker([p.lat, p.lng], {
                 radius: 4,
                 color: '#1a5fb4',
                 fillColor: '#1a5fb4',
                 fillOpacity: 0.9,
-                weight: 1
-            }).addTo(map);
-            mark.bindTooltip(p.name, { permanent: false, direction: 'top' });
-            this.geoLayers.push(circle, mark);
+                weight: 1,
+                interactive: false
+            });
+            mark.bindTooltip(typeof uzUi === 'function' ? uzUi(p.name) : p.name, { permanent: false, direction: 'top', sticky: true });
+            group.addLayer(mark);
         });
+        group.addTo(map);
+        this.geoLayers.push(group);
     },
 
     driversList() {
@@ -326,7 +331,8 @@ const VMOffice = {
         const used = new Set();
         const markUsed = p => { if (p) used.add(plateCompact(p)); };
         const isUsed = p => used.has(plateCompact(p));
-        const rows = drivers.map(drv => {
+        const rows = drivers.map(raw => {
+            const drv = typeof resolveDriver === 'function' ? resolveDriver(raw.car, raw) : raw;
             const rec = this.recForPlate(day, drv.car);
             if (rec) {
                 markUsed(drv.car);

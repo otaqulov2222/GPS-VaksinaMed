@@ -1288,7 +1288,8 @@ body { overflow-x: clip; }
 
 
 
-<script src="fleet-data.js?v=3"></script>
+<script src="uz-latin.js?v=1"></script>
+<script src="fleet-data.js?v=4"></script>
 
 <script src="auth.js?v=14"></script>
 
@@ -1308,6 +1309,11 @@ function hide(id) {
 
   document.getElementById(id).className = 'msg';
 
+}
+
+function uiTxt(s) {
+  if (s == null || s === '') return s;
+  return typeof uzUi === 'function' ? uzUi(s) : s;
 }
 
 function phNotify(text, ok) {
@@ -1986,7 +1992,10 @@ function officeCarsLive() {
   const list = (window.DRIVERS && window.DRIVERS.length)
     ? window.DRIVERS
     : (window.FLEET_DRIVERS || []);
-  return list.filter(d => d && d.car && !d.hidden).map(d => [d.car, d.shortName || d.fullName || d.car]);
+  return list.filter(d => d && d.car && !d.hidden).map(d => {
+    const ui = typeof resolveDriver === 'function' ? resolveDriver(d.car, d) : d;
+    return [d.car, ui.shortName || ui.fullName || d.car];
+  });
 }
 
 
@@ -2095,7 +2104,7 @@ function renderPharms() {
 
     return `<tr data-ph-id="${esc(p.id)}">
 
-      <td><b>${esc(p.name)}</b></td>
+      <td><b>${esc(uiTxt(p.name))}</b></td>
 
       <td>${esc(carLabel(p.car))}</td>
 
@@ -2241,7 +2250,7 @@ function renderGpsPlaces() {
 
     dl.innerHTML = GPS_PLACES.map(p =>
 
-      `<option value="${esc(p.name)}">${esc(p.name)} · ${p.count} marta${p.assigned ? ' (biriktirilgan)' : ''}</option>`
+      `<option value="${esc(p.name)}">${esc(uiTxt(p.name))} · ${p.count} marta${p.assigned ? ' (biriktirilgan)' : ''}</option>`
 
     ).join('');
 
@@ -2289,7 +2298,7 @@ function renderGpsPlaces() {
 
     return `<tr data-gps-idx="${i}">
 
-      <td><b>${esc(p.name)}</b></td>
+      <td><b>${esc(uiTxt(p.name))}</b></td>
 
       <td class="mono">${p.count}</td>
 

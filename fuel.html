@@ -742,7 +742,38 @@ html, body { overflow-x: clip; max-width: 100%; }
 
 .btn-vhk { flex-shrink: 0; margin-left: auto; }
 
-.month-pick { width: 148px; color: var(--ink); background: #fff; border: 1px solid var(--line); }
+.month-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.month-pick {
+  width: 148px;
+  color: transparent;
+  caret-color: transparent;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.month-pick::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.month-label {
+  position: absolute;
+  left: 10px;
+  right: 28px;
+  pointer-events: none;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .btn, .tab, .chip-car, .day-pill, .subtab, .tog button { touch-action: manipulation; }
 
@@ -1089,7 +1120,10 @@ table.dtable td.day {
 
         <span class="badge badge-bad" id="docs-badge" style="display:none">0 hujjat muddati</span>
 
-        <input type="month" id="month-input" class="btn btn-sm month-pick" title="Oy">
+        <label class="month-wrap" for="month-input">
+          <span id="month-input-label" class="month-label">—</span>
+          <input type="month" id="month-input" class="btn btn-sm month-pick" title="Oy">
+        </label>
 
         <button class="btn btn-sm" type="button" id="btn-excel" title="Excel yuklab olish"><span class="lbl-full">Excel yuklab olish</span><span class="lbl-short">Excel ↓</span></button>
 
@@ -1418,9 +1452,10 @@ table.dtable td.day {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="excel-style.js?v=1"></script>
-<script src="fleet-data.js?v=3"></script>
+<script src="uz-latin.js?v=1"></script>
+<script src="fleet-data.js?v=4"></script>
 <script src="auth.js?v=14"></script>
-<script src="fuel.js?v=43"></script>
+<script src="fuel.js?v=44"></script>
 <script src="journal.js?v=11"></script>
 </body>
 </html>

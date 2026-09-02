@@ -25,6 +25,11 @@ const STATE = {
 
 const UZ_MONTHS = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
 const UZ_MONTHS_SHORT = ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','Okt','Noy','Dek'];
+
+function uiTxt(s) {
+    if (s == null || s === '') return s;
+    return typeof uzUi === 'function' ? uzUi(s) : s;
+}
 let CAL = { y: new Date().getFullYear(), m: new Date().getMonth() };
 
 // ── LocalStorage ─────────────────────────────────────────────
@@ -231,7 +236,7 @@ function buildPharmIndex() {
     const pushEntry = (phName, car, shortName) => {
         const n = normPh(phName);
         if (!n) return;
-        PHARM_INDEX.push({ norm: n, name: phName, car, driver: shortName });
+        PHARM_INDEX.push({ norm: n, name: phName, car, driver: uiTxt(shortName) });
         Object.entries(PHARMACY_ALIASES).forEach(([canonical, aliases]) => {
             if (n.includes(normPh(canonical)) || aliases.some(a => n.includes(normPh(a)))) {
                 aliases.forEach(al => PHARM_INDEX.push({ norm: normPh(al), name: phName, car, driver: shortName }));
@@ -320,17 +325,18 @@ function normalizeCarNum(s) {
 function findDriverByCar(carRaw) {
     const compact = normalizeCarNum(carRaw).replace(/\s/g, '');
     if (!compact) return null;
+    const wrap = d => (typeof resolveDriver === 'function' ? resolveDriver(d.car, d) : d);
     const exact = DRIVERS.find(d => normalizeCarNum(d.car).replace(/\s/g, '') === compact);
-    if (exact) return exact;
+    if (exact) return wrap(exact);
     const prefixed = DRIVERS.filter(d => {
         const dn = normalizeCarNum(d.car).replace(/\s/g, '');
         return dn.startsWith(compact) || compact.startsWith(dn);
     });
-    if (prefixed.length === 1) return prefixed[0];
+    if (prefixed.length === 1) return wrap(prefixed[0]);
     const digits = compact.match(/^(\d{2}\d{3})/);
     if (digits) {
         const hit = DRIVERS.filter(d => normalizeCarNum(d.car).replace(/\s/g, '').startsWith(digits[1]));
-        if (hit.length === 1) return hit[0];
+        if (hit.length === 1) return wrap(hit[0]);
     }
     return null;
 }
@@ -776,8 +782,12 @@ async function recomputeDay(dateVal) {
 // ── 6. XARITA ───────────────────────────────────────────────
 function mapInvalidate() {
     if (!STATE.map) return;
-    setTimeout(() => { try { STATE.map.invalidateSize(); } catch (e) {} }, 80);
-    setTimeout(() => { try { STATE.map.invalidateSize(); } catch (e) {} }, 400);
+    if (STATE._mapInvBusy) return;
+    STATE._mapInvBusy = true;
+    requestAnimationFrame(() => {
+        STATE._mapInvBusy = false;
+        try { STATE.map.invalidateSize(); } catch (e) {}
+    });
 }
 let mapResizeTimer = 0;
 window.addEventListener('resize', () => {
@@ -822,11 +832,13 @@ function bindMapLock() {
 }
 
 function addMapTiles(map) {
-    // Carto endi API kalit talab qiladi — bepul OSM ishlatamiz
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '',
-        subdomains: 'abc',
-        maxZoom: 19
+    if (typeof vmAddMapTiles === 'function') {
+        STATE.mapTileLayer = vmAddMapTiles(map);
+        return;
+    }
+    L.tileLayer('https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png', {
+        attribution: '', subdomains: 'abc', maxZoom: 19,
+        detectRetina: false, updateWhenIdle: true, updateWhenZooming: false
     }).addTo(map);
 }
 
@@ -954,7 +966,10 @@ async function refreshMap(stops) {
     const list = sortStopsForRoute(rawList);
     if (!list.length) {
         setMapStats([], 0);
-        if (window.VMOffice) VMOffice.drawGeofences(STATE.map, STATE.currentCar);
+        if (window.VMOffice) {
+            const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => { setTimeout(fn, ms || 200); };
+            defer(() => VMOffice.drawGeofences(STATE.map, STATE.currentCar), 180);
+        }
         return;
     }
 
@@ -970,13 +985,11 @@ async function refreshMap(stops) {
     if (latlngs.length > 1) {
         drawMapRouteLayers(latlngs);
         if (typeof vmFetchRoadRoute === 'function') {
-            try {
-                const road = await vmFetchRoadRoute(latlngs);
+            const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => new Promise(r => setTimeout(() => r(fn()), ms || 320));
+            defer(() => vmFetchRoadRoute(latlngs), 450).then(road => {
                 if (gen !== STATE.mapRouteGen) return;
                 if (road && road.length > 1) drawMapRouteLayers(road);
-            } catch (e) {
-                console.warn('map route:', e);
-            }
+            }).catch(() => {});
         }
     }
 
@@ -995,12 +1008,12 @@ async function refreshMap(stops) {
         marker.bindPopup(`
             <div style="min-width:190px">
               <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#8eb6df;font-weight:700;margin-bottom:6px">${stopStatusLabel(st)}</div>
-              <b style="font-size:13px">#${num} — ${st.place || '—'}</b>
+              <b style="font-size:13px">#${num} — ${uiTxt(st.place) || '—'}</b>
               <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12);color:#c5d4e6;font-size:11px;line-height:1.55">
                 Kirish: <span style="color:#fff">${st.inTime || '—'}</span><br>
                 Chiqish: <span style="color:#fff">${st.outTime || '—'}</span><br>
                 Turgani: <span style="color:#fff">${st.duration || '—'}</span>
-                ${st.phName ? '<br>Dorixona: <span style="color:#fff">' + st.phName + '</span>' : ''}
+                ${st.phName ? '<br>Dorixona: <span style="color:#fff">' + uiTxt(st.phName) + '</span>' : ''}
               </div>
             </div>
         `);
@@ -1012,7 +1025,10 @@ async function refreshMap(stops) {
     } else if (latlngs.length === 1) {
         STATE.map.setView(latlngs[0], 14);
     }
-    if (window.VMOffice) VMOffice.drawGeofences(STATE.map, STATE.currentCar);
+    if (window.VMOffice) {
+        const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => { setTimeout(fn, ms || 200); };
+        defer(() => VMOffice.drawGeofences(STATE.map, STATE.currentCar), 220);
+    }
 }
 
 // ── 7. KALENDAR ─────────────────────────────────────────────
@@ -1133,13 +1149,14 @@ function renderDriverTabs() {
     if (!strip) return;
     let html = '';
     DRIVERS.forEach(d => {
+        const ui = typeof resolveDriver === 'function' ? resolveDriver(d.car, d) : d;
         const active = d.car === STATE.currentCar ? 'active' : '';
         const hasData = STATE.currentDate && STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][d.car];
         const dotClr  = hasData ? d.color : '#c5d4e6';
         html += `
         <div class="dtab ${active}" onclick="selectDriver('${d.car}')">
             <span class="dtab-dot" style="background:${dotClr}"></span>
-            ${d.shortName}
+            ${ui.shortName}
             <span class="dtab-car">${d.car}</span>
         </div>`;
     });
@@ -1178,7 +1195,10 @@ function selectDriver(carKey) {
 
 // ── 9. ASOSIY UI YANGILASH ──────────────────────────────────
 function refreshUI() {
-    const driver  = DRIVERS.find(d => d.car === STATE.currentCar);
+    const rawDrv = DRIVERS.find(d => d.car === STATE.currentCar);
+    const driver = rawDrv
+        ? (typeof resolveDriver === 'function' ? resolveDriver(rawDrv.car, rawDrv) : rawDrv)
+        : null;
     const dayData = STATE.currentDate && STATE.data[STATE.currentDate]
                     ? STATE.data[STATE.currentDate][STATE.currentCar]
                     : null;
@@ -1460,7 +1480,7 @@ function renderPharmacy(data) {
         html += `<div class="ph-block">
             <div class="ph-h warn">O'tkazib yuborilgan · ${a.missedList.length}</div>
             <div class="ph-list">
-            ${a.missedList.map(ph => `<div class="ph-row"><span class="nm">${ph}</span></div>`).join('')}
+            ${a.missedList.map(ph => `<div class="ph-row"><span class="nm">${uiTxt(ph)}</span></div>`).join('')}
             </div></div>`;
     } else if (a.ownPharms && a.ownPharms.length > 0) {
         html += `<div class="ph-note ok">Barcha ${a.ownPharms.length} ta belgilangan dorixonaga tashrif qilindi.</div>`;
@@ -1472,7 +1492,7 @@ function renderPharmacy(data) {
             <div class="ph-list">
             ${ownStops.map(s => `
             <div class="ph-row">
-                <span class="nm">${s.phName || s.place}</span>
+                <span class="nm">${uiTxt(s.phName || s.place)}</span>
                 <span class="tm">${s.inTime || ''}</span>
                 <span class="tm">${s.duration || ''}</span>
             </div>`).join('')}
@@ -1485,7 +1505,7 @@ function renderPharmacy(data) {
             <div class="ph-list">
             ${otherStops.map(s => `
             <div class="ph-row">
-                <span class="nm">${s.phName || s.place}</span>
+                <span class="nm">${uiTxt(s.phName || s.place)}</span>
                 <span class="tm">Egasi: ${(s.owners || []).join(', ')}</span>
             </div>`).join('')}
             </div></div>`;
@@ -1507,7 +1527,7 @@ function renderPharmacy(data) {
                 const s = data.stops[i];
                 const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
                 return `<div class="ph-row ph-rev">
-                <span class="nm">${s.place}</span>
+                <span class="nm">${uiTxt(s.place)}</span>
                 <span class="tm">${s.duration || ''}</span>
                 ${reviewBtnHtml(i, rev)}
             </div>`;
@@ -1523,7 +1543,7 @@ function renderPharmacy(data) {
                 const s = data.stops[i];
                 const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
                 return `<div class="ph-row ph-rev">
-                <span class="nm">${s.place}</span>
+                <span class="nm">${uiTxt(s.place)}</span>
                 <span class="tm">${s.duration || ''}</span>
                 ${reviewBtnHtml(i, rev)}
             </div>`;
@@ -1586,8 +1606,8 @@ function renderStops(stops) {
         html += `
         <tr class="${rowCls}">
             <td class="font-mono text-muted">${i+1}</td>
-            <td><strong>${st.place}</strong>
-                ${st.phName && st.phName !== st.place ? `<br><small class="text-muted">${st.phName}</small>` : ''}
+            <td><strong>${uiTxt(st.place)}</strong>
+                ${st.phName && st.phName !== st.place ? `<br><small class="text-muted">${uiTxt(st.phName)}</small>` : ''}
                 ${st.gas > 0 ? `<br><small class="text-muted">${fmtFuel(st.gas, 'm³ gaz')}</small>` : ''}
                 ${st.benzin > 0 ? `<br><small class="text-muted">${fmtFuel(st.benzin, 'L benzin')}</small>` : ''}
             </td>
@@ -2652,6 +2672,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     enableDriverStripWheelScroll();
 
+    // Xarita plitkalarini ertaroq yuklash (bootstrap kutmasdan)
+    initMap();
+
     if (window.VMOffice) {
         await VMOffice.bootstrap();
         if (typeof listenFleetNameOverrides === 'function') {
@@ -2665,9 +2688,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         recomputeDay(STATE.currentDate).catch(() => {});
     }
-
-    // Xaritani ishga tushirish
-    initMap();
 
     // Kalendarni ko'rsatish
     renderCalendar();
@@ -2939,11 +2959,12 @@ function renderFuelNormsTable() {
     const tbody = document.getElementById('fuel-norms-table');
     if (!tbody) return;
     tbody.innerHTML = DRIVERS.map(d => {
+        const ui = typeof resolveDriver === 'function' ? resolveDriver(d.car, d) : d;
         const norm = STATE.fuelNorms[d.car] || STATE.fuelNorms;
         const gas  = typeof norm === 'object' && norm.gas  !== undefined ? (norm[d.car]?.gas  ?? norm.gas)  : 14;
         const ben  = typeof norm === 'object' && norm.benzin !== undefined ? (norm[d.car]?.benzin ?? norm.benzin) : 12;
         return `<tr data-fuel-car="${d.car}">
-            <td style="font-size:13px;font-weight:600;">${d.shortName}</td>
+            <td style="font-size:13px;font-weight:600;">${ui.shortName}</td>
             <td style="font-size:12px;color:#5a7190;font-family:monospace;">${d.car}</td>
             <td><input class="fuel-gas" type="number" value="${gas}" min="5" max="30" step="0.5"
                 style="width:70px;padding:5px 8px;border:1.5px solid #c5d4e6;border-radius:7px;font-family:inherit;font-size:13px;"></td>
