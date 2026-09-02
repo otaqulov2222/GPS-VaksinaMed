@@ -2698,6 +2698,52 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "reviews": data})
             return
 
+        if path == "/api/office/analyze":
+            # Yagona ball manbai — brauzer JS formulasini almashtiradi
+            sess = self.require_user()
+            if not sess:
+                return
+            if self.deny_driver_write(sess):
+                return
+            date_val = str(body.get("date") or "").strip()
+            if date_val and not valid_date(date_val):
+                self.send_json({"ok": False, "error": "Sana noto'g'ri"}, 400)
+                return
+            reenrich = bool(body.get("reenrich"))
+            try:
+                import gps_sync
+
+                items = body.get("items")
+                if isinstance(items, list) and items:
+                    results = gps_sync.analyze_client_batch(
+                        OFFICE, DIRECTORY, date_val, items, reenrich=reenrich
+                    )
+                    self.send_json({"ok": True, "source": "server", "results": results})
+                    return
+                car = str(body.get("car") or "").strip()
+                if not car:
+                    self.send_json({"ok": False, "error": "Mashina ko'rsatilmagan"}, 400)
+                    return
+                analysis, stops = gps_sync.analyze_client_payload(
+                    OFFICE,
+                    DIRECTORY,
+                    date_val,
+                    car,
+                    body.get("stops") or [],
+                    body.get("stats"),
+                    reenrich=reenrich,
+                )
+                self.send_json({
+                    "ok": True,
+                    "source": "server",
+                    "car": car,
+                    "analysis": analysis,
+                    "stops": stops,
+                })
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e) or "Tahlil xato"}, 500)
+            return
+
         if path == "/api/office/report":
             sess = self.require_user()
             if not sess:

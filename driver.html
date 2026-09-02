@@ -16,7 +16,7 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-<link rel="stylesheet" href="shell.css?v=9"/>
+<link rel="stylesheet" href="shell.css?v=12"/>
 
 <style>
 
@@ -358,6 +358,8 @@ ul.plain li:last-child { border-bottom: 0; }
 
 <script src="auth.js?v=14"></script>
 
+<script src="map-route.js?v=1"></script>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
@@ -504,19 +506,11 @@ function initDriverMap() {
 
   });
 
-  const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-
-    subdomains: 'abcd', maxZoom: 19
-
-  });
-
-  carto.on('tileerror', () => {
-
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(drvMap);
-
-  });
-
-  carto.addTo(drvMap);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '',
+    subdomains: 'abc',
+    maxZoom: 19
+  }).addTo(drvMap);
 
 }
 
@@ -560,19 +554,55 @@ function refreshDriverMap(day) {
 
   if (!stops.length && !geos.length) return;
 
-  const latlngs = stops.map(s => [Number(s.lat), Number(s.lng)]);
+  const sorted = stops.slice().sort((a, b) => String(a.inTime || '').localeCompare(String(b.inTime || '')));
 
-  if (latlngs.length > 1) {
+  const latlngs = sorted.map(s => [Number(s.lat), Number(s.lng)]);
 
-    drvMapLayers.push(L.polyline(latlngs, { color: 'var(--header)', weight: 5, opacity: 0.35 }).addTo(drvMap));
+  const routeGen = ++refreshDriverMap._gen;
 
-    drvMapLayers.push(L.polyline(latlngs, { color: 'var(--mark)', weight: 2.4, opacity: 0.95 }).addTo(drvMap));
+  function drawRouteLines(pts) {
+
+    if (!pts || pts.length < 2) return;
+
+    drvMapLayers.push(L.polyline(pts, { color: 'var(--header)', weight: 5, opacity: 0.35 }).addTo(drvMap));
+
+    drvMapLayers.push(L.polyline(pts, { color: 'var(--mark)', weight: 2.4, opacity: 0.95 }).addTo(drvMap));
 
   }
 
-  const lastI = stops.length - 1;
+  if (latlngs.length > 1) {
 
-  stops.forEach((st, i) => {
+    drawRouteLines(latlngs);
+
+    if (typeof vmFetchRoadRoute === 'function') {
+
+      vmFetchRoadRoute(latlngs).then(road => {
+
+        if (routeGen !== refreshDriverMap._gen || !road || road.length < 2) return;
+
+        drvMapLayers.slice(0).forEach(l => {
+
+          if (l instanceof L.Polyline) {
+
+            try { drvMap.removeLayer(l); } catch (e) {}
+
+            drvMapLayers = drvMapLayers.filter(x => x !== l);
+
+          }
+
+        });
+
+        drawRouteLines(road);
+
+      }).catch(() => {});
+
+    }
+
+  }
+
+  const lastI = sorted.length - 1;
+
+  sorted.forEach((st, i) => {
 
     const color = drvStopColor(st);
 
@@ -599,6 +629,8 @@ function refreshDriverMap(day) {
   setTimeout(() => { if (drvMap) drvMap.invalidateSize(); }, 120);
 
 }
+
+refreshDriverMap._gen = 0;
 
 
 
@@ -645,15 +677,11 @@ function startDayAutoRefresh() {
 
 
 function normPh(s) {
-
-  return String(s || '')
-
-    .toLowerCase()
-
-    .replace(/С‘/g, 'Рµ')
-
-    .replace(/[^a-z0-9Р°-СЏСћТ›Т“Ті]/gi, '');
-
+  if (!s) return '';
+  return String(s).toLowerCase()
+    .replace(/ё/g, 'е').replace(/қ/g, 'к').replace(/ў/g, 'у')
+    .replace(/ҳ/g, 'х').replace(/ғ/g, 'г').replace(/ң/g, 'н')
+    .replace(/['`']/g, '').replace(/\s+/g, ' ').trim();
 }
 
 
@@ -708,7 +736,7 @@ function paint(day) {
 
       <div class="row"><span class="nm">Km (Boshqaruv)</span><span class="meta">${Number(fuel.km||0).toFixed(1)}</span></div>
 
-      <div class="row"><span class="nm">Sarf gaz</span><span class="meta">${Number(fuel.gasUsed||0).toFixed(2)} mВі</span></div>
+      <div class="row"><span class="nm">Sarf gaz</span><span class="meta">${Number(fuel.gasUsed||0).toFixed(2)} m\u00B3</span></div>
 
       <div class="row"><span class="nm">Sarf benzin/dizel</span><span class="meta">${Number(fuel.benUsed||0).toFixed(2)} l</span></div>
 

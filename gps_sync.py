@@ -1015,6 +1015,53 @@ def analyze_data(stops, car_key, stats, drivers, pharmacies, reviews=None):
     }
 
 
+def analyze_client_payload(office, base_dir, date_str, car, stops, stats=None, reenrich=False):
+    """
+    Brauzerdan kelgan to'xtashlar uchun yagona ball manbai (JS analyzeData o'rniga).
+    Qaytaradi: (analysis, stops_out)
+    """
+    car = str(car or "").strip()
+    if not car:
+        raise ValueError("Mashina ko'rsatilmagan")
+    drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
+    pharmacies = list(office.pharmacies() or [])
+    reviews = office.reviews(date_str) or {} if date_str else {}
+    raw_stops = stops if isinstance(stops, list) else []
+    if reenrich:
+        pharm_index = build_pharm_index(drivers, pharmacies)
+        out_stops = enrich_stops(stops_as_raw(raw_stops), car, pharm_index, pharmacies)
+    else:
+        out_stops = []
+        for s in raw_stops:
+            if isinstance(s, dict):
+                out_stops.append(dict(s))
+    apply_review_problem_flags(out_stops, car, reviews)
+    analysis = analyze_data(out_stops, car, stats if isinstance(stats, dict) else {}, drivers, pharmacies, reviews=reviews)
+    return analysis, out_stops
+
+
+def analyze_client_batch(office, base_dir, date_str, items, reenrich=False):
+    """items: [{car, stops, stats}, ...] -> { car: { analysis, stops } }"""
+    out = {}
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        car = str(it.get("car") or "").strip()
+        if not car:
+            continue
+        analysis, stops = analyze_client_payload(
+            office,
+            base_dir,
+            date_str,
+            car,
+            it.get("stops") or [],
+            it.get("stats"),
+            reenrich=reenrich,
+        )
+        out[car] = {"analysis": analysis, "stops": stops}
+    return out
+
+
 def sync_today(office, base_dir, date_str=None, saved_by="auto"):
     date_str = date_str or today_tashkent()
     cfg = office.gps_config_internal()

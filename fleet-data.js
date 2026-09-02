@@ -50,6 +50,7 @@ const FLEET_BASE = FLEET_DRIVERS.map(d => ({
 }));
 
 window.DRIVERS = FLEET_DRIVERS;
+window.FLEET_DRIVERS = FLEET_DRIVERS;
 window.FLEET_BASE = FLEET_BASE;
 
 function fleetPlateKey(p) {

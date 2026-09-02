@@ -99,7 +99,10 @@ const VMOffice = {
         if (force) delete STATE.data[dateVal];
         const hasLocal = STATE.data[dateVal] && Object.keys(STATE.data[dateVal]).length;
         if (hasLocal) {
-            if (typeof recomputeDay === 'function') recomputeDay(dateVal);
+            // Mavjud ma'lumot: ballni serverdan yangilash (JS formula emas)
+            if (typeof recomputeDay === 'function') {
+                try { await recomputeDay(dateVal); } catch (e) { console.warn('recomputeDay:', e); }
+            }
             this.renderFleetBoard();
             return;
         }
@@ -111,7 +114,7 @@ const VMOffice = {
             if (d.report && d.report.cars && typeof d.report.cars === 'object') {
                 STATE.data[dateVal] = d.report.cars;
                 if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
-                if (typeof recomputeDay === 'function') recomputeDay(dateVal);
+                // Server analysis saqlangan — JS bilan qayta yozilmaydi
                 if (typeof saveAll === 'function') saveAll();
                 if (typeof renderCalendar === 'function') renderCalendar();
                 if (typeof renderDriverTabs === 'function') renderDriverTabs();
@@ -183,7 +186,14 @@ const VMOffice = {
             showToast('Belgilash saqlanmadi: ' + e.message, 'error');
             return;
         }
-        if (typeof recomputeCar === 'function') recomputeCar(dateVal, car);
+        // Server reprocess_day qilgan — hisobotni qayta yuklash (yagona ball manbai)
+        try {
+            await this.loadReportIfNeeded(dateVal, true);
+        } catch (e) {
+            if (typeof recomputeCar === 'function') {
+                try { await recomputeCar(dateVal, car); } catch (e2) {}
+            }
+        }
         if (typeof saveAll === 'function') saveAll();
         if (typeof refreshUI === 'function') refreshUI();
         this.renderFleetBoard();

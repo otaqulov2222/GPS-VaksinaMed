@@ -17,6 +17,8 @@ const STATE = {
     map:         null,
     mapMarkers:  [],
     mapLine:     null,
+    mapRouteMain: null,
+    mapRouteGen: 0,
     pharmacies:  [],
     reviews:     {}
 };
@@ -160,6 +162,46 @@ function normPh(s) {
         .replace(/ё/g,'е').replace(/қ/g,'к').replace(/ў/g,'у')
         .replace(/ҳ/g,'х').replace(/ғ/g,'г').replace(/ң/g,'н')
         .replace(/['`'']/g,'').replace(/\s+/g,' ').trim();
+}
+
+/** Server yoki eski yozuvlardan kelgan score/stops ni xavfsiz normalizatsiya */
+function normalizeScore(score) {
+    if (score == null) return null;
+    if (typeof score === 'number' && Number.isFinite(score)) {
+        const f = score;
+        const grade = f >= 9 ? 'A' : f >= 7 ? 'B' : f >= 5 ? 'C' : f >= 3 ? 'D' : 'F';
+        return { final: f, grade, breakdown: [], recommendations: [] };
+    }
+    if (typeof score === 'object') {
+        const f = Number(score.final);
+        if (!Number.isFinite(f)) return null;
+        return {
+            final: f,
+            grade: score.grade || '—',
+            breakdown: Array.isArray(score.breakdown) ? score.breakdown : [],
+            recommendations: Array.isArray(score.recommendations) ? score.recommendations : []
+        };
+    }
+    return null;
+}
+
+function normalizeDayRecord(data) {
+    if (!data || typeof data !== 'object') return null;
+    const stops = Array.isArray(data.stops) ? data.stops : [];
+    const stats = data.stats && typeof data.stats === 'object' ? data.stats : {};
+    const rawAnalysis = data.analysis && typeof data.analysis === 'object' ? data.analysis : {};
+    const score = normalizeScore(rawAnalysis.score != null ? rawAnalysis.score : data.score);
+    const analysis = Object.assign({}, rawAnalysis, {
+        ownVisited: rawAnalysis.ownVisited || 0,
+        totalOwn: rawAnalysis.totalOwn || 0,
+        otherDirection: rawAnalysis.otherDirection || 0,
+        problemStops: rawAnalysis.problemStops || 0,
+        outsideCity: rawAnalysis.outsideCity || 0,
+        missedList: Array.isArray(rawAnalysis.missedList) ? rawAnalysis.missedList : [],
+        ownPharms: Array.isArray(rawAnalysis.ownPharms) ? rawAnalysis.ownPharms : [],
+        score: score || { final: 0, grade: '—', breakdown: [], recommendations: [] }
+    });
+    return Object.assign({}, data, { stops, stats, analysis });
 }
 
 let PHARM_INDEX = [];
@@ -412,17 +454,17 @@ async function processXLSX(file) {
 
                 // Statistikani hisoblaymiz
                 const stats = parseStats(rows, stops);
+                const carKey = driver ? driver.car : carRaw;
 
                 const processedData = {
-                    car:      driver ? driver.car : carRaw,
+                    car:      carKey,
                     driver:   driver,
                     date:     dateFound,
                     stats:    stats,
                     stops:    stops,
-                    analysis: analyzeData(stops, driver ? driver.car : '', stats, dateFound)
+                    analysis: analyzeDataLocal(stops, carKey, stats, dateFound)
                 };
 
-                const carKey = processedData.car;
                 if (!STATE.data[dateFound]) STATE.data[dateFound] = {};
                 STATE.data[dateFound][carKey] = processedData;
                 if (!STATE.history.includes(dateFound)) STATE.history.push(dateFound);
@@ -432,6 +474,17 @@ async function processXLSX(file) {
                 // CAL ni yangilash
                 const d = new Date(dateFound);
                 CAL.y = d.getFullYear(); CAL.m = d.getMonth();
+
+                // Ball — server yagona manba (xato bo'lsa lokal qoladi)
+                analyzeOnServer(stops, carKey, stats, dateFound, { reenrich: true }).then(r => {
+                    const rec = STATE.data[dateFound] && STATE.data[dateFound][carKey];
+                    if (!rec) return;
+                    rec.analysis = r.analysis;
+                    if (r.stops) rec.stops = r.stops;
+                    if (STATE.currentDate === dateFound && typeof refreshUI === 'function') refreshUI();
+                    if (window.VMOffice && typeof VMOffice.renderFleetBoard === 'function') VMOffice.renderFleetBoard();
+                    if (typeof saveAll === 'function') saveAll();
+                }).catch(() => {});
 
                 resolve(processedData);
             } catch(err) {
@@ -575,7 +628,8 @@ function stopIsProblem(st, carKey, dateVal) {
     return !!(st && st.isProblem);
 }
 
-function analyzeData(stops, carKey, stats, dateVal) {
+/** Lokal fallback — asosiy manba server /api/office/analyze */
+function analyzeDataLocal(stops, carKey, stats, dateVal) {
     const day = dateVal || STATE.currentDate;
     const ownPharms = uniquePhNames(ownPharmacyList(carKey));
     const problemOf = (s) => stopIsProblem(s, carKey, day);
@@ -600,7 +654,6 @@ function analyzeData(stops, carKey, stats, dateVal) {
     const problemStops  = stops.filter(s => problemOf(s)).length;
     const outsideCity   = stops.filter(s => s.isOutside).length;
 
-    // Ball hisoblash
     let score = 10.0;
     const breakdown = ['Boshlang\'ich ball: 10.0'];
     const recs = [];
@@ -640,20 +693,84 @@ function analyzeData(stops, carKey, stats, dateVal) {
         ownVisited, otherDirection: otherDir, problemStops,
         outsideCity, totalOwn: ownPharms.length,
         missedList, ownPharms,
-        score: { final: parseFloat(score.toFixed(1)), grade, breakdown, recommendations: recs }
+        score: { final: parseFloat(score.toFixed(1)), grade, breakdown, recommendations: recs },
+        _source: 'local'
     };
 }
 
-function recomputeCar(dateVal, car) {
-    const rec = STATE.data[dateVal] && STATE.data[dateVal][car];
-    if (!rec) return;
-    rec.analysis = analyzeData(rec.stops || [], car, rec.stats || {}, dateVal);
+/** Orqaga moslik: sinxron joylar uchun lokal (fallback) */
+function analyzeData(stops, carKey, stats, dateVal) {
+    return analyzeDataLocal(stops, carKey, stats, dateVal);
 }
 
-function recomputeDay(dateVal) {
+async function analyzeOnServer(stops, carKey, stats, dateVal, opts) {
+    const o = opts || {};
+    if (typeof vmApi !== 'function') {
+        return { analysis: analyzeDataLocal(stops, carKey, stats, dateVal), stops, source: 'local' };
+    }
+    try {
+        const d = await vmApi('/api/office/analyze', {
+            method: 'POST',
+            body: JSON.stringify({
+                date: dateVal || STATE.currentDate || '',
+                car: carKey,
+                stops: stops || [],
+                stats: stats || {},
+                reenrich: !!o.reenrich
+            })
+        });
+        if (d && d.ok && d.analysis) {
+            d.analysis._source = 'server';
+            return { analysis: d.analysis, stops: d.stops || stops, source: 'server' };
+        }
+    } catch (e) {
+        console.warn('analyzeOnServer:', e);
+    }
+    return { analysis: analyzeDataLocal(stops, carKey, stats, dateVal), stops, source: 'local' };
+}
+
+async function recomputeCar(dateVal, car) {
+    const rec = STATE.data[dateVal] && STATE.data[dateVal][car];
+    if (!rec) return;
+    const r = await analyzeOnServer(rec.stops || [], car, rec.stats || {}, dateVal, { reenrich: false });
+    rec.analysis = r.analysis;
+    if (r.stops) rec.stops = r.stops;
+}
+
+async function recomputeDay(dateVal) {
     const day = STATE.data[dateVal];
     if (!day) return;
-    Object.keys(day).forEach(car => recomputeCar(dateVal, car));
+    const cars = Object.keys(day);
+    if (!cars.length) return;
+    if (typeof vmApi === 'function') {
+        try {
+            const items = cars.map(car => {
+                const rec = day[car] || {};
+                return { car, stops: rec.stops || [], stats: rec.stats || {} };
+            });
+            const d = await vmApi('/api/office/analyze', {
+                method: 'POST',
+                body: JSON.stringify({ date: dateVal, items, reenrich: false })
+            });
+            if (d && d.ok && d.results) {
+                cars.forEach(car => {
+                    const hit = d.results[car];
+                    if (!hit || !day[car]) return;
+                    if (hit.analysis) {
+                        hit.analysis._source = 'server';
+                        day[car].analysis = hit.analysis;
+                    }
+                    if (hit.stops) day[car].stops = hit.stops;
+                });
+                return;
+            }
+        } catch (e) {
+            console.warn('recomputeDay server:', e);
+        }
+    }
+    for (const car of cars) {
+        await recomputeCar(dateVal, car);
+    }
 }
 
 // ── 6. XARITA ───────────────────────────────────────────────
@@ -705,20 +822,12 @@ function bindMapLock() {
 }
 
 function addMapTiles(map) {
-    const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    // Carto endi API kalit talab qiladi — bepul OSM ishlatamiz
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '',
-        subdomains: 'abcd',
+        subdomains: 'abc',
         maxZoom: 19
-    });
-    carto.on('tileerror', () => {
-        if (STATE._mapTileFallback) return;
-        STATE._mapTileFallback = true;
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '',
-            maxZoom: 19
-        }).addTo(map);
-    });
-    carto.addTo(map);
+    }).addTo(map);
 }
 
 function mapPinIcon(label, color, isEnd) {
@@ -798,15 +907,51 @@ function initMap() {
     mapInvalidate();
 }
 
-function refreshMap(stops) {
+function removeMapRouteLayers() {
+    if (!STATE.map) return;
+    if (STATE.mapLine) {
+        STATE.map.removeLayer(STATE.mapLine);
+        STATE.mapLine = null;
+    }
+    if (STATE.mapRouteMain) {
+        STATE.map.removeLayer(STATE.mapRouteMain);
+        STATE.mapRouteMain = null;
+    }
+}
+
+function drawMapRouteLayers(latlngs) {
+    removeMapRouteLayers();
+    if (!STATE.map || !latlngs || latlngs.length < 2) return;
+    STATE.mapLine = L.polyline(latlngs, {
+        color: '#0b1f3a', weight: 3.5, opacity: 0.14, lineJoin: 'round', lineCap: 'round',
+        interactive: false
+    }).addTo(STATE.map);
+    STATE.mapRouteMain = L.polyline(latlngs, {
+        color: '#1a5fb4', weight: 1.75, opacity: 0.92, lineJoin: 'round', lineCap: 'round',
+        interactive: false
+    }).addTo(STATE.map);
+}
+
+function sortStopsForRoute(stops) {
+    return (stops || []).slice().sort((a, b) => {
+        const ta = parseTimeStr(a && a.inTime) || 0;
+        const tb = parseTimeStr(b && b.inTime) || 0;
+        if (ta !== tb) return ta - tb;
+        return (a && a.num || 0) - (b && b.num || 0);
+    });
+}
+
+async function refreshMap(stops) {
     initMap();
     if (!STATE.map) return;
+    const gen = ++STATE.mapRouteGen;
     STATE.mapMarkers.forEach(m => STATE.map.removeLayer(m));
     STATE.mapMarkers = [];
-    if (STATE.mapLine) { STATE.map.removeLayer(STATE.mapLine); STATE.mapLine = null; }
+    removeMapRouteLayers();
     mapInvalidate();
 
-    const list = Array.isArray(stops) ? stops : [];
+    const rawList = Array.isArray(stops) ? stops : [];
+    const list = sortStopsForRoute(rawList);
     if (!list.length) {
         setMapStats([], 0);
         if (window.VMOffice) VMOffice.drawGeofences(STATE.map, STATE.currentCar);
@@ -823,15 +968,16 @@ function refreshMap(stops) {
     setMapStats(list, withGeo.length);
 
     if (latlngs.length > 1) {
-        // Yupqa marshrut: yengil halo + nozik asosiy chiziq (xarita ustida aniqroq)
-        STATE.mapLine = L.polyline(latlngs, {
-            color: '#0b1f3a', weight: 3.5, opacity: 0.14, lineJoin: 'round', lineCap: 'round',
-            interactive: false
-        }).addTo(STATE.map);
-        STATE.mapMarkers.push(L.polyline(latlngs, {
-            color: '#1a5fb4', weight: 1.75, opacity: 0.92, lineJoin: 'round', lineCap: 'round',
-            interactive: false
-        }).addTo(STATE.map));
+        drawMapRouteLayers(latlngs);
+        if (typeof vmFetchRoadRoute === 'function') {
+            try {
+                const road = await vmFetchRoadRoute(latlngs);
+                if (gen !== STATE.mapRouteGen) return;
+                if (road && road.length > 1) drawMapRouteLayers(road);
+            } catch (e) {
+                console.warn('map route:', e);
+            }
+        }
     }
 
     const lastI = withGeo.length - 1;
@@ -1043,12 +1189,13 @@ function refreshUI() {
     if (window.VMOffice) VMOffice.renderFleetBoard();
 
     if (dayData) {
-        renderKPI(dayData);
-        renderStats(dayData);
-        renderPharmacy(dayData);
-        renderStops(dayData.stops);
-        renderEval(dayData.analysis.score);
-        refreshMap(dayData.stops);
+        const rec = normalizeDayRecord(dayData);
+        renderKPI(rec);
+        renderStats(rec);
+        renderPharmacy(rec);
+        renderStops(rec.stops);
+        renderEval(rec.analysis.score);
+        refreshMap(rec.stops);
     } else {
         // Bo'sh holat
         renderKPI(null);
@@ -1146,12 +1293,17 @@ function renderBanner(driver, data) {
         }
         scoreEl.style.color = '';
         if (data && data.analysis) {
-            const s = data.analysis.score.final;
-            scoreEl.textContent = s.toFixed(1);
-            if (box) {
-                if (s >= 8) box.classList.add('is-good');
-                else if (s >= 5) box.classList.add('is-mid');
-                else box.classList.add('is-bad');
+            const sc = normalizeScore(data.analysis.score);
+            if (sc) {
+                const s = sc.final;
+                scoreEl.textContent = s.toFixed(1);
+                if (box) {
+                    if (s >= 8) box.classList.add('is-good');
+                    else if (s >= 5) box.classList.add('is-mid');
+                    else box.classList.add('is-bad');
+                }
+            } else {
+                scoreEl.textContent = '—';
             }
         } else {
             scoreEl.textContent = '—';
@@ -1163,7 +1315,9 @@ function renderBanner(driver, data) {
 function renderKPI(data) {
     const el = document.getElementById('kpi-container');
     if (!el || !data) return;
-    const s = data.stats, a = data.analysis;
+    const rec = normalizeDayRecord(data) || data;
+    const s = rec.stats || {};
+    const a = rec.analysis || {};
     const fuelTxt = [
         s.gas    > 0 ? fmtFuel(s.gas, 'm³') : '',
         s.benzin > 0 ? fmtFuel(s.benzin, 'L')  : ''
@@ -1178,17 +1332,17 @@ function renderKPI(data) {
         </div>
         <div class="kpi-card c-green">
             <div class="kpi-title">O'z dorixonalari</div>
-            <div class="kpi-value">${a.ownVisited}<span style="font-size:13px;font-weight:500;color:#8aa0b8">/${a.totalOwn}</span></div>
+            <div class="kpi-value">${a.ownVisited || 0}<span style="font-size:13px;font-weight:500;color:#8aa0b8">/${a.totalOwn || 0}</span></div>
             <div class="kpi-unit">Tashrif qilingan</div>
         </div>
         <div class="kpi-card c-purple">
             <div class="kpi-title">Boshqa yo'nalish</div>
-            <div class="kpi-value">${a.otherDirection}</div>
+            <div class="kpi-value">${a.otherDirection || 0}</div>
             <div class="kpi-unit">To'xtash</div>
         </div>
         <div class="kpi-card c-red">
             <div class="kpi-title">Muammoli</div>
-            <div class="kpi-value">${a.problemStops}</div>
+            <div class="kpi-value">${a.problemStops || 0}</div>
             <div class="kpi-unit">To'xtash</div>
         </div>
         <div class="kpi-card c-orange">
@@ -1206,7 +1360,9 @@ function renderKPI(data) {
 
 // ── 9.3. STATISTIKA ─────────────────────────────────────────
 function renderStats(data) {
-    const s = data.stats, a = data.analysis;
+    const rec = normalizeDayRecord(data);
+    if (!rec) return;
+    const s = rec.stats || {}, a = rec.analysis || {};
     const fuelTxt = [
         s.gas    > 0 ? fmtFuel(s.gas, 'm³ gaz') : '',
         s.benzin > 0 ? fmtFuel(s.benzin, 'L benzin') : ''
@@ -1281,11 +1437,13 @@ function bindReviewClicks(root) {
 function renderPharmacy(data) {
     const el = document.getElementById('pharmacy-analysis');
     if (!el) return;
-    const a = data.analysis;
-    const dateVal = data.date || STATE.currentDate;
-    const car = data.car || STATE.currentCar;
-    const ownStops   = data.stops.filter(s => s.matchType === 'own');
-    const otherStops = data.stops.filter(s => s.matchType === 'other');
+    const rec = normalizeDayRecord(data);
+    if (!rec) return;
+    const a = rec.analysis || {};
+    const dateVal = rec.date || STATE.currentDate;
+    const car = rec.car || STATE.currentCar;
+    const ownStops   = rec.stops.filter(s => s.matchType === 'own');
+    const otherStops = rec.stops.filter(s => s.matchType === 'other');
     const pct = a.totalOwn > 0 ? Math.round((a.ownVisited / a.totalOwn) * 1000) / 10 : null;
 
     let html = '<div class="analysis-body">';
@@ -1446,8 +1604,9 @@ function renderStops(stops) {
 
 // ── 9.6. BAHOLASH ───────────────────────────────────────────
 function renderEval(score) {
-    if (!score) return;
-    const f = score.final;
+    const sc = normalizeScore(score);
+    if (!sc) return;
+    const f = sc.final;
 
     const setEl = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
     setEl('eval-final-score', f.toFixed(1));
@@ -1458,13 +1617,13 @@ function renderEval(score) {
     const bonEl  = document.getElementById('eval-bonuses');
 
     if (baseEl) baseEl.innerHTML = `<div class="eval-block-title">Hisoblash</div>
-        <ul>${score.breakdown.map(x => `<li>${x}</li>`).join('')}</ul>`;
+        <ul>${sc.breakdown.map(x => `<li>${x}</li>`).join('')}</ul>`;
 
-    const deducts = score.breakdown.filter(x => x.startsWith('-'));
+    const deducts = sc.breakdown.filter(x => x.startsWith('-'));
     if (dedEl) dedEl.innerHTML = `<div class="eval-block-title">Jarima</div>
         <ul>${deducts.length ? deducts.map(x => `<li>${x}</li>`).join('') : '<li>Jarima yo\'q</li>'}</ul>`;
 
-    const bonuses = score.breakdown.filter(x => x.startsWith('+'));
+    const bonuses = sc.breakdown.filter(x => x.startsWith('+'));
     if (bonEl) bonEl.innerHTML = `<div class="eval-block-title">Bonus</div>
         <ul>${bonuses.length ? bonuses.map(x => `<li>${x}</li>`).join('') : '<li>Bonus yo\'q</li>'}</ul>`;
 
@@ -1482,13 +1641,13 @@ function renderEval(score) {
     }
 
     const recEl = document.getElementById('eval-recommendations');
-    if (recEl) recEl.innerHTML = score.recommendations.map(r => `<li>${r.replace(/[✅🏆⚠️❌]/g,'').trim()}</li>`).join('');
+    if (recEl) recEl.innerHTML = sc.recommendations.map(r => `<li>${r.replace(/[✅🏆⚠️❌]/g,'').trim()}</li>`).join('');
 
     const sumEl = document.getElementById('eval-summary');
     if (sumEl) {
         const cls = f >= 8 ? 'good' : f >= 5 ? 'ok' : 'bad';
         sumEl.className = 'eval-summary-box ' + cls;
-        sumEl.innerHTML = `<strong>Kunlik ball ${f.toFixed(1)} / 10 · ${score.grade}</strong>`;
+        sumEl.innerHTML = `<strong>Kunlik ball ${f.toFixed(1)} / 10 · ${sc.grade}</strong>`;
     }
 }
 
@@ -1740,11 +1899,18 @@ async function syncFromGPS(dateVal, cfg, opts) {
                     gas: 0, benzin: 0, motoChas: '—', totalStop: '—'
                 }, (chrono && chrono.stats) || {});
                 if (!stats.stoyanok) stats.stoyanok = stops.length;
-                const analysis = analyzeData(stops, drv.car, stats, dateVal);
+                const scored = await analyzeOnServer(stops, drv.car, stats, dateVal, { reenrich: true });
                 if (!STATE.data[dateVal]) STATE.data[dateVal] = {};
-                STATE.data[dateVal][drv.car] = { car: drv.car, driver: drv, date: dateVal, stats, stops, analysis };
+                STATE.data[dateVal][drv.car] = {
+                    car: drv.car,
+                    driver: drv,
+                    date: dateVal,
+                    stats,
+                    stops: scored.stops || stops,
+                    analysis: scored.analysis
+                };
                 if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
-                updateProg(0, '', `✅ ${unit.name}: ${stops.length} ta to'xtash, ${fmtKm(stats.probeg, 'km')}`);
+                updateProg(0, '', `✅ ${unit.name}: ${(scored.stops || stops).length} ta to'xtash, ${fmtKm(stats.probeg, 'km')}`);
                 done++;
             } catch(e) {
                 if (cancelled()) return;
@@ -2497,7 +2663,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (typeof refreshUI === 'function') refreshUI();
             });
         }
-        recomputeDay(STATE.currentDate);
+        recomputeDay(STATE.currentDate).catch(() => {});
     }
 
     // Xaritani ishga tushirish
