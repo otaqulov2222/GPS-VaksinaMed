@@ -95,7 +95,7 @@ function vmStartHeartbeat() {
         fetch('/api/ping', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' })
             .then(r => { if (r.status === 401) location.replace('/login.html'); })
             .catch(() => {});
-    }, 25000);
+    }, 60000);
 }
 
 /** Mobil menyuni yopish (tab/link bosilganda) */

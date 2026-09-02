@@ -96,16 +96,20 @@ const VMOffice = {
 
     async loadReportIfNeeded(dateVal, force) {
         if (!dateVal) return;
-        if (force) delete STATE.data[dateVal];
         const hasLocal = STATE.data[dateVal] && Object.keys(STATE.data[dateVal]).length;
-        if (hasLocal) {
-            // Mavjud ma'lumot: ballni serverdan yangilash (JS formula emas)
-            if (typeof recomputeDay === 'function') {
+        if (hasLocal && !force) {
+            const cars = STATE.data[dateVal];
+            const needsRecompute = Object.values(cars).some(rec => {
+                const a = rec && rec.analysis;
+                return !a || a._source !== 'server';
+            });
+            if (needsRecompute && typeof recomputeDay === 'function') {
                 try { await recomputeDay(dateVal); } catch (e) { console.warn('recomputeDay:', e); }
             }
             this.renderFleetBoard();
             return;
         }
+        if (hasLocal && force) delete STATE.data[dateVal];
         try {
             const d = await vmApi('/api/office/report?date=' + encodeURIComponent(dateVal));
             if (d.reviews) {
@@ -113,6 +117,9 @@ const VMOffice = {
             }
             if (d.report && d.report.cars && typeof d.report.cars === 'object') {
                 STATE.data[dateVal] = d.report.cars;
+                Object.values(STATE.data[dateVal]).forEach(rec => {
+                    if (rec && rec.analysis) rec.analysis._source = 'server';
+                });
                 if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
                 // Server analysis saqlangan — JS bilan qayta yozilmaydi
                 if (typeof saveAll === 'function') saveAll();

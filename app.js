@@ -1708,6 +1708,7 @@ function hasGpsConfig() {
 }
 
 const GPS_AUTO_MS = 5 * 60 * 1000;
+const GPS_POLL_MS = 3 * 60 * 1000;
 
 function stopGpsAutoSync() {
     if (STATE.gpsAutoTimer) clearInterval(STATE.gpsAutoTimer);
@@ -1725,7 +1726,7 @@ function startGpsAutoSync() {
         if (gpsModalOpen()) return;
         if (document.hidden) return;
         pollServerGpsStatus(false);
-    }, 90 * 1000);
+    }, GPS_POLL_MS);
 }
 
 function sleepMs(ms) {
@@ -1859,6 +1860,13 @@ async function syncFromGPS(dateVal, cfg, opts) {
                 method: 'POST',
                 body: JSON.stringify({ date: dateVal })
             });
+            if (queued && queued.ok && queued.queued === false) {
+                if (queued.error) throw new Error(queued.error);
+                viaServer = true;
+                if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
+                done = Number(queued.cars) || Object.keys(STATE.data[dateVal] || {}).length;
+                updateProg(95, 'Hisobot olindi', done + ' ta mashina');
+            } else {
             const jobId = Number((queued && queued.jobId) || 0);
             if (!jobId) throw new Error((queued && queued.error) || 'Navbatga qo‘yilmadi');
             const t0 = Date.now();
@@ -1882,6 +1890,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
             if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
             done = Object.keys(STATE.data[dateVal] || {}).length;
             updateProg(95, 'Hisobot olindi', done + ' ta mashina');
+            }
         } catch (serverErr) {
             if (cancelled()) return;
             if (viaServer) throw serverErr;
@@ -2686,32 +2695,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (typeof refreshUI === 'function') refreshUI();
             });
         }
-        recomputeDay(STATE.currentDate).catch(() => {});
     }
 
-    // Kalendarni ko'rsatish
+    // Kalendarni ko'rsatish — UI darhol, og'ir so'rovlar fon
     renderCalendar();
     renderDriverTabs();
     refreshUI();
     setGpsUi(hasGpsConfig() ? 'on' : 'off');
     refreshDayKm(STATE.currentDate);
     
-    // ── Avtomatik GPS (server + brauzer, kun davomida) ───────────────
+    // ── Avtomatik GPS (bootstrap dan keyin, UI bloklamasdan) ───────────────
     setTimeout(async () => {
         const todayStr = dateStr(new Date());
-        let serverGps = false;
-        try {
-            const st = await vmApi('/api/office/gps/status');
-            serverGps = !!st.configured;
-            updateGpsLastSyncUi(st.lastSync, st.running);
-            if (serverGps || hasGpsConfig()) setGpsUi('on');
-        } catch (e) {}
-        await pollServerGpsStatus(true);
+        const st = (window.VMOffice && VMOffice.gpsStatus) || {};
+        let serverGps = !!st.configured;
+        updateGpsLastSyncUi(st.lastSync, st.running);
+        if (serverGps || hasGpsConfig()) setGpsUi('on');
+        await pollServerGpsStatus(!STATE.history.length);
         startGpsAutoSync();
         if (!hasGpsConfig() && serverGps) {
             showToast('Server GPS avtomatik yangilayapti — brauzer yopiq bo\'lsa ham ishlaydi', 'info');
         }
-    }, 1500);
+    }, 800);
 
     // ── Kalendar navigatsiya ───────────────────────────────
     document.getElementById('cal-prev')?.addEventListener('click', () => {

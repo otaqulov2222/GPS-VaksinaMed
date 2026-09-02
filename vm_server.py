@@ -24,6 +24,7 @@ PORT = int(os.environ.get("PORT", "8080"))
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 COOKIE = "vm_sid"
 SESSION_TTL = 12 * 3600
+SESSION_PERSIST_INTERVAL = 120
 SEED_USER = "adminpro"
 DEFAULT_SEED_PASS = "AdminPro@2026"
 SEED_PASS = os.environ.get("VM_SEED_PASS", DEFAULT_SEED_PASS)
@@ -278,6 +279,7 @@ class PgPersist:
             raise RuntimeError("psycopg o'rnatilmagan. pip install -r requirements.txt")
         self.dsn = normalize_dsn(dsn)
         self.lock = threading.Lock()
+        self._conn = None
         self._ensure_schema()
 
     def _connect(self):
@@ -293,16 +295,27 @@ class PgPersist:
         finally:
             conn.close()
 
+    def _close_conn(self):
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+    def _get_conn(self):
+        if self._conn is None or getattr(self._conn, "closed", False):
+            self._conn = self._connect()
+        return self._conn
+
     def _with_conn(self, fn):
         with self.lock:
-            conn = self._connect()
+            conn = self._get_conn()
             try:
                 return fn(conn)
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+            except Exception:
+                self._close_conn()
+                raise
 
     def get(self, key, default=None):
         def run(conn):
@@ -371,6 +384,7 @@ class AuthStore:
         self.lock = threading.Lock()
         self.sessions = {}
         self.seeded = False
+        self._users_cache = None
         self._load_sessions()
         self._ensure()
 
@@ -444,16 +458,29 @@ class AuthStore:
                 changed = True
         return changed
 
+    def _touch_session(self, sess, persist=True):
+        sess["last_seen"] = now_ts()
+        if not persist:
+            return
+        last = int(sess.get("_persisted_at") or 0)
+        if now_ts() - last >= SESSION_PERSIST_INTERVAL:
+            sess["_persisted_at"] = now_ts()
+            self._save_sessions()
+
     def _read(self):
+        if self._users_cache is not None:
+            return self._users_cache
         data = self.persist.get("users")
         if not isinstance(data, dict):
-            return {"users": [], "audit": []}
+            data = {"users": [], "audit": []}
         data.setdefault("users", [])
         data.setdefault("audit", [])
+        self._users_cache = data
         return data
 
     def _write(self, data):
         self._strip_plaintext_passwords(data)
+        self._users_cache = data
         self.persist.put("users", data)
 
     def _audit(self, data, act, who, detail=""):
@@ -535,8 +562,7 @@ class AuthStore:
                 self.sessions.pop(sid, None)
                 self._save_sessions()
                 return None
-            sess["last_seen"] = now_ts()
-            self._save_sessions()
+            self._touch_session(sess)
             data = self._read()
             user = self.find_user(data, uid=sess["user_id"])
             if not user or not user.get("active", True):
@@ -2448,7 +2474,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 {
                     "ok": True,
                     "pharmacies": OFFICE.pharmacies(),
-                    "reviews": OFFICE.all_reviews(),
+                    "reviews": {},
                     "reportDates": OFFICE.report_dates(),
                     "telegram": OFFICE.public_telegram(),
                     "gps": OFFICE.gps_status_public(),
