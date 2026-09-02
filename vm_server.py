@@ -1987,6 +1987,7 @@ def dispatch_http(method, path, headers, body=b"", client_ip="127.0.0.1"):
 
     init_app()
     h = VaksinamedHandler.__new__(VaksinamedHandler)
+    h.directory = DIRECTORY
     h.client_address = (client_ip, 0)
     h.server = type("_Srv", (), {"server_address": (client_ip, 0)})()
     h.command = str(method or "GET").upper()
