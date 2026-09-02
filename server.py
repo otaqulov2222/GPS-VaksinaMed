@@ -25,7 +25,8 @@ DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 COOKIE = "vm_sid"
 SESSION_TTL = 12 * 3600
 SEED_USER = "adminpro"
-SEED_PASS = os.environ.get("VM_SEED_PASS", "AdminPro@2026")
+DEFAULT_SEED_PASS = "AdminPro@2026"
+SEED_PASS = os.environ.get("VM_SEED_PASS", DEFAULT_SEED_PASS)
 SESSIONS_KEY = "auth:sessions"
 
 PUBLIC_PATHS = {"/login.html", "/favicon.ico"}
@@ -55,6 +56,48 @@ _LOGIN_RL_LOCK = threading.Lock()
 _LOGIN_MAX_FAILS = 8
 _LOGIN_WINDOW_SEC = 15 * 60
 _LOGIN_LOCK_SEC = 15 * 60
+
+
+def is_production():
+    return bool(
+        os.environ.get("RENDER")
+        or os.environ.get("VERCEL")
+        or os.environ.get("VERCEL_ENV")
+        or os.environ.get("VM_PRODUCTION") == "1"
+    )
+
+
+def is_serverless():
+    return bool(os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"))
+
+
+def run_bg(fn):
+    """Vercel da fon thread ishlamaydi — muhim vazifalarni sinxron bajaradi."""
+    if is_serverless():
+        try:
+            fn()
+        except Exception as e:
+            print("[bg]", e)
+    else:
+        threading.Thread(target=fn, daemon=True).start()
+
+
+def production_checks():
+    if not is_production():
+        return
+    if SEED_PASS == DEFAULT_SEED_PASS:
+        print(
+            "  [DIQQAT] VM_SEED_PASS default parol — Vercel/Render Environment da kuchli parol qo'ying.\n"
+            "  Admin Pro login: adminpro"
+        )
+    if not (os.environ.get("DATABASE_URL") or "").strip():
+        plat = "Vercel + Neon" if is_serverless() else "Render"
+        print(
+            f"  [DIQQAT] DATABASE_URL yo'q — ma'lumotlar saqlanmaydi.\n"
+            f"  {plat}: Neon PostgreSQL connection string qo'ying (pooler URL tavsiya etiladi)."
+        )
+    if is_serverless() and not (os.environ.get("CRON_SECRET") or "").strip():
+        print("  [DIQQAT] CRON_SECRET yo'q — Vercel Cron GPS sync himoyasiz bo'ladi.")
 
 
 def _login_rate_ok(ip):
@@ -235,32 +278,31 @@ class PgPersist:
             raise RuntimeError("psycopg o'rnatilmagan. pip install -r requirements.txt")
         self.dsn = normalize_dsn(dsn)
         self.lock = threading.Lock()
-        self.conn = None
-        self._connect()
-        self._init()
+        self._ensure_schema()
 
     def _connect(self):
-        if self.conn is not None:
-            try:
-                self.conn.close()
-            except Exception:
-                pass
-        self.conn = psycopg.connect(self.dsn, autocommit=True, connect_timeout=15)
+        return psycopg.connect(self.dsn, autocommit=True, connect_timeout=15)
 
-    def _init(self):
-        with self.conn.cursor() as cur:
-            cur.execute(
-                "CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)"
-            )
+    def _ensure_schema(self):
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)"
+                )
+        finally:
+            conn.close()
 
     def _with_conn(self, fn):
         with self.lock:
+            conn = self._connect()
             try:
-                return fn(self.conn)
-            except Exception:
-                self._connect()
-                self._init()
-                return fn(self.conn)
+                return fn(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def get(self, key, default=None):
         def run(conn):
@@ -314,9 +356,9 @@ def make_persist(root):
                 print("[OK] users.json bazaga ko'chirildi")
             except (OSError, json.JSONDecodeError):
                 pass
-        print("[OK] Saqlash: PostgreSQL — adminlar deploydan keyin qoladi")
+        print("[OK] Saqlash: PostgreSQL — ma'lumotlar saqlanadi (Neon/Render)")
         return persist
-    print("[OK] Saqlash: lokal fayl (Render Free da yo'qoladi, DATABASE_URL qo'ying)")
+    print("[OK] Saqlash: lokal fayl (production uchun DATABASE_URL / Neon qo'ying)")
     # Render’da deploydan keyin ham qoladigan disk (volume) bo‘lsa, uni shu yerga ulab qo‘ying.
     # Agar PERSIST_DIR berilmasa, eski holatdagi workspace ichidagi lokal fayl ishlaydi.
     persist_root = (os.environ.get("PERSIST_DIR") or "").strip() or root
@@ -1235,7 +1277,7 @@ class OfficeStore:
                 except Exception:
                     pass
 
-            threading.Thread(target=_reprocess_fuel_meta, daemon=True).start()
+            run_bg(_reprocess_fuel_meta)
         except Exception:
             pass
         return cur
@@ -1920,6 +1962,83 @@ class OfficeStore:
 STORE = None
 OFFICE = None
 
+
+class _HeaderMap:
+    """Serverless uchun sodda HTTP header map."""
+
+    def __init__(self, items):
+        self._m = {}
+        for k, v in (items or {}).items():
+            self._m[str(k).lower()] = v
+
+    def get(self, key, default=None):
+        return self._m.get(str(key).lower(), default)
+
+    def __iter__(self):
+        return iter(self._m)
+
+    def __getitem__(self, key):
+        return self._m[str(key).lower()]
+
+
+def dispatch_http(method, path, headers, body=b"", client_ip="127.0.0.1"):
+    """API so'rovini socket siz qayta ishlash (Vercel serverless)."""
+    from io import BytesIO
+
+    init_app()
+    h = VaksinamedHandler.__new__(VaksinamedHandler)
+    h.client_address = (client_ip, 0)
+    h.server = type("_Srv", (), {"server_address": (client_ip, 0)})()
+    h.command = str(method or "GET").upper()
+    h.path = path or "/"
+    h.requestline = f"{h.command} {h.path} HTTP/1.1"
+    h.request_version = "HTTP/1.1"
+    h.protocol_version = "HTTP/1.1"
+    h.headers = _HeaderMap(headers or {})
+    h.rfile = BytesIO(body or b"")
+    h.wfile = BytesIO()
+    h.close_connection = True
+    h._headers_buffer = []
+    try:
+        if h.command == "GET":
+            h.do_GET()
+        elif h.command == "POST":
+            h.do_POST()
+        elif h.command == "OPTIONS":
+            h.do_OPTIONS()
+        elif h.command == "HEAD":
+            h.do_GET()
+        else:
+            h.send_error(501)
+    except Exception as e:
+        raw = json.dumps({"ok": False, "error": str(e)[:200]}, ensure_ascii=False).encode("utf-8")
+        return 500, {"Content-Type": "application/json; charset=utf-8"}, raw
+
+    raw = h.wfile.getvalue()
+    if not raw:
+        return 500, {"Content-Type": "application/json; charset=utf-8"}, b'{"ok":false,"error":"Empty response"}'
+    split = raw.find(b"\r\n\r\n")
+    if split < 0:
+        return 500, {"Content-Type": "text/plain"}, raw
+    head = raw[:split].decode("latin-1", errors="replace")
+    out_body = raw[split + 4 :]
+    lines = head.split("\r\n")
+    try:
+        status = int(lines[0].split()[1])
+    except (IndexError, ValueError):
+        status = 500
+    out_headers = {}
+    for line in lines[1:]:
+        if ":" not in line:
+            continue
+        k, v = line.split(":", 1)
+        lk = k.strip().lower()
+        if lk in ("transfer-encoding", "connection", "content-length"):
+            continue
+        out_headers[k.strip()] = v.strip()
+    return status, out_headers, out_body
+
+
 class VaksinamedHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
@@ -1932,13 +2051,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 print(f"  [{status}] {path}")
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        path = (self.path or "").split("?", 1)[0].lower()
+        if is_production() and path.endswith(
+            (".js", ".css", ".svg", ".woff", ".woff2", ".png", ".jpg", ".webp", ".ico")
+        ):
+            self.send_header("Cache-Control", "public, max-age=86400, immutable")
+        else:
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         super().end_headers()
 
     def client_ip(self):
+        if is_production() or os.environ.get("VM_TRUST_PROXY") == "1":
+            fwd = (self.headers.get("X-Forwarded-For") or "").strip()
+            if fwd:
+                return fwd.split(",")[0].strip()
         return self.client_address[0] if self.client_address else ""
 
     def is_https(self):
@@ -2221,8 +2350,40 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/health":
-            self.send_json({"ok": True, "ts": iso_now()})
+            payload = {
+                "ok": True,
+                "ts": iso_now(),
+                "production": is_production(),
+                "serverless": is_serverless(),
+            }
+            if STORE:
+                payload["persist"] = STORE.persist_info()
+            self.send_json(payload)
             return
+
+        if path == "/api/cron/gps-sync":
+            secret = (os.environ.get("CRON_SECRET") or "").strip()
+            auth = (self.headers.get("Authorization") or "").strip()
+            if not secret or auth != f"Bearer {secret}":
+                self.send_json({"ok": False, "error": "Unauthorized"}, 401)
+                return
+            try:
+                import gps_sync
+
+                d = gps_sync.today_tashkent()
+                with _gps_sync_lock:
+                    result = gps_sync.sync_today(OFFICE, DIRECTORY, d, saved_by="cron") or {}
+                yday = gps_sync.yesterday_tashkent()
+                rec = OFFICE.get_report(yday)
+                cars = rec.get("cars") if isinstance(rec, dict) else None
+                if not cars:
+                    with _gps_sync_lock:
+                        gps_sync.sync_today(OFFICE, DIRECTORY, yday, saved_by="cron-yday")
+                self.send_json({"ok": True, "date": d, "result": result})
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:200]}, 500)
+            return
+
         if path == "/api/me":
             sess = self.require_user()
             if not sess:
@@ -2627,7 +2788,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 except Exception:
                     pass
 
-            threading.Thread(target=_reprocess_pharms, daemon=True).start()
+            run_bg(_reprocess_pharms)
             return
 
         if path == "/api/office/learn-geozones":
@@ -2642,12 +2803,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 except Exception:
                     pass
 
-            threading.Thread(target=_learn_bg, daemon=True).start()
-            self.send_json({
-                "ok": True,
-                "queued": True,
-                "message": "Geozonlar fon rejimida o‘rganilmoqda va hisobotlar yangilanmoqda"
-            })
+            if is_serverless():
+                try:
+                    _learn_bg()
+                    self.send_json({
+                        "ok": True,
+                        "queued": False,
+                        "message": "Geozonlar yangilandi"
+                    })
+                except Exception as e:
+                    self.send_json({"ok": False, "error": str(e)[:200]}, 500)
+            else:
+                run_bg(_learn_bg)
+                self.send_json({
+                    "ok": True,
+                    "queued": True,
+                    "message": "Geozonlar fon rejimida o'rganilmoqda va hisobotlar yangilanmoqda"
+                })
             return
 
         if path == "/api/office/reviews":
@@ -2768,7 +2940,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             def run_sync():
                 enqueue_gps_sync(OFFICE, DIRECTORY, None, sess.get("username") or "user")
 
-            threading.Thread(target=run_sync, daemon=True).start()
+            run_bg(run_sync)
             self.send_json({"ok": True, **pub})
             return
 
@@ -2779,6 +2951,34 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             date_val = str(body.get("date") or "").strip()
             if date_val and not valid_date(date_val):
                 self.send_json({"ok": False, "error": "Sana noto'g'ri"}, 400)
+                return
+            if is_serverless():
+                try:
+                    import gps_sync
+
+                    d = date_val or gps_sync.today_tashkent()
+                    OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
+                    with _gps_sync_lock:
+                        result = gps_sync.sync_today(
+                            OFFICE, DIRECTORY, d, saved_by=sess.get("username") or "user"
+                        ) or {}
+                    OFFICE.set_gps_status(
+                        running=False,
+                        cars=int(result.get("cars") or 0),
+                        error=str(result.get("error") or "")[:200],
+                        date=d,
+                        message="Tayyor" if result.get("ok") else "Xato",
+                    )
+                    self.send_json({
+                        "ok": True,
+                        "queued": False,
+                        "date": d,
+                        "cars": int(result.get("cars") or 0),
+                        **OFFICE.gps_status_public(),
+                    })
+                except Exception as e:
+                    OFFICE.set_gps_status(running=False, error=str(e)[:200], message="Xato")
+                    self.send_json({"ok": False, "error": str(e)[:200]}, 500)
                 return
             job_id = enqueue_gps_sync(
                 OFFICE, DIRECTORY, date_val or None, sess.get("username") or "user"
@@ -3044,7 +3244,7 @@ def _gps_queue_runner(office, base_dir):
 
 def start_gps_worker(office, base_dir):
     global _gps_worker_started
-    if _gps_worker_started:
+    if is_serverless() or _gps_worker_started:
         return
     _gps_worker_started = True
 
@@ -3073,6 +3273,37 @@ def start_gps_worker(office, base_dir):
     threading.Thread(target=loop, daemon=True, name="gps-sync").start()
 
 
+_app_initialized = False
+_app_init_lock = threading.Lock()
+
+
+def init_app(base_dir=None):
+    """STORE/OFFICE yuklash — lokal server va Vercel serverless uchun."""
+    global STORE, OFFICE, _app_initialized
+    base_dir = base_dir or DIRECTORY
+    with _app_init_lock:
+        if _app_initialized:
+            return STORE, OFFICE
+        os.chdir(base_dir)
+        production_checks()
+        persist = make_persist(base_dir)
+        STORE = AuthStore(persist)
+        OFFICE = OfficeStore(persist, os.path.join(base_dir, "office-seed.json"))
+        seed_gps_from_env(OFFICE)
+        if not is_serverless():
+            start_gps_worker(OFFICE, base_dir)
+
+            def bootstrap_geozones():
+                try:
+                    OFFICE.learn_and_reprocess(base_dir)
+                except Exception as e:
+                    print("[geozone-bootstrap]", e)
+
+            threading.Thread(target=bootstrap_geozones, daemon=True, name="geozone-bootstrap").start()
+        _app_initialized = True
+    return STORE, OFFICE
+
+
 def main():
     global STORE, OFFICE
     parser = argparse.ArgumentParser(description="VaksinaMed GPS Monitor Server")
@@ -3082,20 +3313,7 @@ def main():
     if os.environ.get("PORT"):
         args.port = int(os.environ["PORT"])
 
-    os.chdir(args.dir)
-    persist = make_persist(args.dir)
-    STORE = AuthStore(persist)
-    OFFICE = OfficeStore(persist, os.path.join(args.dir, "office-seed.json"))
-    seed_gps_from_env(OFFICE)
-    start_gps_worker(OFFICE, args.dir)
-
-    def bootstrap_geozones():
-        try:
-            OFFICE.learn_and_reprocess(args.dir)
-        except Exception as e:
-            print("[geozone-bootstrap]", e)
-
-    threading.Thread(target=bootstrap_geozones, daemon=True, name="geozone-bootstrap").start()
+    init_app(args.dir)
 
     seed_note = ""
     if STORE.seeded:
@@ -3104,11 +3322,11 @@ def main():
   |  Parol: VM_SEED_PASS (.env)             |
   |  Birinchi ish: panelda parolni almashtiring! |"""
 
-    persist_line = "PostgreSQL (qoladi)" if persist.durable else "lokal fayl (Render da yo'qoladi)"
-    if not persist.durable and os.environ.get("PORT") and os.environ.get("RENDER"):
+    persist_line = "PostgreSQL (qoladi)" if STORE.persist_info().get("durable") else "lokal fayl"
+    if not STORE.persist_info().get("durable") and is_production():
         print(
-            "\n  [DIQQAT] Render da DATABASE_URL yo'q — ma'lumotlar deploydan keyin yo'qoladi.\n"
-            "  Persistent uchun PostgreSQL (DATABASE_URL) ulang.\n"
+            "\n  [DIQQAT] DATABASE_URL yo'q — ma'lumotlar saqlanmaydi.\n"
+            "  Vercel: Neon PostgreSQL ulang.\n"
         )
     import hr_api as _hr
 

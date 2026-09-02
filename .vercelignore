@@ -1,0 +1,12 @@
+data/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.git/
+terminals/
+agent-transcripts/
+check_*.py
+_test_*
+*.tmp
