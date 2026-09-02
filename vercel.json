@@ -1,15 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "installCommand": "pip install -r requirements.txt",
   "functions": {
-    "api/router.py": {
+    "app.py": {
       "maxDuration": 60,
-      "excludeFiles": "{data/**,scripts/**,terminals/**,agent-transcripts/**,*.html,*.js,*.css,fonts/**,logo/**,start.bat,Procfile,render.yaml,office-seed.json}"
+      "excludeFiles": "{data/**,scripts/**,.git/**,terminals/**,agent-transcripts/**,start.bat,Procfile,render.yaml,.vercelignore}"
     }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/router?path=$1" },
-    { "source": "/gps-proxy", "destination": "/api/router?path=gps-proxy" }
-  ]
+  }
 }
