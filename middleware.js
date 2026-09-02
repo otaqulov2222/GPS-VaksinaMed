@@ -17,10 +17,11 @@ const BLOCK = [
 ];
 
 export default function middleware(request) {
-  const path = request.nextUrl.pathname;
+  const path = new URL(request.url).pathname;
   if (BLOCK.some((re) => re.test(path))) {
     return new Response("Not Found", { status: 404 });
   }
+  return fetch(request);
 }
 
 export const config = {
