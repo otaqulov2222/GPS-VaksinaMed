@@ -10,12 +10,6 @@
     { "source": "/api/(.*)", "destination": "/api/router?path=$1" },
     { "source": "/gps-proxy", "destination": "/api/router?path=gps-proxy" }
   ],
-  "crons": [
-    {
-      "path": "/api/cron/gps-sync",
-      "schedule": "0 5 * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*\\.(html|js|css))",

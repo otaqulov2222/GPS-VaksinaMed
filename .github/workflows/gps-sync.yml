@@ -1,0 +1,34 @@
+# Vercel Hobby: GPS sync har 5 daqiqa (GitHub Actions).
+# GitHub repo → Settings → Secrets and variables → Actions:
+#   CRON_SECRET      — Vercel dagi bilan bir xil
+#   GPS_SYNC_URL     — https://SIZNING-APP.vercel.app/api/cron/gps-sync
+#
+# Pro rejimda Vercel Dashboard → Cron Jobs orqali ham qo'shish mumkin.
+
+name: GPS sync
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Trigger Vercel GPS sync
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          GPS_SYNC_URL: ${{ secrets.GPS_SYNC_URL }}
+        run: |
+          if [ -z "$CRON_SECRET" ] || [ -z "$GPS_SYNC_URL" ]; then
+            echo "CRON_SECRET yoki GPS_SYNC_URL GitHub Secrets da yo'q — sync o'tkazib yuborildi"
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/gps-sync.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${GPS_SYNC_URL}")
+          echo "HTTP ${code}"
+          cat /tmp/gps-sync.json
+          test "$code" = "200"
