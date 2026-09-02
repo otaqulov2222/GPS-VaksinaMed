@@ -39,7 +39,7 @@ def _resolve_path(raw_path: str) -> str:
 
 
 def _dispatch(method: str, raw_path: str, headers, body: bytes):
-    from server import dispatch_http
+    from vm_server import dispatch_http
 
     route_path = _resolve_path(raw_path)
     return dispatch_http(method, route_path, headers, body, _client_ip(headers))

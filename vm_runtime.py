@@ -15,7 +15,7 @@ def ensure_app():
     with _init_lock:
         if _ready:
             return
-        from server import init_app
+        from vm_server import init_app
 
         init_app()
         _ready = True

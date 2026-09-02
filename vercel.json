@@ -1,9 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
+  "installCommand": "pip install -r requirements.txt",
   "functions": {
     "api/router.py": {
-      "maxDuration": 300
+      "maxDuration": 60,
+      "excludeFiles": "{data/**,scripts/**,terminals/**,agent-transcripts/**,*.html,*.js,*.css,fonts/**,logo/**,start.bat,Procfile,render.yaml,office-seed.json}"
     }
   },
   "rewrites": [

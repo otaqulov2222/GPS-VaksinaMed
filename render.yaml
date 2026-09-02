@@ -10,7 +10,7 @@ services:
     plan: free
     region: frankfurt
     buildCommand: pip install -r requirements.txt
-    startCommand: python server.py
+    startCommand: python vm_server.py
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:

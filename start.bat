@@ -34,7 +34,7 @@ echo  Serverni to'xtatish uchun: Ctrl+C
 echo  ============================================
 echo.
 
-start /B python "%~dp0server.py" --port 8080 --dir "%~dp0"
+start /B python "%~dp0vm_server.py" --port 8080 --dir "%~dp0"
 
 timeout /t 3 /nobreak >nul
 

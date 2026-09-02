@@ -34,7 +34,7 @@ PUBLIC_PREFIX = ("/fonts/", "/logo/")
 BLOCKED_EXT = {".py", ".bat", ".md", ".txt", ".env"}
 BLOCKED_NAMES = {
     "users.json",
-    "server.py",
+    "vm_server.py",
     "start.bat",
     "office-seed.json",
     ".env",

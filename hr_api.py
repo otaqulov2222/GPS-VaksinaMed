@@ -75,7 +75,7 @@ def _status(score, problem_stops):
 
 
 def _collect_plates(office, date):
-    from server import compact_plate  # noqa: WPS433
+    from vm_server import compact_plate  # noqa: WPS433
 
     plates = []
     seen = set()
@@ -155,7 +155,7 @@ def hr_summary_row(office, date, plate):
 
 def hr_fleet(office, date=None):
     date = (date or today_tashkent()).strip()
-    from server import valid_date
+    from vm_server import valid_date
 
     if not valid_date(date):
         return None, "Sana noto'g'ri (YYYY-MM-DD)"
@@ -179,7 +179,7 @@ def hr_fleet(office, date=None):
 
 def hr_driver(office, plate, date=None):
     date = (date or today_tashkent()).strip()
-    from server import valid_date, compact_plate
+    from vm_server import valid_date, compact_plate
 
     if not valid_date(date):
         return None, "Sana noto'g'ri (YYYY-MM-DD)"
@@ -254,7 +254,7 @@ def hr_driver(office, plate, date=None):
 
 
 def hr_tasks(office, date=None, car=None):
-    from server import valid_date, compact_plate
+    from vm_server import valid_date, compact_plate
 
     items = office._task_items()
     out = []

@@ -1,6 +1,6 @@
 /** Maxfiy fayllarni ochiq internetdan yopish (Vercel Edge). */
 const BLOCK = [
-  /^\/server\.py$/i,
+  /^\/vm_server\.py$/i,
   /^\/gps_sync\.py$/i,
   /^\/hr_api\.py$/i,
   /^\/office-seed\.json$/i,
