@@ -9,14 +9,5 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/router?path=$1" },
     { "source": "/gps-proxy", "destination": "/api/router?path=gps-proxy" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*\\.(html|js|css))",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
-      ]
-    }
   ]
 }
