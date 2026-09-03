@@ -1977,7 +1977,9 @@ function cellStr(v) {
 
 function isJamiRow(row) {
   const t = cellStr(row && row[0]).toLowerCase();
-  return /жами|jami|итого/.test(t);
+  if (/жами|jami|итого|total/.test(t)) return true;
+  const line = (row || []).slice(0, 4).map(cellStr).join(' ').toLowerCase();
+  return /(?:^|\s)(жами|jami|итого)(?:\s|$)/.test(line);
 }
 
 function sheetToAoa(sheet) {
@@ -2332,21 +2334,53 @@ function mergeImportParsed(into, extra) {
   return out;
 }
 
+/** Vaksina kunlik Excel: Иш кунлари / Заправка номи / ГАЗ(М3) / БЕНЗИН */
+function isWaybillSheet(aoa) {
+  const head = (aoa || []).slice(0, 14).map(r => (r || []).map(cellStr).join(' ')).join(' ').toLowerCase();
+  return /иш\s*кун|заправка\s*номи|операция\s*рақам|ёқилғи расход|корпоратив пластик|бир кунда юрилган/.test(head);
+}
+
+function isColumnIndexRow(row) {
+  let hits = 0;
+  for (let c = 0; c < 12; c++) {
+    if (n(row[c]) === c + 1) hits += 1;
+  }
+  return hits >= 8;
+}
+
+function isWaybillSubHeaderRow(row) {
+  const line = (row || []).map(cellStr).join(' ').toLowerCase();
+  if (!line) return false;
+  if (/газ\s*\(м\s*3\)|бензин\s*\(литр/.test(line)) return true;
+  if (/иш\s*кун|заправка\s*номи|операция/.test(line)) return true;
+  return false;
+}
+
 function rowHasWaybillData(row) {
   if (!row) return false;
-  if (isJamiRow(row)) return false;
+  if (isJamiRow(row) || isColumnIndexRow(row) || isWaybillSubHeaderRow(row)) return false;
   const day = n(row[0]);
-  if (day < 1 || day > 31) return false;
-  return n(row[3]) || n(row[4]) || n(row[5]) || n(row[6]) || n(row[9]) || n(row[10]) || cellStr(row[2]);
+  const hasDay = day >= 1 && day <= 31;
+  const hasFuel = n(row[3]) || n(row[4]) || cellStr(row[2]);
+  const hasKm = n(row[9]) || n(row[10]);
+  const hasBal = (row[5] !== '' && row[5] != null) || (row[6] !== '' && row[6] != null);
+  // Kun raqamisiz = faqat zapravka (stansiya yoki operatsiya №). Jami qatori o'tmasin.
+  if (!hasDay) return !!(cellStr(row[2]) || (n(row[1]) > 100 && (n(row[3]) || n(row[4]))));
+  return !!(hasFuel || hasKm || hasBal);
 }
 
 function findWaybillStart(aoa) {
   for (let i = 0; i < Math.min(30, aoa.length); i++) {
     const line = (aoa[i] || []).map(cellStr).join(' ').toLowerCase();
-    if (/иш\s*куни|операция|заправка\s*номи|yurgan|spidometr/.test(line)) return i + 1;
+    if (/иш\s*кун|операция|заправка\s*номи|yurgan|spidometr/.test(line)) {
+      for (let j = i + 1; j < Math.min(i + 8, aoa.length); j++) {
+        if (rowHasWaybillData(aoa[j]) && n(aoa[j][0]) >= 1 && n(aoa[j][0]) <= 31) return j;
+      }
+      return i + 1;
+    }
   }
   for (let i = 0; i < aoa.length; i++) {
-    if (rowHasWaybillData(aoa[i])) return i;
+    if (rowHasWaybillData(aoa[i]) && n(aoa[i][0]) >= 1 && n(aoa[i][0]) <= 31) return i;
   }
   return -1;
 }
@@ -2354,20 +2388,21 @@ function findWaybillStart(aoa) {
 function inferImportMode(row, car) {
   const gasIn = n(row[3]);
   const benIn = n(row[4]);
-  const km = n(row[9]);
-  const gasKm = n(row[10]);
+  // Excel: col10 = gaz km, col11 = benzin km (0-index: 9 / 10)
+  const gasKm = n(row[9]);
+  const benKm = n(row[10]);
   const gasUsed = n(row[11]);
   const benUsed = n(row[12]);
   const ft = car.fuelType || '';
   if (ft === 'dizel') return 'dizel';
   if (ft === 'dizel_gaz') {
-    if ((gasIn > 0 || gasKm > 0 || gasUsed > 0) && (benIn > 0 || benUsed > 0)) return 'aralash';
-    if (benIn > 0 || benUsed > 0) return 'dizel';
+    if ((gasIn > 0 || gasKm > 0 || gasUsed > 0) && (benIn > 0 || benKm > 0 || benUsed > 0)) return 'aralash';
+    if (benIn > 0 || benKm > 0 || benUsed > 0) return 'dizel';
     return 'gaz';
   }
-  if ((gasIn > 0 || gasKm > 0 || gasUsed > 0) && (benIn > 0 || benUsed > 0)) return 'aralash';
-  if (km > 0 && gasKm > 0 && Math.abs(km - gasKm) > 0.5 && (benUsed > 0 || benIn > 0)) return 'aralash';
-  if (benIn > 0 || benUsed > 0) return 'benzin';
+  if ((gasIn > 0 || gasKm > 0 || gasUsed > 0) && (benIn > 0 || benKm > 0 || benUsed > 0)) return 'aralash';
+  if (gasKm > 0 && benKm > 0) return 'aralash';
+  if (benIn > 0 || benKm > 0 || benUsed > 0) return 'benzin';
   if (gasIn > 0 || gasKm > 0 || gasUsed > 0) return 'gaz';
   return ft === 'benzin' ? 'benzin' : 'gaz';
 }
@@ -2378,27 +2413,74 @@ function parseWaybillAoa(aoa, carHint) {
   const days = {};
   const params = {};
   let firstFilled = true;
+  let lastDay = 0;
+  const diesel = carHint && (carHint.fuelType === 'dizel' || carHint.fuelType === 'dizel_gaz');
+
   for (let i = start; i < aoa.length; i++) {
     const row = aoa[i] || [];
     if (isJamiRow(row)) break;
+    if (isColumnIndexRow(row) || isWaybillSubHeaderRow(row)) continue;
     if (!rowHasWaybillData(row)) continue;
-    const d = n(row[0]);
+
+    let d = n(row[0]);
+    if (d < 1 || d > 31) {
+      if (!lastDay) continue;
+      d = lastDay; // kun raqamisiz = oldingi kunga qo'shimcha zapravka
+    } else {
+      lastDay = d;
+    }
+
+    const gasIn = n(row[3]);
+    const benzinIn = n(row[4]);
+    const gKm = n(row[9]);
+    const bKm = n(row[10]);
+    const station = cellStr(row[2]);
+    const prev = days[d] || {};
+
     const day = {
-      station: cellStr(row[2]),
-      gasIn: n(row[3]),
-      benzinIn: n(row[4]),
-      km: n(row[9]),
-      mode: inferImportMode(row, carHint || {})
+      station: station || prev.station || '',
+      gasIn: n(prev.gasIn) + gasIn,
+      benzinIn: n(prev.benzinIn) + benzinIn,
+      km: n(prev.km),
+      mode: prev.mode || 'gaz',
+      extra: n(prev.extra) + n(row[13])
     };
-    if (n(row[10]) || row[10] === 0 || row[10] === '0') day.gasKm = n(row[10]);
-    if (n(row[13])) day.extra = n(row[13]);
+    if (prev.station && station && prev.station !== station) {
+      day.station = prev.station + ' + ' + station;
+    }
+    if (prev.gasKm != null) day.gasKm = prev.gasKm;
+
+    // Excel: 10-ustun gaz km, 11-ustun benzin km → jami = ikkalasi yig'indisi
+    if (gKm > 0 || bKm > 0) {
+      day.km = gKm + bKm;
+      if (gKm > 0 && bKm > 0) {
+        day.mode = 'aralash';
+        day.gasKm = gKm;
+      } else if (bKm > 0) {
+        day.mode = diesel ? 'dizel' : 'benzin';
+        delete day.gasKm;
+      } else {
+        day.mode = 'gaz';
+        delete day.gasKm;
+      }
+    }
+
+    if (!(gKm > 0 || bKm > 0)) {
+      if (n(day.gasIn) && n(day.benzinIn)) day.mode = 'aralash';
+      else if (n(day.benzinIn) && !n(day.gasIn)) day.mode = diesel ? 'dizel' : 'benzin';
+      else if (n(day.gasIn)) day.mode = 'gaz';
+    }
+
     if (day.km) day.kmSrc = 'user';
+
     if (firstFilled) {
       if (row[5] !== '' && row[5] != null) params.gasStart = n(row[5]);
       if (row[6] !== '' && row[6] != null) params.benzinStart = n(row[6]);
       if (n(row[7])) params.gasNorm = n(row[7]);
       if (n(row[8])) params.benzinNorm = n(row[8]);
-      firstFilled = false;
+      if (params.gasStart != null || params.benzinStart != null || params.gasNorm || params.benzinNorm) {
+        firstFilled = false;
+      }
     }
     days[d] = day;
   }
@@ -2490,11 +2572,14 @@ function parseExcelWorkbookAll(wb, fileName) {
     }
     const hintPlate = resolveImportPlate(name, { meta: { plate: detectPlateFromAoa(aoa) } }) || plateByCode(name);
     const carHint = hintPlate ? getCar(hintPlate) : {};
-    const codeSheet = /\d{3}/.test(name);
-    if (isMonthlyFuelReport(aoa) || codeSheet) {
+    // Avval kunlik putevoy (931/949...), keyin oylik hisobot. Kodli sheetni oylik deb o'qimaslik!
+    if (isWaybillSheet(aoa)) {
+      parsed = parseWaybillAoa(aoa, carHint);
+    } else if (isMonthlyFuelReport(aoa)) {
       parsed = parseMonthlyFuelReportAoa(aoa, name);
     }
     if (!parsed) parsed = parseWaybillAoa(aoa, carHint);
+    if (!parsed && !isWaybillSheet(aoa)) parsed = parseMonthlyFuelReportAoa(aoa, name);
     if (!parsed) continue;
     const plate = resolveImportPlate(name, parsed) || hintPlate;
     if (!plate) continue;
@@ -2614,6 +2699,14 @@ function importPreviewText(pack) {
   ];
   if (sumGas) bits.push('gaz: ' + fmtNum(sumGas) + ' m³');
   if (sumBen) bits.push('benzin: ' + fmtNum(sumBen) + ' l');
+  // Himoya: bitta mashinaga oyiga 3000+ m³ — eski xato import belgisi
+  const bad = pack.cars.filter(c => {
+    const g = Object.values(c.parsed.days || {}).reduce((s, d) => s + n(d.gasIn), 0);
+    return g > 3000;
+  });
+  if (bad.length) {
+    bits.push('DIQQAT: ' + bad.length + ' mashinada gaz juda katta — faylni tekshiring');
+  }
   const codes = pack.cars.map(c => plateCode(c.plate)).filter(Boolean).slice(0, 12);
   if (codes.length) bits.push('kodlar: ' + codes.join(', ') + (pack.cars.length > 12 ? '…' : ''));
   return bits.join(' · ');
@@ -2752,11 +2845,20 @@ async function runExcelImportPack(pack) {
 
 async function applyExcelImportModal() {
   if (!IMPORT.pack || !IMPORT.pack.cars.length) { toast('Avval Excel fayl tanlang'); return; }
+  const sumGas = IMPORT.pack.cars.reduce((s, c) => {
+    return s + Object.values(c.parsed.days || {}).reduce((a, d) => a + n(d.gasIn), 0);
+  }, 0);
+  const perCar = sumGas / Math.max(1, IMPORT.pack.cars.length);
+  if (perCar > 3000 || sumGas > 50000) {
+    toast('Gaz miqdori juda katta — Excel noto\'g\'ri o\'qilgandek. Yangilang va qayta tanlang.');
+    return;
+  }
   const mon = Number(document.getElementById('import-month').value);
   const year = document.getElementById('import-year').value;
   const label = (UZ_M_LOW[mon - 1] || '') + ' ' + year;
   const ok = await showConfirmModal(
     'Excel fayldan aniqlandi: «' + label + '».\n' +
+    importPreviewText(IMPORT.pack) + '\n\n' +
     'Shu oy to\'ldiriladi (mavjud ma\'lumot almashtiriladi). Davom etamizmi?'
   );
   if (!ok) return;
