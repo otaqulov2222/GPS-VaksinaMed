@@ -32,6 +32,12 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
+      - name: Show sync script version
+        run: |
+          echo "COMMIT=$(git rev-parse --short HEAD)"
+          echo "--- run_gps_cron.py (birinchi 35 qator) ---"
+          sed -n '1,35p' scripts/run_gps_cron.py
+
       - name: Run GPS sync
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

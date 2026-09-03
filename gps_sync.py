@@ -1087,7 +1087,9 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
             return 9999.0
         return budget - (time.time() - t0)
 
-    cfg = office.gps_config_internal()
+    cfg = office.gps_config_internal() if office is not None else None
+    if office is None:
+        return {"ok": False, "error": "OFFICE None — init_app chaqirilmagan"}
     if not cfg.get("configured"):
         return {"ok": False, "error": "GPS sozlamasi yo'q"}
     host = cfg.get("host") or "http://bms1.gpsavto.uz"
