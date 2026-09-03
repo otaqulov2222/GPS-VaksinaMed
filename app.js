@@ -1089,15 +1089,17 @@ function selectDate(ds) {
     renderDriverTabs();
     refreshUI();
     if (window.VMOffice) {
-        VMOffice.loadReportIfNeeded(ds).then(() => refreshDayKm(ds));
+        // Server hisobot asosiy — brauzer faqat bo'sh km ni to'ldiradi (23.66 chron bilan buzmasin)
+        VMOffice.loadReportIfNeeded(ds).then(() => refreshDayKm(ds, { onlyEmpty: true }));
     } else {
         refreshDayKm(ds);
     }
 }
 
-async function refreshDayKm(dateVal) {
+async function refreshDayKm(dateVal, opts) {
     if (!dateVal || !hasGpsConfig() || !window.wialonGPS) return;
     if (STATE.kmFixBusy) return;
+    const onlyEmpty = !!(opts && opts.onlyEmpty);
     const day = STATE.data[dateVal];
     if (!day || !Object.keys(day).length) return;
     STATE.kmFixBusy = true;
@@ -1111,12 +1113,10 @@ async function refreshDayKm(dateVal) {
             if (!drv || !day[drv.car] || !day[drv.car].stats) continue;
             const st = day[drv.car].stats;
             const oldKm = Number(st.probeg) || 0;
+            if (onlyEmpty && oldKm > 0.05) continue;
             let metrics = null;
             try {
-                metrics = await wialonGPS.reportDayMetrics(unit.id, timeFrom, timeTo);
-                if (!metrics || !metrics.km) {
-                    metrics = await wialonGPS.getTripMetrics(unit.id, timeFrom, timeTo);
-                }
+                metrics = await wialonGPS.dayMetrics(unit.id, timeFrom, timeTo);
             } catch (e) {}
             if (!metrics || !(metrics.km || metrics.trips || metrics.maxSpeed)) continue;
             if (metrics.km) {
@@ -2709,7 +2709,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderDriverTabs();
     refreshUI();
     setGpsUi(hasGpsConfig() ? 'on' : 'off');
-    refreshDayKm(STATE.currentDate);
+    // Server sync mavjud bo'lsa brauzer faqat bo'sh km ni to'ldiradi
+    refreshDayKm(STATE.currentDate, { onlyEmpty: !!window.VMOffice });
     
     // ── Avtomatik GPS (bootstrap dan keyin, UI bloklamasdan) ───────────────
     setTimeout(async () => {

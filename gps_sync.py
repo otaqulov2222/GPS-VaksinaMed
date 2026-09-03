@@ -193,9 +193,17 @@ class WialonClient:
         return data
 
     def clone_session(self):
-        """Parallel worker uchun bir xil sid (alohida HTTP)."""
-        c = WialonClient(self.host, token=self.token, user=self.user, password=self.password, timeout=self.timeout)
-        c.sid = self.sid
+        """Parallel worker uchun ALOHIDA sid.
+        Bitta sid da report/exec_report poyga qilsa km chalkashadi (23.66 va h.k.).
+        """
+        c = WialonClient(
+            self.host,
+            token=self.token,
+            user=self.user,
+            password=self.password,
+            timeout=self.timeout,
+        )
+        c.login()
         c._tpl = self._tpl
         return c
 
@@ -468,45 +476,57 @@ class WialonClient:
         elif not stats["stoyanok"]:
             stats["stoyanok"] = 0
 
-        # Chronologiyadan faqat to'xtashlar. Km/tezlik — trip manbalaridan.
-        # Aks holda chronologiya «пробег» Boomerang «в поездках»dan farq qiladi.
+        # Chronologiyadan FAQAT to'xtashlar.
+        # Km/tezlik chron «пробег»dan OLINMAYDI — 23.66 kabi xato qiymat shu yerdan kelgan.
         stats["probeg"] = 0
         stats["maxSpeed"] = 0
         stats["avgSpeed"] = 0
         stats["poezdok"] = 0
-
-        # Chronologiya ichidagi «поездк» jadvalidan km (agar bor bo'lsa)
-        self.apply_trip_table_km(loaded, stats)
+        stats.pop("_kmSrc", None)
 
         try:
             self._call("report/cleanup_result", {})
         except Exception:
             pass
 
-        # 1) Отчёт по поездкам — Boomerang UI bilan bir xil (asosiy)
+        # 1) unit/get_trips — tez zaxira
+        trip_live = self.fetch_unit_trips_stats(unit_id, date_str)
+        if trip_live:
+            if trip_live.get("probeg"):
+                stats["probeg"] = float(trip_live["probeg"])
+                stats["_kmSrc"] = "get_trips"
+            if trip_live.get("maxSpeed"):
+                stats["maxSpeed"] = float(trip_live["maxSpeed"])
+            if trip_live.get("avgSpeed"):
+                stats["avgSpeed"] = trip_live["avgSpeed"]
+            if trip_live.get("poezdok"):
+                stats["poezdok"] = trip_live["poezdok"]
+
+        # 2) Отчёт по поездкам — Boomerang «Пробег в поездках» (asosiy)
         trip_stats = self.fetch_trip_report_stats(unit_id, date_str)
+        if not trip_stats:
+            trip_stats = self.fetch_trip_report_stats(unit_id, date_str)  # 1 marta qayta
         if trip_stats:
             trip_stats = dict(trip_stats)
             if stops:
                 trip_stats.pop("stoyanok", None)
+            live_km = float(stats.get("probeg") or 0)
+            rep_km = float(trip_stats.get("probeg") or 0)
+            src = str(trip_stats.get("_kmSrc") or "")
+            trusted = src in ("trips", "trip_stats")
+            # Ishonchsiz/past hisobot get_trips ni buzmasin (23.66 chron chalkashligi)
+            if rep_km > 0 and live_km > 0 and not trusted and rep_km + 0.5 < live_km:
+                trip_stats.pop("probeg", None)
+            elif not rep_km and live_km:
+                trip_stats.pop("probeg", None)
             stats = self.merge_stats(stats, trip_stats)
-
-        # 2) unit/get_trips — faqat bo'sh yoki aniq kattaroq bo'lsa (pastga yozmaslik!)
-        trip_live = self.fetch_unit_trips_stats(unit_id, date_str)
-        if trip_live:
-            live_km = float(trip_live.get("probeg") or 0)
-            cur_km = float(stats.get("probeg") or 0)
-            if live_km > 0 and (cur_km <= 0 or live_km > cur_km + 0.5):
-                stats["probeg"] = live_km
-                stats["_kmSrc"] = "get_trips"
-            if trip_live.get("maxSpeed"):
+            if trip_stats.get("probeg"):
+                stats["_kmSrc"] = src or "trip_report"
+            # Tezlik — eng yuqori
+            if trip_live and trip_live.get("maxSpeed"):
                 ms = float(trip_live["maxSpeed"])
                 if ms > float(stats.get("maxSpeed") or 0):
                     stats["maxSpeed"] = ms
-            if trip_live.get("avgSpeed") and not stats.get("avgSpeed"):
-                stats["avgSpeed"] = trip_live["avgSpeed"]
-            if trip_live.get("poezdok") and not stats.get("poezdok"):
-                stats["poezdok"] = trip_live["poezdok"]
 
         self.cleanup_stats(stats)
         return {"stats": stats, "stops": stops}

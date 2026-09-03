@@ -467,7 +467,9 @@ class WialonGPSClient {
 
     async reportDayMetrics(unitId, timeFrom, timeTo) {
         const tpls = await this.resolveReportTemplates();
-        const tpl = tpls.trip || tpls.chrono || tpls.any;
+        // Faqat «Отчёт по поездкам» — chronologiya km (23.66) ga HECH qachon tushilmaydi
+        const tpl = tpls.trip;
+        if (!tpl) return null;
         const execResp = await this.sendRequest('report/exec_report', {
             reportResourceId: tpl.resourceId,
             reportTemplateId: tpl.templateId,
@@ -492,7 +494,8 @@ class WialonGPSClient {
             totalStop: s.totalStop || '—',
             motoChas: s.motoChas || '—',
             gas: s.gas || 0,
-            benzin: s.benzin || 0
+            benzin: s.benzin || 0,
+            _kmSrc: s._kmSrc || ''
         };
     }
 
@@ -550,12 +553,17 @@ class WialonGPSClient {
         } catch (e) {}
 
         if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) {
-            const km = (fromReport.km && fromReport.km > 0)
-                ? fromReport.km
-                : (fromTrips && fromTrips.km) || 0;
+            const repKm = Number(fromReport.km) || 0;
+            const liveKm = Number(fromTrips && fromTrips.km) || 0;
+            // Hisobot ishonchli (trip jadvali) — o'zi; aks holda get_trips pastga yozmasin
+            let km = repKm;
+            if (!km) km = liveKm;
+            else if (liveKm > repKm + 0.5 && fromReport._kmSrc !== 'trips' && fromReport._kmSrc !== 'trip_stats') {
+                km = liveKm;
+            }
             return {
-                km,
-                maxSpeed: fromReport.maxSpeed || (fromTrips && fromTrips.maxSpeed) || 0,
+                km: this.roundKm(km),
+                maxSpeed: Math.max(fromReport.maxSpeed || 0, (fromTrips && fromTrips.maxSpeed) || 0),
                 avgSpeed: fromReport.avgSpeed || (fromTrips && fromTrips.avgSpeed) || 0,
                 trips: fromReport.trips || (fromTrips && fromTrips.trips) || 0,
                 stops: fromReport.stops || 0,
