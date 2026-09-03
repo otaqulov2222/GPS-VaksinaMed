@@ -185,6 +185,26 @@ ALLOWED_GPS_HOSTS = [
 ]
 
 
+def normalize_gps_host(host):
+    """Faqat ishonchli Boomerang host. test.* → bms1."""
+    h = str(host or "").strip() or "http://bms1.gpsavto.uz"
+    if not re.match(r"^https?://", h, re.I):
+        h = "http://" + h
+    h = h.rstrip("/")
+    try:
+        from urllib.parse import urlparse
+
+        p = urlparse(h)
+        name = (p.hostname or "").lower()
+    except Exception:
+        name = ""
+    if name in ("test.gpsavto.uz", "gpsavto.uz", "www.gpsavto.uz"):
+        return "http://bms1.gpsavto.uz"
+    if name and name not in ALLOWED_GPS_HOSTS:
+        return "http://bms1.gpsavto.uz"
+    return h
+
+
 def now_ts():
     return int(time.time())
 
@@ -1083,7 +1103,7 @@ class OfficeStore:
                 data = {}
             token = str(data.get("token") or "")
             user = str(data.get("user") or "")
-            host = str(data.get("host") or "http://bms1.gpsavto.uz")
+            host = normalize_gps_host(data.get("host") or "http://bms1.gpsavto.uz")
             return {
                 "configured": bool(
                     host
@@ -1110,7 +1130,7 @@ class OfficeStore:
 
     def save_gps_config(self, body, saved_by=""):
         body = body or {}
-        host = str(body.get("host") or "http://bms1.gpsavto.uz").strip()[:120]
+        host = normalize_gps_host(body.get("host") or "http://bms1.gpsavto.uz")[:120]
         token = re.sub(r"\s+", "", str(body.get("token") or "")).strip()[:800]
         user = str(body.get("user") or "").strip()[:80]
         password = str(body.get("password") or "").strip()[:120]

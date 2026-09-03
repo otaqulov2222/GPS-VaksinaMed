@@ -460,26 +460,41 @@ class WialonClient:
         elif not stats["stoyanok"]:
             stats["stoyanok"] = 0
 
-        # Chronologiya ichidagi «поездк» jadvalidan km (Boomerang «Пробег в поездках»)
+        # Chronologiyadan faqat to'xtashlar. Km/tezlik — trip manbalaridan.
+        # Aks holda chronologiya «пробег» Boomerang «в поездках»dan farq qiladi.
+        stats["probeg"] = 0
+        stats["maxSpeed"] = 0
+        stats["avgSpeed"] = 0
+        stats["poezdok"] = 0
+
+        # Chronologiya ichidagi «поездк» jadvalidan km (agar bor bo'lsa)
         self.apply_trip_table_km(loaded, stats)
 
         try:
             self._call("report/cleanup_result", {})
         except Exception:
             pass
+
+        # 1) unit/get_trips
+        trip_live = self.fetch_unit_trips_stats(unit_id, date_str)
+        if trip_live:
+            if trip_live.get("probeg"):
+                stats["probeg"] = trip_live["probeg"]
+                stats["_kmSrc"] = "get_trips"
+            if trip_live.get("maxSpeed"):
+                stats["maxSpeed"] = trip_live["maxSpeed"]
+            if trip_live.get("avgSpeed"):
+                stats["avgSpeed"] = trip_live["avgSpeed"]
+            if trip_live.get("poezdok"):
+                stats["poezdok"] = trip_live["poezdok"]
+
+        # 2) Отчёт по поездкам — eng ishonchli (Boomerang UI bilan bir xil)
         trip_stats = self.fetch_trip_report_stats(unit_id, date_str)
         if trip_stats:
-            # stoyanok ni trip hisobotidan ustidan yozmaslik — chronologiya asosiy
             trip_stats = dict(trip_stats)
             if stops:
                 trip_stats.pop("stoyanok", None)
             stats = self.merge_stats(stats, trip_stats)
-
-        # Rasmiy manba: unit/get_trips — Boomerang «Пробег в поездках» bilan bir xil
-        trips_km = self.fetch_unit_trips_km(unit_id, date_str)
-        if trips_km and trips_km > 0:
-            stats["probeg"] = trips_km
-            stats["_kmSrc"] = "get_trips"
 
         self.cleanup_stats(stats)
         return {"stats": stats, "stops": stops}
@@ -496,8 +511,11 @@ class WialonClient:
                 except (TypeError, ValueError):
                     pass
 
-    def fetch_unit_trips_km(self, unit_id, date_str):
-        """Wialon unit/get_trips — поездкаlar masofasi (m yoki km)."""
+    def fetch_unit_trips_stats(self, unit_id, date_str):
+        """
+        Wialon unit/get_trips → Boomerang «Отчёт по поездкам» asosiy raqamlari.
+        distance odatda METR; ba'zi akkauntlarda km bo'lishi mumkin.
+        """
         t_from, t_to = day_bounds_tashkent(date_str)
         try:
             raw = self._call(
@@ -505,16 +523,19 @@ class WialonClient:
                 {"itemId": unit_id, "timeFrom": t_from, "timeTo": t_to},
             )
         except Exception:
-            return 0.0
+            return None
         if isinstance(raw, dict):
-            lst = raw.get("trips") or raw.get("units") or []
+            lst = raw.get("trips") or []
         elif isinstance(raw, list):
             lst = raw
         else:
             lst = []
         if not lst:
-            return 0.0
+            return None
         distances = []
+        max_speed = 0.0
+        avg_acc = 0.0
+        avg_n = 0
         for tr in lst:
             if not isinstance(tr, dict):
                 continue
@@ -524,18 +545,45 @@ class WialonClient:
             try:
                 d = float(d)
             except (TypeError, ValueError):
-                continue
+                d = 0.0
             if d > 0:
                 distances.append(d)
-        if not distances:
-            return 0.0
-        raw_sum = sum(distances)
-        max_d = max(distances)
-        all_whole = all(abs(x - round(x)) < 1e-9 for x in distances)
-        # Wialon ko'pincha metrda beradi
-        in_meters = max_d >= 1000 or (raw_sum >= 300 and all_whole)
-        km = raw_sum / 1000.0 if in_meters else raw_sum
-        return round(km + 1e-12, 2)
+            try:
+                ms = float(tr.get("max_speed") or tr.get("maxSpeed") or 0)
+            except (TypeError, ValueError):
+                ms = 0.0
+            if ms > max_speed:
+                max_speed = ms
+            try:
+                aspd = float(tr.get("avg_speed") or tr.get("avgSpeed") or 0)
+            except (TypeError, ValueError):
+                aspd = 0.0
+            if aspd > 0:
+                avg_acc += aspd
+                avg_n += 1
+        km = 0.0
+        if distances:
+            raw_sum = sum(distances)
+            as_m = raw_sum / 1000.0
+            as_km = raw_sum
+            # Kunlik Labo/furgon: 1..800 km oralig'i ishonchli
+            if 1.0 <= as_m <= 800.0:
+                km = as_m
+            elif 1.0 <= as_km <= 800.0:
+                km = as_km
+            else:
+                km = as_m if as_m >= 1.0 else as_km
+        out = {
+            "probeg": round(km + 1e-12, 2) if km > 0 else 0.0,
+            "maxSpeed": round(max_speed + 1e-12, 1) if max_speed > 0 else 0.0,
+            "avgSpeed": round((avg_acc / avg_n) + 1e-12, 1) if avg_n else 0.0,
+            "poezdok": len(lst),
+        }
+        return out if (out["probeg"] or out["maxSpeed"] or out["poezdok"]) else None
+
+    def fetch_unit_trips_km(self, unit_id, date_str):
+        st = self.fetch_unit_trips_stats(unit_id, date_str)
+        return float((st or {}).get("probeg") or 0)
 
     def apply_trip_table_km(self, loaded, stats):
         """unit_trips / поездки jadvali jami — Boomerang «Пробег в поездках»."""
@@ -585,6 +633,7 @@ class WialonClient:
 
     def apply_report_stats(self, pairs, stats):
         best_pref, best_km = -1, 0.0
+        best_max_pref, best_max = -1, 0.0
         for pair in pairs or []:
             if not isinstance(pair, (list, tuple)) or len(pair) < 2:
                 continue
@@ -597,8 +646,11 @@ class WialonClient:
                 km = self.km_from_wialon(num, k, txt)
                 if km > 0 and (pref > best_pref or (pref == best_pref and km > best_km)):
                     best_pref, best_km = pref, km
-            if "макс" in k and ("скорост" in k or "speed" in k or "tezlik" in k) and num > 0:
-                stats["maxSpeed"] = round(num, 1)
+            if ("скорост" in k or "speed" in k or "tezlik" in k) and ("макс" in k or "max" in k) and num > 0:
+                # «Макс. скорость в поездках» ustuvor
+                mpref = 3 if ("поезд" in k or "trip" in k) else 1
+                if mpref > best_max_pref or (mpref == best_max_pref and num > best_max):
+                    best_max_pref, best_max = mpref, num
             if ("средн" in k or "avg" in k or "average" in k) and ("скорост" in k or "speed" in k or "tezlik" in k) and num > 0:
                 stats["avgSpeed"] = round(num, 1)
             if ("количество" in k or "count" in k or "soni" in k) and ("поезд" in k or "trip" in k) and num > 0:
@@ -620,29 +672,25 @@ class WialonClient:
                 elif re.search(r"л\b|литр|бензин|дизел|diesel|petrol", blob, re.I):
                     stats["benzin"] = num
         if best_km > 0:
-            # Trips jadvalidan km bo'lsa — pastroq pref bilan ezmaslik
             if stats.get("_kmSrc") == "trips" and best_pref < 3:
                 pass
             else:
                 stats["probeg"] = best_km
                 if best_pref >= 3:
                     stats["_kmSrc"] = "trip_stats"
+        if best_max > 0:
+            stats["maxSpeed"] = round(best_max, 1)
 
     def merge_stats(self, base, extra):
-        """Boomerang «Отчёт по поездкам» / trips jadvali km ustuvor."""
+        """Boomerang «Отчёт по поездкам» — barcha asosiy metrikalar ustuvor."""
         if not extra:
             return base
         out = dict(base or {})
-        for key in ("maxSpeed", "avgSpeed", "poezdok"):
+        for key in ("probeg", "maxSpeed", "avgSpeed", "poezdok"):
             if extra.get(key):
                 out[key] = extra[key]
-        ep = float(extra.get("probeg") or 0)
-        bp = float(out.get("probeg") or 0)
-        if ep > 0:
-            if extra.get("_kmSrc") in ("trips", "trip_stats") or not bp or ep >= bp:
-                out["probeg"] = ep
-                if extra.get("_kmSrc"):
-                    out["_kmSrc"] = extra["_kmSrc"]
+        if extra.get("probeg") and extra.get("_kmSrc"):
+            out["_kmSrc"] = extra["_kmSrc"]
         if extra.get("stoyanok") and not out.get("stoyanok"):
             out["stoyanok"] = extra["stoyanok"]
         for key in ("motoChas", "totalStop"):

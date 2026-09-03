@@ -375,16 +375,17 @@ class WialonGPSClient {
     kmFromTripList(list) {
         if (!list || !list.length) return 0;
         let rawSum = 0;
-        let maxD = 0;
         list.forEach(tr => {
             const d = this.tripDistanceMeters(tr);
-            rawSum += d;
-            if (d > maxD) maxD = d;
+            if (d > 0) rawSum += d;
         });
         if (!rawSum) return 0;
-        const allWhole = list.every(tr => Number.isInteger(this.tripDistanceMeters(tr)));
-        const inMeters = maxD >= 1000 || (rawSum >= 300 && allWhole);
-        return this.roundKm(inMeters ? rawSum / 1000 : rawSum);
+        const asM = rawSum / 1000;
+        const asKm = rawSum;
+        // Kunlik: 1..800 km — metr yoki km ekanini aniqlash
+        if (asM >= 1 && asM <= 800) return this.roundKm(asM);
+        if (asKm >= 1 && asKm <= 800) return this.roundKm(asKm);
+        return this.roundKm(asM >= 1 ? asM : asKm);
     }
 
     async resolveReportTemplates() {
@@ -525,35 +526,36 @@ class WialonGPSClient {
     }
 
     async dayMetrics(unitId, timeFrom, timeTo) {
-        // 1) unit/get_trips — Boomerang «Пробег в поездках» bilan bir xil
-        let fromTrips = null;
-        try {
-            fromTrips = await this.officialDayMetrics(unitId, timeFrom, timeTo);
-        } catch (e) {}
-        // 2) Hisobot (Отчёт по поездкам) — tezlik / poezdka soni uchun
+        // 1) Отчёт по поездкам (Boomerang UI bilan bir xil)
         let fromReport = null;
         try {
             fromReport = await this.reportDayMetrics(unitId, timeFrom, timeTo);
         } catch (e) {
             console.warn('report stats:', e);
         }
-        if (fromTrips && fromTrips.km) {
-            if (fromReport) {
-                return {
-                    km: fromTrips.km,
-                    maxSpeed: fromReport.maxSpeed || fromTrips.maxSpeed || 0,
-                    avgSpeed: fromReport.avgSpeed || fromTrips.avgSpeed || 0,
-                    trips: fromTrips.trips || fromReport.trips || 0,
-                    stops: fromReport.stops || 0,
-                    totalStop: fromReport.totalStop || '—',
-                    motoChas: fromReport.motoChas || '—',
-                    gas: fromReport.gas || 0,
-                    benzin: fromReport.benzin || 0
-                };
-            }
-            return fromTrips;
+        // 2) unit/get_trips — zaxira / to'ldirish
+        let fromTrips = null;
+        try {
+            fromTrips = await this.officialDayMetrics(unitId, timeFrom, timeTo);
+        } catch (e) {}
+
+        if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) {
+            const km = (fromReport.km && fromReport.km > 0)
+                ? fromReport.km
+                : (fromTrips && fromTrips.km) || 0;
+            return {
+                km,
+                maxSpeed: fromReport.maxSpeed || (fromTrips && fromTrips.maxSpeed) || 0,
+                avgSpeed: fromReport.avgSpeed || (fromTrips && fromTrips.avgSpeed) || 0,
+                trips: fromReport.trips || (fromTrips && fromTrips.trips) || 0,
+                stops: fromReport.stops || 0,
+                totalStop: fromReport.totalStop || '—',
+                motoChas: fromReport.motoChas || '—',
+                gas: fromReport.gas || 0,
+                benzin: fromReport.benzin || 0
+            };
         }
-        if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) return fromReport;
+        if (fromTrips && (fromTrips.km || fromTrips.trips || fromTrips.maxSpeed)) return fromTrips;
         return null;
     }
 
