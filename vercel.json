@@ -6,5 +6,11 @@
       "maxDuration": 60,
       "excludeFiles": "{data/**,scripts/**,.git/**,terminals/**,agent-transcripts/**,start.bat,Procfile,render.yaml,.vercelignore}"
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/gps-sync",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

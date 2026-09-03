@@ -1,9 +1,8 @@
-# Vercel Hobby: GPS sync har 5 daqiqa (GitHub Actions).
-# GitHub repo → Settings → Secrets and variables → Actions:
+# Zaxira: Pro da asosiy sync — vercel.json crons (*/5).
+# Bu workflow ixtiyoriy zaxira (GitHub Secrets bo'lsa ishlaydi).
+# GitHub → Settings → Secrets and variables → Actions:
 #   CRON_SECRET      — Vercel dagi bilan bir xil
 #   GPS_SYNC_URL     — https://SIZNING-APP.vercel.app/api/cron/gps-sync
-#
-# Pro rejimda Vercel Dashboard → Cron Jobs orqali ham qo'shish mumkin.
 
 name: GPS sync
 
