@@ -1,0 +1,131 @@
+{
+  "_comment": "Hujjat muddatlari — plate kalitlari FLEET bilan moslashadi (import skripti).",
+  "docs": {
+    "01 043 KMA": {
+      "insurance": { "due": "2027-06-18", "months": 12 },
+      "tech": { "due": "2026-12-22", "months": 12 },
+      "ads": { "due": "2027-05-28", "months": 12 },
+      "cylinder": { "due": "2027-07-14", "months": 12 }
+    },
+    "01 083 XJA": {
+      "insurance": { "due": "2026-09-04", "months": 12 },
+      "tech": { "due": "2026-11-03", "months": 12 },
+      "ads": { "due": "2027-05-28", "months": 12 },
+      "cylinder": { "due": "", "months": 12 }
+    },
+    "01 205 HMA": {
+      "insurance": { "due": "2026-12-02", "months": 12 },
+      "tech": { "due": "2026-12-02", "months": 12 },
+      "ads": { "due": "2026-12-17", "months": 12 },
+      "cylinder": { "due": "", "months": 12 }
+    },
+    "01 255 HMA": {
+      "insurance": { "due": "2026-12-02", "months": 12 },
+      "tech": { "due": "2026-12-02", "months": 12 },
+      "ads": { "due": "2026-12-17", "months": 12 },
+      "cylinder": { "due": "", "months": 12 }
+    },
+    "01 269 KMA": {
+      "insurance": { "due": "2027-07-22", "months": 12 },
+      "tech": { "due": "2027-01-11", "months": 12 },
+      "ads": { "due": "2027-05-28", "months": 12 },
+      "cylinder": { "due": "2029-07-03", "months": 36 }
+    },
+    "01 282 BMA": {
+      "insurance": { "due": "2026-11-20", "months": 12 },
+      "tech": { "due": "2027-02-10", "months": 12 },
+      "ads": { "due": "2027-03-06", "months": 12 },
+      "cylinder": { "due": "", "months": 12 }
+    },
+    "01 302 DNA": {
+      "insurance": { "due": "2027-05-14", "months": 12 },
+      "tech": { "due": "2027-07-10", "months": 12 },
+      "ads": { "due": "2027-06-23", "months": 12 },
+      "cylinder": { "due": "2029-07-03", "months": 36 }
+    },
+    "01 382 NMA": {
+      "insurance": { "due": "2027-07-22", "months": 12 },
+      "tech": { "due": "2027-08-13", "months": 12 },
+      "ads": { "due": "2027-08-12", "months": 12 },
+      "cylinder": { "due": "2028-08-13", "months": 24 }
+    },
+    "01 449 UKA": {
+      "insurance": { "due": "2027-03-30", "months": 12 },
+      "tech": { "due": "2027-03-30", "months": 12 },
+      "ads": { "due": "2027-04-13", "months": 12 },
+      "cylinder": { "due": "2029-03-24", "months": 36 }
+    },
+    "01 646 UKA": {
+      "insurance": { "due": "2027-04-01", "months": 12 },
+      "tech": { "due": "2027-03-30", "months": 12 },
+      "ads": { "due": "2027-04-13", "months": 12 },
+      "cylinder": { "due": "2029-03-24", "months": 36 }
+    },
+    "01 668 UKA": {
+      "insurance": { "due": "2027-04-16", "months": 12 },
+      "tech": { "due": "2027-03-30", "months": 12 },
+      "ads": { "due": "2027-04-13", "months": 12 },
+      "cylinder": { "due": "2029-03-24", "months": 36 }
+    },
+    "01 699 UKA": {
+      "insurance": { "due": "2027-04-02", "months": 12 },
+      "tech": { "due": "2027-03-30", "months": 12 },
+      "ads": { "due": "2027-04-13", "months": 12 },
+      "cylinder": { "due": "2029-03-24", "months": 36 }
+    },
+    "01 849 SNA": {
+      "insurance": { "due": "2027-01-19", "months": 12 },
+      "tech": { "due": "2027-01-19", "months": 12 },
+      "ads": { "due": "2027-04-27", "months": 12 },
+      "cylinder": { "due": "", "months": 12 }
+    },
+    "01 870 SEA": {
+      "insurance": { "due": "2027-03-01", "months": 12 },
+      "tech": { "due": "2027-04-12", "months": 12 },
+      "ads": { "due": "2027-07-02", "months": 12 },
+      "cylinder": { "due": "2029-07-08", "months": 36 }
+    },
+    "01 887 UKA": {
+      "insurance": { "due": "2027-03-30", "months": 12 },
+      "tech": { "due": "2027-03-30", "months": 12 },
+      "ads": { "due": "2027-04-13", "months": 12 },
+      "cylinder": { "due": "2029-07-08", "months": 36 }
+    },
+    "01 931 PJA": {
+      "insurance": { "due": "2027-05-20", "months": 12 },
+      "tech": { "due": "2027-01-11", "months": 12 },
+      "ads": { "due": "2027-08-10", "months": 12 },
+      "cylinder": { "due": "2029-07-03", "months": 36 }
+    },
+    "01 949 AKA": {
+      "insurance": { "due": "2026-10-13", "months": 12 },
+      "tech": { "due": "2026-11-17", "months": 12 },
+      "ads": { "due": "2026-11-28", "months": 12 },
+      "cylinder": { "due": "2029-07-03", "months": 36 }
+    },
+    "01 309 YNA": {
+      "insurance": { "due": "2027-05-12", "months": 12 },
+      "tech": { "due": "2027-05-06", "months": 12 },
+      "ads": { "due": "2027-05-19", "months": 12 },
+      "cylinder": { "due": "2029-07-03", "months": 36 }
+    },
+    "01 592 YNA": {
+      "insurance": { "due": "2026-12-14", "months": 12 },
+      "tech": { "due": "2026-12-14", "months": 12 },
+      "ads": { "due": "2026-12-25", "months": 12 },
+      "cylinder": { "due": "2028-11-30", "months": 24 }
+    },
+    "01 331 MLA": {
+      "insurance": { "due": "2027-06-29", "months": 12 },
+      "tech": { "due": "2027-06-28", "months": 12 },
+      "ads": { "due": "2027-07-03", "months": 12 },
+      "cylinder": { "due": "2029-06-13", "months": 36 }
+    },
+    "01 844 FKA": {
+      "insurance": { "due": "2026-12-14", "months": 12 },
+      "tech": { "due": "2026-12-14", "months": 12 },
+      "ads": { "due": "2026-12-25", "months": 12 },
+      "cylinder": { "due": "2028-11-30", "months": 24 }
+    }
+  }
+}

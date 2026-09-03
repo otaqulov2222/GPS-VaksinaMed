@@ -1285,7 +1285,7 @@ class OfficeStore:
         if isinstance(body.get("docs"), dict):
             docs = {}
             for i, (plate, rec) in enumerate(body["docs"].items()):
-                if i >= 50 or not isinstance(rec, dict):
+                if i >= 80 or not isinstance(rec, dict):
                     continue
                 item = {}
                 for key in ("insurance", "tech", "ads", "cylinder"):
