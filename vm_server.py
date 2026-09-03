@@ -3032,10 +3032,19 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if is_serverless():
                 try:
                     import gps_sync
+                    import time as _time
 
                     d = date_val or gps_sync.today_tashkent()
                     force = bool(body.get("force", True))
-                    # Oldingi so'rov hali ishlayotgan bo'lsa — kutmasdan busy qaytar (504 zanjiri yo'q)
+                    global _gps_sync_lock_until
+                    now = _time.time()
+                    # TTL: eski qulf 20s dan oshsa — e'tiborsiz (504 zombie)
+                    if _gps_sync_lock_until and now > _gps_sync_lock_until:
+                        try:
+                            _gps_sync_lock.release()
+                        except Exception:
+                            pass
+                        _gps_sync_lock_until = 0.0
                     if not _gps_sync_lock.acquire(blocking=False):
                         prev = OFFICE.get_report(d) or {}
                         pcars = prev.get("cars") if isinstance(prev, dict) else {}
@@ -3055,13 +3064,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             "cars": len(pcars),
                             "fetched": synced,
                             "chunk": 0,
-                            "total": max(synced + 1, len(pcars), 1),
+                            "total": max(len(pcars), synced, 1),
                             **OFFICE.gps_status_public(),
                         })
                         return
+                    _gps_sync_lock_until = now + 20.0
                     try:
                         OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
-                        # Vercel gateway ~25s — 1 mashina, ~12–14s
                         result = gps_sync.sync_today(
                             OFFICE,
                             DIRECTORY,
@@ -3095,8 +3104,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             **OFFICE.gps_status_public(),
                         })
                     finally:
-                        _gps_sync_lock.release()
+                        _gps_sync_lock_until = 0.0
+                        try:
+                            _gps_sync_lock.release()
+                        except Exception:
+                            pass
                 except Exception as e:
+                    _gps_sync_lock_until = 0.0
                     try:
                         _gps_sync_lock.release()
                     except Exception:
@@ -3291,6 +3305,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 GPS_SYNC_INTERVAL = int(os.environ.get("GPS_SYNC_INTERVAL", "300"))
 _gps_worker_started = False
 _gps_sync_lock = threading.Lock()
+_gps_sync_lock_until = 0.0
 _GPS_JOB = {"q": [], "active": False, "seq": 0, "lock": threading.Lock()}
 
 
