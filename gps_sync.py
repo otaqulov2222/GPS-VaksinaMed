@@ -259,6 +259,7 @@ class WialonClient:
         )
         resources = r.get("items") or []
         trip = chrono = any_tpl = None
+        trip_score = -1
         for res in resources:
             rep = res.get("rep") or {}
             for tid, tdata in rep.items():
@@ -266,12 +267,19 @@ class WialonClient:
                 pair = (res["id"], tid)
                 if not any_tpl:
                     any_tpl = pair
-                if "поездк" in name or "trip" in name:
-                    if not trip:
-                        trip = pair
+                # Eng aniq: «Отчёт по поездкам»
+                score = -1
                 if "хронолог" in name or "xronologiya" in name or "chronolog" in name:
                     if not chrono:
                         chrono = pair
+                    continue
+                if "по поездкам" in name or "отчёт по поезд" in name or "отчет по поезд" in name:
+                    score = 10
+                elif "поездк" in name or "trip" in name:
+                    score = 5
+                if score > trip_score:
+                    trip_score = score
+                    trip = pair
         if not any_tpl:
             raise RuntimeError("Wialon report template topilmadi")
         self._tpl = {"trip": trip, "chrono": chrono, "any": any_tpl}
@@ -475,26 +483,30 @@ class WialonClient:
         except Exception:
             pass
 
-        # 1) unit/get_trips
-        trip_live = self.fetch_unit_trips_stats(unit_id, date_str)
-        if trip_live:
-            if trip_live.get("probeg"):
-                stats["probeg"] = trip_live["probeg"]
-                stats["_kmSrc"] = "get_trips"
-            if trip_live.get("maxSpeed"):
-                stats["maxSpeed"] = trip_live["maxSpeed"]
-            if trip_live.get("avgSpeed"):
-                stats["avgSpeed"] = trip_live["avgSpeed"]
-            if trip_live.get("poezdok"):
-                stats["poezdok"] = trip_live["poezdok"]
-
-        # 2) Отчёт по поездкам — eng ishonchli (Boomerang UI bilan bir xil)
+        # 1) Отчёт по поездкам — Boomerang UI bilan bir xil (asosiy)
         trip_stats = self.fetch_trip_report_stats(unit_id, date_str)
         if trip_stats:
             trip_stats = dict(trip_stats)
             if stops:
                 trip_stats.pop("stoyanok", None)
             stats = self.merge_stats(stats, trip_stats)
+
+        # 2) unit/get_trips — faqat bo'sh yoki aniq kattaroq bo'lsa (pastga yozmaslik!)
+        trip_live = self.fetch_unit_trips_stats(unit_id, date_str)
+        if trip_live:
+            live_km = float(trip_live.get("probeg") or 0)
+            cur_km = float(stats.get("probeg") or 0)
+            if live_km > 0 and (cur_km <= 0 or live_km > cur_km + 0.5):
+                stats["probeg"] = live_km
+                stats["_kmSrc"] = "get_trips"
+            if trip_live.get("maxSpeed"):
+                ms = float(trip_live["maxSpeed"])
+                if ms > float(stats.get("maxSpeed") or 0):
+                    stats["maxSpeed"] = ms
+            if trip_live.get("avgSpeed") and not stats.get("avgSpeed"):
+                stats["avgSpeed"] = trip_live["avgSpeed"]
+            if trip_live.get("poezdok") and not stats.get("poezdok"):
+                stats["poezdok"] = trip_live["poezdok"]
 
         self.cleanup_stats(stats)
         return {"stats": stats, "stops": stops}
@@ -704,11 +716,7 @@ class WialonClient:
     def fetch_trip_report_stats(self, unit_id, date_str):
         tpls = self.resolve_templates()
         trip = tpls.get("trip")
-        chrono = tpls.get("chrono") or tpls.get("any")
         if not trip:
-            return None
-        # Bir xil shablon bo'lsa ham qayta o'qish shart emas — get_trips fallback bor
-        if trip == chrono:
             return None
         t_from, t_to = day_bounds_tashkent(date_str)
         try:

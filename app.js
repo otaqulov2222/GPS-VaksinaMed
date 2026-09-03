@@ -1119,8 +1119,14 @@ async function refreshDayKm(dateVal) {
                 }
             } catch (e) {}
             if (!metrics || !(metrics.km || metrics.trips || metrics.maxSpeed)) continue;
-            if (metrics.km) st.probeg = metrics.km;
-            if (metrics.maxSpeed) st.maxSpeed = Math.max(Number(st.maxSpeed) || 0, metrics.maxSpeed);
+            if (metrics.km) {
+                // Faqat yaxshiroq/aniqroq (katta) trip km — pastroq chronologiya qiymatiga yozmaslik
+                if (!oldKm || metrics.km >= oldKm - 0.05) st.probeg = metrics.km;
+            }
+            if (metrics.maxSpeed) {
+                const oldSp = Number(st.maxSpeed) || 0;
+                if (metrics.maxSpeed >= oldSp) st.maxSpeed = metrics.maxSpeed;
+            }
             if (metrics.avgSpeed) st.avgSpeed = metrics.avgSpeed;
             if (metrics.trips) st.poezdok = metrics.trips;
             if (metrics.stops && !st.stoyanok) st.stoyanok = metrics.stops;
@@ -1866,8 +1872,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
                 if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
                 done = Number(queued.cars) || Object.keys(STATE.data[dateVal] || {}).length;
                 updateProg(95, 'Hisobot olindi', done + ' ta mashina');
-                // Boomerang bilan aniq moslash: trip km qayta tekshiruv
-                await refreshDayKm(dateVal);
+                // Server sync — asosiy manba. Brauzer refreshDayKm pastroq/noto'g'ri km yozmasin.
             } else {
             const jobId = Number((queued && queued.jobId) || 0);
             if (!jobId) throw new Error((queued && queued.error) || 'Navbatga qo‘yilmadi');
@@ -1892,7 +1897,6 @@ async function syncFromGPS(dateVal, cfg, opts) {
             if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
             done = Object.keys(STATE.data[dateVal] || {}).length;
             updateProg(95, 'Hisobot olindi', done + ' ta mashina');
-            await refreshDayKm(dateVal);
             }
         } catch (serverErr) {
             if (cancelled()) return;

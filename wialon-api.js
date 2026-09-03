@@ -404,6 +404,7 @@ class WialonGPSClient {
         };
         const resResp = await this.sendRequest('core/search_items', reportParams);
         let trip = null, chrono = null, anyTpl = null;
+        let tripScore = -1;
         if (resResp && resResp.items && resResp.items.length > 0) {
             for (const res of resResp.items) {
                 if (!res.rep) continue;
@@ -411,8 +412,17 @@ class WialonGPSClient {
                     const repName = (res.rep[tid].n || '').toLowerCase();
                     const pair = { resourceId: res.id, templateId: parseInt(tid, 10) };
                     if (!anyTpl) anyTpl = pair;
-                    if (!trip && (repName.includes('поездк') || repName.includes('trip'))) trip = pair;
-                    if (!chrono && (repName.includes('хронолог') || repName.includes('xronologiya') || repName.includes('chronolog'))) chrono = pair;
+                    if (repName.includes('хронолог') || repName.includes('xronologiya') || repName.includes('chronolog')) {
+                        if (!chrono) chrono = pair;
+                        continue;
+                    }
+                    let score = -1;
+                    if (repName.includes('по поездкам') || repName.includes('отчёт по поезд') || repName.includes('отчет по поезд')) score = 10;
+                    else if (repName.includes('поездк') || repName.includes('trip')) score = 5;
+                    if (score > tripScore) {
+                        tripScore = score;
+                        trip = pair;
+                    }
                 }
             }
         }
