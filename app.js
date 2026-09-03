@@ -1858,34 +1858,42 @@ async function syncFromGPS(dateVal, cfg, opts) {
         let done = 0;
         let viaServer = false;
         try {
-            // Vercel: bo'laklab sync (504 oldini olish). force=true birinchi, keyin davom.
+            // Vercel: har roundda 2 mashina (504 oldini olish). 504 bo'lsa force o'chadi.
             let force = true;
             let last = null;
-            for (let round = 0; round < 20 && !cancelled(); round++) {
+            let hardFails = 0;
+            for (let round = 0; round < 40 && !cancelled(); round++) {
                 let queued = null;
-                let attemptErr = null;
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    try {
-                        queued = await vmApi('/api/office/gps/sync', {
-                            method: 'POST',
-                            body: JSON.stringify({ date: dateVal, force })
-                        });
-                        attemptErr = null;
-                        break;
-                    } catch (e) {
-                        attemptErr = e;
-                        const msg = String((e && e.message) || e || '');
-                        if (/504|503|502|timeout|Failed to fetch|NetworkError/i.test(msg) && attempt < 2) {
-                            updateProg(8 + round * 4, 'Server band (504) — qayta urinilmoqda...', msg);
-                            await sleepMs(2000 * (attempt + 1));
-                            continue;
-                        }
-                        throw e;
-                    }
+                try {
+                    queued = await vmApi('/api/office/gps/sync', {
+                        method: 'POST',
+                        body: JSON.stringify({ date: dateVal, force })
+                    });
+                } catch (e) {
+                    const msg = String((e && e.message) || e || '');
+                    hardFails += 1;
+                    // 504: ehtimol bo'lak saqlangan — force qayta wipe qilmasin
+                    force = false;
+                    updateProg(
+                        Math.min(85, 8 + round * 2),
+                        'Server 504 — qisqa bo‘lak bilan davom (' + hardFails + ')...',
+                        msg
+                    );
+                    if (hardFails >= 8) throw e;
+                    await sleepMs(1500);
+                    continue;
                 }
-                if (attemptErr) throw attemptErr;
+                hardFails = 0;
                 if (!queued || !queued.ok) {
-                    throw new Error((queued && queued.error) || 'GPS sync xato');
+                    const err = (queued && queued.error) || 'GPS sync xato';
+                    if (/504|503|502|timeout/i.test(err)) {
+                        force = false;
+                        hardFails += 1;
+                        if (hardFails >= 8) throw new Error(err);
+                        await sleepMs(1500);
+                        continue;
+                    }
+                    throw new Error(err);
                 }
                 if (queued.queued) {
                     const jobId = Number(queued.jobId || 0);
@@ -1922,7 +1930,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
                     chunk ? ('+' + chunk + ' mashina') : ''
                 );
                 if (!queued.partial) break;
-                await sleepMs(400);
+                await sleepMs(300);
             }
             if (cancelled()) return;
             if (!viaServer) throw new Error('GPS yuklash yakunlanmadi');

@@ -1272,10 +1272,19 @@ def analyze_client_batch(office, base_dir, date_str, items, reenrich=False):
     return out
 
 
-def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec=None, parallel=True, force=False):
+def sync_today(
+    office,
+    base_dir,
+    date_str=None,
+    saved_by="auto",
+    time_budget_sec=None,
+    parallel=True,
+    force=False,
+    max_cars=None,
+):
     """
-    GPS sync. time_budget_sec — Vercel/cron: vaqt tugasa qisman saqlab qaytadi.
-    force=True — kunni yangidan tortadi; force=False + budget — faqat qolgan mashinalar.
+    GPS sync. time_budget_sec / max_cars — Vercel 504 oldini olish (qisqa bo'laklar).
+    force=True — kunni yangidan; force=False — faqat syncedAt yo'q mashinalar.
     """
     import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1284,6 +1293,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
     t0 = time.time()
     budget = float(time_budget_sec) if time_budget_sec else None
     force = bool(force)
+    max_cars = int(max_cars) if max_cars else None
 
     def left():
         if budget is None:
@@ -1296,7 +1306,8 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
     if not cfg.get("configured"):
         return {"ok": False, "error": "GPS sozlamasi yo'q"}
     host = cfg.get("host") or "http://bms1.gpsavto.uz"
-    http_timeout = 18 if budget is not None else 45
+    # Qisqa budget: Wialon so'rovlari ham qisqa timeout
+    http_timeout = 12 if budget is not None else 45
     client = WialonClient(
         host,
         token=cfg.get("token") or "",
@@ -1335,8 +1346,10 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
         if isinstance(prev, dict) and isinstance(prev.get("cars"), dict):
             prev_cars = dict(prev.get("cars") or {})
 
-        # To'liq yangilash yoki budgetsiz — eski noto'g'ri qiymatlarni tashlash
-        if force or budget is None:
+        if force:
+            cars = {}
+            jobs = list(all_jobs)
+        elif budget is None:
             cars = {}
             jobs = list(all_jobs)
         else:
@@ -1347,13 +1360,16 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
                 if not (isinstance(cars.get(d["car"]), dict) and cars[d["car"]].get("syncedAt"))
             ]
 
+        if max_cars and max_cars > 0 and len(jobs) > max_cars:
+            jobs = jobs[:max_cars]
+
         if not jobs:
             office.set_gps_status(running=False, cars=len(cars), error="", date=date_str, message="Tayyor")
             return {
                 "ok": True,
                 "date": date_str,
                 "cars": len(cars),
-                "fetched": len(cars),
+                "fetched": sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt")),
                 "total": total_fleet,
                 "partial": False,
                 "errors": [],
@@ -1368,7 +1384,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
 
         unit_rows = []
         errors = []
-        workers = 4 if parallel and len(jobs) > 1 else 1
+        workers = 2 if (budget is not None and parallel and len(jobs) > 1) else (4 if parallel and len(jobs) > 1 else 1)
         office.set_gps_status(
             running=True,
             date=date_str,
@@ -1397,7 +1413,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
                     except Exception as e:
                         errors.append("%s: %s" % ((drv_meta or {}).get("car") or "?", str(e)[:80]))
 
-        if left() > 6:
+        if left() > 5:
             for row in unit_rows:
                 drv, raw_stops = row[0], row[1]
                 stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)

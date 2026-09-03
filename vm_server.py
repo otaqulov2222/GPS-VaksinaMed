@@ -3037,13 +3037,14 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     force = bool(body.get("force", True))
                     OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
                     with _gps_sync_lock:
-                        # Vercel gateway ~60s — bo'laklab 50s ichida javob
+                        # Vercel gateway ~25–30s da 504 — har so'rovda 2 mashina, ~18s
                         result = gps_sync.sync_today(
                             OFFICE,
                             DIRECTORY,
                             d,
                             saved_by=sess.get("username") or "user",
-                            time_budget_sec=50,
+                            time_budget_sec=18,
+                            max_cars=2,
                             force=force,
                         ) or {}
                     OFFICE.set_gps_status(
