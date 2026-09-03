@@ -562,6 +562,7 @@ async function loadAll() {
     STATE.cars = mergeCarMaps(adopted, localCars);
   }
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
+  if (applyMetaNormsToCars()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
   STATE.dayRep = Math.min(now.getDate(), daysInMonth(STATE.month));
   if (!STATE.car) STATE.car = (fleet()[0] && fleet()[0].car) || '';
@@ -594,8 +595,9 @@ async function changeMonth(ym) {
     ? mergeCarMaps(adoptCars(localCars), adopted)
     : mergeCarMaps(adopted, localCars);
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
+  if (applyMetaNormsToCars()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
-  STATE.dirty = preferLocal;
+  STATE.dirty = preferLocal || STATE.dirty;
   STATE.dayRep = 1;
   setMonthLabel();
   await autoChainMonth();
@@ -692,6 +694,29 @@ function syncParamsToMeta(plate, car) {
   rec.gasPrice = n(car.gasPrice);
   rec.benzinPrice = n(car.benzinPrice);
   if (car.fuelType) rec.fuelType = car.fuelType;
+}
+
+/** Meta (Mashina va narx) — norma/tip manbai; oy yozuvidagi eski 12/4 ni ustiga yozmasin. */
+function applyMetaNormsToCars() {
+  let changed = false;
+  Object.keys(STATE.cars || {}).forEach(plate => {
+    const info = vehicleInfo(plate);
+    const car = STATE.cars[plate];
+    if (!car || !info) return;
+    if (n(info.gasNorm) > 0 && n(car.gasNorm) !== n(info.gasNorm)) {
+      car.gasNorm = n(info.gasNorm);
+      changed = true;
+    }
+    if (n(info.benzinNorm) > 0 && n(car.benzinNorm) !== n(info.benzinNorm)) {
+      car.benzinNorm = n(info.benzinNorm);
+      changed = true;
+    }
+    if (info.fuelType && car.fuelType !== info.fuelType) {
+      car.fuelType = info.fuelType;
+      changed = true;
+    }
+  });
+  return changed;
 }
 
 function carsToSave(opts) {

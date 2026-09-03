@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
-Avgust Excel normalarini Neon fuel:meta.vehicles ga yozadi.
-Faqat: gasNorm, benzinNorm, fuelType.
-docs / stations / pharmacies / GPS ga tegilmaydi.
+Avgust Excel normalarini Neon ga yozadi:
+  1) fuel:meta.vehicles — gasNorm, benzinNorm, fuelType
+  2) barcha fuel:month:* ichidagi cars — shu 3 maydon
+
+Kunlik yozuvlar / docs / dorixona / GPS ga tegilmaydi.
 """
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -21,6 +24,36 @@ SEED_PATH = os.path.join(ROOT, "scripts", "norms_seed.json")
 
 def compact(p: str) -> str:
     return re.sub(r"[\s/\-_]+", "", str(p or "")).upper()
+
+
+def code3(p: str) -> str:
+    m = re.search(r"(\d{3})", str(p or ""))
+    return m.group(1) if m else ""
+
+
+def find_key(vehicles: dict, plate: str) -> str | None:
+    want = compact(plate)
+    for k in vehicles.keys():
+        if compact(k) == want:
+            return k
+    c = code3(plate)
+    if not c:
+        return None
+    hits = [k for k in vehicles.keys() if code3(k) == c]
+    return hits[0] if len(hits) == 1 else None
+
+
+def apply_norm(cur: dict, rec: dict) -> dict:
+    out = dict(cur) if isinstance(cur, dict) else {}
+    ft = str(rec.get("fuelType") or out.get("fuelType") or "mixed")
+    if ft not in ("mixed", "gaz", "benzin", "dizel", "dizel_gaz"):
+        ft = "mixed"
+    out["fuelType"] = ft
+    out["gasNorm"] = float(rec.get("gasNorm") if rec.get("gasNorm") is not None else out.get("gasNorm") or 12)
+    out["benzinNorm"] = float(
+        rec.get("benzinNorm") if rec.get("benzinNorm") is not None else out.get("benzinNorm") or 4
+    )
+    return out
 
 
 def main():
@@ -46,16 +79,13 @@ def main():
 
     updated = 0
     created = 0
+    by_compact = {}
+    by_code = {}
+
     for plate, rec in seed.items():
         if not isinstance(rec, dict):
             continue
-        # mavjud kalitni topish (bo'shliq farqi)
-        key = None
-        want = compact(plate)
-        for k in vehicles.keys():
-            if compact(k) == want:
-                key = k
-                break
+        key = find_key(vehicles, plate)
         if key is None:
             key = plate
             vehicles[key] = {
@@ -72,26 +102,77 @@ def main():
             }
             created += 1
 
-        cur = vehicles[key] if isinstance(vehicles.get(key), dict) else {}
-        ft = str(rec.get("fuelType") or cur.get("fuelType") or "mixed")
-        if ft not in ("mixed", "gaz", "benzin", "dizel", "dizel_gaz"):
-            ft = "mixed"
-        cur["fuelType"] = ft
-        cur["gasNorm"] = float(rec.get("gasNorm") or cur.get("gasNorm") or 12)
-        cur["benzinNorm"] = float(rec.get("benzinNorm") or cur.get("benzinNorm") or 4)
-        vehicles[key] = cur
+        vehicles[key] = apply_norm(vehicles[key], rec)
         updated += 1
+        by_compact[compact(key)] = rec
+        c = code3(key)
+        if c:
+            by_code[c] = rec
         print(
-            "OK",
+            "META",
             key,
-            "gas=%s" % cur["gasNorm"],
-            "ben=%s" % cur["benzinNorm"],
-            "type=%s" % cur["fuelType"],
+            "gas=%s" % vehicles[key]["gasNorm"],
+            "ben=%s" % vehicles[key]["benzinNorm"],
+            "type=%s" % vehicles[key]["fuelType"],
         )
 
-    # Faqat vehicles — docs/stations/firm saqlanadi
     office.save_fuel_meta({"vehicles": vehicles})
-    print("Saqlandi: updated=%d created=%d jami_vehicles=%d" % (updated, created, len(vehicles)))
+    print("Meta saqlandi: updated=%d created=%d jami=%d" % (updated, created, len(vehicles)))
+
+    # Barcha oylarga ham yozish — UI oy yozuvidan o'qiydi
+    month_keys = []
+    try:
+        month_keys = office.persist.keys("fuel:month:")
+    except Exception as e:
+        print("WARN month keys:", e)
+
+    # Joriy oy yo'q bo'lsa ham yaratmaslik — faqat mavjudlarni yangilash
+    # Lekin 2026-08 / 2026-09 ni aniq tekshirib ko'ramiz
+    now = datetime.now(timezone.utc)
+    for ym in (
+        "%04d-%02d" % (now.year, now.month),
+        "%04d-%02d" % (now.year if now.month > 1 else now.year - 1, now.month - 1 if now.month > 1 else 12),
+    ):
+        k = "fuel:month:" + ym
+        if k not in month_keys:
+            month_keys.append(k)
+
+    months_patched = 0
+    cars_patched = 0
+    for mk in sorted(set(month_keys)):
+        if not mk.startswith("fuel:month:"):
+            continue
+        month = mk.split(":", 2)[-1]
+        data = office._load(mk, None)
+        if not isinstance(data, dict):
+            continue
+        cars = data.get("cars") if isinstance(data.get("cars"), dict) else {}
+        if not cars:
+            continue
+        changed = False
+        for plate, crec in list(cars.items()):
+            if not isinstance(crec, dict):
+                continue
+            rec = by_compact.get(compact(plate))
+            if rec is None:
+                c = code3(plate)
+                rec = by_code.get(c) if c else None
+            if rec is None:
+                continue
+            cars[plate] = apply_norm(crec, rec)
+            changed = True
+            cars_patched += 1
+        if changed:
+            data["cars"] = cars
+            data["savedAt"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            data["month"] = month
+            office._save(mk, data)
+            months_patched += 1
+            print("MONTH", month, "cars_updated")
+
+    print(
+        "Tayyor: months_patched=%d cars_patched=%d" % (months_patched, cars_patched)
+    )
     return 0
 
 
