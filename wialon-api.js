@@ -537,6 +537,10 @@ class WialonGPSClient {
             }
         }
         if (best > 0) {
+            // Boomerang «Пробег в поездках» (stats) ustuvor — jadval yig'indisi farq qilishi mumkin
+            if (chronology.stats._kmSrc === 'trip_stats' && Number(chronology.stats.probeg) > 0) {
+                return;
+            }
             chronology.stats.probeg = best;
             chronology.stats._kmSrc = 'trips';
         }
@@ -559,10 +563,14 @@ class WialonGPSClient {
         if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) {
             const repKm = Number(fromReport.km) || 0;
             const liveKm = Number(fromTrips && fromTrips.km) || 0;
-            // Hisobot ishonchli (trip jadvali) — o'zi; aks holda get_trips pastga yozmasin
+            const trusted = fromReport._kmSrc === 'trips' || fromReport._kmSrc === 'trip_stats';
+            // Boomerang «Пробег в поездках» — aniq qiymat (138.05), get_trips (134.89) emas
             let km = repKm;
-            if (!km) km = liveKm;
-            else if (liveKm > repKm + 0.5 && fromReport._kmSrc !== 'trips' && fromReport._kmSrc !== 'trip_stats') {
+            if (trusted && repKm > 0) {
+                km = repKm;
+            } else if (!km) {
+                km = liveKm;
+            } else if (liveKm > repKm + 0.5 && !trusted) {
                 km = liveKm;
             }
             return {

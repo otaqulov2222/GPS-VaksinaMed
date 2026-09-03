@@ -514,17 +514,25 @@ class WialonClient:
             rep_km = float(trip_stats.get("probeg") or 0)
             src = str(trip_stats.get("_kmSrc") or "")
             trusted = src in ("trips", "trip_stats")
-            # Ishonchsiz/past hisobot get_trips ni buzmasin (23.66 chron chalkashligi)
-            if rep_km > 0 and live_km > 0 and not trusted and rep_km + 0.5 < live_km:
-                trip_stats.pop("probeg", None)
-            elif not rep_km and live_km:
-                trip_stats.pop("probeg", None)
-            stats = self.merge_stats(stats, trip_stats)
-            if trip_stats.get("probeg"):
-                stats["_kmSrc"] = src or "trip_report"
+            # Boomerang stats «Пробег в поездках» — har doim ustuvor (get_trips 134.89 ni bosmasin)
+            if trusted and rep_km > 0:
+                stats = self.merge_stats(stats, trip_stats)
+                stats["_kmSrc"] = src
+            else:
+                if rep_km > 0 and live_km > 0 and not trusted and rep_km + 0.5 < live_km:
+                    trip_stats.pop("probeg", None)
+                elif not rep_km and live_km:
+                    trip_stats.pop("probeg", None)
+                stats = self.merge_stats(stats, trip_stats)
+                if trip_stats.get("probeg"):
+                    stats["_kmSrc"] = src or "trip_report"
             # Tezlik — eng yuqori
             if trip_live and trip_live.get("maxSpeed"):
                 ms = float(trip_live["maxSpeed"])
+                if ms > float(stats.get("maxSpeed") or 0):
+                    stats["maxSpeed"] = ms
+            if trip_stats.get("maxSpeed"):
+                ms = float(trip_stats["maxSpeed"])
                 if ms > float(stats.get("maxSpeed") or 0):
                     stats["maxSpeed"] = ms
 
@@ -662,6 +670,10 @@ class WialonClient:
             if rows_n and not stats.get("poezdok"):
                 stats["poezdok"] = rows_n
         if best > 0:
+            # Boomerang UI «Пробег в поездках» (stats) — asosiy haqiqat.
+            # Qatorlar yig'indisi ba'zan farq qiladi (134.89 vs 138.05).
+            if stats.get("_kmSrc") == "trip_stats" and float(stats.get("probeg") or 0) > 0:
+                return
             stats["probeg"] = best
             stats["_kmSrc"] = "trips"
 
