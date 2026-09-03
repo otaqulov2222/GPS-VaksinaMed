@@ -1856,160 +1856,97 @@ async function syncFromGPS(dateVal, cfg, opts) {
         setGpsUi('sync');
         let done = 0;
 
-        // GPS YUKLASH: brauzer → Boomerang to'g'ridan (Vercel 504/busy yo'q).
-        // Server chunk faqat login/token bo'lmasa.
-        const canBrowser = !!(cfg && (
-            (cfg.password && String(cfg.password).trim()) ||
-            (cfg.token && String(cfg.token).trim())
-        ) && window.wialonGPS);
+        // Forma maydonlaridan qayta o'qish (STATE da token o'chirilgan bo'lishi mumkin)
+        const formHost = document.getElementById('gps-host')?.value?.trim();
+        const formUser = document.getElementById('gps-user')?.value?.trim();
+        const formPass = document.getElementById('gps-password')?.value?.trim();
+        const formTok = (document.getElementById('gps-token')?.value || '').replace(/\s+/g, '').trim();
+        cfg = Object.assign({}, cfg || {}, {
+            host: formHost || cfg.host || 'http://bms1.gpsavto.uz',
+            user: formUser || cfg.user || '',
+            password: formPass || cfg.password || '',
+            token: formTok || cfg.token || ''
+        });
 
-        if (canBrowser) {
-            updateProg(8, 'Boomerangdan to‘liq yuklanmoqda...', '');
-            const loginOk = await wialonGPS.login(cfg);
-            if (cancelled()) return;
-            if (!loginOk) throw new Error('Login amalga oshmadi. Login/parolni tekshiring.');
-            setGpsUi('on');
-            updateProg(12, 'Mashinalar ro\'yxati...', '');
-            const units = await wialonGPS.getUnits();
-            if (cancelled()) return;
-            if (!units.length) throw new Error('GPS da mashinalar topilmadi.');
+        const canBrowser = !!(
+            window.wialonGPS &&
+            ((cfg.password && String(cfg.password).trim()) || (cfg.token && String(cfg.token).trim()))
+        );
 
-            // Eski kunni tozalab yangidan yozamiz — yarim qolmasin
-            if (!STATE.data[dateVal]) STATE.data[dateVal] = {};
-            const fresh = {};
-            let matched = 0;
-            for (let ui = 0; ui < units.length; ui++) {
-                if (cancelled()) return;
-                const unit = units[ui];
-                const drv = findDriverByCar(unit.name) || findDriverByCar(unit.carNumber);
-                if (!drv) {
-                    updateProg(0, '', `⏭ ${unit.name}: ro'yxatda yo'q`);
-                    continue;
-                }
-                matched += 1;
-                try {
-                    updateProg(
-                        12 + Math.round((ui / Math.max(units.length, 1)) * 80),
-                        `Yuklanmoqda: ${ui + 1}/${units.length} — ${unit.name}`,
-                        ''
-                    );
-                    const chrono = await wialonGPS.getUnitChronology(unit.id, dateVal);
-                    if (cancelled()) return;
-                    const rawStops = (chrono && chrono.stops) ? chrono.stops : [];
-                    const stops = enrichStops(rawStops, drv.car);
-                    const stats = Object.assign({
-                        probeg: 0, maxSpeed: 0, avgSpeed: 0, poezdok: 0, stoyanok: stops.length,
-                        gas: 0, benzin: 0, motoChas: '—', totalStop: '—'
-                    }, (chrono && chrono.stats) || {});
-                    if (!stats.stoyanok) stats.stoyanok = stops.length;
-                    const scored = await analyzeOnServer(stops, drv.car, stats, dateVal, { reenrich: true });
-                    fresh[drv.car] = {
-                        car: drv.car,
-                        driver: drv,
-                        date: dateVal,
-                        stats,
-                        stops: scored.stops || stops,
-                        analysis: scored.analysis,
-                        syncedAt: Date.now()
-                    };
-                    STATE.data[dateVal] = Object.assign({}, STATE.data[dateVal], fresh);
-                    done = Object.keys(fresh).length;
-                    updateProg(
-                        12 + Math.round((ui / Math.max(units.length, 1)) * 80),
-                        `Tayyor: ${done} mashina`,
-                        `✅ ${unit.name}: ${fmtKm(stats.probeg, 'km')} / ${fmtSpd(stats.maxSpeed || 0)}`
-                    );
-                    if (STATE.currentDate === dateVal) {
-                        renderDriverTabs();
-                        refreshUI();
-                    }
-                } catch (e) {
-                    if (cancelled()) return;
-                    console.error('GPS unit:', e);
-                    updateProg(0, '', `⚠️ ${unit.name}: ${e.message || e}`);
-                }
-                await sleepMs(0);
-            }
-            if (!matched) throw new Error('Hech qanday mashina haydovchi ro\'yxatiga mos kelmadi.');
-            STATE.data[dateVal] = fresh;
-            if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
-            updateProg(92, `Boomerang: ${done} ta mashina`, '');
-        } else {
-            // Server (cron / credentials yo'q)
-            updateProg(5, 'Server GPS dan yuklanmoqda...');
-            let forceSync = true;
-            let last = null;
-            let hardFails = 0;
-            let busyStreak = 0;
-            for (let round = 0; round < 60 && !cancelled(); round++) {
-                let queued = null;
-                try {
-                    queued = await vmApi('/api/office/gps/sync', {
-                        method: 'POST',
-                        body: JSON.stringify({ date: dateVal, force: forceSync })
-                    });
-                } catch (e) {
-                    hardFails += 1;
-                    forceSync = false;
-                    if (hardFails >= 12) throw e;
-                    await sleepMs(1500);
-                    continue;
-                }
-                if (queued && queued.busy) {
-                    busyStreak += 1;
-                    forceSync = false;
-                    updateProg(Math.min(85, 8 + round), 'Server band — kutilyapti…', '');
-                    if (busyStreak >= 8) break;
-                    await sleepMs(2500);
-                    continue;
-                }
-                busyStreak = 0;
-                hardFails = 0;
-                if (!queued || !queued.ok) {
-                    throw new Error((queued && queued.error) || 'GPS sync xato');
-                }
-                if (queued.queued) {
-                    const jobId = Number(queued.jobId || 0);
-                    if (!jobId) throw new Error(queued.error || 'Navbatga qo‘yilmadi');
-                    const t0 = Date.now();
-                    let viaQ = false;
-                    while (!cancelled() && Date.now() - t0 < 12 * 60 * 1000) {
-                        const st = await vmApi('/api/office/gps/status');
-                        if (!st.running && Number(st.lastJobId || 0) >= jobId) {
-                            if (st.error) throw new Error(st.error);
-                            viaQ = true;
-                            break;
-                        }
-                        await sleepMs(1500);
-                    }
-                    if (!viaQ) throw new Error('GPS yuklash vaqti tugadi.');
-                    last = { partial: false, fetched: 0, total: 0 };
-                    break;
-                }
-                forceSync = false;
-                last = queued;
-                const fetched = Number(queued.fetched || 0);
-                const tot = Number(queued.total) || fetched;
-                updateProg(
-                    Math.min(92, 10 + Math.round((fetched / Math.max(tot, 1)) * 80)),
-                    'Server: ' + fetched + '/' + tot + (queued.partial ? ' (davom…)' : ''),
-                    queued.chunk ? ('+' + queued.chunk) : ''
-                );
-                if (window.VMOffice) {
-                    try {
-                        await VMOffice.loadReportIfNeeded(dateVal, true);
-                        if (STATE.currentDate === dateVal) { renderDriverTabs(); refreshUI(); }
-                    } catch (e) {}
-                }
-                if (!queued.partial) break;
-                await sleepMs(250);
-            }
-            if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
-            done = Number((last && last.fetched) || 0) || Object.keys(STATE.data[dateVal] || {}).length;
-            if (last && last.partial && !silent) {
-                showToast('GPS qisman: ' + done + '/' + (last.total || '?') + '. Yana bosing.', 'warn');
-            }
+        if (!canBrowser) {
+            updateProg(0, 'Parol yoki token kiriting (Boomerang to‘liq yuklash uchun)', '');
+            throw new Error('Brauzer GPS uchun parol yoki token kerak. Maydonlarni to‘ldirib qayta bosing.');
         }
+
+        // To'g'ridan Boomerang — Vercel 504/busy yo'q
+        updateProg(8, 'Boomerangdan to‘liq yuklanmoqda…', '');
+        const loginOk = await wialonGPS.login(cfg);
+        if (cancelled()) return;
+        if (!loginOk) throw new Error('Login amalga oshmadi. Login/parol/tokenni tekshiring.');
+        setGpsUi('on');
+        updateProg(12, 'Mashinalar ro\'yxati...', '');
+        const units = await wialonGPS.getUnits();
+        if (cancelled()) return;
+        if (!units.length) throw new Error('GPS da mashinalar topilmadi.');
+
+        const fresh = {};
+        let matched = 0;
+        for (let ui = 0; ui < units.length; ui++) {
+            if (cancelled()) return;
+            const unit = units[ui];
+            const drv = findDriverByCar(unit.name) || findDriverByCar(unit.carNumber);
+            if (!drv) {
+                updateProg(0, '', `⏭ ${unit.name}: ro'yxatda yo'q`);
+                continue;
+            }
+            matched += 1;
+            try {
+                updateProg(
+                    12 + Math.round((ui / Math.max(units.length, 1)) * 80),
+                    `Boomerang: ${matched} — ${unit.name}`,
+                    ''
+                );
+                const chrono = await wialonGPS.getUnitChronology(unit.id, dateVal);
+                if (cancelled()) return;
+                const rawStops = (chrono && chrono.stops) ? chrono.stops : [];
+                const stops = enrichStops(rawStops, drv.car);
+                const stats = Object.assign({
+                    probeg: 0, maxSpeed: 0, avgSpeed: 0, poezdok: 0, stoyanok: stops.length,
+                    gas: 0, benzin: 0, motoChas: '—', totalStop: '—'
+                }, (chrono && chrono.stats) || {});
+                if (!stats.stoyanok) stats.stoyanok = stops.length;
+                const scored = await analyzeOnServer(stops, drv.car, stats, dateVal, { reenrich: true });
+                fresh[drv.car] = {
+                    car: drv.car,
+                    driver: drv,
+                    date: dateVal,
+                    stats,
+                    stops: scored.stops || stops,
+                    analysis: scored.analysis,
+                    syncedAt: Date.now()
+                };
+                STATE.data[dateVal] = Object.assign({}, STATE.data[dateVal] || {}, fresh);
+                done = Object.keys(fresh).length;
+                updateProg(
+                    12 + Math.round((ui / Math.max(units.length, 1)) * 80),
+                    `Tayyor: ${done} / ${matched} mashina`,
+                    `✅ ${unit.name}: ${fmtKm(stats.probeg, 'km')} · ${fmtSpd(stats.maxSpeed || 0)}`
+                );
+                if (STATE.currentDate === dateVal) {
+                    renderDriverTabs();
+                    refreshUI();
+                }
+            } catch (e) {
+                if (cancelled()) return;
+                console.error('GPS unit:', e);
+                updateProg(0, '', `⚠️ ${unit.name}: ${e.message || e}`);
+            }
+            await sleepMs(0);
+        }
+        if (!matched) throw new Error('Hech qanday mashina haydovchi ro\'yxatiga mos kelmadi.');
+        STATE.data[dateVal] = fresh;
+        if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
+        updateProg(95, `Boomerang: ${done} ta mashina yuklandi`, '');
 
         if (cancelled()) return;
         STATE.currentDate = dateVal;
@@ -2873,11 +2810,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     document.getElementById('btn-gps-sync')?.addEventListener('click',   () => openGpsModal());
     document.getElementById('btn-gps-sync-2')?.addEventListener('click', () => {
-        if (hasGpsConfig() && STATE.gpsConfig && STATE.currentDate) {
-            showToast('GPS dan aniq km yuklanmoqda...', 'info');
-            syncFromGPS(STATE.currentDate, STATE.gpsConfig);
-            return;
-        }
+        // YANGILASH ham modal orqali — parol/token kerak (Server band yo'li yo'q)
         openGpsModal();
     });
 
