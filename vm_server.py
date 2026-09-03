@@ -2398,14 +2398,34 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 import gps_sync
 
                 d = gps_sync.today_tashkent()
+                # Vercel Fluid: 25s ichida javob — parallel + time budget
                 with _gps_sync_lock:
-                    result = gps_sync.sync_today(OFFICE, DIRECTORY, d, saved_by="cron") or {}
-                yday = gps_sync.yesterday_tashkent()
-                rec = OFFICE.get_report(yday)
-                cars = rec.get("cars") if isinstance(rec, dict) else None
-                if not cars:
-                    with _gps_sync_lock:
-                        gps_sync.sync_today(OFFICE, DIRECTORY, yday, saved_by="cron-yday")
+                    result = (
+                        gps_sync.sync_today(
+                            OFFICE,
+                            DIRECTORY,
+                            d,
+                            saved_by="cron",
+                            time_budget_sec=20,
+                            parallel=True,
+                        )
+                        or {}
+                    )
+                # Kecha: faqat bugun tez tugasa va kecha bo'sh bo'lsa
+                if result.get("ok") and not result.get("partial"):
+                    yday = gps_sync.yesterday_tashkent()
+                    rec = OFFICE.get_report(yday)
+                    cars = rec.get("cars") if isinstance(rec, dict) else None
+                    if not cars:
+                        with _gps_sync_lock:
+                            gps_sync.sync_today(
+                                OFFICE,
+                                DIRECTORY,
+                                yday,
+                                saved_by="cron-yday",
+                                time_budget_sec=18,
+                                parallel=True,
+                            )
                 self.send_json({"ok": True, "date": d, "result": result})
             except Exception as e:
                 self.send_json({"ok": False, "error": str(e)[:200]}, 500)

@@ -172,24 +172,32 @@ def haversine_m(lat1, lng1, lat2, lng2):
 
 
 class WialonClient:
-    def __init__(self, host, token="", user="", password=""):
+    def __init__(self, host, token="", user="", password="", timeout=45):
         self.host = (host or "http://bms1.gpsavto.uz").rstrip("/")
         self.token = token or ""
         self.user = user or ""
         self.password = password or ""
         self.sid = None
         self._tpl = None
+        self.timeout = int(timeout) or 45
 
     def _call(self, svc, params):
         params_str = urllib.parse.quote(json.dumps(params, separators=(",", ":")))
         sid_q = f"&sid={self.sid}" if self.sid else ""
         url = f"{self.host}/wialon/ajax.html?svc={svc}&params={params_str}{sid_q}"
         req = urllib.request.Request(url, headers={"User-Agent": "VaksinaMed/1.0"})
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             data = json.loads(resp.read().decode("utf-8", "replace"))
         if isinstance(data, dict) and data.get("error"):
             raise RuntimeError(f"Wialon #{data.get('error')}")
         return data
+
+    def clone_session(self):
+        """Parallel worker uchun bir xil sid (alohida HTTP)."""
+        c = WialonClient(self.host, token=self.token, user=self.user, password=self.password, timeout=self.timeout)
+        c.sid = self.sid
+        c._tpl = self._tpl
+        return c
 
     def login(self):
         self.token = re.sub(r"\s+", "", str(self.token or "")).strip()
@@ -1062,54 +1070,111 @@ def analyze_client_batch(office, base_dir, date_str, items, reenrich=False):
     return out
 
 
-def sync_today(office, base_dir, date_str=None, saved_by="auto"):
+def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec=None, parallel=True):
+    """
+    GPS sync. time_budget_sec berilsa (cron) — vaqt tugasa qisman saqlab qaytadi.
+    Vercel Fluid: birinchi javob 25s ichida kerak.
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     date_str = date_str or today_tashkent()
+    t0 = time.time()
+    budget = float(time_budget_sec) if time_budget_sec else None
+
+    def left():
+        if budget is None:
+            return 9999.0
+        return budget - (time.time() - t0)
+
     cfg = office.gps_config_internal()
     if not cfg.get("configured"):
         return {"ok": False, "error": "GPS sozlamasi yo'q"}
     host = cfg.get("host") or "http://bms1.gpsavto.uz"
-    client = WialonClient(host, token=cfg.get("token") or "", user=cfg.get("user") or "", password=cfg.get("password") or "")
+    http_timeout = 12 if budget is not None else 45
+    client = WialonClient(
+        host,
+        token=cfg.get("token") or "",
+        user=cfg.get("user") or "",
+        password=cfg.get("password") or "",
+        timeout=http_timeout,
+    )
     office.set_gps_status(running=True, error="", date=date_str, message="GPS ga ulanilmoqda...")
     try:
         client.login()
+        try:
+            client.resolve_template()
+        except Exception:
+            pass
+        if left() < 3:
+            office.set_gps_status(running=False, error="Vaqt tugadi", date=date_str, message="Qayta uriniladi")
+            return {"ok": False, "error": "Vaqt tugadi", "partial": True, "date": date_str, "cars": 0}
+
         office.set_gps_status(running=True, date=date_str, message="Mashinalar ro'yxati olinmoqda...")
         units = client.get_units()
         drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
         pharmacies = list(office.pharmacies())
         pharm_index = build_pharm_index(drivers, pharmacies)
-        unit_rows = []
-        done = 0
+
+        jobs = []
         for unit in units:
             name = str(unit.get("nm") or unit.get("name") or "")
             drv = find_driver_by_car(drivers, name)
             if not drv:
                 continue
-            try:
-                office.set_gps_status(
-                    running=True,
-                    date=date_str,
-                    cars=len(unit_rows),
-                    message="Yuklanmoqda: " + (drv.get("shortName") or name),
-                )
-                chrono = client.get_chronology(unit["id"], date_str)
-            except Exception:
-                continue
+            jobs.append((unit, drv))
+
+        # Mavjud hisobotni qisman yangilash uchun
+        prev = office.get_report(date_str)
+        cars = {}
+        if isinstance(prev, dict) and isinstance(prev.get("cars"), dict):
+            cars = dict(prev.get("cars") or {})
+
+        def fetch_one(unit, drv):
+            wc = client.clone_session()
+            chrono = wc.get_chronology(unit["id"], date_str)
             raw_stops = chrono.get("stops") or []
             stats = dict(chrono.get("stats") or {})
-            unit_rows.append((drv, raw_stops, stats))
+            return drv, raw_stops, stats
 
-        # 1-pass: geozonalarni o'rganish (matn yoki geo mos kelgan to'xtashlar)
-        for drv, raw_stops, _stats in unit_rows:
-            stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
-            learn_geozones_from_stops(pharmacies, drv["car"], stops)
-        learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
-        if any(isinstance(p, dict) and p.get("lat") is not None for p in pharmacies):
-            office.save_pharmacies(pharmacies)
-            pharmacies = office.pharmacies()
-            pharm_index = build_pharm_index(drivers, pharmacies)
+        unit_rows = []
+        workers = 6 if parallel and len(jobs) > 1 else 1
+        office.set_gps_status(running=True, date=date_str, message="Yuklanmoqda (%d)..." % len(jobs))
+
+        if workers == 1:
+            for unit, drv in jobs:
+                if left() < 4:
+                    break
+                try:
+                    unit_rows.append(fetch_one(unit, drv))
+                except Exception:
+                    continue
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futs = {pool.submit(fetch_one, u, d): d for u, d in jobs}
+                for fut in as_completed(futs):
+                    if left() < 4:
+                        for f in futs:
+                            f.cancel()
+                        break
+                    try:
+                        unit_rows.append(fut.result())
+                    except Exception:
+                        continue
+
+        # Geozona — faqat vaqt bo'lsa (cron da o'tkazib yuborish mumkin)
+        if left() > 6:
+            for drv, raw_stops, _stats in unit_rows:
+                stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
+                learn_geozones_from_stops(pharmacies, drv["car"], stops)
+            learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
+            if any(isinstance(p, dict) and p.get("lat") is not None for p in pharmacies):
+                office.save_pharmacies(pharmacies)
+                pharmacies = office.pharmacies()
+                pharm_index = build_pharm_index(drivers, pharmacies)
 
         reviews = office.reviews(date_str) or {}
-        cars = {}
+        done = 0
         for drv, raw_stops, stats in unit_rows:
             stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
             apply_review_problem_flags(stops, drv["car"], reviews)
@@ -1125,11 +1190,26 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto"):
                 "analysis": analysis,
             }
             done += 1
-        if done:
+
+        partial = budget is not None and done < len(jobs)
+        if cars:
             office.save_report(date_str, cars, saved_by=saved_by)
-            # Reviews allaqachon apply_review_problem_flags + analyze_data da hisoblangan
-        office.set_gps_status(running=False, cars=done, error="", date=date_str, message="Tayyor")
-        return {"ok": True, "date": date_str, "cars": done}
+        msg = "Davom etadi..." if partial else "Tayyor"
+        office.set_gps_status(
+            running=False,
+            cars=len(cars),
+            error="",
+            date=date_str,
+            message=msg,
+        )
+        return {
+            "ok": True,
+            "date": date_str,
+            "cars": len(cars),
+            "fetched": done,
+            "total": len(jobs),
+            "partial": partial,
+        }
     except Exception as e:
         office.set_gps_status(running=False, error=str(e)[:200], date=date_str, message="Xato")
         return {"ok": False, "error": str(e)}
