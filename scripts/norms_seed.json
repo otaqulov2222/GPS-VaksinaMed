@@ -1,0 +1,23 @@
+{
+  "01 931 PJA": { "sheet": "931", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 668 UKA": { "sheet": "668", "fuelType": "mixed", "gasNorm": 9.0, "benzinNorm": 10.0 },
+  "01 646 UKA": { "sheet": "646", "fuelType": "mixed", "gasNorm": 9.0, "benzinNorm": 10.0 },
+  "01 449 UKA": { "sheet": "449", "fuelType": "mixed", "gasNorm": 9.0, "benzinNorm": 10.0 },
+  "01 887 UKA": { "sheet": "887", "fuelType": "mixed", "gasNorm": 9.0, "benzinNorm": 10.0 },
+  "01 269 KMA": { "sheet": "269", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 382 NMA": { "sheet": "382", "fuelType": "mixed", "gasNorm": 11.0, "benzinNorm": 10.7 },
+  "01 870 SEA": { "sheet": "870", "fuelType": "mixed", "gasNorm": 10.0, "benzinNorm": 12.0 },
+  "01 043 KMA": { "sheet": "043", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 849 SNA": { "sheet": "849", "fuelType": "mixed", "gasNorm": 10.5, "benzinNorm": 8.5 },
+  "01 302 DNA": { "sheet": "302", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 949 AKA": { "sheet": "949", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 255 HMA": { "sheet": "255", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 205 HMA": { "sheet": "205", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 309 YNA": { "sheet": "309", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 592 YNA": { "sheet": "592", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 083 XJA": { "sheet": "083", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 282 BMA": { "sheet": "282", "fuelType": "mixed", "gasNorm": 8.0, "benzinNorm": 7.6 },
+  "01 844 FKA": { "sheet": "844", "fuelType": "dizel_gaz", "gasNorm": 12.0, "benzinNorm": 4.0 },
+  "01 331 MLA": { "sheet": "331", "fuelType": "dizel_gaz", "gasNorm": 12.0, "benzinNorm": 4.0 },
+  "01 699 UKA": { "sheet": "699", "fuelType": "mixed", "gasNorm": 9.0, "benzinNorm": 10.0 }
+}
