@@ -467,6 +467,8 @@ class WialonGPSClient {
         const rr = (execResp && execResp.reportResult) || {};
         const bag = this.emptyChronology();
         this.parseReportStats(rr.stats, bag);
+        // Boomerang: «Пробег в поездках» — trips jadvali jami
+        await this.applyTripTableKmFromReport(rr, bag);
         try { await this.sendRequest('report/cleanup_result', {}); } catch (e) {}
         const s = bag.stats;
         if (!s.probeg && !s.poezdok && !s.maxSpeed) return null;
@@ -481,6 +483,45 @@ class WialonGPSClient {
             gas: s.gas || 0,
             benzin: s.benzin || 0
         };
+    }
+
+    async applyTripTableKmFromReport(rr, chronology) {
+        const tables = (rr && rr.tables) || [];
+        let best = 0;
+        for (let i = 0; i < tables.length; i++) {
+            const tbl = tables[i] || {};
+            const name = (String(tbl.name || '') + ' ' + String(tbl.label || '')).toLowerCase();
+            const isTripTbl = tbl.name === 'unit_trips' || (name.includes('поезд') && !name.includes('хронолог') && tbl.name !== 'unit_chronology');
+            if (!isTripTbl) continue;
+            const headers = (tbl.header || []).map(h => this.cellText(h).toLowerCase());
+            let kmIdx = headers.findIndex(h => (h.includes('пробег') || h.includes('mileage') || h.includes('masofa')) && !h.includes('скорост') && !h.includes('speed'));
+            if (kmIdx < 0) kmIdx = headers.findIndex(h => /км|km/.test(h) && !h.includes('скорост') && !h.includes('speed') && !h.includes('ч') && !h.includes('h'));
+            if (kmIdx < 0) continue;
+            const tot = tbl.total;
+            const totCells = Array.isArray(tot) ? tot : (tot && tot.c) || [];
+            let totKm = 0;
+            if (totCells[kmIdx] != null) {
+                totKm = this.kmFromWialon(this.cellNum(totCells[kmIdx]), headers[kmIdx] || '', this.cellText(totCells[kmIdx]));
+            }
+            let sum = 0;
+            const rows = await this.fetchReportRows(i, Number(tbl.rows || 0));
+            rows.forEach(r => {
+                const cell = (r.c || [])[kmIdx];
+                const n = this.cellNum(cell);
+                if (!n || n <= 0) return;
+                const km = this.kmFromWialon(n, headers[kmIdx] || '', this.cellText(cell));
+                if (km > 0 && km < 2000) sum += km;
+            });
+            const tripKm = this.roundKm(totKm || sum);
+            if (tripKm > best) best = tripKm;
+            if (Number(tbl.rows || 0) && !chronology.stats.poezdok) {
+                chronology.stats.poezdok = Number(tbl.rows || 0);
+            }
+        }
+        if (best > 0) {
+            chronology.stats.probeg = best;
+            chronology.stats._kmSrc = 'trips';
+        }
     }
 
     async dayMetrics(unitId, timeFrom, timeTo) {
@@ -532,7 +573,7 @@ class WialonGPSClient {
             const pref = this.mileagePref(k);
             if (pref >= 0 && num > 0) {
                 const km = this.kmFromWialon(num, k, v);
-                if (km > 0 && pref >= bestPref) {
+                if (km > 0 && (pref > bestPref || (pref === bestPref && km > bestKm))) {
                     bestPref = pref;
                     bestKm = km;
                 }
@@ -565,7 +606,12 @@ class WialonGPSClient {
                 else if (/л\b|литр|бензин|дизел|diesel|petrol/i.test(blob)) chronology.stats.benzin = this.roundFuel(num);
             }
         });
-        if (bestKm > 0) chronology.stats.probeg = bestKm;
+        if (bestKm > 0) {
+            if (!(chronology.stats._kmSrc === 'trips' && bestPref < 3)) {
+                chronology.stats.probeg = bestKm;
+                if (bestPref >= 3) chronology.stats._kmSrc = 'trip_stats';
+            }
+        }
     }
 
     mergeReportStats(base, extra) {
@@ -743,9 +789,10 @@ class WialonGPSClient {
                 totKm = this.kmFromWialon(this.cellNum(totCells[kmIdx]), headers[kmIdx] || '', this.cellText(totCells[kmIdx]));
             }
             const tripKm = this.roundKm(totKm || sum);
-            // Statsda «poezdkalardagi yurish» bo'lsa — jadval yig'indisi bilan pastroq/noaniq qiymatga almashtirmaslik
-            if (tripKm > 0 && (!chronology.stats.probeg || statsKmPref < 3)) {
+            // Boomerang: поездки jadvali = «Пробег в поездках»
+            if (tripKm > 0) {
                 chronology.stats.probeg = tripKm;
+                chronology.stats._kmSrc = 'trips';
             }
         });
 

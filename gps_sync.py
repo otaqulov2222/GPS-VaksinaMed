@@ -459,6 +459,10 @@ class WialonClient:
             stats["stoyanok"] = len(stops)
         elif not stats["stoyanok"]:
             stats["stoyanok"] = 0
+
+        # Chronologiya ichidagi «поездк» jadvalidan km (Boomerang «Пробег в поездках»)
+        self.apply_trip_table_km(loaded, stats)
+
         try:
             self._call("report/cleanup_result", {})
         except Exception:
@@ -472,6 +476,52 @@ class WialonClient:
             stats = self.merge_stats(stats, trip_stats)
         return {"stats": stats, "stops": stops}
 
+    def apply_trip_table_km(self, loaded, stats):
+        """unit_trips / поездки jadvali jami — Boomerang «Пробег в поездках»."""
+        if not isinstance(stats, dict):
+            return
+        best = 0.0
+        for block in loaded or []:
+            tbl = block.get("tbl") or {}
+            name = str(block.get("name") or "")
+            tname = str(tbl.get("name") or "")
+            if tname != "unit_trips" and "поезд" not in name:
+                continue
+            if "хронолог" in name:
+                continue
+            headers = [self.cell_text(h).lower() for h in (tbl.get("header") or [])]
+            km_idx = -1
+            for hi, h in enumerate(headers):
+                if ("пробег" in h or "mileage" in h or "masofa" in h or "км" in h or "km" in h) and "скорост" not in h and "speed" not in h:
+                    km_idx = hi
+                    break
+            if km_idx < 0:
+                continue
+            tot = tbl.get("total")
+            tot_cells = tot if isinstance(tot, list) else ((tot or {}).get("c") or [])
+            tot_km = 0.0
+            if km_idx < len(tot_cells):
+                tot_km = self.km_from_wialon(
+                    self.cell_num(tot_cells[km_idx]), headers[km_idx], self.cell_text(tot_cells[km_idx])
+                )
+            row_sum = 0.0
+            for r in block.get("rows") or []:
+                c = r.get("c") or []
+                if km_idx >= len(c):
+                    continue
+                km = self.km_from_wialon(self.cell_num(c[km_idx]), headers[km_idx], self.cell_text(c[km_idx]))
+                if 0 < km < 2000:
+                    row_sum += km
+            trip_km = tot_km or round(row_sum + 1e-12, 2)
+            if trip_km > best:
+                best = trip_km
+            rows_n = int(tbl.get("rows") or 0)
+            if rows_n and not stats.get("poezdok"):
+                stats["poezdok"] = rows_n
+        if best > 0:
+            stats["probeg"] = best
+            stats["_kmSrc"] = "trips"
+
     def apply_report_stats(self, pairs, stats):
         best_pref, best_km = -1, 0.0
         for pair in pairs or []:
@@ -484,7 +534,7 @@ class WialonClient:
             pref = self.mileage_pref(k)
             if pref >= 0 and num > 0:
                 km = self.km_from_wialon(num, k, txt)
-                if km > 0 and pref >= best_pref:
+                if km > 0 and (pref > best_pref or (pref == best_pref and km > best_km)):
                     best_pref, best_km = pref, km
             if "макс" in k and ("скорост" in k or "speed" in k or "tezlik" in k) and num > 0:
                 stats["maxSpeed"] = round(num, 1)
@@ -509,16 +559,29 @@ class WialonClient:
                 elif re.search(r"л\b|литр|бензин|дизел|diesel|petrol", blob, re.I):
                     stats["benzin"] = num
         if best_km > 0:
-            stats["probeg"] = best_km
+            # Trips jadvalidan km bo'lsa — pastroq pref bilan ezmaslik
+            if stats.get("_kmSrc") == "trips" and best_pref < 3:
+                pass
+            else:
+                stats["probeg"] = best_km
+                if best_pref >= 3:
+                    stats["_kmSrc"] = "trip_stats"
 
     def merge_stats(self, base, extra):
-        """Boomerang «Отчёт по поездкам» stats ustuvor."""
+        """Boomerang «Отчёт по поездкам» / trips jadvali km ustuvor."""
         if not extra:
             return base
         out = dict(base or {})
-        for key in ("probeg", "maxSpeed", "avgSpeed", "poezdok"):
+        for key in ("maxSpeed", "avgSpeed", "poezdok"):
             if extra.get(key):
                 out[key] = extra[key]
+        ep = float(extra.get("probeg") or 0)
+        bp = float(out.get("probeg") or 0)
+        if ep > 0:
+            if extra.get("_kmSrc") in ("trips", "trip_stats") or not bp or ep >= bp:
+                out["probeg"] = ep
+                if extra.get("_kmSrc"):
+                    out["_kmSrc"] = extra["_kmSrc"]
         if extra.get("stoyanok") and not out.get("stoyanok"):
             out["stoyanok"] = extra["stoyanok"]
         for key in ("motoChas", "totalStop"):
@@ -535,7 +598,7 @@ class WialonClient:
         chrono = tpls.get("chrono") or tpls.get("any")
         if not trip:
             return None
-        # Bir xil shablon bo'lsa ham stats qayta o'qish foydali emas — skip
+        # Bir xil shablon: chronologiyada trips jadvali allaqachon o'qilgan
         if trip == chrono:
             return None
         t_from, t_to = day_bounds_tashkent(date_str)
@@ -564,26 +627,14 @@ class WialonClient:
                 "totalStop": "—",
             }
             self.apply_report_stats(rr.get("stats") or [], stats)
-            # Jadval jami — qo'shimcha manba
+            loaded = []
             for i, tbl in enumerate(rr.get("tables") or []):
                 name = (str(tbl.get("name") or "") + " " + str(tbl.get("label") or "")).lower()
-                if "поезд" not in name and tbl.get("name") != "unit_trips":
-                    continue
-                headers = [self.cell_text(h).lower() for h in (tbl.get("header") or [])]
-                km_idx = -1
-                for hi, h in enumerate(headers):
-                    if ("пробег" in h or "mileage" in h or "masofa" in h or "км" in h or "km" in h) and "скорост" not in h and "speed" not in h:
-                        km_idx = hi
-                        break
-                tot = tbl.get("total")
-                tot_cells = tot if isinstance(tot, list) else ((tot or {}).get("c") or [])
-                if km_idx >= 0 and km_idx < len(tot_cells):
-                    km = self.km_from_wialon(self.cell_num(tot_cells[km_idx]), headers[km_idx], self.cell_text(tot_cells[km_idx]))
-                    if km > 0:
-                        stats["probeg"] = km
-                rows_n = int(tbl.get("rows") or 0)
-                if rows_n and not stats.get("poezdok"):
-                    stats["poezdok"] = rows_n
+                rows = []
+                if "поезд" in name or tbl.get("name") == "unit_trips":
+                    rows = self.fetch_rows(i, int(tbl.get("rows") or 0))
+                loaded.append({"name": name, "tbl": tbl, "rows": rows})
+            self.apply_trip_table_km(loaded, stats)
             try:
                 self._call("report/cleanup_result", {})
             except Exception:
