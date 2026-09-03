@@ -18,14 +18,20 @@ def main():
         return 1
 
     try:
-        from vm_server import DIRECTORY, OFFICE, init_app, seed_gps_from_env
+        import vm_server
         import gps_sync
 
         print("init_app...")
-        init_app(ROOT)
-        seed_gps_from_env(OFFICE)
+        vm_server.init_app(ROOT)
+        vm_server.seed_gps_from_env(vm_server.OFFICE)
 
-        cfg = OFFICE.gps_config_public()
+        office = vm_server.OFFICE
+        directory = vm_server.DIRECTORY
+        if office is None:
+            print("ERROR: OFFICE init bo'lmadi")
+            return 1
+
+        cfg = office.gps_config_public()
         print(
             "GPS config:",
             {
@@ -46,17 +52,17 @@ def main():
         d = gps_sync.today_tashkent()
         print("Sync bugun:", d)
         result = gps_sync.sync_today(
-            OFFICE, DIRECTORY, d, saved_by="github-cron", time_budget_sec=None, parallel=True
+            office, directory, d, saved_by="github-cron", time_budget_sec=None, parallel=True
         )
         print("Natija:", result)
 
         yday = gps_sync.yesterday_tashkent()
-        rec = OFFICE.get_report(yday)
+        rec = office.get_report(yday)
         cars = rec.get("cars") if isinstance(rec, dict) else None
         if not cars:
             print("Sync kecha:", yday)
             y = gps_sync.sync_today(
-                OFFICE, DIRECTORY, yday, saved_by="github-cron-yday", parallel=True
+                office, directory, yday, saved_by="github-cron-yday", parallel=True
             )
             print("Kecha:", y)
 
