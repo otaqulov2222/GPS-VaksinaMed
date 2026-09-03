@@ -3035,41 +3035,72 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
                     d = date_val or gps_sync.today_tashkent()
                     force = bool(body.get("force", True))
-                    OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
-                    with _gps_sync_lock:
-                        # Vercel gateway ~25–30s da 504 — har so'rovda 2 mashina, ~18s
+                    # Oldingi so'rov hali ishlayotgan bo'lsa — kutmasdan busy qaytar (504 zanjiri yo'q)
+                    if not _gps_sync_lock.acquire(blocking=False):
+                        prev = OFFICE.get_report(d) or {}
+                        pcars = prev.get("cars") if isinstance(prev, dict) else {}
+                        if not isinstance(pcars, dict):
+                            pcars = {}
+                        synced = sum(
+                            1
+                            for r in pcars.values()
+                            if isinstance(r, dict) and r.get("syncedAt")
+                        )
+                        self.send_json({
+                            "ok": True,
+                            "busy": True,
+                            "queued": False,
+                            "partial": True,
+                            "date": d,
+                            "cars": len(pcars),
+                            "fetched": synced,
+                            "chunk": 0,
+                            "total": max(synced + 1, len(pcars), 1),
+                            **OFFICE.gps_status_public(),
+                        })
+                        return
+                    try:
+                        OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
+                        # Vercel gateway ~25s — 1 mashina, ~12–14s
                         result = gps_sync.sync_today(
                             OFFICE,
                             DIRECTORY,
                             d,
                             saved_by=sess.get("username") or "user",
-                            time_budget_sec=18,
-                            max_cars=2,
+                            time_budget_sec=14,
+                            max_cars=1,
                             force=force,
+                            parallel=False,
                         ) or {}
-                    OFFICE.set_gps_status(
-                        running=False,
-                        cars=int(result.get("cars") or 0),
-                        error=str(result.get("error") or "")[:200],
-                        date=d,
-                        message=("Davom" if result.get("partial") else "Tayyor")
-                        if result.get("ok")
-                        else "Xato",
-                    )
-                    self.send_json({
-                        "ok": bool(result.get("ok")),
-                        "queued": False,
-                        "date": d,
-                        "cars": int(result.get("cars") or 0),
-                        "fetched": int(result.get("fetched") or 0),
-                        "chunk": int(result.get("chunk") or 0),
-                        "total": int(result.get("total") or 0),
-                        "partial": bool(result.get("partial")),
-                        "errors": result.get("errors") or [],
-                        "error": str(result.get("error") or "")[:200],
-                        **OFFICE.gps_status_public(),
-                    })
+                        OFFICE.set_gps_status(
+                            running=False,
+                            cars=int(result.get("cars") or 0),
+                            error=str(result.get("error") or "")[:200],
+                            date=d,
+                            message=("Davom" if result.get("partial") else "Tayyor")
+                            if result.get("ok")
+                            else "Xato",
+                        )
+                        self.send_json({
+                            "ok": bool(result.get("ok")),
+                            "queued": False,
+                            "date": d,
+                            "cars": int(result.get("cars") or 0),
+                            "fetched": int(result.get("fetched") or 0),
+                            "chunk": int(result.get("chunk") or 0),
+                            "total": int(result.get("total") or 0),
+                            "partial": bool(result.get("partial")),
+                            "errors": result.get("errors") or [],
+                            "error": str(result.get("error") or "")[:200],
+                            **OFFICE.gps_status_public(),
+                        })
+                    finally:
+                        _gps_sync_lock.release()
                 except Exception as e:
+                    try:
+                        _gps_sync_lock.release()
+                    except Exception:
+                        pass
                     OFFICE.set_gps_status(running=False, error=str(e)[:200], message="Xato")
                     self.send_json({"ok": False, "error": str(e)[:200]}, 500)
                 return

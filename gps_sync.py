@@ -1376,7 +1376,8 @@ def sync_today(
             }
 
         def fetch_one(unit, drv):
-            wc = client.clone_session()
+            # Bitta mashina / bitta worker — qo'shimcha login yo'q (504 tezligi)
+            wc = client if workers_n <= 1 else client.clone_session()
             chrono = wc.get_chronology(unit["id"], date_str)
             raw_stops = chrono.get("stops") or []
             stats = dict(chrono.get("stats") or {})
@@ -1384,7 +1385,8 @@ def sync_today(
 
         unit_rows = []
         errors = []
-        workers = 2 if (budget is not None and parallel and len(jobs) > 1) else (4 if parallel and len(jobs) > 1 else 1)
+        workers_n = 1 if (max_cars and max_cars <= 2) else (2 if (budget is not None and parallel and len(jobs) > 1) else (4 if parallel and len(jobs) > 1 else 1))
+        workers = workers_n
         office.set_gps_status(
             running=True,
             date=date_str,
@@ -1393,7 +1395,7 @@ def sync_today(
 
         if workers == 1:
             for unit, drv in jobs:
-                if left() < 4:
+                if left() < 3:
                     break
                 try:
                     unit_rows.append(fetch_one(unit, drv))
@@ -1404,7 +1406,7 @@ def sync_today(
                 futs = {pool.submit(fetch_one, u, d): d for u, d in jobs}
                 for fut in as_completed(futs):
                     drv_meta = futs[fut]
-                    if left() < 4:
+                    if left() < 3:
                         for f in futs:
                             f.cancel()
                         break
@@ -1413,7 +1415,8 @@ def sync_today(
                     except Exception as e:
                         errors.append("%s: %s" % ((drv_meta or {}).get("car") or "?", str(e)[:80]))
 
-        if left() > 5:
+        # Vercel bo'laklarida geozona o'rganishni o'tkazib yuborish — vaqt tejash
+        if budget is None and left() > 5:
             for row in unit_rows:
                 drv, raw_stops = row[0], row[1]
                 stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)

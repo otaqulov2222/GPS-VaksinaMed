@@ -1858,11 +1858,11 @@ async function syncFromGPS(dateVal, cfg, opts) {
         let done = 0;
         let viaServer = false;
         try {
-            // Vercel: har roundda 2 mashina (504 oldini olish). 504 bo'lsa force o'chadi.
+            // Vercel: 1 mashina / so'rov. 504 yoki busy — davom (wipe yo'q).
             let force = true;
             let last = null;
             let hardFails = 0;
-            for (let round = 0; round < 40 && !cancelled(); round++) {
+            for (let round = 0; round < 60 && !cancelled(); round++) {
                 let queued = null;
                 try {
                     queued = await vmApi('/api/office/gps/sync', {
@@ -1870,26 +1870,35 @@ async function syncFromGPS(dateVal, cfg, opts) {
                         body: JSON.stringify({ date: dateVal, force })
                     });
                 } catch (e) {
-                    const msg = String((e && e.message) || e || '');
                     hardFails += 1;
-                    // 504: ehtimol bo'lak saqlangan — force qayta wipe qilmasin
                     force = false;
                     updateProg(
-                        Math.min(85, 8 + round * 2),
-                        'Server 504 — qisqa bo‘lak bilan davom (' + hardFails + ')...',
-                        msg
+                        Math.min(85, 8 + round),
+                        'Ulanish band — davom (' + hardFails + ')…',
+                        ''
                     );
-                    if (hardFails >= 8) throw e;
-                    await sleepMs(1500);
+                    if (hardFails >= 12) throw e;
+                    await sleepMs(1200 + Math.min(hardFails, 5) * 400);
+                    continue;
+                }
+                if (queued && queued.busy) {
+                    force = false;
+                    updateProg(
+                        Math.min(85, 8 + round),
+                        'Server band — kutilyapti… ' + (queued.fetched || 0) + '/' + (queued.total || '?'),
+                        ''
+                    );
+                    await sleepMs(2000);
                     continue;
                 }
                 hardFails = 0;
                 if (!queued || !queued.ok) {
                     const err = (queued && queued.error) || 'GPS sync xato';
-                    if (/504|503|502|timeout/i.test(err)) {
+                    if (/504|503|502|timeout|band/i.test(err)) {
                         force = false;
                         hardFails += 1;
-                        if (hardFails >= 8) throw new Error(err);
+                        updateProg(Math.min(85, 8 + round), 'Qayta urinilmoqda…', '');
+                        if (hardFails >= 12) throw new Error(err);
                         await sleepMs(1500);
                         continue;
                     }
@@ -1930,7 +1939,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
                     chunk ? ('+' + chunk + ' mashina') : ''
                 );
                 if (!queued.partial) break;
-                await sleepMs(300);
+                await sleepMs(250);
             }
             if (cancelled()) return;
             if (!viaServer) throw new Error('GPS yuklash yakunlanmadi');
