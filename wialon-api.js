@@ -563,26 +563,22 @@ class WialonGPSClient {
         if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) {
             const repKm = Number(fromReport.km) || 0;
             const liveKm = Number(fromTrips && fromTrips.km) || 0;
-            const trusted = fromReport._kmSrc === 'trips' || fromReport._kmSrc === 'trip_stats';
-            // Boomerang «Пробег в поездках» — aniq qiymat (138.05), get_trips (134.89) emas
-            let km = repKm;
-            if (trusted && repKm > 0) {
-                km = repKm;
-            } else if (!km) {
-                km = liveKm;
-            } else if (liveKm > repKm + 0.5 && !trusted) {
-                km = liveKm;
-            }
+            // Hisobot (Boomerang) — asosiy; get_trips faqat bo'sh
+            const km = repKm > 0 ? repKm : liveKm;
+            const maxSpeed = fromReport.maxSpeed
+                ? fromReport.maxSpeed
+                : ((fromTrips && fromTrips.maxSpeed) || 0);
             return {
                 km: this.roundKm(km),
-                maxSpeed: Math.max(fromReport.maxSpeed || 0, (fromTrips && fromTrips.maxSpeed) || 0),
+                maxSpeed,
                 avgSpeed: fromReport.avgSpeed || (fromTrips && fromTrips.avgSpeed) || 0,
                 trips: fromReport.trips || (fromTrips && fromTrips.trips) || 0,
                 stops: fromReport.stops || 0,
                 totalStop: fromReport.totalStop || '—',
                 motoChas: fromReport.motoChas || '—',
                 gas: fromReport.gas || 0,
-                benzin: fromReport.benzin || 0
+                benzin: fromReport.benzin || 0,
+                _kmSrc: fromReport._kmSrc || (repKm ? 'trip_report' : 'get_trips')
             };
         }
         if (fromTrips && (fromTrips.km || fromTrips.trips || fromTrips.maxSpeed)) return fromTrips;
@@ -599,7 +595,7 @@ class WialonGPSClient {
             const m = await this.dayMetrics(unitId, timeFrom, timeTo);
             if (m) {
                 if (m.km) chronology.stats.probeg = m.km;
-                if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(Math.max(chronology.stats.maxSpeed || 0, m.maxSpeed));
+                if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(m.maxSpeed);
                 if (m.avgSpeed) chronology.stats.avgSpeed = m.avgSpeed;
                 if (m.trips) chronology.stats.poezdok = m.trips;
                 if (m.stops && !chronology.stats.stoyanok) chronology.stats.stoyanok = m.stops;
