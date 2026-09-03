@@ -2712,6 +2712,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateGpsLastSyncUi(st.lastSync, st.running);
         if (serverGps || hasGpsConfig()) setGpsUi('on');
         await pollServerGpsStatus(!STATE.history.length);
+        // Bugun bo'sh bo'lsa — darhol server sync (cron kutmasdan)
+        const todayCars = STATE.data[todayStr] ? Object.keys(STATE.data[todayStr]).length : 0;
+        if ((serverGps || hasGpsConfig()) && todayCars === 0 && !STATE.gpsSyncBusy) {
+            try {
+                setGpsUi('sync');
+                showToast('Bugungi GPS yuklanmoqda...', 'info');
+                const queued = await vmApi('/api/office/gps/sync', {
+                    method: 'POST',
+                    body: JSON.stringify({ date: todayStr })
+                });
+                if (queued && queued.ok) {
+                    if (queued.queued === false) {
+                        await pollServerGpsStatus(true);
+                        if (window.VMOffice) await VMOffice.loadReportIfNeeded(todayStr, true);
+                        if (STATE.currentDate === todayStr) {
+                            renderCalendar();
+                            renderDriverTabs();
+                            refreshUI();
+                        }
+                    } else {
+                        await syncFromGPS(todayStr, STATE.gpsConfig || {}, { silent: true, force: true });
+                    }
+                }
+            } catch (e) {
+                console.warn('auto today sync:', e);
+            }
+        }
         startGpsAutoSync();
         if (!hasGpsConfig() && serverGps) {
             showToast('Server GPS avtomatik yangilayapti — brauzer yopiq bo\'lsa ham ishlaydi', 'info');

@@ -3,7 +3,7 @@
   "version": 2,
   "functions": {
     "app.py": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "excludeFiles": "{data/**,scripts/**,.git/**,terminals/**,agent-transcripts/**,start.bat,Procfile,render.yaml,.vercelignore}"
     }
   },
@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/gps-sync",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/health",
+      "schedule": "*/4 * * * *"
     }
   ]
 }

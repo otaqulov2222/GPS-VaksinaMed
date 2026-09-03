@@ -197,15 +197,14 @@ html { -webkit-text-size-adjust: 100%; }
   </form>
 </div>
 <script>
-async function wakeServer(maxTry) {
-  for (let i = 0; i < maxTry; i++) {
-    try {
-      const r = await fetch('/api/health', { cache: 'no-store' });
-      if (r.ok) return true;
-    } catch (e) {}
-    await new Promise(r => setTimeout(r, 3000));
-  }
-  return false;
+/** Fonida serverni isitish — loginni bloklamaydi */
+fetch('/api/health', { cache: 'no-store' }).catch(() => {});
+
+function fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, Object.assign({}, opts || {}, { signal: ctrl.signal }))
+    .finally(() => clearTimeout(t));
 }
 
 document.getElementById('f').addEventListener('submit', async (e) => {
@@ -214,18 +213,9 @@ document.getElementById('f').addEventListener('submit', async (e) => {
   const btn = document.getElementById('btn');
   err.classList.remove('show');
   btn.disabled = true;
-  btn.textContent = 'Server uyg\'onmoqda...';
-  const up = await wakeServer(8);
-  if (!up) {
-    err.textContent = 'Server hali javob bermayapti. Render bepul rejimda 1–2 daqiqa kuting va qayta urining.';
-    err.classList.add('show');
-    btn.disabled = false;
-    btn.textContent = 'Kirish';
-    return;
-  }
   btn.textContent = 'Tekshirilmoqda...';
   try {
-    const r = await fetch('/api/login', {
+    const r = await fetchWithTimeout('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -233,14 +223,14 @@ document.getElementById('f').addEventListener('submit', async (e) => {
         username: document.getElementById('u').value.trim(),
         password: document.getElementById('p').value
       })
-    });
+    }, 45000);
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) throw new Error(d.error || 'Kirish muvaffaqiyatsiz');
     location.replace(d.redirect || '/');
   } catch (ex) {
     const msg = String(ex.message || '');
-    if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
-      err.textContent = 'Server bilan aloqa uzildi. 30 soniya kutib, qayta Kirish bosing (Render uyg\'onishi kerak).';
+    if (ex.name === 'AbortError' || msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+      err.textContent = 'Server sekin javob berdi. 10 soniya kutib, qayta Kirish bosing.';
     } else {
       err.textContent = msg || 'Xato';
     }
