@@ -1992,9 +1992,26 @@ function sheetToAoa(sheet) {
   }));
 }
 
+/** Excel ba'zan 11.607 ni 11607 qilib beradi — kunlik zapravka uchun */
+function sanitizeDailyFill(qty, kind) {
+  let v = n(qty);
+  if (v <= 0) return 0;
+  // Labo/gaz: bir zapravka odatda 5–80 m³; 200+ deyarli doim 1000x xato
+  if ((kind === 'gaz' || kind === 'dizel_gaz') && v >= 200) {
+    const s = v / 1000;
+    if (s >= 0.5 && s <= 150) return s;
+  }
+  // Benzin/dizel: odatda 5–100 l; 300+ shubhali
+  if ((kind === 'benzin' || kind === 'dizel') && v >= 300) {
+    const s = v / 1000;
+    if (s >= 0.5 && s <= 200) return s;
+  }
+  return v;
+}
+
 /** Excel ba'zan 147.996 ni 147996 qilib beradi — norma/sarf bo'yicha tuzatish */
 function sanitizeFuelQty(qty, kind, km, norm, used) {
-  let v = n(qty);
+  let v = sanitizeDailyFill(qty, kind);
   if (v <= 0) return 0;
   const expect = (n(km) > 0 && n(norm) > 0) ? (n(km) * n(norm) / 100) : n(used);
   // Faqat aniq ~1000x: v/1000 sarf/normaga yaqin bo'lsagina
@@ -2430,8 +2447,8 @@ function parseWaybillAoa(aoa, carHint) {
       lastDay = d;
     }
 
-    const gasIn = n(row[3]);
-    const benzinIn = n(row[4]);
+    const gasIn = sanitizeDailyFill(row[3], 'gaz');
+    const benzinIn = sanitizeDailyFill(row[4], diesel ? 'dizel' : 'benzin');
     const gKm = n(row[9]);
     const bKm = n(row[10]);
     const station = cellStr(row[2]);
@@ -2474,8 +2491,8 @@ function parseWaybillAoa(aoa, carHint) {
     if (day.km) day.kmSrc = 'user';
 
     if (firstFilled) {
-      if (row[5] !== '' && row[5] != null) params.gasStart = n(row[5]);
-      if (row[6] !== '' && row[6] != null) params.benzinStart = n(row[6]);
+      if (row[5] !== '' && row[5] != null) params.gasStart = sanitizeStartBal(row[5], 'gaz');
+      if (row[6] !== '' && row[6] != null) params.benzinStart = sanitizeStartBal(row[6], diesel ? 'dizel' : 'benzin');
       if (n(row[7])) params.gasNorm = n(row[7]);
       if (n(row[8])) params.benzinNorm = n(row[8]);
       if (params.gasStart != null || params.benzinStart != null || params.gasNorm || params.benzinNorm) {
@@ -2655,8 +2672,11 @@ function applyExcelImport(parsed, plate, replaceDays) {
       if (!STATE.meta.stations.includes(src.station)) STATE.meta.stations.push(src.station);
       touched = true;
     }
-    if (src.gasIn) { row.gasIn = src.gasIn; touched = true; }
-    if (src.benzinIn) { row.benzinIn = src.benzinIn; touched = true; }
+    if (src.gasIn) { row.gasIn = sanitizeDailyFill(src.gasIn, 'gaz'); touched = true; }
+    if (src.benzinIn) {
+      row.benzinIn = sanitizeDailyFill(src.benzinIn, (car.fuelType === 'dizel' || car.fuelType === 'dizel_gaz') ? 'dizel' : 'benzin');
+      touched = true;
+    }
     if (src.gasPrice) row.gasPrice = src.gasPrice;
     if (src.benzinPrice) row.benzinPrice = src.benzinPrice;
     if (src.extra) { row.extra = src.extra; touched = true; }
