@@ -1089,8 +1089,8 @@ function selectDate(ds) {
     renderDriverTabs();
     refreshUI();
     if (window.VMOffice) {
-        // Server hisobot asosiy — brauzer faqat bo'sh km ni to'ldiradi (23.66 chron bilan buzmasin)
-        VMOffice.loadReportIfNeeded(ds).then(() => refreshDayKm(ds, { onlyEmpty: true }));
+        // Server hisobot — yagona manba. Brauzer km yozmaydi.
+        VMOffice.loadReportIfNeeded(ds);
     } else {
         refreshDayKm(ds);
     }
@@ -1394,11 +1394,7 @@ function renderStats(data) {
         s.benzin > 0 ? fmtFuel(s.benzin, 'L benzin') : ''
     ].filter(Boolean).join(' + ') || '—';
 
-    const avgSpd = s.avgSpeed
-        ? fmtSpd(s.avgSpeed, 'km/s')
-        : (s.probeg && s.motoChas && s.motoChas !== '—'
-            ? fmtSpd(s.probeg / Math.max(parseTimeStr(s.motoChas)/3600, 0.1), 'km/s')
-            : '—');
+    const avgSpd = s.avgSpeed ? fmtSpd(s.avgSpeed, 'km/s') : '—';
 
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
     set('stat-probeg',   s.probeg ? fmtKm(s.probeg, 'км') : '—');
@@ -1870,9 +1866,13 @@ async function syncFromGPS(dateVal, cfg, opts) {
                 if (queued.error) throw new Error(queued.error);
                 viaServer = true;
                 if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
-                done = Number(queued.cars) || Object.keys(STATE.data[dateVal] || {}).length;
-                updateProg(95, 'Hisobot olindi', done + ' ta mashina');
-                // Server sync — asosiy manba. Brauzer refreshDayKm pastroq/noto'g'ri km yozmasin.
+                done = Number(queued.fetched || queued.cars) || Object.keys(STATE.data[dateVal] || {}).length;
+                const tot = Number(queued.total) || done;
+                updateProg(95, queued.partial ? ('Qisman: ' + done + '/' + tot) : 'Hisobot olindi', done + ' ta mashina');
+                if (queued.partial && !silent) {
+                    showToast('GPS qisman yuklandi: ' + done + '/' + tot + '. Qayta GPS YUKLASH bosing.', 'warn');
+                }
+                // Server sync — yagona manba. Brauzer km yozmaydi.
             } else {
             const jobId = Number((queued && queued.jobId) || 0);
             if (!jobId) throw new Error((queued && queued.error) || 'Navbatga qo‘yilmadi');
@@ -2709,8 +2709,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderDriverTabs();
     refreshUI();
     setGpsUi(hasGpsConfig() ? 'on' : 'off');
-    // Server sync mavjud bo'lsa brauzer faqat bo'sh km ni to'ldiradi
-    refreshDayKm(STATE.currentDate, { onlyEmpty: !!window.VMOffice });
+    // Server sync bor — brauzer GPS raqamlarini qayta yozmasin
+    if (!window.VMOffice) refreshDayKm(STATE.currentDate);
     
     // ── Avtomatik GPS (bootstrap dan keyin, UI bloklamasdan) ───────────────
     setTimeout(async () => {

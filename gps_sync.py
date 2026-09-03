@@ -535,7 +535,9 @@ class WialonClient:
     def cleanup_stats(stats):
         if not isinstance(stats, dict):
             return
-        stats.pop("_kmSrc", None)
+        src = stats.pop("_kmSrc", None)
+        if src:
+            stats["metricsSource"] = src
         for key in ("probeg", "maxSpeed", "avgSpeed"):
             if key in stats:
                 try:
@@ -1314,21 +1316,24 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
                 continue
             jobs.append((unit, drv))
 
-        # Mavjud hisobotni qisman yangilash uchun
+        # To'liq sync (GPS YUKLASH): eski noto'g'ri km saqlanmasin — yangidan yoziladi.
+        # Cron (budget): faqat yangilangan mashinalarni merge (qolganlari keyingi urinishda).
         prev = office.get_report(date_str)
-        cars = {}
+        prev_cars = {}
         if isinstance(prev, dict) and isinstance(prev.get("cars"), dict):
-            cars = dict(prev.get("cars") or {})
+            prev_cars = dict(prev.get("cars") or {})
+        cars = dict(prev_cars) if budget is not None else {}
 
         def fetch_one(unit, drv):
             wc = client.clone_session()
             chrono = wc.get_chronology(unit["id"], date_str)
             raw_stops = chrono.get("stops") or []
             stats = dict(chrono.get("stats") or {})
-            return drv, raw_stops, stats
+            return drv, raw_stops, stats, None
 
         unit_rows = []
-        workers = 6 if parallel and len(jobs) > 1 else 1
+        errors = []
+        workers = 4 if parallel and len(jobs) > 1 else 1
         office.set_gps_status(running=True, date=date_str, message="Yuklanmoqda (%d)..." % len(jobs))
 
         if workers == 1:
@@ -1337,24 +1342,26 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
                     break
                 try:
                     unit_rows.append(fetch_one(unit, drv))
-                except Exception:
-                    continue
+                except Exception as e:
+                    errors.append("%s: %s" % (drv.get("car") or "?", str(e)[:80]))
         else:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futs = {pool.submit(fetch_one, u, d): d for u, d in jobs}
                 for fut in as_completed(futs):
+                    drv_meta = futs[fut]
                     if left() < 4:
                         for f in futs:
                             f.cancel()
                         break
                     try:
                         unit_rows.append(fut.result())
-                    except Exception:
-                        continue
+                    except Exception as e:
+                        errors.append("%s: %s" % ((drv_meta or {}).get("car") or "?", str(e)[:80]))
 
         # Geozona — faqat vaqt bo'lsa (cron da o'tkazib yuborish mumkin)
         if left() > 6:
-            for drv, raw_stops, _stats in unit_rows:
+            for row in unit_rows:
+                drv, raw_stops = row[0], row[1]
                 stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
                 learn_geozones_from_stops(pharmacies, drv["car"], stops)
             learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
@@ -1365,7 +1372,8 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
 
         reviews = office.reviews(date_str) or {}
         done = 0
-        for drv, raw_stops, stats in unit_rows:
+        for row in unit_rows:
+            drv, raw_stops, stats = row[0], row[1], row[2]
             stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
             apply_review_problem_flags(stops, drv["car"], reviews)
             if not stats.get("stoyanok"):
@@ -1379,27 +1387,32 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
                 "stats": stats,
                 "stops": stops,
                 "analysis": analysis,
+                "syncedAt": int(time.time()),
             }
             done += 1
 
-        partial = budget is not None and done < len(jobs)
+        partial = done < len(jobs)
         if cars:
             office.save_report(date_str, cars, saved_by=saved_by)
-        msg = "Davom etadi..." if partial else "Tayyor"
+        err_txt = ("; ".join(errors[:5]) + ("…" if len(errors) > 5 else "")) if errors else ""
+        if partial and not err_txt:
+            err_txt = "Qisman: %d/%d mashina" % (done, len(jobs))
+        msg = "Qisman — qayta GPS YUKLASH" if partial else "Tayyor"
         office.set_gps_status(
             running=False,
             cars=len(cars),
-            error="",
+            error=err_txt[:200],
             date=date_str,
             message=msg,
         )
         return {
-            "ok": True,
+            "ok": done > 0,
             "date": date_str,
             "cars": len(cars),
             "fetched": done,
             "total": len(jobs),
             "partial": partial,
+            "errors": errors[:20],
         }
     except Exception as e:
         office.set_gps_status(running=False, error=str(e)[:200], date=date_str, message="Xato")

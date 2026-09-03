@@ -295,8 +295,9 @@ class WialonGPSClient {
 
         try {
             const chrono = await this.execChronologyReport(unitId, timeFrom, timeTo);
-            if (chrono && (chrono.stops.length || chrono.stats.probeg)) {
-                await this.applyTripMetrics(unitId, timeFrom, timeTo, chrono);
+            // Har doim trip hisobot / get_trips — chron km bo'lmasa ham
+            await this.applyTripMetrics(unitId, timeFrom, timeTo, chrono);
+            if (chrono && (chrono.stops.length || chrono.stats.probeg || chrono.stats.maxSpeed)) {
                 return chrono;
             }
         } catch (e) {
@@ -304,6 +305,9 @@ class WialonGPSClient {
         }
 
         const fromMsgs = await this.buildChronologyFromMessages(unitId, timeFrom, timeTo);
+        // Xabarlar km taxminiy — trip metrics ustuvor
+        fromMsgs.stats.probeg = 0;
+        fromMsgs.stats.maxSpeed = 0;
         await this.applyTripMetrics(unitId, timeFrom, timeTo, fromMsgs);
         return fromMsgs;
     }
@@ -720,6 +724,12 @@ class WialonGPSClient {
         const chronology = this.emptyChronology();
         const rr = (execResp && execResp.reportResult) || {};
         this.parseReportStats(rr.stats, chronology);
+        // Chron «пробег» Boomerang poezdka km emas — faqat to'xtashlar.
+        chronology.stats.probeg = 0;
+        chronology.stats.maxSpeed = 0;
+        chronology.stats.avgSpeed = 0;
+        chronology.stats.poezdok = 0;
+        delete chronology.stats._kmSrc;
 
         const tables = rr.tables || [];
         const loaded = [];
@@ -801,43 +811,7 @@ class WialonGPSClient {
             });
         }
 
-        let statsKmPref = this.mileagePref(
-            ((rr.stats || []).map(p => String(this.cellText(p && p[0]) || '')).find(k => this.mileagePref(k) >= 0)) || ''
-        );
-        loaded.forEach(block => {
-            const isTripTbl = block.tbl.name === 'unit_trips' || (block.tblName.includes('поезд') && !block.tblName.includes('хронолог') && block.tbl.name !== 'unit_chronology');
-            if (!isTripTbl) return;
-            if (!chronology.stats.poezdok) {
-                const nested = block.rows.reduce((s, r) => s + (r.d || 1), 0);
-                chronology.stats.poezdok = nested || block.rows.length;
-            }
-            const headers = (block.tbl.header || []).map(h => this.cellText(h).toLowerCase());
-            let kmIdx = headers.findIndex(h => (h.includes('пробег') || h.includes('mileage') || h.includes('masofa')) && !h.includes('скорост') && !h.includes('speed'));
-            if (kmIdx < 0) kmIdx = headers.findIndex(h => /км|km/.test(h) && !h.includes('скорост') && !h.includes('speed') && !h.includes('ч') && !h.includes('h'));
-            if (kmIdx < 0) return;
-            let sum = 0;
-            block.rows.forEach(r => {
-                const cell = (r.c || [])[kmIdx];
-                const n = this.cellNum(cell);
-                const t = this.cellText(cell);
-                if (!n || n <= 0) return;
-                const km = this.kmFromWialon(n, headers[kmIdx] || '', t);
-                if (km > 0 && km < 2000) sum += km;
-            });
-            const tot = block.tbl.total;
-            const totCells = Array.isArray(tot) ? tot : (tot && tot.c) || [];
-            let totKm = 0;
-            if (totCells[kmIdx] != null) {
-                totKm = this.kmFromWialon(this.cellNum(totCells[kmIdx]), headers[kmIdx] || '', this.cellText(totCells[kmIdx]));
-            }
-            const tripKm = this.roundKm(totKm || sum);
-            // Boomerang: поездки jadvali = «Пробег в поездках»
-            if (tripKm > 0) {
-                chronology.stats.probeg = tripKm;
-                chronology.stats._kmSrc = 'trips';
-            }
-        });
-
+        // Chron ichidagi trip jadvalidan km OLINMAYDI — applyTripMetrics / Отчёт по поездкам.
         if (chronology.stops.length) chronology.stats.stoyanok = chronology.stops.length;
         else if (!chronology.stats.stoyanok) chronology.stats.stoyanok = 0;
         if (!chronology.stats.poezdok) chronology.stats.poezdok = chronology.trips.length;
