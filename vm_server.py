@@ -222,6 +222,16 @@ def normalize_dsn(url):
     url = (url or "").strip()
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://") :]
+    # GitHub Actions / ba'zi clientlarda channel_binding xato beradi
+    if "channel_binding=" in url:
+        parts = []
+        for p in url.split("&"):
+            if p.lower().startswith("channel_binding="):
+                continue
+            parts.append(p)
+        url = "&".join(parts)
+        if url.endswith("?") or url.endswith("&"):
+            url = url.rstrip("?&")
     return url
 
 
