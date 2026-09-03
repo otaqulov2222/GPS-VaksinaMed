@@ -57,8 +57,10 @@ function n(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   let s = String(v ?? '').trim().replace(/\s/g, '').replace(/\u00a0/g, '');
   if (!s) return 0;
-  // 1.516.071,50 — Yevropa minglik
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  // 1.516.071,50 / 1.516.071 — kamida 2 ta minglik guruhi (15.456 NI o'zgartirmaslik!)
+  if (/^\d{1,3}(\.\d{3}){2,}(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  // 1.516,07 — minglik nuqta + o'nlik vergul
+  else if (/^\d{1,3}(\.\d{3})+(,\d+)$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
   // 1,516,071.50 yoki 1,516,071 — AQSH minglik (2+ vergul guruhi)
   else if (/^\d{1,3}(,\d{3}){2,}(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
   // 7,6 / 147,996 / 8,01 — o‘nlik vergul (bitta vergul)
@@ -563,6 +565,7 @@ async function loadAll() {
   }
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   if (applyMetaNormsToCars()) STATE.dirty = true;
+  if (repairCorruptFuelQuantities()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
   STATE.dayRep = Math.min(now.getDate(), daysInMonth(STATE.month));
   if (!STATE.car) STATE.car = (fleet()[0] && fleet()[0].car) || '';
@@ -596,6 +599,7 @@ async function changeMonth(ym) {
     : mergeCarMaps(adopted, localCars);
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   if (applyMetaNormsToCars()) STATE.dirty = true;
+  if (repairCorruptFuelQuantities()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
   STATE.dirty = preferLocal || STATE.dirty;
   STATE.dayRep = 1;
@@ -715,6 +719,29 @@ function applyMetaNormsToCars() {
       car.fuelType = info.fuelType;
       changed = true;
     }
+  });
+  return changed;
+}
+
+/** Eski noto'g'ri import: 15.456 → 15456. Sahifa ochilganda avtomatik tuzatadi. */
+function repairCorruptFuelQuantities() {
+  let changed = false;
+  Object.keys(STATE.cars || {}).forEach(plate => {
+    const car = STATE.cars[plate];
+    if (!car) return;
+    const diesel = car.fuelType === 'dizel' || car.fuelType === 'dizel_gaz';
+    const gs = sanitizeStartBal(car.gasStart, 'gaz');
+    const bs = sanitizeStartBal(car.benzinStart, diesel ? 'dizel' : 'benzin');
+    if (n(gs) !== n(car.gasStart)) { car.gasStart = gs; changed = true; }
+    if (n(bs) !== n(car.benzinStart)) { car.benzinStart = bs; changed = true; }
+    Object.keys(car.days || {}).forEach(d => {
+      const row = car.days[d];
+      if (!row) return;
+      const g = sanitizeDailyFill(row.gasIn, 'gaz');
+      const b = sanitizeDailyFill(row.benzinIn, diesel ? 'dizel' : 'benzin');
+      if (n(g) !== n(row.gasIn)) { row.gasIn = g; changed = true; }
+      if (n(b) !== n(row.benzinIn)) { row.benzinIn = b; changed = true; }
+    });
   });
   return changed;
 }
