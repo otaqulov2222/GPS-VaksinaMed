@@ -1,8 +1,14 @@
-# Zaxira: Pro da asosiy sync — vercel.json crons (*/5).
-# Bu workflow ixtiyoriy zaxira (GitHub Secrets bo'lsa ishlaydi).
+# GPS sync har 5 daqiqa — GitHub Actions da (Vercel Fluid 25s limiti yo'q).
+#
 # GitHub → Settings → Secrets and variables → Actions:
-#   CRON_SECRET      — Vercel dagi bilan bir xil
-#   GPS_SYNC_URL     — https://SIZNING-APP.vercel.app/api/cron/gps-sync
+#   DATABASE_URL   — Neon pooler URL (Vercel dagi bilan bir xil)
+#   GPS_HOST       — ixtiyoriy (default bms1.gpsavto.uz)
+#   GPS_TOKEN      — yoki GPS_USER + GPS_PASSWORD
+#   GPS_USER
+#   GPS_PASSWORD
+#
+# Eslatma: GPS config Neon da saqlangan bo'lsa (panel orqali),
+# faqat DATABASE_URL yetadi.
 
 name: GPS sync
 
@@ -14,20 +20,25 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 10
     steps:
-      - name: Trigger Vercel GPS sync
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run GPS sync
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GPS_HOST: ${{ secrets.GPS_HOST }}
+          GPS_TOKEN: ${{ secrets.GPS_TOKEN }}
+          GPS_USER: ${{ secrets.GPS_USER }}
+          GPS_PASSWORD: ${{ secrets.GPS_PASSWORD }}
+          VM_PRODUCTION: '1'
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          GPS_SYNC_URL: ${{ secrets.GPS_SYNC_URL }}
-        run: |
-          if [ -z "$CRON_SECRET" ] || [ -z "$GPS_SYNC_URL" ]; then
-            echo "CRON_SECRET yoki GPS_SYNC_URL GitHub Secrets da yo'q — sync o'tkazib yuborildi"
-            exit 0
-          fi
-          code=$(curl -sS -o /tmp/gps-sync.json -w "%{http_code}" \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${GPS_SYNC_URL}")
-          echo "HTTP ${code}"
-          cat /tmp/gps-sync.json
-          test "$code" = "200"
+        run: python scripts/run_gps_cron.py

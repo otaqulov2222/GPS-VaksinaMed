@@ -1,12 +1,12 @@
 """Vercel production entrypoint — barcha so'rovlar vm_server orqali."""
 from __future__ import annotations
 
-import asyncio
 import json
 import os
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 
 app = FastAPI()
 
@@ -24,48 +24,28 @@ def _cron_authorized(request: Request) -> bool:
     return bool(secret) and auth == f"Bearer {secret}"
 
 
-def _run_gps_cron():
-    """Fon sync — streaming birinchi baytdan keyin ishlaydi (25s limit yechimi)."""
-    from vm_server import DIRECTORY, OFFICE, _gps_sync_lock, init_app
-    import gps_sync
-
-    init_app()
-    d = gps_sync.today_tashkent()
-    with _gps_sync_lock:
-        result = (
-            gps_sync.sync_today(
-                OFFICE,
-                DIRECTORY,
-                d,
-                saved_by="cron",
-                time_budget_sec=None,
-                parallel=True,
-            )
-            or {}
-        )
-    if result.get("ok") and not result.get("partial"):
-        yday = gps_sync.yesterday_tashkent()
-        rec = OFFICE.get_report(yday)
-        cars = rec.get("cars") if isinstance(rec, dict) else None
-        if not cars:
-            with _gps_sync_lock:
-                gps_sync.sync_today(
-                    OFFICE,
-                    DIRECTORY,
-                    yday,
-                    saved_by="cron-yday",
-                    time_budget_sec=90,
-                    parallel=True,
-                )
-    return {"ok": True, "date": d, "result": result}
-
-
 @app.api_route("/", methods=["GET", "POST", "OPTIONS", "HEAD"], include_in_schema=False)
 @app.api_route("/{full_path:path}", methods=["GET", "POST", "OPTIONS", "HEAD"], include_in_schema=False)
 async def handle(request: Request, full_path: str = ""):
     path = request.url.path or "/"
 
-    # Cron: darhol birinchi bayt — keyin to'liq sync (504 25s yechimi)
+    # Yengil health — vm_server / Neon OLMASDAN (25s 504 ni to'xtatadi)
+    if path == "/api/health" and request.method in ("GET", "HEAD", "OPTIONS"):
+        if request.method == "OPTIONS":
+            return Response(status_code=204)
+        body = json.dumps(
+            {
+                "ok": True,
+                "ts": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                "lite": True,
+            }
+        ).encode("utf-8")
+        if request.method == "HEAD":
+            return Response(status_code=200, media_type="application/json")
+        return Response(content=body, status_code=200, media_type="application/json")
+
+    # Cron: darhol 202 — og'ir sync Vercel Fluid 25s da sig'maydi.
+    # Haqiqiy sync: GitHub Actions (scripts/run_gps_cron.py).
     if path == "/api/cron/gps-sync" and request.method in ("GET", "POST", "HEAD"):
         if not _cron_authorized(request):
             return Response(
@@ -74,20 +54,17 @@ async def handle(request: Request, full_path: str = ""):
                 media_type="application/json",
             )
         if request.method == "HEAD":
-            return Response(status_code=200, media_type="application/json")
-
-        async def gen():
-            # Fluid: initial response < 25s
-            yield b'{"ok":true,"started":true}\n'
-            try:
-                result = await asyncio.to_thread(_run_gps_cron)
-                yield (json.dumps(result, ensure_ascii=False) + "\n").encode("utf-8")
-            except Exception as e:
-                yield (
-                    json.dumps({"ok": False, "error": str(e)[:200]}, ensure_ascii=False) + "\n"
-                ).encode("utf-8")
-
-        return StreamingResponse(gen(), media_type="application/x-ndjson")
+            return Response(status_code=202, media_type="application/json")
+        payload = {
+            "ok": True,
+            "accepted": True,
+            "message": "GPS sync GitHub Actions orqali bajariladi (Vercel 25s limiti).",
+        }
+        return Response(
+            content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            status_code=202,
+            media_type="application/json",
+        )
 
     from vm_server import dispatch_http
 
