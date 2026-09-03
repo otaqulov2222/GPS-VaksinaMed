@@ -1260,10 +1260,10 @@ def analyze_client_batch(office, base_dir, date_str, items, reenrich=False):
     return out
 
 
-def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec=None, parallel=True):
+def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec=None, parallel=True, force=False):
     """
-    GPS sync. time_budget_sec berilsa (cron) — vaqt tugasa qisman saqlab qaytadi.
-    Vercel Fluid: birinchi javob 25s ichida kerak.
+    GPS sync. time_budget_sec — Vercel/cron: vaqt tugasa qisman saqlab qaytadi.
+    force=True — kunni yangidan tortadi; force=False + budget — faqat qolgan mashinalar.
     """
     import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1271,6 +1271,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
     date_str = date_str or today_tashkent()
     t0 = time.time()
     budget = float(time_budget_sec) if time_budget_sec else None
+    force = bool(force)
 
     def left():
         if budget is None:
@@ -1283,7 +1284,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
     if not cfg.get("configured"):
         return {"ok": False, "error": "GPS sozlamasi yo'q"}
     host = cfg.get("host") or "http://bms1.gpsavto.uz"
-    http_timeout = 12 if budget is not None else 45
+    http_timeout = 18 if budget is not None else 45
     client = WialonClient(
         host,
         token=cfg.get("token") or "",
@@ -1308,21 +1309,43 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
         pharmacies = list(office.pharmacies())
         pharm_index = build_pharm_index(drivers, pharmacies)
 
-        jobs = []
+        all_jobs = []
         for unit in units:
             name = str(unit.get("nm") or unit.get("name") or "")
             drv = find_driver_by_car(drivers, name)
             if not drv:
                 continue
-            jobs.append((unit, drv))
+            all_jobs.append((unit, drv))
+        total_fleet = len(all_jobs)
 
-        # To'liq sync (GPS YUKLASH): eski noto'g'ri km saqlanmasin — yangidan yoziladi.
-        # Cron (budget): faqat yangilangan mashinalarni merge (qolganlari keyingi urinishda).
         prev = office.get_report(date_str)
         prev_cars = {}
         if isinstance(prev, dict) and isinstance(prev.get("cars"), dict):
             prev_cars = dict(prev.get("cars") or {})
-        cars = dict(prev_cars) if budget is not None else {}
+
+        # To'liq yangilash yoki budgetsiz — eski noto'g'ri qiymatlarni tashlash
+        if force or budget is None:
+            cars = {}
+            jobs = list(all_jobs)
+        else:
+            cars = dict(prev_cars)
+            jobs = [
+                (u, d)
+                for u, d in all_jobs
+                if not (isinstance(cars.get(d["car"]), dict) and cars[d["car"]].get("syncedAt"))
+            ]
+
+        if not jobs:
+            office.set_gps_status(running=False, cars=len(cars), error="", date=date_str, message="Tayyor")
+            return {
+                "ok": True,
+                "date": date_str,
+                "cars": len(cars),
+                "fetched": len(cars),
+                "total": total_fleet,
+                "partial": False,
+                "errors": [],
+            }
 
         def fetch_one(unit, drv):
             wc = client.clone_session()
@@ -1334,7 +1357,11 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
         unit_rows = []
         errors = []
         workers = 4 if parallel and len(jobs) > 1 else 1
-        office.set_gps_status(running=True, date=date_str, message="Yuklanmoqda (%d)..." % len(jobs))
+        office.set_gps_status(
+            running=True,
+            date=date_str,
+            message="Yuklanmoqda (%d/%d)..." % (len(jobs), total_fleet),
+        )
 
         if workers == 1:
             for unit, drv in jobs:
@@ -1358,7 +1385,6 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
                     except Exception as e:
                         errors.append("%s: %s" % ((drv_meta or {}).get("car") or "?", str(e)[:80]))
 
-        # Geozona — faqat vaqt bo'lsa (cron da o'tkazib yuborish mumkin)
         if left() > 6:
             for row in unit_rows:
                 drv, raw_stops = row[0], row[1]
@@ -1391,26 +1417,28 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
             }
             done += 1
 
-        partial = done < len(jobs)
+        synced_n = sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt"))
+        partial = synced_n < total_fleet
         if cars:
             office.save_report(date_str, cars, saved_by=saved_by)
         err_txt = ("; ".join(errors[:5]) + ("…" if len(errors) > 5 else "")) if errors else ""
         if partial and not err_txt:
-            err_txt = "Qisman: %d/%d mashina" % (done, len(jobs))
-        msg = "Qisman — qayta GPS YUKLASH" if partial else "Tayyor"
+            err_txt = "Qisman: %d/%d mashina" % (synced_n, total_fleet)
+        msg = "Qisman — davom etadi" if partial else "Tayyor"
         office.set_gps_status(
             running=False,
             cars=len(cars),
-            error=err_txt[:200],
+            error=err_txt[:200] if partial else "",
             date=date_str,
             message=msg,
         )
         return {
-            "ok": done > 0,
+            "ok": done > 0 or synced_n > 0,
             "date": date_str,
             "cars": len(cars),
-            "fetched": done,
-            "total": len(jobs),
+            "fetched": synced_n,
+            "chunk": done,
+            "total": total_fleet,
             "partial": partial,
             "errors": errors[:20],
         }

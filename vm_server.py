@@ -3034,23 +3034,38 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     import gps_sync
 
                     d = date_val or gps_sync.today_tashkent()
+                    force = bool(body.get("force", True))
                     OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
                     with _gps_sync_lock:
+                        # Vercel gateway ~60s — bo'laklab 50s ichida javob
                         result = gps_sync.sync_today(
-                            OFFICE, DIRECTORY, d, saved_by=sess.get("username") or "user"
+                            OFFICE,
+                            DIRECTORY,
+                            d,
+                            saved_by=sess.get("username") or "user",
+                            time_budget_sec=50,
+                            force=force,
                         ) or {}
                     OFFICE.set_gps_status(
                         running=False,
                         cars=int(result.get("cars") or 0),
                         error=str(result.get("error") or "")[:200],
                         date=d,
-                        message="Tayyor" if result.get("ok") else "Xato",
+                        message=("Davom" if result.get("partial") else "Tayyor")
+                        if result.get("ok")
+                        else "Xato",
                     )
                     self.send_json({
-                        "ok": True,
+                        "ok": bool(result.get("ok")),
                         "queued": False,
                         "date": d,
                         "cars": int(result.get("cars") or 0),
+                        "fetched": int(result.get("fetched") or 0),
+                        "chunk": int(result.get("chunk") or 0),
+                        "total": int(result.get("total") or 0),
+                        "partial": bool(result.get("partial")),
+                        "errors": result.get("errors") or [],
+                        "error": str(result.get("error") or "")[:200],
                         **OFFICE.gps_status_public(),
                     })
                 except Exception as e:

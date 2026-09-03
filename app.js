@@ -1858,45 +1858,79 @@ async function syncFromGPS(dateVal, cfg, opts) {
         let done = 0;
         let viaServer = false;
         try {
-            const queued = await vmApi('/api/office/gps/sync', {
-                method: 'POST',
-                body: JSON.stringify({ date: dateVal })
-            });
-            if (queued && queued.ok && queued.queued === false) {
-                if (queued.error) throw new Error(queued.error);
-                viaServer = true;
-                if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
-                done = Number(queued.fetched || queued.cars) || Object.keys(STATE.data[dateVal] || {}).length;
-                const tot = Number(queued.total) || done;
-                updateProg(95, queued.partial ? ('Qisman: ' + done + '/' + tot) : 'Hisobot olindi', done + ' ta mashina');
-                if (queued.partial && !silent) {
-                    showToast('GPS qisman yuklandi: ' + done + '/' + tot + '. Qayta GPS YUKLASH bosing.', 'warn');
+            // Vercel: bo'laklab sync (504 oldini olish). force=true birinchi, keyin davom.
+            let force = true;
+            let last = null;
+            for (let round = 0; round < 20 && !cancelled(); round++) {
+                let queued = null;
+                let attemptErr = null;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        queued = await vmApi('/api/office/gps/sync', {
+                            method: 'POST',
+                            body: JSON.stringify({ date: dateVal, force })
+                        });
+                        attemptErr = null;
+                        break;
+                    } catch (e) {
+                        attemptErr = e;
+                        const msg = String((e && e.message) || e || '');
+                        if (/504|503|502|timeout|Failed to fetch|NetworkError/i.test(msg) && attempt < 2) {
+                            updateProg(8 + round * 4, 'Server band (504) — qayta urinilmoqda...', msg);
+                            await sleepMs(2000 * (attempt + 1));
+                            continue;
+                        }
+                        throw e;
+                    }
                 }
-                // Server sync — yagona manba. Brauzer km yozmaydi.
-            } else {
-            const jobId = Number((queued && queued.jobId) || 0);
-            if (!jobId) throw new Error((queued && queued.error) || 'Navbatga qo‘yilmadi');
-            const t0 = Date.now();
-            while (!cancelled() && Date.now() - t0 < 12 * 60 * 1000) {
-                const st = await vmApi('/api/office/gps/status');
-                updateGpsLastSyncUi(st.lastSync, st.running);
-                updateProg(
-                    Math.min(90, 8 + Math.round((Date.now() - t0) / 7000)),
-                    st.message || 'Yuklanmoqda...',
-                    ''
-                );
-                if (!st.running && Number(st.lastJobId || 0) >= jobId) {
-                    if (st.error) throw new Error(st.error);
-                    viaServer = true;
+                if (attemptErr) throw attemptErr;
+                if (!queued || !queued.ok) {
+                    throw new Error((queued && queued.error) || 'GPS sync xato');
+                }
+                if (queued.queued) {
+                    const jobId = Number(queued.jobId || 0);
+                    if (!jobId) throw new Error(queued.error || 'Navbatga qo‘yilmadi');
+                    const t0 = Date.now();
+                    while (!cancelled() && Date.now() - t0 < 12 * 60 * 1000) {
+                        const st = await vmApi('/api/office/gps/status');
+                        updateGpsLastSyncUi(st.lastSync, st.running);
+                        updateProg(
+                            Math.min(90, 8 + Math.round((Date.now() - t0) / 7000)),
+                            st.message || 'Yuklanmoqda...',
+                            ''
+                        );
+                        if (!st.running && Number(st.lastJobId || 0) >= jobId) {
+                            if (st.error && !String(st.message || '').includes('Davom')) throw new Error(st.error);
+                            viaServer = true;
+                            break;
+                        }
+                        await sleepMs(1500);
+                    }
+                    if (!viaServer) throw new Error('GPS yuklash vaqti tugadi. Qayta bosing.');
+                    last = { partial: false, fetched: 0, total: 0 };
                     break;
                 }
-                await sleepMs(1500);
+                viaServer = true;
+                force = false;
+                last = queued;
+                const fetched = Number(queued.fetched || queued.cars) || 0;
+                const tot = Number(queued.total) || fetched;
+                const chunk = Number(queued.chunk) || 0;
+                updateProg(
+                    Math.min(92, 10 + Math.round((fetched / Math.max(tot, 1)) * 80)),
+                    'Server: ' + fetched + '/' + tot + (queued.partial ? ' (davom…)' : ''),
+                    chunk ? ('+' + chunk + ' mashina') : ''
+                );
+                if (!queued.partial) break;
+                await sleepMs(400);
             }
             if (cancelled()) return;
-            if (!viaServer) throw new Error('GPS yuklash vaqti tugadi. Qayta bosing.');
+            if (!viaServer) throw new Error('GPS yuklash yakunlanmadi');
             if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
-            done = Object.keys(STATE.data[dateVal] || {}).length;
+            done = Number((last && last.fetched) || 0) || Object.keys(STATE.data[dateVal] || {}).length;
             updateProg(95, 'Hisobot olindi', done + ' ta mashina');
+            if (last && last.partial && !silent) {
+                showToast('GPS qisman: ' + done + '/' + (last.total || '?') + '. Yana GPS YUKLASH bosing.', 'warn');
             }
         } catch (serverErr) {
             if (cancelled()) return;
