@@ -1938,6 +1938,16 @@ async function syncFromGPS(dateVal, cfg, opts) {
                     'Server: ' + fetched + '/' + tot + (queued.partial ? ' (davom…)' : ''),
                     chunk ? ('+' + chunk + ' mashina') : ''
                 );
+                // Har bo'lakdan keyin UI yangilansin (1/23 chalkashligi yo'q)
+                if (window.VMOffice) {
+                    try {
+                        await VMOffice.loadReportIfNeeded(dateVal, true);
+                        if (STATE.currentDate === dateVal) {
+                            renderDriverTabs();
+                            refreshUI();
+                        }
+                    } catch (e) {}
+                }
                 if (!queued.partial) break;
                 await sleepMs(250);
             }

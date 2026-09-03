@@ -1349,14 +1349,22 @@ def sync_today(
         if isinstance(prev, dict) and isinstance(prev.get("cars"), dict):
             prev_cars = dict(prev.get("cars") or {})
 
+        # Chunked sync: ESKI mashinalarni O'CHIRMAYMIZ (aks holda 1/23 → 12/23 bo'lib qoladi).
+        # force=True: syncedAt tozalanadi — barcha mashina qayta tortiladi, lekin ekranda eski ma'lumot turadi.
+        cars = dict(prev_cars)
         if force:
-            cars = {}
+            for _car, row in list(cars.items()):
+                if isinstance(row, dict):
+                    row = dict(row)
+                    row.pop("syncedAt", None)
+                    row["stale"] = True
+                    cars[_car] = row
             jobs = list(all_jobs)
         elif budget is None:
+            # To'liq sync (Render worker) — yangidan
             cars = {}
             jobs = list(all_jobs)
         else:
-            cars = dict(prev_cars)
             jobs = [
                 (u, d)
                 for u, d in all_jobs
@@ -1449,6 +1457,7 @@ def sync_today(
                 "analysis": analysis,
                 "syncedAt": int(time.time()),
             }
+            cars[drv["car"]].pop("stale", None)
             done += 1
 
         synced_n = sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt"))
