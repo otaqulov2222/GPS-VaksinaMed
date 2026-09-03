@@ -474,7 +474,68 @@ class WialonClient:
             if stops:
                 trip_stats.pop("stoyanok", None)
             stats = self.merge_stats(stats, trip_stats)
+
+        # Rasmiy manba: unit/get_trips — Boomerang «Пробег в поездках» bilan bir xil
+        trips_km = self.fetch_unit_trips_km(unit_id, date_str)
+        if trips_km and trips_km > 0:
+            stats["probeg"] = trips_km
+            stats["_kmSrc"] = "get_trips"
+
+        self.cleanup_stats(stats)
         return {"stats": stats, "stops": stops}
+
+    @staticmethod
+    def cleanup_stats(stats):
+        if not isinstance(stats, dict):
+            return
+        stats.pop("_kmSrc", None)
+        for key in ("probeg", "maxSpeed", "avgSpeed"):
+            if key in stats:
+                try:
+                    stats[key] = round(float(stats[key] or 0) + 1e-12, 2)
+                except (TypeError, ValueError):
+                    pass
+
+    def fetch_unit_trips_km(self, unit_id, date_str):
+        """Wialon unit/get_trips — поездкаlar masofasi (m yoki km)."""
+        t_from, t_to = day_bounds_tashkent(date_str)
+        try:
+            raw = self._call(
+                "unit/get_trips",
+                {"itemId": unit_id, "timeFrom": t_from, "timeTo": t_to},
+            )
+        except Exception:
+            return 0.0
+        if isinstance(raw, dict):
+            lst = raw.get("trips") or raw.get("units") or []
+        elif isinstance(raw, list):
+            lst = raw
+        else:
+            lst = []
+        if not lst:
+            return 0.0
+        distances = []
+        for tr in lst:
+            if not isinstance(tr, dict):
+                continue
+            d = tr.get("distance")
+            if d is None:
+                d = tr.get("mileage")
+            try:
+                d = float(d)
+            except (TypeError, ValueError):
+                continue
+            if d > 0:
+                distances.append(d)
+        if not distances:
+            return 0.0
+        raw_sum = sum(distances)
+        max_d = max(distances)
+        all_whole = all(abs(x - round(x)) < 1e-9 for x in distances)
+        # Wialon ko'pincha metrda beradi
+        in_meters = max_d >= 1000 or (raw_sum >= 300 and all_whole)
+        km = raw_sum / 1000.0 if in_meters else raw_sum
+        return round(km + 1e-12, 2)
 
     def apply_trip_table_km(self, loaded, stats):
         """unit_trips / поездки jadvali jami — Boomerang «Пробег в поездках»."""
@@ -598,7 +659,7 @@ class WialonClient:
         chrono = tpls.get("chrono") or tpls.get("any")
         if not trip:
             return None
-        # Bir xil shablon: chronologiyada trips jadvali allaqachon o'qilgan
+        # Bir xil shablon bo'lsa ham qayta o'qish shart emas — get_trips fallback bor
         if trip == chrono:
             return None
         t_from, t_to = day_bounds_tashkent(date_str)
@@ -1233,6 +1294,7 @@ def sync_today(office, base_dir, date_str=None, saved_by="auto", time_budget_sec
             apply_review_problem_flags(stops, drv["car"], reviews)
             if not stats.get("stoyanok"):
                 stats["stoyanok"] = len(stops)
+            WialonClient.cleanup_stats(stats)
             analysis = analyze_data(stops, drv["car"], stats, drivers, pharmacies, reviews=reviews)
             cars[drv["car"]] = {
                 "car": drv["car"],

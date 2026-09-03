@@ -1866,6 +1866,8 @@ async function syncFromGPS(dateVal, cfg, opts) {
                 if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
                 done = Number(queued.cars) || Object.keys(STATE.data[dateVal] || {}).length;
                 updateProg(95, 'Hisobot olindi', done + ' ta mashina');
+                // Boomerang bilan aniq moslash: trip km qayta tekshiruv
+                await refreshDayKm(dateVal);
             } else {
             const jobId = Number((queued && queued.jobId) || 0);
             if (!jobId) throw new Error((queued && queued.error) || 'Navbatga qo‘yilmadi');
@@ -1890,6 +1892,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
             if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
             done = Object.keys(STATE.data[dateVal] || {}).length;
             updateProg(95, 'Hisobot olindi', done + ' ta mashina');
+            await refreshDayKm(dateVal);
             }
         } catch (serverErr) {
             if (cancelled()) return;

@@ -525,14 +525,36 @@ class WialonGPSClient {
     }
 
     async dayMetrics(unitId, timeFrom, timeTo) {
-        // Boomerang hisobot (Отчёт по поездкам) — to'liq stats
+        // 1) unit/get_trips — Boomerang «Пробег в поездках» bilan bir xil
+        let fromTrips = null;
         try {
-            const fromReport = await this.reportDayMetrics(unitId, timeFrom, timeTo);
-            if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) return fromReport;
+            fromTrips = await this.officialDayMetrics(unitId, timeFrom, timeTo);
+        } catch (e) {}
+        // 2) Hisobot (Отчёт по поездкам) — tezlik / poezdka soni uchun
+        let fromReport = null;
+        try {
+            fromReport = await this.reportDayMetrics(unitId, timeFrom, timeTo);
         } catch (e) {
             console.warn('report stats:', e);
         }
-        return await this.officialDayMetrics(unitId, timeFrom, timeTo);
+        if (fromTrips && fromTrips.km) {
+            if (fromReport) {
+                return {
+                    km: fromTrips.km,
+                    maxSpeed: fromReport.maxSpeed || fromTrips.maxSpeed || 0,
+                    avgSpeed: fromReport.avgSpeed || fromTrips.avgSpeed || 0,
+                    trips: fromTrips.trips || fromReport.trips || 0,
+                    stops: fromReport.stops || 0,
+                    totalStop: fromReport.totalStop || '—',
+                    motoChas: fromReport.motoChas || '—',
+                    gas: fromReport.gas || 0,
+                    benzin: fromReport.benzin || 0
+                };
+            }
+            return fromTrips;
+        }
+        if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) return fromReport;
+        return null;
     }
 
     async getTripMetrics(unitId, timeFrom, timeTo) {
@@ -542,7 +564,7 @@ class WialonGPSClient {
     async applyTripMetrics(unitId, timeFrom, timeTo, chronology) {
         if (!chronology || !chronology.stats) return chronology;
         try {
-            const m = await this.reportDayMetrics(unitId, timeFrom, timeTo);
+            const m = await this.dayMetrics(unitId, timeFrom, timeTo);
             if (m) {
                 if (m.km) chronology.stats.probeg = m.km;
                 if (m.maxSpeed) chronology.stats.maxSpeed = this.roundSpd(Math.max(chronology.stats.maxSpeed || 0, m.maxSpeed));
