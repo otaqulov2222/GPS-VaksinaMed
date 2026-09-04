@@ -1072,6 +1072,30 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   color: #fff;
   border-radius: 9px;
 }
+.vm-route-arrow {
+  background: none !important;
+  border: none !important;
+}
+.vm-route-arrow span {
+  display: flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px;
+  font-size: 16px; font-weight: 800; line-height: 1;
+  color: #0b1f3a;
+  text-shadow: 0 0 3px #fff, 0 1px 2px rgba(255,255,255,.9);
+  opacity: .75;
+}
+.map-overlay-info {
+  position: absolute; top: 12px; right: 12px; z-index: 460;
+  pointer-events: none;
+  padding: 8px 12px;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  color: #0b1f3a;
+  background: rgba(255,255,255,.96);
+  border: 1px solid #c5d4e6;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(11, 31, 58, 0.12);
+  max-width: min(70%, 280px);
+}
 .map-stops {
   border-top: 1px solid #c5d4e6;
   background: #fff;
@@ -2041,11 +2065,12 @@ input, select, textarea { max-width: 100%; }
         <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a"></span> Muammo</span>
         <span class="leg-item"><span class="leg-dot" style="background:#8eb6df"></span> Shahardan tashqari</span>
         <span class="leg-item"><span class="leg-dot" style="background:#123050"></span> Ofis / sklad</span>
-        <span class="leg-item"><span class="leg-dot is-line" style="background:#1a5fb4"></span> Marshrut</span>
+        <span class="leg-item"><span class="leg-dot is-line" style="background:#1a5fb4"></span> GPS marshrut (haqiqiy yo‘l)</span>
       </div>
 
       <div class="map-frame" id="map-frame">
         <div id="leaflet-map"></div>
+        <div id="map-overlay-info" class="map-overlay-info" style="display:none"></div>
       </div>
 
       <div class="map-stops">
@@ -2313,7 +2338,7 @@ input, select, textarea { max-width: 100%; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 
-<script src="wialon-api.js?v=26"></script>
+<script src="wialon-api.js?v=27"></script>
 
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
@@ -2321,9 +2346,9 @@ input, select, textarea { max-width: 100%; }
 <script src="auth.js?v=14"></script>
 
 <script src="map-tiles.js?v=1"></script>
-<script src="map-route.js?v=1"></script>
+<script src="map-route.js?v=2"></script>
 
-<script src="app.js?v=65"></script>
+<script src="app.js?v=66"></script>
 
 <script src="office.js?v=14"></script>
 

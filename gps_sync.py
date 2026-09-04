@@ -540,7 +540,66 @@ class WialonClient:
             pass
 
         self.cleanup_stats(stats)
-        return {"stats": stats, "stops": stops}
+        points = self.fetch_track_points(unit_id, date_str)
+        return {"stats": stats, "stops": stops, "points": points}
+
+    def fetch_track_points(self, unit_id, date_str, max_pts=400):
+        """GPS xabarlaridan marshrut polyline (lat,lng) — xarita uchun."""
+        try:
+            t_from, t_to = day_bounds_tashkent(date_str)
+            resp = self._call(
+                "messages/load_interval",
+                {
+                    "itemId": unit_id,
+                    "timeFrom": t_from,
+                    "timeTo": t_to,
+                    "flags": 1,
+                    "flagsMask": 65281,
+                    "loadCount": 12000,
+                },
+            )
+        except Exception:
+            return []
+        msgs = (resp or {}).get("messages") or []
+        raw = []
+        for m in msgs:
+            if not isinstance(m, dict):
+                continue
+            pos = m.get("pos") or {}
+            try:
+                lat = float(pos.get("y") or 0)
+                lng = float(pos.get("x") or 0)
+            except (TypeError, ValueError):
+                continue
+            if lat < 37 or lat > 46 or lng < 55 or lng > 74:
+                continue
+            raw.append((lat, lng, int(m.get("t") or 0)))
+        if not raw:
+            return []
+
+        def hav_m(a, b):
+            r = 6371000.0
+            d_lat = (b[0] - a[0]) * math.pi / 180.0
+            d_lng = (b[1] - a[1]) * math.pi / 180.0
+            s = math.sin(d_lat / 2) ** 2 + math.cos(a[0] * math.pi / 180.0) * math.cos(b[0] * math.pi / 180.0) * math.sin(d_lng / 2) ** 2
+            return 2 * r * math.asin(min(1.0, math.sqrt(s)))
+
+        thinned = []
+        last = None
+        for i, p in enumerate(raw):
+            is_end = i == 0 or i == len(raw) - 1
+            if last is None or is_end or hav_m(last, p) >= 40 or (p[2] - last[2]) >= 90:
+                thinned.append(p)
+                last = p
+        out = thinned
+        limit = max(40, min(800, int(max_pts or 400)))
+        if len(out) > limit:
+            step = max(1, int(math.ceil(len(out) / float(limit))))
+            reduced = out[::step]
+            if reduced[-1] != out[-1]:
+                reduced.append(out[-1])
+            out = reduced
+        return [[round(p[0], 5), round(p[1], 5)] for p in out]
 
     @staticmethod
     def cleanup_stats(stats):
@@ -891,9 +950,15 @@ def is_outside(place):
 def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
     out = []
     for i, s in enumerate(raw_stops or []):
-        place = str(s.get("place") or "").strip()
-        match = match_pharmacy(place, car_key, s.get("lat"), s.get("lng"), pharm_index, pharmacies)
+        place_raw = str(s.get("place") or "").strip()
+        place = clean_place_label(place_raw)
+        lat, lng = s.get("lat") or 0, s.get("lng") or 0
+        if not valid_uz_coord(lat, lng):
+            lat, lng = 0, 0
+        match = match_pharmacy(place or place_raw, car_key, lat, lng, pharm_index, pharmacies)
         dur_sec = parse_dur_sec(s.get("duration"))
+        if not place and lat and lng:
+            place = "%.5f, %.5f" % (float(lat), float(lng))
         stop = {
             "num": i + 1,
             "place": place or "Noma'lum manzil",
@@ -901,15 +966,15 @@ def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
             "outTime": s.get("outTime") or "",
             "duration": s.get("duration") or "",
             "durSec": dur_sec,
-            "lat": s.get("lat") or 0,
-            "lng": s.get("lng") or 0,
+            "lat": lat,
+            "lng": lng,
             "gas": 0,
             "benzin": 0,
             "matchType": match["type"],
             "phName": match.get("phName"),
             "owners": match.get("owners") or [],
-            "isOffice": is_office(place),
-            "isOutside": is_outside(place),
+            "isOffice": is_office(place or place_raw),
+            "isOutside": is_outside(place or place_raw),
             "isProblem": False,
         }
         if not stop["isOffice"] and not stop["isOutside"] and stop["matchType"] == "none" and dur_sec > 600:
@@ -943,6 +1008,38 @@ def own_pharmacy_list(car_key, drivers, pharmacies):
 
 def is_coord_place(place):
     return bool(COORD_PLACE_RE.match(str(place or "").strip()))
+
+
+def is_junk_place(place):
+    """Boomerangdan kelgan buzilgan manzillar (masalan: sasasas)."""
+    t = str(place or "").strip()
+    if not t:
+        return True
+    if is_coord_place(t):
+        return False
+    compact = re.sub(r"[\s\d.,\-_/]+", "", t)
+    if len(compact) >= 4 and re.match(r"^(.)\1+$", compact, re.I):
+        return True
+    if re.search(r"^(sa){2,}|(as){2,}|test+|asdf|qwerty|xxx+", compact, re.I):
+        return True
+    if len(compact) >= 5 and len(set(compact.lower())) <= 2:
+        return True
+    return False
+
+
+def clean_place_label(place):
+    t = str(place or "").strip()
+    if not t or is_junk_place(t):
+        return ""
+    return t
+
+
+def valid_uz_coord(lat, lng):
+    try:
+        y, x = float(lat or 0), float(lng or 0)
+    except (TypeError, ValueError):
+        return False
+    return 37 <= y <= 46 and 55 <= x <= 74
 
 
 def find_pharmacy(pharmacies, car, name):
@@ -1392,7 +1489,8 @@ def sync_today(
             chrono = wc.get_chronology(unit["id"], date_str)
             raw_stops = chrono.get("stops") or []
             stats = dict(chrono.get("stats") or {})
-            return drv, raw_stops, stats, None
+            points = chrono.get("points") or []
+            return drv, raw_stops, stats, points
 
         unit_rows = []
         errors = []
@@ -1442,6 +1540,7 @@ def sync_today(
         done = 0
         for row in unit_rows:
             drv, raw_stops, stats = row[0], row[1], row[2]
+            points = row[3] if len(row) > 3 else []
             stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
             apply_review_problem_flags(stops, drv["car"], reviews)
             if not stats.get("stoyanok"):
@@ -1454,6 +1553,7 @@ def sync_today(
                 "date": date_str,
                 "stats": stats,
                 "stops": stops,
+                "points": points if isinstance(points, list) else [],
                 "analysis": analysis,
                 "syncedAt": int(time.time()),
             }

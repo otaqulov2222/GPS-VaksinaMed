@@ -283,6 +283,76 @@ class WialonGPSClient {
         };
     }
 
+    /** GPS xabarlaridan marshrut nuqtalari (lat,lng) — xarita uchun. */
+    simplifyTrackRaw(raw, maxPts) {
+        const limit = Math.max(40, Math.min(800, maxPts || 400));
+        if (!raw || !raw.length) return [];
+        const haversineM = (a, b) => {
+            const R = 6371000;
+            const dLat = (b[0] - a[0]) * Math.PI / 180;
+            const dLng = (b[1] - a[1]) * Math.PI / 180;
+            const s = Math.sin(dLat / 2) ** 2
+                + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+            return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+        };
+        const thinned = [];
+        let last = null;
+        for (let i = 0; i < raw.length; i++) {
+            const p = raw[i];
+            const isEnd = i === 0 || i === raw.length - 1;
+            if (!last || isEnd || haversineM(last, p) >= 40 || (p[2] - last[2]) >= 90) {
+                thinned.push(p);
+                last = p;
+            }
+        }
+        let out = thinned;
+        if (out.length > limit) {
+            const step = Math.ceil(out.length / limit);
+            const reduced = [];
+            for (let i = 0; i < out.length; i += step) reduced.push(out[i]);
+            const lastPt = out[out.length - 1];
+            if (reduced[reduced.length - 1] !== lastPt) reduced.push(lastPt);
+            out = reduced;
+        }
+        return out.map(p => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5]);
+    }
+
+    async fetchTrackPoints(unitId, timeFrom, timeTo, opts) {
+        const maxPts = (opts && opts.maxPts) || 400;
+        const resp = await this.sendRequest('messages/load_interval', {
+            itemId: unitId,
+            timeFrom,
+            timeTo,
+            flags: 1,
+            flagsMask: 65281,
+            loadCount: 12000
+        });
+        const msgs = (resp && resp.messages) || [];
+        const raw = [];
+        for (let i = 0; i < msgs.length; i++) {
+            const pos = msgs[i] && msgs[i].pos;
+            if (!pos) continue;
+            const lat = Number(pos.y);
+            const lng = Number(pos.x);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+            // O'zbekiston atrofi — buzilgan lokatsiyani rad etish
+            if (lat < 37 || lat > 46 || lng < 55 || lng > 74) continue;
+            raw.push([lat, lng, msgs[i].t || 0, pos.s || 0]);
+        }
+        return this.simplifyTrackRaw(raw, maxPts);
+    }
+
+    async attachTrackPoints(chrono, unitId, timeFrom, timeTo) {
+        if (!chrono) return chrono;
+        try {
+            const pts = await this.fetchTrackPoints(unitId, timeFrom, timeTo);
+            if (pts && pts.length) chrono.points = pts;
+        } catch (e) {
+            console.warn('track points:', e && e.message ? e.message : e);
+        }
+        return chrono;
+    }
+
     /**
      * Tanlangan sana uchun avtomobilning harakat va to'xtashlarini (Xronologiya) olish
      */
@@ -297,7 +367,8 @@ class WialonGPSClient {
             const chrono = await this.execChronologyReport(unitId, timeFrom, timeTo);
             // Har doim trip hisobot / get_trips — chron km bo'lmasa ham
             await this.applyTripMetrics(unitId, timeFrom, timeTo, chrono);
-            if (chrono && (chrono.stops.length || chrono.stats.probeg || chrono.stats.maxSpeed)) {
+            await this.attachTrackPoints(chrono, unitId, timeFrom, timeTo);
+            if (chrono && (chrono.stops.length || chrono.stats.probeg || chrono.stats.maxSpeed || (chrono.points && chrono.points.length))) {
                 return chrono;
             }
         } catch (e) {
@@ -309,6 +380,9 @@ class WialonGPSClient {
         fromMsgs.stats.probeg = 0;
         fromMsgs.stats.maxSpeed = 0;
         await this.applyTripMetrics(unitId, timeFrom, timeTo, fromMsgs);
+        if (!(fromMsgs.points && fromMsgs.points.length)) {
+            await this.attachTrackPoints(fromMsgs, unitId, timeFrom, timeTo);
+        }
         return fromMsgs;
     }
 
@@ -833,7 +907,7 @@ class WialonGPSClient {
             timeTo,
             flags: 1,
             flagsMask: 65281,
-            loadCount: 6000
+            loadCount: 12000
         });
         const msgs = (resp && resp.messages) || [];
         if (!msgs.length) return chronology;
@@ -845,6 +919,7 @@ class WialonGPSClient {
         let maxSpd = 0;
         let lastMove = null;
         let ticks = 0;
+        const trackRaw = [];
 
         const haversine = (a, b) => {
             const R = 6371;
@@ -858,6 +933,11 @@ class WialonGPSClient {
         while (i < msgs.length) {
             const pos = msgs[i].pos;
             if (!pos) { i++; continue; }
+            const lat = Number(pos.y);
+            const lng = Number(pos.x);
+            if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= 37 && lat <= 46 && lng >= 55 && lng <= 74) {
+                trackRaw.push([lat, lng, msgs[i].t || 0, pos.s || 0]);
+            }
             if ((pos.s || 0) > maxSpd) maxSpd = pos.s || 0;
             if ((pos.s || 0) > STOP_SPEED) {
                 if (lastMove) {
@@ -890,6 +970,7 @@ class WialonGPSClient {
             if (ticks % 500 === 0) await new Promise(r => setTimeout(r, 0));
         }
 
+        chronology.points = this.simplifyTrackRaw(trackRaw, 400);
         chronology.stats.probeg = this.roundKm(mileage);
         chronology.stats.maxSpeed = this.roundSpd(maxSpd);
         chronology.stats.stoyanok = chronology.stops.length;

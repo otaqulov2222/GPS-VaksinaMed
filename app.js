@@ -18,6 +18,7 @@ const STATE = {
     mapMarkers:  [],
     mapLine:     null,
     mapRouteMain: null,
+    mapRouteArrows: null,
     mapRouteGen: 0,
     pharmacies:  [],
     reviews:     {}
@@ -29,6 +30,48 @@ const UZ_MONTHS_SHORT = ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','
 function uiTxt(s) {
     if (s == null || s === '') return s;
     return typeof uzUi === 'function' ? uzUi(s) : s;
+}
+
+/** Boomerangdan kelgan buzilgan manzil (sasasas va h.k.) */
+function isJunkPlace(s) {
+    const t = String(s || '').trim();
+    if (!t) return true;
+    if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(t)) return false;
+    const compact = t.replace(/[\s\d.,\-_/]+/g, '');
+    if (compact.length >= 4 && /^(.)\1+$/i.test(compact)) return true;
+    if (/^(sa){2,}|(as){2,}|test+|asdf|qwerty|xxx+/i.test(compact)) return true;
+    if (compact.length >= 5 && new Set(compact.toLowerCase()).size <= 2) return true;
+    return false;
+}
+
+function cleanPlaceLabel(s) {
+    const t = String(s || '').trim();
+    if (!t || isJunkPlace(t)) return '';
+    return t;
+}
+
+function validUzCoord(lat, lng) {
+    const y = Number(lat);
+    const x = Number(lng);
+    return Number.isFinite(y) && Number.isFinite(x) && y >= 37 && y <= 46 && x >= 55 && x <= 74;
+}
+
+function normalizeTrackPoints(pts) {
+    if (!Array.isArray(pts)) return [];
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        let lat, lng;
+        if (Array.isArray(p) && p.length >= 2) {
+            lat = Number(p[0]); lng = Number(p[1]);
+        } else if (p && typeof p === 'object') {
+            lat = Number(p.lat != null ? p.lat : p.y);
+            lng = Number(p.lng != null ? p.lng : p.x);
+        } else continue;
+        if (!validUzCoord(lat, lng)) continue;
+        out.push([Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5]);
+    }
+    return out;
 }
 let CAL = { y: new Date().getFullYear(), m: new Date().getMonth() };
 
@@ -193,6 +236,7 @@ function normalizeScore(score) {
 function normalizeDayRecord(data) {
     if (!data || typeof data !== 'object') return null;
     const stops = Array.isArray(data.stops) ? data.stops : [];
+    const points = normalizeTrackPoints(data.points);
     const stats = data.stats && typeof data.stats === 'object' ? data.stats : {};
     const rawAnalysis = data.analysis && typeof data.analysis === 'object' ? data.analysis : {};
     const score = normalizeScore(rawAnalysis.score != null ? rawAnalysis.score : data.score);
@@ -206,7 +250,7 @@ function normalizeDayRecord(data) {
         ownPharms: Array.isArray(rawAnalysis.ownPharms) ? rawAnalysis.ownPharms : [],
         score: score || { final: 0, grade: '—', breakdown: [], recommendations: [] }
     });
-    return Object.assign({}, data, { stops, stats, analysis });
+    return Object.assign({}, data, { stops, points, stats, analysis });
 }
 
 let PHARM_INDEX = [];
@@ -343,9 +387,14 @@ function findDriverByCar(carRaw) {
 
 function enrichStops(rawStops, carKey) {
     return (rawStops || []).map((s, i) => {
-        const place = String(s.place || '').trim();
-        const match = matchPharmacy(place, carKey, s.lat, s.lng);
+        const placeRaw = String(s.place || '').trim();
+        let place = cleanPlaceLabel(placeRaw);
+        let lat = s.lat || 0;
+        let lng = s.lng || 0;
+        if (!validUzCoord(lat, lng)) { lat = 0; lng = 0; }
+        const match = matchPharmacy(place || placeRaw, carKey, lat, lng);
         const durSec = s.durSec || parseTimeStr(s.duration) || 0;
+        if (!place && lat && lng) place = Number(lat).toFixed(5) + ', ' + Number(lng).toFixed(5);
         const stop = {
             num: i + 1,
             place: place || 'Noma\'lum manzil',
@@ -353,15 +402,15 @@ function enrichStops(rawStops, carKey) {
             outTime: s.outTime || '',
             duration: s.duration || '',
             durSec,
-            lat: s.lat || 0,
-            lng: s.lng || 0,
+            lat,
+            lng,
             gas: s.gas || 0,
             benzin: s.benzin || 0,
             matchType: match.type,
             phName: match.phName,
             owners: match.owners,
-            isOffice: isOffice(place),
-            isOutside: isOutsideCity(place),
+            isOffice: isOffice(place || placeRaw),
+            isOutside: isOutsideCity(place || placeRaw),
             isProblem: false
         };
         if (!stop.isOffice && !stop.isOutside && stop.matchType === 'none' && stop.durSec > 600) {
@@ -929,19 +978,43 @@ function removeMapRouteLayers() {
         STATE.map.removeLayer(STATE.mapRouteMain);
         STATE.mapRouteMain = null;
     }
+    if (STATE.mapRouteArrows) {
+        STATE.map.removeLayer(STATE.mapRouteArrows);
+        STATE.mapRouteArrows = null;
+    }
 }
 
 function drawMapRouteLayers(latlngs) {
     removeMapRouteLayers();
     if (!STATE.map || !latlngs || latlngs.length < 2) return;
     STATE.mapLine = L.polyline(latlngs, {
-        color: '#0b1f3a', weight: 3.5, opacity: 0.14, lineJoin: 'round', lineCap: 'round',
+        color: '#0b1f3a', weight: 7, opacity: 0.18, lineJoin: 'round', lineCap: 'round',
         interactive: false
     }).addTo(STATE.map);
     STATE.mapRouteMain = L.polyline(latlngs, {
-        color: '#1a5fb4', weight: 1.75, opacity: 0.92, lineJoin: 'round', lineCap: 'round',
+        color: '#1a5fb4', weight: 3.25, opacity: 0.95, lineJoin: 'round', lineCap: 'round',
         interactive: false
     }).addTo(STATE.map);
+    // Yo'nalish belgilar (siyrak)
+    const arrowLayers = [];
+    const step = Math.max(1, Math.floor(latlngs.length / 12));
+    for (let i = step; i < latlngs.length - 1; i += step) {
+        const p = latlngs[i];
+        const next = latlngs[Math.min(latlngs.length - 1, i + Math.max(1, Math.floor(step / 2)))];
+        const ang = Math.atan2(next[1] - p[1], next[0] - p[0]) * 180 / Math.PI;
+        arrowLayers.push(L.marker(p, {
+            interactive: false,
+            icon: L.divIcon({
+                className: 'vm-route-arrow',
+                html: `<span style="transform:rotate(${ang}deg)">›</span>`,
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            })
+        }));
+    }
+    if (arrowLayers.length) {
+        STATE.mapRouteArrows = L.layerGroup(arrowLayers).addTo(STATE.map);
+    }
 }
 
 function sortStopsForRoute(stops) {
@@ -953,56 +1026,140 @@ function sortStopsForRoute(stops) {
     });
 }
 
-async function refreshMap(stops) {
+/** Xarita markerlari — mikro-to'xtashlarni (2 sek) yashirish */
+function mapWorthyStops(stops) {
+    return sortStopsForRoute(stops).filter(st => {
+        if (!validUzCoord(st.lat, st.lng)) return false;
+        const dur = Number(st.durSec) || parseTimeStr(st.duration) || 0;
+        if (st.matchType === 'own' || st.matchType === 'other' || st.isOffice) return true;
+        if (stopIsProblem(st, STATE.currentCar, STATE.currentDate)) return true;
+        return dur >= 60;
+    });
+}
+
+function setMapOverlay(info) {
+    const el = document.getElementById('map-overlay-info');
+    if (!el) return;
+    if (!info) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = 'block';
+    el.textContent = info;
+}
+
+async function ensureTrackPoints(rec) {
+    if (!rec) return [];
+    const existing = normalizeTrackPoints(rec.points);
+    if (existing.length >= 2) return existing;
+    if (!window.wialonGPS || !wialonGPS.sessionId || !STATE.currentCar || !STATE.currentDate) {
+        return existing;
+    }
+    try {
+        let units = wialonGPS.units || [];
+        if (!units.length) units = await wialonGPS.getUnits();
+        const drv = findDriverByCar(STATE.currentCar);
+        const wantName = (drv && drv.car) || STATE.currentCar;
+        const unit = (units || []).find(u => {
+            return !!(findDriverByCar(u.carNumber) && findDriverByCar(u.carNumber).car === wantName)
+                || !!(findDriverByCar(u.name) && findDriverByCar(u.name).car === wantName);
+        });
+        if (!unit) return existing;
+        const { timeFrom, timeTo } = wialonGPS.dayBoundsTashkent(STATE.currentDate);
+        const pts = await wialonGPS.fetchTrackPoints(unit.id, timeFrom, timeTo);
+        const norm = normalizeTrackPoints(pts);
+        if (norm.length >= 2) {
+            rec.points = norm;
+            if (STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][STATE.currentCar]) {
+                STATE.data[STATE.currentDate][STATE.currentCar].points = norm;
+                saveAll();
+            }
+        }
+        return norm;
+    } catch (e) {
+        console.warn('ensureTrackPoints:', e);
+        return existing;
+    }
+}
+
+async function refreshMap(stops, points) {
     initMap();
     if (!STATE.map) return;
     const gen = ++STATE.mapRouteGen;
     STATE.mapMarkers.forEach(m => STATE.map.removeLayer(m));
     STATE.mapMarkers = [];
     removeMapRouteLayers();
+    setMapOverlay(null);
     mapInvalidate();
 
     const rawList = Array.isArray(stops) ? stops : [];
+    let track = normalizeTrackPoints(points);
+
+    // Trek yo'q bo'lsa — Boomerangdan yuklash (sessiya bor bo'lsa)
+    if (track.length < 2) {
+        const day = STATE.currentDate && STATE.data[STATE.currentDate]
+            ? STATE.data[STATE.currentDate][STATE.currentCar]
+            : null;
+        if (day) {
+            track = await ensureTrackPoints(day);
+            if (gen !== STATE.mapRouteGen) return;
+        }
+    }
+
+    const markerStops = mapWorthyStops(rawList);
     const list = sortStopsForRoute(rawList);
-    if (!list.length) {
-        setMapStats([], 0);
-        if (window.VMOffice) {
-            const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => { setTimeout(fn, ms || 200); };
-            defer(() => VMOffice.drawGeofences(STATE.map, STATE.currentCar), 180);
-        }
-        return;
-    }
+    setMapStats(list, track.length || markerStops.length);
 
-    const latlngs = [];
-    const withGeo = [];
-    list.forEach((st, idx) => {
-        if (!st.lat || !st.lng) return;
-        withGeo.push({ st, idx });
-        latlngs.push([st.lat, st.lng]);
-    });
-    setMapStats(list, withGeo.length);
+    // Asosiy chiziq — haqiqiy GPS trek; bo'lmasa to'xtashlar orasidagi yo'l
+    let routeLatlngs = track.length >= 2
+        ? track.slice()
+        : markerStops.filter(st => validUzCoord(st.lat, st.lng)).map(st => [st.lat, st.lng]);
 
-    if (latlngs.length > 1) {
-        drawMapRouteLayers(latlngs);
-        if (typeof vmFetchRoadRoute === 'function') {
-            const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => new Promise(r => setTimeout(() => r(fn()), ms || 320));
-            defer(() => vmFetchRoadRoute(latlngs), 450).then(road => {
-                if (gen !== STATE.mapRouteGen) return;
-                if (road && road.length > 1) drawMapRouteLayers(road);
-            }).catch(() => {});
+    if (routeLatlngs.length > 1) {
+        drawMapRouteLayers(routeLatlngs);
+        // Faqat to'xtashlar (trek yo'q) va ular uzoq — OSRM yo'l bo'yicha
+        if (track.length < 2 && typeof vmFetchRoadRoute === 'function' && routeLatlngs.length >= 2) {
+            const span = L.latLngBounds(routeLatlngs);
+            if (span.isValid() && span.getNorthEast().distanceTo(span.getSouthWest()) > 120) {
+                const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => new Promise(r => setTimeout(() => r(fn()), ms || 320));
+                defer(() => vmFetchRoadRoute(routeLatlngs.slice(0, 25)), 400).then(road => {
+                    if (gen !== STATE.mapRouteGen) return;
+                    if (road && road.length > 1) {
+                        routeLatlngs = road;
+                        drawMapRouteLayers(road);
+                    }
+                }).catch(() => {});
+            }
         }
     }
 
-    const lastI = withGeo.length - 1;
-    withGeo.forEach((item, i) => {
-        const st = item.st;
-        const num = item.idx + 1;
+    const km = STATE.data[STATE.currentDate]
+        && STATE.data[STATE.currentDate][STATE.currentCar]
+        && STATE.data[STATE.currentDate][STATE.currentCar].stats
+        ? Number(STATE.data[STATE.currentDate][STATE.currentCar].stats.probeg) || 0
+        : 0;
+    if (routeLatlngs.length > 1 || markerStops.length) {
+        const bits = [];
+        if (km > 0) bits.push(km.toFixed(2) + ' km');
+        if (track.length) bits.push(track.length + ' GPS nuqta');
+        bits.push(markerStops.length + ' to\'xtash');
+        setMapOverlay(bits.join(' · '));
+    }
+
+    // Start / finish trek bo'yicha
+    if (track.length >= 2) {
+        const aIcon = mapPinIcon('A', '#0b1f3a', true);
+        const bIcon = mapPinIcon('B', '#1a5fb4', true);
+        STATE.mapMarkers.push(L.marker(track[0], { icon: aIcon, zIndexOffset: 800 }).addTo(STATE.map)
+            .bindPopup('<b>Boshlanish</b><br>Kunlik marshrut A nuqtasi'));
+        STATE.mapMarkers.push(L.marker(track[track.length - 1], { icon: bIcon, zIndexOffset: 800 }).addTo(STATE.map)
+            .bindPopup('<b>Tugash</b><br>Kunlik marshrut B nuqtasi'));
+    }
+
+    markerStops.forEach((st, i) => {
+        const num = st.num || (i + 1);
         const color = stopColor(st);
-        const isEnd = i === 0 || i === lastI;
-        const label = i === 0 ? 'A' : (i === lastI ? 'B' : String(num));
+        const label = String(num);
         const marker = L.marker([st.lat, st.lng], {
-            icon: mapPinIcon(label, color, isEnd),
-            zIndexOffset: isEnd ? 600 : 100
+            icon: mapPinIcon(label, color, false),
+            zIndexOffset: 200
         }).addTo(STATE.map);
 
         marker.bindPopup(`
@@ -1020,10 +1177,13 @@ async function refreshMap(stops) {
         STATE.mapMarkers.push(marker);
     });
 
-    if (latlngs.length > 1) {
-        STATE.map.fitBounds(L.latLngBounds(latlngs), { padding: [36, 36], maxZoom: 15 });
-    } else if (latlngs.length === 1) {
-        STATE.map.setView(latlngs[0], 14);
+    const fitPts = routeLatlngs.length > 1
+        ? routeLatlngs
+        : markerStops.map(st => [st.lat, st.lng]);
+    if (fitPts.length > 1) {
+        STATE.map.fitBounds(L.latLngBounds(fitPts), { padding: [40, 40], maxZoom: 15 });
+    } else if (fitPts.length === 1) {
+        STATE.map.setView(fitPts[0], 14);
     }
     if (window.VMOffice) {
         const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => { setTimeout(fn, ms || 200); };
@@ -1221,7 +1381,7 @@ function refreshUI() {
         renderPharmacy(rec);
         renderStops(rec.stops);
         renderEval(rec.analysis.score);
-        refreshMap(rec.stops);
+        refreshMap(rec.stops, rec.points);
     } else {
         // Bo'sh holat
         renderKPI(null);
@@ -1910,6 +2070,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
                 if (cancelled()) return;
                 const rawStops = (chrono && chrono.stops) ? chrono.stops : [];
                 const stops = enrichStops(rawStops, drv.car);
+                const points = normalizeTrackPoints(chrono && chrono.points);
                 const stats = Object.assign({
                     probeg: 0, maxSpeed: 0, avgSpeed: 0, poezdok: 0, stoyanok: stops.length,
                     gas: 0, benzin: 0, motoChas: '—', totalStop: '—'
@@ -1922,6 +2083,7 @@ async function syncFromGPS(dateVal, cfg, opts) {
                     date: dateVal,
                     stats,
                     stops: scored.stops || stops,
+                    points,
                     analysis: scored.analysis,
                     syncedAt: Date.now()
                 };
@@ -2946,14 +3108,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ── Xaritani yangilash ────────────────────────────────
-    document.getElementById('btn-refresh-map')?.addEventListener('click', () => {
+    document.getElementById('btn-refresh-map')?.addEventListener('click', async () => {
         initMap();
         const dd = STATE.currentDate && STATE.data[STATE.currentDate]
             ? STATE.data[STATE.currentDate][STATE.currentCar]
             : null;
-        refreshMap(dd && dd.stops ? dd.stops : null);
-        if (dd && dd.stops && dd.stops.length) showToast('Xarita yangilandi', 'info');
-        else showToast('Xarita ochildi. To\'xtashlar uchun avval GPS yuklang.', 'info');
+        // Trek yo'q bo'lsa — GPS sessiyasi bilan qayta yuklash
+        if (dd && (!dd.points || dd.points.length < 2) && window.wialonGPS) {
+            showToast('Marshrut GPS dan yuklanmoqda…', 'info');
+            if (!wialonGPS.sessionId && STATE.gpsConfig) {
+                try { await wialonGPS.login(STATE.gpsConfig); } catch (e) {}
+            }
+            await ensureTrackPoints(dd);
+        }
+        await refreshMap(dd && dd.stops ? dd.stops : null, dd && dd.points ? dd.points : null);
+        if (dd && ((dd.points && dd.points.length) || (dd.stops && dd.stops.length))) {
+            showToast('Xarita yangilandi', 'info');
+        } else {
+            showToast('Xarita ochildi. Marshrut uchun GPS YUKLASH bosing.', 'info');
+        }
     });
 
     // ── Drag & Drop ───────────────────────────────────────
