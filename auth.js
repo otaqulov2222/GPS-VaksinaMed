@@ -51,7 +51,10 @@ function vmGatePage(user) {
     const path = (location.pathname || '').replace(/\\/g, '/');
     const onDriver = path.endsWith('/driver.html');
     const onProfile = path.endsWith('/profile.html');
+    const onLogin = path.endsWith('/login.html');
+    if (onLogin) return;
     if (vmIsDriver(user)) {
+        // Haydovchi: faqat kabinet + profil
         if (!onDriver && !onProfile) location.replace('/driver.html');
         return;
     }
@@ -60,14 +63,64 @@ function vmGatePage(user) {
     }
 }
 
+/** Rolga qarab menyu / havolalar — haydovchiga admin menyu KO'RINMASIN */
+function vmApplyRoleNav(user) {
+    if (!user) return;
+    const staff = vmIsStaff(user);
+    const drv = vmIsDriver(user);
+
+    document.querySelectorAll('.staff-only').forEach((el) => {
+        el.style.display = staff ? '' : 'none';
+        if (!staff) el.setAttribute('hidden', 'hidden');
+        else el.removeAttribute('hidden');
+    });
+    document.querySelectorAll('.driver-only').forEach((el) => {
+        el.style.display = drv ? '' : 'none';
+        if (!drv) el.setAttribute('hidden', 'hidden');
+        else el.removeAttribute('hidden');
+    });
+
+    // Eski id lar (profile/index)
+    ['nav-vhk', 'nav-fuel', 'btn-admin-panel', 'link-vhk', 'link-fuel', 'link-admin'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (staff) {
+            el.style.display = '';
+            el.removeAttribute('hidden');
+        } else {
+            el.style.display = 'none';
+            el.setAttribute('hidden', 'hidden');
+        }
+    });
+    ['nav-driver', 'link-driver'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (drv) {
+            el.style.display = '';
+            el.removeAttribute('hidden');
+        } else {
+            el.style.display = 'none';
+            el.setAttribute('hidden', 'hidden');
+        }
+    });
+
+    const hint = document.getElementById('profile-links-hint');
+    if (hint) {
+        hint.textContent = drv
+            ? 'Faqat o‘z kabinetingiz va parolingiz. Admin / Boshqaruv menyulari haydovchiga ko‘rinmaydi.'
+            : 'Admin panel orqali foydalanuvchilar, dorixonalar va GPS biriktirish boshqariladi.';
+    }
+}
+
 function vmApplyChrome(user) {
     if (!user) return;
+    vmApplyRoleNav(user);
     const name = document.getElementById('tb-user-name');
     const role = document.getElementById('tb-user-role');
     const panel = document.getElementById('btn-admin-panel');
     if (name) name.textContent = user.username || user.name || '—';
     if (role) {
-        const roleLabel = user.role === 'admin_pro' ? 'Admin Pro' : (user.role === 'driver' ? 'Haydovchi' : '');
+        const roleLabel = user.role === 'admin_pro' ? 'Admin Pro' : (user.role === 'driver' ? 'Haydovchi' : (user.role === 'admin' ? 'Admin' : ''));
         const shown = name ? name.textContent : (user.username || '');
         if (roleLabel && !vmSameLabel(shown, roleLabel) && !vmSameLabel(shown, 'admin')) {
             role.hidden = false;
@@ -80,14 +133,18 @@ function vmApplyChrome(user) {
     }
     if (panel) {
         if (vmIsStaff(user)) {
-            panel.style.display = 'inline-flex';
+            panel.style.display = '';
+            panel.removeAttribute('hidden');
             panel.textContent = user.role === 'admin_pro' ? 'Admin Pro' : 'Panel';
+            panel.setAttribute('href', '/admin.html');
         } else {
             panel.style.display = 'none';
+            panel.setAttribute('hidden', 'hidden');
         }
-        panel.setAttribute('href', '/admin.html');
     }
 }
+
+window.vmApplyRoleNav = vmApplyRoleNav;
 
 function vmStartHeartbeat() {
     if (window._vmHeartbeat) return;

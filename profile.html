@@ -6,7 +6,7 @@
 <title>Profil — VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="shell.css?v=14"/>
+<link rel="stylesheet" href="shell.css?v=15"/>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -130,9 +130,10 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
       </div>
     </div>
     <nav class="nav-links" id="side-nav">
-      <a class="nav-link" href="/" id="nav-vhk">Dashboard</a>
-      <a class="nav-link" href="/fuel.html" id="nav-fuel">Boshqaruv</a>
-      <a class="nav-link" href="/admin.html" id="btn-admin-panel" style="display:none">Admin panel</a>
+      <a class="nav-link staff-only" href="/" id="nav-vhk" hidden>Dashboard</a>
+      <a class="nav-link staff-only" href="/fuel.html" id="nav-fuel" hidden>Boshqaruv</a>
+      <a class="nav-link staff-only" href="/admin.html" id="btn-admin-panel" hidden>Admin panel</a>
+      <a class="nav-link driver-only" href="/driver.html" id="nav-driver" hidden>Kabinet</a>
       <a class="nav-link on" href="/profile.html" aria-current="page">Profil</a>
     </nav>
     <div class="nav-foot"></div>
@@ -181,11 +182,11 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
         <section class="card">
           <div class="card-h">Tezkor havolalar</div>
           <div class="card-b links">
-            <a class="btn" href="/" id="link-vhk">← Dashboard</a>
-            <a class="btn" href="/fuel.html" id="link-fuel">Boshqaruv (yoqilg‘i)</a>
-            <a class="btn btn-blue" href="/admin.html" id="link-admin" style="display:none">Admin panel</a>
-            <a class="btn" href="/driver.html" id="link-driver" style="display:none">Haydovchi kabineti</a>
-            <p class="hint">Admin panel orqali foydalanuvchilar, dorixonalar va GPS biriktirish boshqariladi.</p>
+            <a class="btn staff-only" href="/" id="link-vhk" hidden>← Dashboard</a>
+            <a class="btn staff-only" href="/fuel.html" id="link-fuel" hidden>Boshqaruv (yoqilg‘i)</a>
+            <a class="btn btn-blue staff-only" href="/admin.html" id="link-admin" hidden>Admin panel</a>
+            <a class="btn btn-blue driver-only" href="/driver.html" id="link-driver" hidden>← Haydovchi kabineti</a>
+            <p class="hint" id="profile-links-hint">Yuklanmoqda…</p>
           </div>
         </section>
       </div>
@@ -218,7 +219,7 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
-<script src="auth.js?v=16"></script>
+<script src="auth.js?v=17"></script>
 <script>
 (function () {
   const ROLE_LABEL = {
@@ -268,13 +269,19 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 
     const staff = vmIsStaff(u);
     const drv = vmIsDriver(u);
-    document.getElementById('link-admin').style.display = staff ? 'inline-flex' : 'none';
-    document.getElementById('link-driver').style.display = drv ? 'inline-flex' : 'none';
-    document.getElementById('nav-vhk').style.display = drv ? 'none' : '';
-    document.getElementById('nav-fuel').style.display = drv ? 'none' : '';
+    vmApplyRoleNav(u);
+    // Qo'shimcha kafolat
     if (drv) {
-      document.getElementById('link-vhk').style.display = 'none';
-      document.getElementById('link-fuel').style.display = 'none';
+      ['nav-vhk', 'nav-fuel', 'btn-admin-panel', 'link-vhk', 'link-fuel', 'link-admin'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) { el.style.display = 'none'; el.setAttribute('hidden', 'hidden'); }
+      });
+    }
+    if (staff) {
+      const navDrv = document.getElementById('nav-driver');
+      const linkDrv = document.getElementById('link-driver');
+      if (navDrv) { navDrv.style.display = 'none'; navDrv.setAttribute('hidden', 'hidden'); }
+      if (linkDrv) { linkDrv.style.display = 'none'; linkDrv.setAttribute('hidden', 'hidden'); }
     }
   }
 

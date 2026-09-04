@@ -896,6 +896,14 @@ body.app-body::before {
 .pw-eye.on { color: #1a5fb4; }
 .pw-eye svg { width: 18px; height: 18px; display: block; pointer-events: none; }
 
+/* Rol menyusi — yashirin havolalar miltillamasin */
+.staff-only[hidden],
+.driver-only[hidden],
+a.staff-only[hidden],
+a.driver-only[hidden] {
+  display: none !important;
+}
+
 /* profil page link */
 a.nav-link[href="/profile.html"].on,
 a.nav-link[href="/profile.html"][aria-current="page"] {
