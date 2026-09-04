@@ -118,6 +118,92 @@ function vmBindNavClose() {
     document.addEventListener('touchend', closeIfNavLink, { capture: true, passive: true });
 }
 
+/** Parol maydonlariga ko'zcha — yozilayotgan parolni ko'rish */
+const VM_PW_EYE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+function vmTogglePasswordInput(inp, btn) {
+    if (!inp) return;
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    if (btn) {
+        btn.classList.toggle('on', show);
+        btn.title = show ? "Parolni yashirish" : "Parolni ko'rsatish";
+        btn.setAttribute('aria-label', btn.title);
+    }
+}
+
+function vmEnsurePasswordEye(inp) {
+    if (!inp || inp.nodeType !== 1) return;
+    if (inp.dataset.pwEyeBound === '1') return;
+    if (inp.type !== 'password' && inp.type !== 'text') return;
+    // Yashirin autofill trap
+    if (inp.getAttribute('aria-hidden') === 'true' || inp.tabIndex === -1) {
+        const st = window.getComputedStyle(inp);
+        if (st.display === 'none' || inp.name === 'prevent_autofill_pass') return;
+    }
+    if (inp.name === 'prevent_autofill_pass') return;
+
+    inp.dataset.pwEyeBound = '1';
+
+    // Allaqachon data-for bilan bog'langan ko'zcha
+    if (inp.id) {
+        const existing = document.querySelector('.pw-eye[data-for="' + inp.id + '"]');
+        if (existing && !existing.dataset.bound) {
+            existing.dataset.bound = '1';
+            existing.addEventListener('click', (e) => {
+                e.preventDefault();
+                vmTogglePasswordInput(inp, existing);
+            });
+            return;
+        }
+        if (existing) return;
+    }
+
+    let wrap = inp.closest('.pw-wrap');
+    if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.className = 'pw-wrap';
+        const parent = inp.parentNode;
+        if (!parent) return;
+        parent.insertBefore(wrap, inp);
+        wrap.appendChild(inp);
+    }
+    if (wrap.querySelector('.pw-eye')) return;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-eye';
+    btn.title = "Parolni ko'rsatish";
+    btn.setAttribute('aria-label', "Parolni ko'rsatish");
+    btn.innerHTML = VM_PW_EYE_SVG;
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        vmTogglePasswordInput(inp, btn);
+    });
+    wrap.appendChild(btn);
+}
+
+function vmInitPasswordEyes(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll('input[type="password"]').forEach(vmEnsurePasswordEye);
+    // Modal ichida keyin ochilishi mumkin
+    scope.querySelectorAll('.pw-eye[data-for]').forEach((btn) => {
+        if (btn.dataset.bound === '1') return;
+        const id = btn.getAttribute('data-for');
+        const inp = id ? document.getElementById(id) : null;
+        if (!inp) return;
+        btn.dataset.bound = '1';
+        inp.dataset.pwEyeBound = '1';
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            vmTogglePasswordInput(inp, btn);
+        });
+    });
+}
+
+window.vmInitPasswordEyes = vmInitPasswordEyes;
+window.vmEnsurePasswordEye = vmEnsurePasswordEye;
+
 /** Gorizontal scroll kerak bo‘ladigan konteynerlar */
 var VM_HSCROLL_SEL = [
     '.app-main .topbar .acts',
@@ -227,6 +313,7 @@ function vmInitHScroll() {
     vmInstallHScrollDelegation();
     vmBindHScrollWheels(document);
     vmBindNavClose();
+    vmInitPasswordEyes(document);
 }
 
 document.addEventListener('DOMContentLoaded', vmInitHScroll);

@@ -2994,6 +2994,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('sync-details').innerHTML = '';
         document.getElementById('sync-status').textContent = '';
         document.getElementById('modal-gps').classList.add('open');
+        if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document.getElementById('modal-gps'));
     };
     document.getElementById('btn-gps-sync')?.addEventListener('click',   () => openGpsModal());
     document.getElementById('btn-gps-sync-2')?.addEventListener('click', () => {
