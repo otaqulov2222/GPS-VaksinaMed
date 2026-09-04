@@ -95,6 +95,10 @@ body.app-body {
   color: var(--muted);
 }
 
+.drv-daybar label[hidden] {
+  display: none !important;
+}
+
 .drv-daybar input,
 .drv-daybar select {
   height: 40px;
@@ -578,7 +582,6 @@ body.app-body {
     </div>
     <div class="drv-live-actions">
       <span class="drv-live-chip" id="live-chip">—</span>
-      <button type="button" class="drv-live-btn" id="btn-live-refresh">Yangilash</button>
     </div>
   </div>
 
@@ -970,8 +973,6 @@ async function refreshGpsFromServer(opts) {
   if (vmIsStaff(ME) && carSel && carSel.value) body.car = carSel.value;
 
   liveBusy = true;
-  const btn = document.getElementById('btn-live-refresh');
-  if (btn) btn.disabled = true;
   updateLiveFromDay({}, { busy: true });
 
   try {
@@ -1003,7 +1004,6 @@ async function refreshGpsFromServer(opts) {
     throw err;
   } finally {
     liveBusy = false;
-    if (btn) btn.disabled = false;
   }
 }
 
@@ -1233,13 +1233,6 @@ function paint(day) {
       .then(() => { if (isTodaySelected()) return refreshGpsFromServer(); })
       .catch(err => alert(err.message));
   });
-
-  const liveBtn = document.getElementById('btn-live-refresh');
-  if (liveBtn) {
-    liveBtn.onclick = () => {
-      refreshGpsFromServer({ force: true }).catch(err => alert(err.message || err));
-    };
-  }
 
   if (vmIsStaff(ME)) {
 
