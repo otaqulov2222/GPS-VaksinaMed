@@ -666,11 +666,22 @@ body.app-body::before {
     padding: 0 12px;
     border-radius: 10px;
     flex-shrink: 0;
+    position: relative;
+    z-index: 5;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  /* Muhim: app-shell z-index:1 stacking context ichida rail qolsa,
+     scrim (z=200) ustiga chiqib touch ni yutadi — tugmalar ishlamaydi. */
+  .app-shell {
+    z-index: auto;
   }
   .nav-scrim {
     background: rgba(11, 31, 58, 0.45);
     z-index: 200;
     padding: 0;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
   }
   .nav-rail {
     position: fixed;
@@ -690,7 +701,11 @@ body.app-body::before {
     transform: translateX(calc(-100% - 24px));
     transition: transform .24s cubic-bezier(.2, .8, .2, 1);
     box-shadow: 0 16px 48px rgba(11, 31, 58, 0.32);
-    z-index: 210;
+    z-index: 220;
+    pointer-events: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .nav-open-cb:checked ~ .app-shell .nav-rail,
   .nav-open-cb:checked + .nav-scrim + .app-shell .nav-rail {
@@ -701,11 +716,19 @@ body.app-body::before {
     display: block;
   }
   .nav-rail .nav-link,
-  .nav-rail .tab {
+  .nav-rail .tab,
+  .nav-rail a,
+  .nav-rail button {
     min-height: 44px !important;
     white-space: normal !important;
     overflow-wrap: anywhere;
     line-height: 1.25 !important;
+    position: relative;
+    z-index: 2;
+    pointer-events: auto !important;
+    -webkit-tap-highlight-color: rgba(26, 95, 180, 0.18);
+    touch-action: manipulation;
+    cursor: pointer;
   }
   .nav-section-modules {
     padding: 8px 6px;

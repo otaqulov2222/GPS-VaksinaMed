@@ -104,6 +104,20 @@ function vmCloseNav() {
     if (cb) cb.checked = false;
 }
 
+/** Link navigatsiyasidan oldin menyuni yopish — iOS touch uchun ishonchli */
+function vmBindNavClose() {
+    if (window._vmNavCloseBound) return;
+    window._vmNavCloseBound = true;
+    const closeIfNavLink = (e) => {
+        const t = e.target && e.target.closest
+            ? e.target.closest('.nav-rail a[href], .nav-rail .tab, .nav-rail button.tab')
+            : null;
+        if (t) vmCloseNav();
+    };
+    document.addEventListener('click', closeIfNavLink, true);
+    document.addEventListener('touchend', closeIfNavLink, { capture: true, passive: true });
+}
+
 /** Gorizontal scroll kerak bo‘ladigan konteynerlar */
 var VM_HSCROLL_SEL = [
     '.app-main .topbar .acts',
@@ -209,16 +223,10 @@ function vmInstallHScrollDelegation() {
     }, { passive: false, capture: true });
 }
 
-document.addEventListener('click', (e) => {
-    const t = e.target && e.target.closest
-        ? e.target.closest('.nav-rail a.nav-link, .nav-rail .tab, .nav-rail button.tab')
-        : null;
-    if (t) vmCloseNav();
-}, true);
-
 function vmInitHScroll() {
     vmInstallHScrollDelegation();
     vmBindHScrollWheels(document);
+    vmBindNavClose();
 }
 
 document.addEventListener('DOMContentLoaded', vmInitHScroll);
