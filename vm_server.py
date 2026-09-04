@@ -1936,9 +1936,10 @@ class OfficeStore:
             reviews.append(
                 {
                     "place": parts[-1] if parts else "",
+                    "time": parts[2] if len(parts) > 2 else "",
+                    "inTime": parts[2] if len(parts) > 2 else "",
                     "status": rv.get("status"),
                     "note": str(rv.get("note") or "")[:200],
-                    "inTime": parts[2] if len(parts) > 2 else "",
                 }
             )
         # GPS trek nuqtalari (xarita uchun) — qisqartirilgan
@@ -2168,6 +2169,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             path = args[0].split(" ")[1] if " " in str(args[0]) else str(args[0])
             if not path.endswith((".css", ".js", ".ico", ".png", ".jpg", ".ttf")):
                 print(f"  [{status}] {path}")
+
+    def guess_type(self, path):
+        ctype = super().guess_type(path)
+        if isinstance(ctype, tuple):
+            ctype = ctype[0] if ctype else "application/octet-stream"
+        ctype = str(ctype or "application/octet-stream")
+        # Brauzer mojibake oldini olish — matn fayllarga aniq UTF-8
+        if ctype in (
+            "text/html",
+            "text/css",
+            "text/javascript",
+            "application/javascript",
+            "application/json",
+            "text/plain",
+        ) and "charset=" not in ctype.lower():
+            ctype = ctype + "; charset=utf-8"
+        return ctype
 
     def end_headers(self):
         path = (self.path or "").split("?", 1)[0].lower()
