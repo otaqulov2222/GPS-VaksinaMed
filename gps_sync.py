@@ -1448,6 +1448,7 @@ def sync_today(
 
         # Chunked sync: ESKI mashinalarni O'CHIRMAYMIZ (aks holda 1/23 → 12/23 bo'lib qoladi).
         # force=True: syncedAt tozalanadi — barcha mashina qayta tortiladi, lekin ekranda eski ma'lumot turadi.
+        # budget=None (GitHub cron): ham merge — hech qachon cars={} bilan o'chirmaymiz.
         cars = dict(prev_cars)
         if force:
             for _car, row in list(cars.items()):
@@ -1456,10 +1457,6 @@ def sync_today(
                     row.pop("syncedAt", None)
                     row["stale"] = True
                     cars[_car] = row
-            jobs = list(all_jobs)
-        elif budget is None:
-            # To'liq sync (Render worker) — yangidan
-            cars = {}
             jobs = list(all_jobs)
         else:
             jobs = [
@@ -1472,15 +1469,25 @@ def sync_today(
             jobs = jobs[:max_cars]
 
         if not jobs:
-            office.set_gps_status(running=False, cars=len(cars), error="", date=date_str, message="Tayyor")
+            synced_n = sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt"))
+            office.set_gps_status(
+                running=False,
+                cars=len(cars),
+                error="",
+                date=date_str,
+                message="Tayyor %d/%d" % (synced_n, total_fleet),
+                fetched=synced_n,
+                total=total_fleet,
+            )
             return {
                 "ok": True,
                 "date": date_str,
                 "cars": len(cars),
-                "fetched": sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt")),
+                "fetched": synced_n,
                 "total": total_fleet,
-                "partial": False,
+                "partial": synced_n < total_fleet,
                 "errors": [],
+                "skipped": True,
             }
 
         def fetch_one(unit, drv):
@@ -1567,13 +1574,15 @@ def sync_today(
         err_txt = ("; ".join(errors[:5]) + ("…" if len(errors) > 5 else "")) if errors else ""
         if partial and not err_txt:
             err_txt = "Qisman: %d/%d mashina" % (synced_n, total_fleet)
-        msg = "Qisman — davom etadi" if partial else "Tayyor"
+        msg = ("Qisman %d/%d — davom etadi" % (synced_n, total_fleet)) if partial else ("Tayyor %d/%d" % (synced_n, total_fleet))
         office.set_gps_status(
             running=False,
             cars=len(cars),
             error=err_txt[:200] if partial else "",
             date=date_str,
             message=msg,
+            fetched=synced_n,
+            total=total_fleet,
         )
         return {
             "ok": done > 0 or synced_n > 0,

@@ -1844,16 +1844,19 @@ function showToast(msg, type = 'info') {
     setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .25s'; setTimeout(() => t.remove(), 250); }, 4000);
 }
 
-function setGpsUi(state) {
+function setGpsUi(state, detail) {
     const chip = document.getElementById('gps-status-chip');
     const btn  = document.getElementById('btn-gps-sync-2');
     if (chip) {
         if (state === 'on') {
-            chip.textContent = 'Ulangan';
+            chip.textContent = detail || 'Ulangan';
             chip.className = 'chip chip-green';
         } else if (state === 'sync') {
-            chip.textContent = 'Yuklanmoqda';
+            chip.textContent = detail || 'Yuklanmoqda';
             chip.className = 'chip chip-blue';
+        } else if (state === 'partial') {
+            chip.textContent = detail || 'Qisman';
+            chip.className = 'chip chip-orange';
         } else {
             chip.textContent = 'Ulanmagan';
             chip.className = 'chip chip-gray';
@@ -1869,8 +1872,8 @@ function hasGpsConfig() {
     return !!((c.token && String(c.token).trim()) || (c.password && String(c.password).trim()));
 }
 
-const GPS_AUTO_MS = 5 * 60 * 1000;
-const GPS_POLL_MS = 3 * 60 * 1000;
+const GPS_POLL_MS = 60 * 1000;          // har daqiqa holat
+const GPS_POLL_FAST_MS = 20 * 1000;     // qisman bo'lsa tezroq
 
 function stopGpsAutoSync() {
     if (STATE.gpsAutoTimer) clearInterval(STATE.gpsAutoTimer);
@@ -1884,11 +1887,14 @@ function gpsModalOpen() {
 
 function startGpsAutoSync() {
     stopGpsAutoSync();
-    STATE.gpsAutoTimer = setInterval(() => {
+    const tick = () => {
         if (gpsModalOpen()) return;
         if (document.hidden) return;
         pollServerGpsStatus(false);
-    }, GPS_POLL_MS);
+    };
+    STATE.gpsAutoTimer = setInterval(tick, GPS_POLL_MS);
+    // Sahifa ochilganda darhol
+    tick();
 }
 
 function sleepMs(ms) {
@@ -1928,36 +1934,68 @@ async function saveGpsConfigToServer(cfg) {
     }
 }
 
-function updateGpsLastSyncUi(iso, running) {
+function updateGpsLastSyncUi(iso, running, extra) {
     const el = document.getElementById('gps-last-sync');
+    const habit = document.getElementById('gps-habit-line');
+    const ex = extra || {};
+    const fetched = Number(ex.fetched || ex.cars || 0) || 0;
+    const total = Number(ex.total || 0) || 0;
+    const msg = String(ex.message || '').trim();
+    const ratio = total > 0 ? (fetched + '/' + total) : (fetched ? String(fetched) : '');
+
+    if (habit) {
+        habit.textContent = total > 0
+            ? ('Kunlik odat: avto ' + fetched + '/' + total + ' mashina')
+            : 'Kunlik odat: har 10 daqiqada avto-yuklash';
+    }
     if (!el) return;
     if (running) {
-        el.textContent = 'Hozir yangilanmoqda...';
+        el.textContent = ratio
+            ? ('Hozir yangilanmoqda… ' + ratio + (msg ? ' · ' + msg : ''))
+            : ('Hozir yangilanmoqda…' + (msg ? ' · ' + msg : ''));
         return;
     }
+    const parts = [];
+    if (ratio) parts.push(ratio + ' mashina');
     if (iso) {
         const d = new Date(iso);
-        el.textContent = 'Oxirgi: ' + d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
-        return;
+        parts.push('Oxirgi: ' + d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }));
+    } else if (STATE.gpsLastSync) {
+        parts.push('Oxirgi: ' + new Date(STATE.gpsLastSync).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }));
     }
-    if (STATE.gpsLastSync) {
-        el.textContent = 'Oxirgi: ' + new Date(STATE.gpsLastSync).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
-        return;
-    }
-    el.textContent = 'Hali yangilanmagan';
+    if (msg && !/tayyor/i.test(msg)) parts.push(msg);
+    el.textContent = parts.length ? parts.join(' · ') : 'Hali yangilanmagan';
 }
 
 async function pollServerGpsStatus(forceToday) {
     try {
         const d = await vmApi('/api/office/gps/status');
-        updateGpsLastSyncUi(d.lastSync, d.running);
-        if (d.running) setGpsUi('sync');
-        else if (hasGpsConfig() || d.configured) setGpsUi('on');
+        const fetched = Number(d.fetched || d.cars || 0) || 0;
+        const total = Number(d.total || 0) || 0;
+        updateGpsLastSyncUi(d.lastSync, d.running, d);
+        if (d.running) {
+            setGpsUi('sync', total ? ('Yuklanmoqda ' + fetched + '/' + total) : 'Yuklanmoqda');
+        } else if (total > 0 && fetched > 0 && fetched < total) {
+            setGpsUi('partial', fetched + '/' + total);
+        } else if (hasGpsConfig() || d.configured) {
+            setGpsUi('on', total ? ('Ulangan ' + fetched + '/' + total) : 'Ulangan');
+        }
+
+        // Qisman bo'lsa — tezroq poll
+        if (STATE.gpsAutoTimer && total > 0 && fetched < total && !d.running) {
+            stopGpsAutoSync();
+            STATE.gpsAutoTimer = setInterval(() => {
+                if (gpsModalOpen() || document.hidden) return;
+                pollServerGpsStatus(false);
+            }, GPS_POLL_FAST_MS);
+        }
+
         const today = dateStr(new Date());
         const dateToLoad = d.lastDate || d.syncDate || today;
         const ts = d.lastSync ? new Date(d.lastSync).getTime() : 0;
         const newer = ts > (STATE.serverGpsSyncTs || 0);
-        if (!forceToday && !newer) return;
+        const incomplete = total > 0 && fetched < total;
+        if (!forceToday && !newer && !incomplete) return;
         if (ts) STATE.serverGpsSyncTs = ts;
         if (window.VMOffice) {
             await VMOffice.loadReportIfNeeded(dateToLoad, true);
@@ -2873,36 +2911,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateGpsLastSyncUi(st.lastSync, st.running);
         if (serverGps || hasGpsConfig()) setGpsUi('on');
         await pollServerGpsStatus(!STATE.history.length);
-        // Bugun bo'sh bo'lsa — darhol server sync (cron kutmasdan)
+        // Bugun bo'sh/qisman — server cron natijasini kutamiz (Vercel 1-mashina yo'li emas)
         const todayCars = STATE.data[todayStr] ? Object.keys(STATE.data[todayStr]).length : 0;
-        if ((serverGps || hasGpsConfig()) && todayCars === 0 && !STATE.gpsSyncBusy) {
-            try {
-                setGpsUi('sync');
-                showToast('Bugungi GPS yuklanmoqda...', 'info');
-                const queued = await vmApi('/api/office/gps/sync', {
-                    method: 'POST',
-                    body: JSON.stringify({ date: todayStr })
-                });
-                if (queued && queued.ok) {
-                    if (queued.queued === false) {
-                        await pollServerGpsStatus(true);
-                        if (window.VMOffice) await VMOffice.loadReportIfNeeded(todayStr, true);
-                        if (STATE.currentDate === todayStr) {
-                            renderCalendar();
-                            renderDriverTabs();
-                            refreshUI();
-                        }
-                    } else {
-                        await syncFromGPS(todayStr, STATE.gpsConfig || {}, { silent: true, force: true });
-                    }
-                }
-            } catch (e) {
-                console.warn('auto today sync:', e);
-            }
+        const fleetN = (typeof DRIVERS !== 'undefined' && DRIVERS.length) ? DRIVERS.length : 23;
+        if ((serverGps || hasGpsConfig()) && todayCars < fleetN) {
+            setGpsUi(todayCars ? 'partial' : 'sync', todayCars ? (todayCars + '/' + fleetN) : 'Yuklanmoqda');
+            showToast(
+                todayCars
+                    ? ('Bugun ' + todayCars + '/' + fleetN + ' — avto-yuklash davom etadi')
+                    : 'Kunlik GPS avto-yuklanmoqda (har 10 daqiqa)…',
+                'info'
+            );
+            // Faqat holatni poll qilish — to'liq yuklash GitHub cron
+            await pollServerGpsStatus(true);
         }
         startGpsAutoSync();
         if (!hasGpsConfig() && serverGps) {
-            showToast('Server GPS avtomatik yangilayapti — brauzer yopiq bo\'lsa ham ishlaydi', 'info');
+            showToast('Server GPS kunlik odatda avtomatik yuklaydi — brauzer yopiq bo\'lsa ham', 'info');
         }
     }, 800);
 

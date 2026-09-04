@@ -1161,23 +1161,27 @@ class OfficeStore:
         cfg = self.gps_config_internal()
         running = bool(st.get("running"))
         started = int(st.get("runningSinceTs") or 0)
-        if running and started and (time.time() - started) > 20 * 60:
+        # GitHub cron 10–20 daqiqa davom etishi mumkin
+        if running and started and (time.time() - started) > 25 * 60:
             running = False
         return {
             "configured": cfg["configured"],
             "lastSync": st.get("lastSync") or "",
             "running": running,
             "cars": int(st.get("cars") or 0),
+            "fetched": int(st.get("fetched") or st.get("cars") or 0),
+            "total": int(st.get("total") or 0),
             "error": str(st.get("error") or "")[:200],
-            "autoIntervalSec": int(os.environ.get("GPS_SYNC_INTERVAL", "300")),
+            "autoIntervalSec": int(os.environ.get("GPS_SYNC_INTERVAL", "600")),
             "syncDate": str(st.get("syncDate") or ""),
             "lastDate": str(st.get("lastDate") or ""),
             "message": str(st.get("message") or "")[:180],
             "lastJobId": int(st.get("lastJobId") or 0),
             "currentJobId": int(st.get("currentJobId") or 0),
+            "habit": "daily-full",
         }
 
-    def set_gps_status(self, running=False, cars=0, error="", date="", message="", job_id=None):
+    def set_gps_status(self, running=False, cars=0, error="", date="", message="", job_id=None, fetched=None, total=None):
         with self.lock:
             st = self._load("office:gps:status", {})
             if not isinstance(st, dict):
@@ -1189,6 +1193,16 @@ class OfficeStore:
                 st["message"] = str(message)[:180]
             if job_id is not None:
                 st["currentJobId"] = int(job_id)
+            if fetched is not None:
+                try:
+                    st["fetched"] = int(fetched)
+                except Exception:
+                    pass
+            if total is not None:
+                try:
+                    st["total"] = int(total)
+                except Exception:
+                    pass
             if running:
                 st["runningSinceTs"] = int(time.time())
                 st["error"] = ""
