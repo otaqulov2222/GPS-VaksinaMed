@@ -658,7 +658,8 @@ body { overflow-x: clip; }
 
           <div class="rules">
 
-            Login kamida <b>3</b> belgi. Parol kamida <b>6</b> belgi. Rol: <b>Admin</b>.
+            Login kamida <b>3</b> belgi. Parol kamida <b>6</b> belgi. Rol: <b>Admin</b>
+            (tizimni toʻliq boshqaradi, lekin <b>Admin Pro</b> ni koʻrmaydi).
 
           </div>
 
@@ -1400,11 +1401,11 @@ async function loadAll() {
 
   const me = window.VM_USER || {};
 
-  const reqs = [vmApi('/api/users'), vmApi('/api/sessions')];
-
-  if (me.role === 'admin_pro') reqs.push(vmApi('/api/audit'));
+  const reqs = [vmApi('/api/users'), vmApi('/api/sessions'), vmApi('/api/audit')];
 
   const [users, sess, audit] = await Promise.all(reqs);
+
+  window._VM_USERS = users.users || [];
 
   const drvN = (users.users || []).filter(u => u.role === 'driver').length;
 
@@ -1430,9 +1431,10 @@ async function loadAll() {
 
       : '<span class="chip chip-off">Blok</span>';
 
-    const locked = u.protected || u.role === 'admin_pro';
+    const isSuper = u.protected || u.role === 'admin_pro';
 
-    const canAct = u.role === 'driver' ? true : (me.role === 'admin_pro' && !locked);
+    // Admin Pro va Admin: oddiy foydalanuvchilarni to'liq boshqaradi; Pro o'zini faqat parol
+    const canManage = !isSuper;
 
     const view = u.role === 'driver' && u.car
 
@@ -1440,7 +1442,7 @@ async function loadAll() {
 
       : '';
 
-    const acts = !canAct
+    const acts = !canManage
 
       ? `<div class="row-btns"><button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button></div>`
 
@@ -1466,11 +1468,15 @@ async function loadAll() {
 
     }
 
-    const pwCell = u.hasPassword
+    const pwCell = u.password
 
-      ? `<span class="cred empty" title="Parol hash sifatida saqlangan — ochiq koʻrinmaydi">Saqlangan</span>`
+      ? `<span class="cred" title="Kirish paroli (ochiq)">${esc(u.password)}</span>`
 
-      : `<button class="pw-make" type="button" data-act="genpw" data-id="${u.id}" data-name="${esc(u.username)}">Parol yaratish</button>`;
+      : (u.hasPassword
+
+        ? `<span class="cred empty" title="Eski parol hash — «Parol» bosib yangilang, keyin koʻrinadi">Nomaʼlum*</span>`
+
+        : `<button class="pw-make" type="button" data-act="genpw" data-id="${u.id}" data-name="${esc(u.username)}">Parol yaratish</button>`);
 
     return `<tr>
 
@@ -1690,7 +1696,13 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
 
       document.getElementById('reset-who').textContent = 'Login: ' + (btn.getAttribute('data-name') || '');
 
-      document.getElementById('reset-pass').value = genRandomPass();
+      const hit = (window._VM_USERS || []).find(x => x.id === id);
+
+      const known = hit && hit.password ? String(hit.password) : '';
+
+      document.getElementById('reset-pass').value = known || '';
+
+      document.getElementById('reset-pass').placeholder = known ? 'Joriy parol — o‘zgartirish mumkin' : 'Joriy nomaʼlum — yangi parol yozing';
 
       document.getElementById('modal-reset').classList.add('open');
 
@@ -2744,11 +2756,7 @@ document.querySelectorAll('.pw-eye').forEach(btn => {
 
   }
 
-  if (me.role !== 'admin_pro') {
-
-    document.querySelectorAll('.pro-only').forEach(el => { el.style.display = 'none'; });
-
-  }
+  // Oddiy admin ham to'liq panel (adminpro yashirin — server); hech narsa yashirilmaydi
 
   const note = document.getElementById('persist-note');
 

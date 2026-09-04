@@ -472,21 +472,7 @@ class AuthStore:
             self._write(data)
             self.seeded = True
             return
-        # Eski password_plain maydonlarini bir marta tozalash
-        data = self._read()
-        if self._strip_plaintext_passwords(data):
-            self._write(data)
-
-    @staticmethod
-    def _strip_plaintext_passwords(data):
-        changed = False
-        for u in data.get("users") or []:
-            if not isinstance(u, dict):
-                continue
-            if "password_plain" in u:
-                u.pop("password_plain", None)
-                changed = True
-        return changed
+        # password_plain saqlanadi — Admin Pro/Admin panelda ko'rish uchun
 
     def _touch_session(self, sess, persist=True):
         sess["last_seen"] = now_ts()
@@ -509,7 +495,6 @@ class AuthStore:
         return data
 
     def _write(self, data):
-        self._strip_plaintext_passwords(data)
         self._users_cache = data
         self.persist.put("users", data)
 
@@ -520,10 +505,10 @@ class AuthStore:
         )
         data["audit"] = data["audit"][-400:]
 
-    def public_user(self, u):
+    def public_user(self, u, include_password=False):
         if not u:
             return None
-        return {
+        out = {
             "id": u["id"],
             "username": u["username"],
             "name": u.get("name") or u["username"],
@@ -535,6 +520,10 @@ class AuthStore:
             "last_login": u.get("last_login"),
             "hasPassword": bool(u.get("password_hash")),
         }
+        if include_password:
+            plain = str(u.get("password_plain") or "")
+            out["password"] = plain if plain else None
+        return out
 
     def find_user(self, data, username=None, uid=None):
         for u in data.get("users", []):
@@ -604,21 +593,34 @@ class AuthStore:
             sess["car"] = user.get("car") or ""
             return sess
 
-    def list_users(self):
+    def list_users(self, viewer_role=None):
+        """Admin Pro — hammasi + parol. Admin — adminpro yashirin, qolganlar + parol."""
         with self.lock:
             data = self._read()
-            return [self.public_user(u) for u in data.get("users", [])]
+            out = []
+            for u in data.get("users", []):
+                if not isinstance(u, dict):
+                    continue
+                if viewer_role == "admin" and (
+                    u.get("role") == "admin_pro" or u.get("protected")
+                ):
+                    continue
+                show_pw = viewer_role in ("admin_pro", "admin")
+                out.append(self.public_user(u, include_password=show_pw))
+            return out
 
     def can_manage(self, actor_role, target):
         if not target:
             return False
+        # Admin Pro himoyalangan — hech kim o'chira/bloklay olmaydi
         if target.get("protected") or target.get("role") == "admin_pro":
             return False
-        if target.get("role") == "admin":
-            return actor_role == "admin_pro"
-        if target.get("role") == "driver":
-            return actor_role in STAFF_ROLES
-        return actor_role == "admin_pro"
+        if actor_role == "admin_pro":
+            return True
+        # Oddiy admin: boshqa admin + haydovchi (adminpro ko'rinmaydi)
+        if actor_role == "admin":
+            return target.get("role") in ("admin", "driver")
+        return False
 
     def add_admin(self, actor, name, username, password):
         return self.add_user(actor, name, username, password, role="admin", car="")
@@ -659,6 +661,7 @@ class AuthStore:
                 "car": car if role == "driver" else "",
                 "password_salt": salt,
                 "password_hash": pw_hash,
+                "password_plain": password,
                 "active": True,
                 "protected": False,
                 "created_at": iso_now(),
@@ -667,7 +670,7 @@ class AuthStore:
             data["users"].append(user)
             self._audit(data, "user_add", actor, "%s (%s)" % (username, role))
             self._write(data)
-            return self.public_user(user), None
+            return self.public_user(user, include_password=True), None
 
     def set_active(self, actor, uid, active, actor_role="admin_pro"):
         with self.lock:
@@ -712,12 +715,17 @@ class AuthStore:
             user = self.find_user(data, uid=uid)
             if not user:
                 return None, "Foydalanuvchi topilmadi"
-            if actor_role != "admin_pro" and not self.can_manage(actor_role, user):
+            # Admin Pro — himoyalangan hisob (shu jumladan o'zi)
+            is_super_target = bool(user.get("protected") or user.get("role") == "admin_pro")
+            if is_super_target:
+                if actor_role != "admin_pro":
+                    return None, "Ruxsat yo'q"
+            elif not self.can_manage(actor_role, user):
                 return None, "Ruxsat yo'q"
             salt, pw_hash = hash_pw(new_password)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
-            user.pop("password_plain", None)
+            user["password_plain"] = new_password
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
                     self.sessions.pop(sid, None)
@@ -739,16 +747,18 @@ class AuthStore:
             salt, pw_hash = hash_pw(new_pw)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
-            user.pop("password_plain", None)
+            user["password_plain"] = new_pw
             self._audit(data, "pw_self", user["username"], "")
             self._write(data)
             return True, None
 
-    def list_sessions(self):
+    def list_sessions(self, viewer_role=None):
         with self.lock:
             out = []
             t = now_ts()
             for s in self.sessions.values():
+                if viewer_role == "admin" and s.get("role") == "admin_pro":
+                    continue
                 age = t - s["last_seen"]
                 out.append(
                     {
@@ -767,11 +777,14 @@ class AuthStore:
             out.sort(key=lambda x: (not x["online"], x["username"]))
             return out
 
-    def kick(self, actor, sid):
+    def kick(self, actor, sid, actor_role=None):
         with self.lock:
-            s = self.sessions.pop(sid, None)
+            s = self.sessions.get(sid)
             if not s:
                 return None, "Sessiya topilmadi"
+            if actor_role == "admin" and s.get("role") == "admin_pro":
+                return None, "Ruxsat yo'q"
+            self.sessions.pop(sid, None)
             self._save_sessions()
             data = self._read()
             self._audit(data, "kick", actor, s.get("username"))
@@ -2507,16 +2520,20 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_staff()
             if not sess:
                 return
-            self.send_json({"ok": True, "users": STORE.list_users()})
+            self.send_json({"ok": True, "users": STORE.list_users(viewer_role=sess.get("role"))})
             return
         if path == "/api/sessions":
             sess = self.require_staff()
             if not sess:
                 return
-            self.send_json({"ok": True, "sessions": STORE.list_sessions(), "me": sess["id"]})
+            self.send_json({
+                "ok": True,
+                "sessions": STORE.list_sessions(viewer_role=sess.get("role")),
+                "me": sess["id"],
+            })
             return
         if path == "/api/audit":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             self.send_json({"ok": True, "audit": STORE.audit()})
@@ -2797,8 +2814,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     self.send_json({"ok": False, "error": "Faqat admin"}, 403)
                     return
             elif role == "admin":
-                if sess.get("role") != "admin_pro":
-                    self.send_json({"ok": False, "error": "Faqat Admin Pro"}, 403)
+                if not is_staff(sess):
+                    self.send_json({"ok": False, "error": "Faqat admin"}, 403)
                     return
             else:
                 self.send_json({"ok": False, "error": "Rol noto'g'ri"}, 400)
@@ -2858,7 +2875,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_staff()
             if not sess:
                 return
-            ok, err = STORE.kick(sess["username"], body.get("id"))
+            ok, err = STORE.kick(sess["username"], body.get("id"), sess.get("role"))
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
                 return
@@ -3139,7 +3156,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/telegram":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             pub = OFFICE.save_telegram(body)
@@ -3147,7 +3164,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/telegram/test":
-            sess = self.require_pro()
+            sess = self.require_staff()
             if not sess:
                 return
             tg = OFFICE.settings()["telegram"]
