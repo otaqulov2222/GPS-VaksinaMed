@@ -119,6 +119,99 @@ body.app-body {
   font-family: var(--mono);
 }
 
+.drv-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, #0b1f3a 0%, #123a66 55%, #1a5fb4 140%);
+  color: #e8eef5;
+  box-shadow: var(--shadow);
+}
+
+.drv-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #5d6b7c;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.08);
+  flex-shrink: 0;
+}
+
+.drv-live.is-on .drv-live-dot {
+  background: #3ddc97;
+  box-shadow: 0 0 0 3px rgba(61,220,151,.22);
+  animation: drvPulse 1.6s ease-in-out infinite;
+}
+
+.drv-live.is-busy .drv-live-dot {
+  background: #ffd166;
+  animation: drvPulse 0.9s ease-in-out infinite;
+}
+
+.drv-live.is-off .drv-live-dot { background: #8aa0b8; }
+
+@keyframes drvPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: .7; }
+}
+
+.drv-live-main { min-width: 0; flex: 1; }
+.drv-live-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.drv-live-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #9bb8d8;
+  font-family: var(--mono);
+  line-height: 1.35;
+}
+
+.drv-live-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.drv-live-btn {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(255,255,255,.22);
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  border-radius: 11px;
+  font: 700 12px/1 var(--sans);
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.drv-live-btn:hover { background: rgba(255,255,255,.2); }
+.drv-live-btn:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.drv-live-chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.16);
+  color: #d7e6f7;
+  font-family: var(--sans);
+}
+
 .kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -467,7 +560,7 @@ body.app-body {
 
     </header>
 
-<div class="drv-note">Bu sahifada hech narsa oʻzgartirilmaydi. Faqat oʻzingizga biriktirilgan kunlik natija koʻrinadi.</div>
+<div class="drv-note">Kabinet avtomatik yangilanadi. Bugungi kun uchun GPS maʼlumotlari doimiy kuzatiladi — oʻzgartirish faqat admin orqali.</div>
 
 <div class="wrap">
 
@@ -475,6 +568,18 @@ body.app-body {
     <label>Sana <input type="date" id="d-date"></label>
     <label id="staff-pick" hidden>Mashina <select id="d-car"></select></label>
     <span class="drv-day-meta" id="day-updated"></span>
+  </div>
+
+  <div class="drv-live is-off" id="drv-live" aria-live="polite">
+    <span class="drv-live-dot" aria-hidden="true"></span>
+    <div class="drv-live-main">
+      <div class="drv-live-title" id="live-title">Avto-yangilanish</div>
+      <div class="drv-live-sub" id="live-sub">Maʼlumotlar yuklanmoqda…</div>
+    </div>
+    <div class="drv-live-actions">
+      <span class="drv-live-chip" id="live-chip">—</span>
+      <button type="button" class="drv-live-btn" id="btn-live-refresh">Yangilash</button>
+    </div>
   </div>
 
   <div class="kpis">
@@ -565,11 +670,71 @@ function stopKind(st) {
 let ME = null;
 
 let dayTimer = null;
+let gpsTimer = null;
+let liveBusy = false;
+let lastPaintKey = '';
+let liveVisBound = false;
 
 let drvMap = null;
 
 let drvMapLayers = [];
 
+function isTodaySelected() {
+  const dt = document.getElementById('d-date');
+  return !!(dt && dt.value === todayStr());
+}
+
+function fmtClock(ts) {
+  try {
+    return new Date(ts).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return '—';
+  }
+}
+
+function setLiveState(mode, title, sub, chip) {
+  const box = document.getElementById('drv-live');
+  const t = document.getElementById('live-title');
+  const s = document.getElementById('live-sub');
+  const c = document.getElementById('live-chip');
+  if (box) box.className = 'drv-live ' + (mode || 'is-off');
+  if (t) t.textContent = title || '';
+  if (s) s.textContent = sub || '';
+  if (c) c.textContent = chip || '—';
+}
+
+function updateLiveFromDay(day, opts) {
+  const o = opts || {};
+  const upd = document.getElementById('day-updated');
+  const now = Date.now();
+  let gpsTxt = '';
+  if (day && day.syncedAt) {
+    gpsTxt = 'GPS: ' + fmtClock(Number(day.syncedAt) * 1000);
+  } else if (day && day.updatedAt) {
+    gpsTxt = 'GPS: ' + String(day.updatedAt).slice(11, 16);
+  } else {
+    gpsTxt = 'GPS hali yoʻq';
+  }
+  if (upd) {
+    upd.textContent = 'Ekran: ' + fmtClock(now) + (gpsTxt ? ' · ' + gpsTxt : '');
+  }
+  if (o.busy) {
+    setLiveState('is-busy', 'Yangilanmoqda…', 'GPS dan soʻnggi maʼlumot olinmoqda', 'SYNC');
+    return;
+  }
+  if (!isTodaySelected()) {
+    setLiveState('is-off', 'Arxiv kuni', 'Oʻtgan sanalar avto-yangilanmaydi — faqat saqlangan natija', 'ARXIV');
+    return;
+  }
+  const ageMin = day && day.syncedAt ? Math.max(0, Math.round((now / 1000 - Number(day.syncedAt)) / 60)) : null;
+  const ageLabel = ageMin == null ? 'GPS kutilmoqda' : (ageMin <= 1 ? 'Hozirgina yangilandi' : ageMin + ' daqiqa oldin');
+  setLiveState(
+    'is-on',
+    'Jonli kabinet',
+    ageLabel + ' · har daqiqada tekshiriladi · GPS ~3 daqiqada yangilanadi',
+    'LIVE'
+  );
+}
 
 
 function normPlate(s) {
@@ -768,44 +933,103 @@ refreshDriverMap._gen = 0;
 
 
 
-async function loadDay() {
-
+async function loadDay(opts) {
+  const o = opts || {};
   const date = document.getElementById('d-date').value;
-
   const carSel = document.getElementById('d-car');
-
   const q = new URLSearchParams({ date });
-
-  if (vmIsStaff(ME) && carSel.value) q.set('car', carSel.value);
+  if (vmIsStaff(ME) && carSel && carSel.value) q.set('car', carSel.value);
 
   const d = await vmApi('/api/driver/day?' + q.toString());
-
   const day = d.day || {};
-
-  paint(day);
-
-  const upd = document.getElementById('day-updated');
-
-  if (upd) {
-
-    let txt = 'Yangilandi: ' + new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
-
-    if (day.updatedAt) txt += ' · GPS: ' + day.updatedAt.slice(11, 16);
-
-    upd.textContent = txt;
-
+  const key = JSON.stringify({
+    km: (day.stats || {}).km,
+    stops: (day.stops || []).length,
+    syncedAt: day.syncedAt,
+    score: (day.analysis || {}).score,
+    fuel: day.fuel,
+    tasks: (day.tasks || []).length,
+    miss: ((day.analysis || {}).missedList || []).length,
+    bad: (day.reviews || []).length,
+  });
+  if (key !== lastPaintKey || o.forcePaint) {
+    lastPaintKey = key;
+    paint(day);
   }
-
+  updateLiveFromDay(day, { busy: liveBusy });
+  return day;
 }
 
+async function refreshGpsFromServer(opts) {
+  const o = opts || {};
+  if (liveBusy) return null;
+  if (!isTodaySelected() && !o.force) return null;
+  const date = document.getElementById('d-date').value;
+  const carSel = document.getElementById('d-car');
+  const body = { date };
+  if (vmIsStaff(ME) && carSel && carSel.value) body.car = carSel.value;
 
+  liveBusy = true;
+  const btn = document.getElementById('btn-live-refresh');
+  if (btn) btn.disabled = true;
+  updateLiveFromDay({}, { busy: true });
+
+  try {
+    const r = await vmApi('/api/driver/refresh', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    const day = r.day || null;
+    if (day) {
+      lastPaintKey = '';
+      paint(day);
+      updateLiveFromDay(day);
+    } else {
+      await loadDay({ forcePaint: true });
+    }
+    if (r.busy) {
+      setLiveState('is-busy', 'Server band', 'Boshqa sync ketmoqda — birozdan keyin qayta uriniladi', 'BUSY');
+    } else if (r.skipped && r.reason === 'cooldown') {
+      setLiveState(
+        'is-on',
+        'Jonli kabinet',
+        'GPS yaqinda yangilangan · qayta soʻrov ~' + (r.retryIn || 60) + ' s dan keyin',
+        'LIVE'
+      );
+    }
+    return r;
+  } catch (err) {
+    setLiveState('is-off', 'Yangilash xatosi', String(err && err.message ? err.message : err).slice(0, 120), 'XATO');
+    throw err;
+  } finally {
+    liveBusy = false;
+    if (btn) btn.disabled = false;
+  }
+}
 
 function startDayAutoRefresh() {
-
   if (dayTimer) clearInterval(dayTimer);
+  if (gpsTimer) clearInterval(gpsTimer);
 
-  dayTimer = setInterval(() => loadDay().catch(() => {}), 2 * 60 * 1000);
+  dayTimer = setInterval(() => {
+    if (document.hidden) return;
+    loadDay().catch(() => {});
+  }, 60 * 1000);
 
+  gpsTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (!isTodaySelected()) return;
+    refreshGpsFromServer().catch(() => {});
+  }, 3 * 60 * 1000);
+
+  if (!liveVisBound) {
+    liveVisBound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) return;
+      loadDay().catch(() => {});
+      if (isTodaySelected()) refreshGpsFromServer().catch(() => {});
+    });
+  }
 }
 
 
@@ -938,7 +1162,7 @@ function paint(day) {
 
   if (!day.hasGps) {
 
-    sb.innerHTML = '<div class="empty">Bu kun uchun GPS hisobot hali yuklanmagan. Admin Dashboard dan yuklagach shu yerda koʻrinadi.</div>';
+    sb.innerHTML = '<div class="empty">Bu kun uchun GPS hali yuklanmagan. «Yangilash» bosing yoki biroz kuting — kabinet avtomatik tortadi.</div>';
 
   } else if (!stops.length) {
 
@@ -1004,7 +1228,18 @@ function paint(day) {
 
   dt.value = q.get('date') || todayStr();
 
-  dt.addEventListener('change', () => loadDay().catch(err => alert(err.message)));
+  dt.addEventListener('change', () => {
+    loadDay({ forcePaint: true })
+      .then(() => { if (isTodaySelected()) return refreshGpsFromServer(); })
+      .catch(err => alert(err.message));
+  });
+
+  const liveBtn = document.getElementById('btn-live-refresh');
+  if (liveBtn) {
+    liveBtn.onclick = () => {
+      refreshGpsFromServer({ force: true }).catch(err => alert(err.message || err));
+    };
+  }
 
   if (vmIsStaff(ME)) {
 
@@ -1038,7 +1273,11 @@ function paint(day) {
 
     if (q.get('car')) sel.value = q.get('car');
 
-    sel.addEventListener('change', () => loadDay().catch(err => alert(err.message)));
+    sel.addEventListener('change', () => {
+      loadDay({ forcePaint: true })
+        .then(() => { if (isTodaySelected()) return refreshGpsFromServer(); })
+        .catch(err => alert(err.message));
+    });
 
   }
 
@@ -1048,9 +1287,11 @@ function paint(day) {
 
   }
 
-  await loadDay();
-
+  await loadDay({ forcePaint: true });
   startDayAutoRefresh();
+  if (isTodaySelected()) {
+    refreshGpsFromServer().catch(() => {});
+  }
 
 })().catch(err => {
 

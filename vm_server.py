@@ -1990,6 +1990,11 @@ class OfficeStore:
         drv = self.overlay_driver_name(drv, plate)
         rep = self.get_report(date)
         updated_at = str((rep or {}).get("savedAt") or "")
+        synced_at = rec.get("syncedAt")
+        try:
+            synced_at_n = int(synced_at) if synced_at is not None else 0
+        except (TypeError, ValueError):
+            synced_at_n = 0
         return {
             "date": date,
             "car": key or plate,
@@ -1997,6 +2002,8 @@ class OfficeStore:
             "routes": drv.get("routes") or "",
             "hasGps": bool(rec),
             "updatedAt": updated_at,
+            "syncedAt": synced_at_n,
+            "stale": bool(rec.get("stale")),
             "stats": {
                 "km": as_num(stats.get("probeg")),
                 "maxSpeed": as_num(stats.get("maxSpeed")),
@@ -3263,6 +3270,117 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "task": item})
             return
 
+        if path == "/api/driver/refresh":
+            # Haydovchi o'z mashinasini GPS dan yangilaydi (rate-limit).
+            sess = self.require_user()
+            if not sess:
+                return
+            plate = ""
+            if is_driver(sess):
+                plate = sess.get("car") or ""
+            elif is_staff(sess):
+                plate = str(body.get("car") or "").strip()
+            else:
+                self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
+                return
+            if not compact_plate(plate):
+                self.send_json({"ok": False, "error": "Mashina biriktirilmagan"}, 400)
+                return
+            try:
+                import gps_sync
+                d = str(body.get("date") or "").strip() or gps_sync.today_tashkent()
+            except Exception:
+                d = str(body.get("date") or "").strip()
+            if not valid_date(d):
+                self.send_json({"ok": False, "error": "Sana noto'g'ri"}, 400)
+                return
+            try:
+                import gps_sync as _gs
+                today = _gs.today_tashkent()
+            except Exception:
+                today = time.strftime("%Y-%m-%d")
+            # Faqat bugungi kun — eski kunlarni Wialon dan tortishni cheklaymiz
+            if d != today:
+                self.send_json({
+                    "ok": True,
+                    "skipped": True,
+                    "reason": "past",
+                    "day": OFFICE.driver_day(d, plate),
+                })
+                return
+            key = compact_plate(plate)
+            now = time.time()
+            last = float(_driver_refresh_at.get(key) or 0)
+            force = bool(body.get("force"))
+            remain = _DRIVER_REFRESH_COOLDOWN - (now - last)
+            if remain > 0 and not (is_staff(sess) and force):
+                self.send_json({
+                    "ok": True,
+                    "skipped": True,
+                    "reason": "cooldown",
+                    "retryIn": int(remain),
+                    "day": OFFICE.driver_day(d, plate),
+                })
+                return
+            _driver_refresh_at[key] = now
+            try:
+                import gps_sync
+                global _gps_sync_lock_until
+                if is_serverless():
+                    got_lock = _gps_sync_lock.acquire(blocking=False)
+                    if not got_lock:
+                        self.send_json({
+                            "ok": True,
+                            "busy": True,
+                            "day": OFFICE.driver_day(d, plate),
+                        })
+                        return
+                    _gps_sync_lock_until = now + 18.0
+                    try:
+                        result = gps_sync.sync_today(
+                            OFFICE,
+                            DIRECTORY,
+                            d,
+                            saved_by=("driver:" + str(sess.get("username") or "drv"))[:40],
+                            time_budget_sec=14,
+                            max_cars=1,
+                            force=True,
+                            parallel=False,
+                            only_plates=[plate],
+                        ) or {}
+                    finally:
+                        _gps_sync_lock_until = 0.0
+                        try:
+                            _gps_sync_lock.release()
+                        except Exception:
+                            pass
+                else:
+                    with _gps_sync_lock:
+                        result = gps_sync.sync_today(
+                            OFFICE,
+                            DIRECTORY,
+                            d,
+                            saved_by=("driver:" + str(sess.get("username") or "drv"))[:40],
+                            time_budget_sec=None,
+                            max_cars=1,
+                            force=True,
+                            parallel=False,
+                            only_plates=[plate],
+                        ) or {}
+                self.send_json({
+                    "ok": bool(result.get("ok", True)),
+                    "fetched": int(result.get("fetched") or 0),
+                    "error": str(result.get("error") or "")[:200],
+                    "day": OFFICE.driver_day(d, plate),
+                })
+            except Exception as e:
+                self.send_json({
+                    "ok": False,
+                    "error": str(e)[:200],
+                    "day": OFFICE.driver_day(d, plate),
+                }, 500)
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_gps_proxy(self, parsed):
@@ -3337,6 +3455,8 @@ GPS_SYNC_INTERVAL = int(os.environ.get("GPS_SYNC_INTERVAL", "300"))
 _gps_worker_started = False
 _gps_sync_lock = threading.Lock()
 _gps_sync_lock_until = 0.0
+_driver_refresh_at = {}
+_DRIVER_REFRESH_COOLDOWN = int(os.environ.get("DRIVER_REFRESH_COOLDOWN", "180"))
 _GPS_JOB = {"q": [], "active": False, "seq": 0, "lock": threading.Lock()}
 
 

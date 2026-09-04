@@ -1381,10 +1381,12 @@ def sync_today(
     parallel=True,
     force=False,
     max_cars=None,
+    only_plates=None,
 ):
     """
     GPS sync. time_budget_sec / max_cars — Vercel 504 oldini olish (qisqa bo'laklar).
     force=True — kunni yangidan; force=False — faqat syncedAt yo'q mashinalar.
+    only_plates — faqat shu raqam(lar); haydovchi kabineti uchun bitta mashina.
     """
     import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1394,6 +1396,18 @@ def sync_today(
     budget = float(time_budget_sec) if time_budget_sec else None
     force = bool(force)
     max_cars = int(max_cars) if max_cars else None
+    only_set = None
+    if only_plates:
+        raw = only_plates if isinstance(only_plates, (list, tuple, set)) else [only_plates]
+        only_set = {compact_car(p) for p in raw if compact_car(p)}
+        if not only_set:
+            only_set = None
+
+    def _status(**kw):
+        # Bitta mashina yangilanishi umumiy fleet statusini buzmasin
+        if only_set:
+            return
+        office.set_gps_status(**kw)
 
     def left():
         if budget is None:
@@ -1415,7 +1429,7 @@ def sync_today(
         password=cfg.get("password") or "",
         timeout=http_timeout,
     )
-    office.set_gps_status(running=True, error="", date=date_str, message="GPS ga ulanilmoqda...")
+    _status(running=True, error="", date=date_str, message="GPS ga ulanilmoqda...")
     try:
         client.login()
         try:
@@ -1423,10 +1437,10 @@ def sync_today(
         except Exception:
             pass
         if left() < 3:
-            office.set_gps_status(running=False, error="Vaqt tugadi", date=date_str, message="Qayta uriniladi")
+            _status(running=False, error="Vaqt tugadi", date=date_str, message="Qayta uriniladi")
             return {"ok": False, "error": "Vaqt tugadi", "partial": True, "date": date_str, "cars": 0}
 
-        office.set_gps_status(running=True, date=date_str, message="Mashinalar ro'yxati olinmoqda...")
+        _status(running=True, date=date_str, message="Mashinalar ro'yxati olinmoqda...")
         units = client.get_units()
         drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
         pharmacies = list(office.pharmacies())
@@ -1438,8 +1452,13 @@ def sync_today(
             drv = find_driver_by_car(drivers, name)
             if not drv:
                 continue
+            if only_set and compact_car(drv.get("car")) not in only_set:
+                continue
             all_jobs.append((unit, drv))
         total_fleet = len(all_jobs)
+        if only_set and not all_jobs:
+            _status(running=False, error="Mashina GPS da topilmadi", date=date_str, message="Xato")
+            return {"ok": False, "error": "Mashina GPS da topilmadi", "date": date_str, "cars": 0}
 
         prev = office.get_report(date_str)
         prev_cars = {}
@@ -1448,15 +1467,29 @@ def sync_today(
 
         # Chunked sync: ESKI mashinalarni O'CHIRMAYMIZ (aks holda 1/23 → 12/23 bo'lib qoladi).
         # force=True: syncedAt tozalanadi — barcha mashina qayta tortiladi, lekin ekranda eski ma'lumot turadi.
+        # only_plates + force: faqat shu mashina(lar) — qolganlariga tegilmaydi.
         # budget=None (GitHub cron): ham merge — hech qachon cars={} bilan o'chirmaymiz.
         cars = dict(prev_cars)
+
+        def _car_in_only(car_key, row=None):
+            if not only_set:
+                return True
+            if compact_car(car_key) in only_set:
+                return True
+            if isinstance(row, dict) and compact_car(row.get("car")) in only_set:
+                return True
+            return False
+
         if force:
             for _car, row in list(cars.items()):
-                if isinstance(row, dict):
-                    row = dict(row)
-                    row.pop("syncedAt", None)
-                    row["stale"] = True
-                    cars[_car] = row
+                if not isinstance(row, dict):
+                    continue
+                if only_set and not _car_in_only(_car, row):
+                    continue
+                row = dict(row)
+                row.pop("syncedAt", None)
+                row["stale"] = True
+                cars[_car] = row
             jobs = list(all_jobs)
         else:
             jobs = [
@@ -1470,7 +1503,7 @@ def sync_today(
 
         if not jobs:
             synced_n = sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt"))
-            office.set_gps_status(
+            _status(
                 running=False,
                 cars=len(cars),
                 error="",
@@ -1503,7 +1536,7 @@ def sync_today(
         errors = []
         workers_n = 1 if (max_cars and max_cars <= 2) else (2 if (budget is not None and parallel and len(jobs) > 1) else (4 if parallel and len(jobs) > 1 else 1))
         workers = workers_n
-        office.set_gps_status(
+        _status(
             running=True,
             date=date_str,
             message="Yuklanmoqda (%d/%d)..." % (len(jobs), total_fleet),
@@ -1575,7 +1608,7 @@ def sync_today(
         if partial and not err_txt:
             err_txt = "Qisman: %d/%d mashina" % (synced_n, total_fleet)
         msg = ("Qisman %d/%d — davom etadi" % (synced_n, total_fleet)) if partial else ("Tayyor %d/%d" % (synced_n, total_fleet))
-        office.set_gps_status(
+        _status(
             running=False,
             cars=len(cars),
             error=err_txt[:200] if partial else "",
@@ -1595,5 +1628,5 @@ def sync_today(
             "errors": errors[:20],
         }
     except Exception as e:
-        office.set_gps_status(running=False, error=str(e)[:200], date=date_str, message="Xato")
+        _status(running=False, error=str(e)[:200], date=date_str, message="Xato")
         return {"ok": False, "error": str(e)}
