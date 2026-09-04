@@ -803,15 +803,19 @@ function initDriverMap() {
   if (!el || typeof L === 'undefined') return;
   if (drvMap) { drvMap.invalidateSize(); return; }
 
-  // Sahifa scrollini ushlab qolmasin: mouse g'ildiragi o'chirilgan,
-  // sudrab siljitish va zoom tugmalari ochiq.
   drvMap = L.map(el, {
     zoomControl: true,
     attributionControl: false,
-    scrollWheelZoom: false,
+    scrollWheelZoom: true,
     dragging: true,
     tap: true
   }).setView([41.3111, 69.2797], 12);
+
+  // Sichqoncha g'ildiragi faqat xarita ustida — sahifa scrollini ushlab qolmasin
+  drvMap.scrollWheelZoom.disable();
+  el.addEventListener('mouseenter', () => { try { drvMap.scrollWheelZoom.enable(); } catch (e) {} });
+  el.addEventListener('mouseleave', () => { try { drvMap.scrollWheelZoom.disable(); } catch (e) {} });
+  el.addEventListener('click', () => { try { drvMap.scrollWheelZoom.enable(); } catch (e) {} });
 
   if (typeof vmAddMapTiles === 'function') vmAddMapTiles(drvMap);
   else L.tileLayer('https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png', {
@@ -819,117 +823,102 @@ function initDriverMap() {
   }).addTo(drvMap);
 }
 
+function normalizeDrvTrack(pts) {
+  if (!Array.isArray(pts)) return [];
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    let lat, lng;
+    if (Array.isArray(p) && p.length >= 2) {
+      lat = Number(p[0]); lng = Number(p[1]);
+    } else if (p && typeof p === 'object') {
+      lat = Number(p.lat != null ? p.lat : p.y);
+      lng = Number(p.lng != null ? p.lng : p.x);
+    } else continue;
+    if (!(lat >= 37 && lat <= 46 && lng >= 55 && lng <= 74)) continue;
+    out.push([lat, lng]);
+  }
+  return out;
+}
+
 function refreshDriverMap(day) {
-
   initDriverMap();
-
   if (!drvMap) return;
 
   drvMapLayers.forEach(l => { try { drvMap.removeLayer(l); } catch (e) {} });
-
   drvMapLayers = [];
 
   const stops = (day.stops || []).filter(s => s.lat != null && s.lng != null);
-
   const geos = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo : [];
+  const track = normalizeDrvTrack(day.points);
 
   geos.forEach(p => {
-
     if (p.lat == null || p.lng == null) return;
-
     drvMapLayers.push(L.circle([p.lat, p.lng], {
-
       radius: p.radiusM || 120, color: '#1a5fb4', weight: 1,
-
       fillColor: '#1a5fb4', fillOpacity: 0.08, interactive: false
-
     }).addTo(drvMap));
-
     const m = L.circleMarker([p.lat, p.lng], {
-
       radius: 4, color: '#1a5fb4', fillColor: '#1a5fb4', fillOpacity: 0.9, weight: 1
-
     }).addTo(drvMap);
-
     m.bindTooltip(p.name || '', { direction: 'top' });
-
     drvMapLayers.push(m);
-
   });
 
-  if (!stops.length && !geos.length) return;
+  if (!stops.length && !geos.length && track.length < 2) return;
 
   const sorted = stops.slice().sort((a, b) => String(a.inTime || '').localeCompare(String(b.inTime || '')));
-
-  const latlngs = sorted.map(s => [Number(s.lat), Number(s.lng)]);
-
+  const stopLatlngs = sorted.map(s => [Number(s.lat), Number(s.lng)]);
   const routeGen = ++refreshDriverMap._gen;
 
   function drawRouteLines(pts) {
     if (!pts || pts.length < 2) return;
-    // Leaflet SVG stroke CSS var() ni ishonchli qabul qilmaydi — hex ishlatiladi
     drvMapLayers.push(L.polyline(pts, { color: '#0b1f3a', weight: 5, opacity: 0.35 }).addTo(drvMap));
     drvMapLayers.push(L.polyline(pts, { color: '#1a5fb4', weight: 2.4, opacity: 0.95 }).addTo(drvMap));
   }
 
-  if (latlngs.length > 1) {
+  function clearPolylines() {
+    drvMapLayers.slice(0).forEach(l => {
+      if (l instanceof L.Polyline) {
+        try { drvMap.removeLayer(l); } catch (e) {}
+        drvMapLayers = drvMapLayers.filter(x => x !== l);
+      }
+    });
+  }
 
-    drawRouteLines(latlngs);
-
-    if (typeof vmFetchRoadRoute === 'function') {
-
-      vmFetchRoadRoute(latlngs).then(road => {
-
-        if (routeGen !== refreshDriverMap._gen || !road || road.length < 2) return;
-
-        drvMapLayers.slice(0).forEach(l => {
-
-          if (l instanceof L.Polyline) {
-
-            try { drvMap.removeLayer(l); } catch (e) {}
-
-            drvMapLayers = drvMapLayers.filter(x => x !== l);
-
-          }
-
-        });
-
-        drawRouteLines(road);
-
-      }).catch(() => {});
-
-    }
-
+  // Avvalo haqiqiy GPS trek — to'g'ri chiziq "flash" bo'lmasin
+  if (track.length >= 2) {
+    drawRouteLines(track);
+  } else if (stopLatlngs.length > 1 && typeof vmFetchRoadRoute === 'function') {
+    vmFetchRoadRoute(stopLatlngs).then(road => {
+      if (routeGen !== refreshDriverMap._gen) return;
+      clearPolylines();
+      drawRouteLines(road && road.length >= 2 ? road : stopLatlngs);
+    }).catch(() => {
+      if (routeGen !== refreshDriverMap._gen) return;
+      clearPolylines();
+      drawRouteLines(stopLatlngs);
+    });
+  } else if (stopLatlngs.length > 1) {
+    drawRouteLines(stopLatlngs);
   }
 
   const lastI = sorted.length - 1;
-
   sorted.forEach((st, i) => {
-
     const color = drvStopColor(st);
-
     const label = i === 0 ? 'A' : (i === lastI ? 'B' : String(i + 1));
-
     const isEnd = i === 0 || i === lastI;
-
     const mk = L.marker([st.lat, st.lng], { icon: drvPinIcon(label, color, isEnd) }).addTo(drvMap);
-
     const [lab] = stopKind(st);
-
-    mk.bindPopup(`<b>${esc(stopLabel(st))}</b><br>${esc(st.inTime || '')}${st.outTime ? ' → ' + esc(st.outTime) : ''}<br>${st.duration ? esc(st.duration) : ''}<br><span style="color:var(--mark)">${esc(lab)}</span>`);
-
+    mk.bindPopup(`<b>${esc(stopLabel(st))}</b><br>${esc(st.inTime || '')}${st.outTime ? ' → ' + esc(st.outTime) : ''}<br>${st.duration ? esc(st.duration) : ''}<br><span style="color:#1a5fb4">${esc(lab)}</span>`);
     drvMapLayers.push(mk);
-
   });
 
-  const allPts = latlngs.concat(geos.map(p => [p.lat, p.lng]));
-
+  const allPts = (track.length >= 2 ? track : stopLatlngs).concat(geos.map(p => [p.lat, p.lng]));
   if (allPts.length > 1) drvMap.fitBounds(L.latLngBounds(allPts), { padding: [36, 36], maxZoom: 15 });
-
   else if (allPts.length === 1) drvMap.setView(allPts[0], 14);
 
   setTimeout(() => { if (drvMap) drvMap.invalidateSize(); }, 120);
-
 }
 
 refreshDriverMap._gen = 0;

@@ -1936,11 +1936,38 @@ class OfficeStore:
             reviews.append(
                 {
                     "place": parts[-1] if parts else "",
-                    "time": parts[2] if len(parts) > 2 else "",
                     "status": rv.get("status"),
-                    "note": rv.get("note") or "",
+                    "note": str(rv.get("note") or "")[:200],
+                    "inTime": parts[2] if len(parts) > 2 else "",
                 }
             )
+        # GPS trek nuqtalari (xarita uchun) — qisqartirilgan
+        points_out = []
+        raw_pts = rec.get("points") if isinstance(rec.get("points"), list) else []
+        if raw_pts:
+            step = max(1, len(raw_pts) // 400)
+            for i, p in enumerate(raw_pts):
+                if i % step and i != len(raw_pts) - 1:
+                    continue
+                lat = lng = None
+                if isinstance(p, (list, tuple)) and len(p) >= 2:
+                    try:
+                        lat, lng = float(p[0]), float(p[1])
+                    except (TypeError, ValueError):
+                        continue
+                elif isinstance(p, dict):
+                    try:
+                        lat = float(p.get("lat") if p.get("lat") is not None else p.get("y"))
+                        lng = float(p.get("lng") if p.get("lng") is not None else p.get("x"))
+                    except (TypeError, ValueError):
+                        continue
+                if lat is None or lng is None:
+                    continue
+                if not (37.0 <= lat <= 46.0 and 55.0 <= lng <= 74.0):
+                    continue
+                points_out.append([round(lat, 5), round(lng, 5)])
+                if len(points_out) >= 500:
+                    break
         pharms = []
         pharmacy_geo = []
         for p in self.pharmacies():
@@ -2025,6 +2052,7 @@ class OfficeStore:
                 "breakdown": score.get("breakdown") if isinstance(score.get("breakdown"), list) else [],
             },
             "stops": stops,
+            "points": points_out,
             "reviews": reviews,
             "pharmacies": pharms,
             "pharmacyGeo": pharmacy_geo,
