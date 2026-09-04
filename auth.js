@@ -373,6 +373,27 @@ function vmInitHScroll() {
     vmInitPasswordEyes(document);
 }
 
-document.addEventListener('DOMContentLoaded', vmInitHScroll);
-if (document.readyState !== 'loading') vmInitHScroll();
+/** Ichki AI/FAQ yordamchi (login dan tashqari) */
+function vmLoadSupportChat() {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    if (path.endsWith('/login.html')) return;
+    if (window._vmSupportAssets) return;
+    window._vmSupportAssets = true;
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'support-chat.css?v=5';
+    document.head.appendChild(css);
+    const s = document.createElement('script');
+    s.src = 'support-chat.js?v=5';
+    s.defer = true;
+    document.head.appendChild(s);
+}
+
+function vmInitShellExtras() {
+    vmInitHScroll();
+    vmLoadSupportChat();
+}
+
+document.addEventListener('DOMContentLoaded', vmInitShellExtras);
+if (document.readyState !== 'loading') vmInitShellExtras();
 

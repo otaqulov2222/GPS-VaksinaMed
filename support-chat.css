@@ -1,0 +1,263 @@
+/* VaksinaMed — ichki yordamchi chat (local UI) */
+.vm-sup-root {
+  --vm-sup-navy: #0b1f3a;
+  --vm-sup-blue: #1a5fb4;
+  --vm-sup-line: #c5d4e6;
+  --vm-sup-muted: #5a7190;
+  --vm-sup-bg: #f4f8fc;
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 99990;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  pointer-events: none;
+}
+.vm-sup-root * { box-sizing: border-box; }
+
+.vm-sup-fab {
+  pointer-events: auto;
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: linear-gradient(160deg, #1a5fb4 0%, #0b1f3a 100%);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(11, 31, 58, 0.28);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.vm-sup-fab:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgba(11, 31, 58, 0.34); }
+.vm-sup-fab svg { width: 24px; height: 24px; }
+
+.vm-sup-panel {
+  pointer-events: auto;
+  position: absolute;
+  right: 0;
+  bottom: 68px;
+  width: min(400px, calc(100vw - 28px));
+  height: min(560px, calc(100vh - 110px));
+  display: none;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--vm-sup-line);
+  border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(11, 31, 58, 0.22);
+  overflow: hidden;
+}
+.vm-sup-root.open .vm-sup-panel { display: flex; }
+
+.vm-sup-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  background: linear-gradient(180deg, #0f2a4a 0%, #0b1f3a 100%);
+  color: #fff;
+}
+.vm-sup-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.vm-sup-head p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  opacity: 0.78;
+  line-height: 1.35;
+}
+.vm-sup-head-txt { flex: 1; min-width: 0; }
+.vm-sup-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  white-space: nowrap;
+}
+.vm-sup-badge.off { background: rgba(255, 180, 80, 0.22); color: #ffe6c2; }
+.vm-sup-x, .vm-sup-clear {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+  opacity: 0.85;
+}
+.vm-sup-x { font-size: 20px; }
+.vm-sup-x:hover, .vm-sup-clear:hover { opacity: 1; }
+
+.vm-sup-msgs {
+  flex: 1;
+  overflow: auto;
+  padding: 14px 12px;
+  background: var(--vm-sup-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vm-sup-bubble {
+  max-width: 92%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.vm-sup-bubble.me, .vm-sup-bubble.sys { white-space: pre-wrap; }
+.vm-sup-bubble.bot {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid var(--vm-sup-line);
+  color: var(--vm-sup-navy);
+  white-space: normal;
+}
+.vm-sup-bubble.bot .vm-sup-num { font-weight: 650; color: var(--vm-sup-blue); }
+.vm-sup-bubble.me {
+  align-self: flex-end;
+  background: #1a5fb4;
+  color: #fff;
+}
+.vm-sup-bubble.sys {
+  align-self: center;
+  background: transparent;
+  border: 0;
+  color: var(--vm-sup-muted);
+  font-size: 12px;
+  text-align: center;
+  max-width: 100%;
+}
+.vm-sup-img-note {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.vm-sup-thinking { opacity: 0.85; display: flex; align-items: center; gap: 8px; }
+.vm-sup-dots { display: inline-flex; gap: 3px; }
+.vm-sup-dots i {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--vm-sup-blue);
+  display: block;
+  animation: vm-sup-bounce 1s infinite ease-in-out;
+}
+.vm-sup-dots i:nth-child(2) { animation-delay: 0.15s; }
+.vm-sup-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes vm-sup-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+.vm-sup-thumb {
+  display: block;
+  max-width: 180px;
+  max-height: 120px;
+  border-radius: 10px;
+  margin-top: 8px;
+  border: 1px solid rgba(255,255,255,0.35);
+  object-fit: cover;
+}
+.vm-sup-bubble.bot .vm-sup-thumb { border-color: var(--vm-sup-line); }
+
+.vm-sup-panel.vm-sup-drag {
+  outline: 2px dashed var(--vm-sup-blue);
+  outline-offset: -6px;
+}
+
+.vm-sup-foot {
+  border-top: 1px solid var(--vm-sup-line);
+  padding: 10px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vm-sup-preview {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vm-sup-muted);
+}
+.vm-sup-preview.on { display: flex; }
+.vm-sup-preview img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--vm-sup-line);
+}
+.vm-sup-preview button {
+  border: 0;
+  background: #eef3f9;
+  color: var(--vm-sup-navy);
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.vm-sup-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.vm-sup-row textarea {
+  flex: 1;
+  resize: none;
+  min-height: 42px;
+  max-height: 110px;
+  border: 1px solid var(--vm-sup-line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--vm-sup-navy);
+  background: #fff;
+}
+.vm-sup-row textarea:focus {
+  outline: none;
+  border-color: #7aa3d4;
+  box-shadow: 0 0 0 3px rgba(26, 95, 180, 0.12);
+}
+.vm-sup-iconbtn, .vm-sup-send {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--vm-sup-line);
+  background: #fff;
+  color: var(--vm-sup-navy);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.vm-sup-send {
+  background: var(--vm-sup-blue);
+  border-color: var(--vm-sup-blue);
+  color: #fff;
+}
+.vm-sup-send:disabled, .vm-sup-iconbtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.vm-sup-iconbtn svg, .vm-sup-send svg { width: 18px; height: 18px; }
+.vm-sup-hint {
+  font-size: 10px;
+  color: var(--vm-sup-muted);
+  line-height: 1.35;
+  padding: 0 2px;
+}
+
+@media (max-width: 520px) {
+  .vm-sup-root { right: 12px; bottom: 12px; }
+  .vm-sup-panel {
+    width: calc(100vw - 24px);
+    height: min(70vh, 560px);
+    bottom: 62px;
+  }
+}

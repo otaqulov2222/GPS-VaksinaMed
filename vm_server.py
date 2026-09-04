@@ -46,6 +46,7 @@ BLOCKED_NAMES = {
     "render.yaml",
     "gps_sync.py",
     "hr_api.py",
+    "support_ai.py",
     "hr-api.md",
 }
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -2794,6 +2795,18 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "tasks": items[:200]})
             return
 
+        if path == "/api/support/status":
+            sess = self.require_user()
+            if not sess:
+                return
+            try:
+                import support_ai
+
+                self.send_json(support_ai.status_payload())
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:160]}, 500)
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_api_post(self, path):
@@ -3426,6 +3439,27 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 }, 500)
             return
 
+        if path == "/api/support/chat":
+            sess = self.require_user()
+            if not sess:
+                return
+            try:
+                import support_ai
+
+                result = support_ai.answer_support(
+                    message=str(body.get("message") or ""),
+                    role=str(sess.get("role") or ""),
+                    page=str(body.get("page") or ""),
+                    image_data_url=body.get("image"),
+                    history=body.get("history") if isinstance(body.get("history"), list) else [],
+                    user_id=str(sess.get("user_id") or sess.get("username") or "u"),
+                )
+                code = 200 if result.get("ok") else 400
+                self.send_json(result, code)
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:200]}, 500)
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_gps_proxy(self, parsed):
@@ -3620,6 +3654,12 @@ def init_app(base_dir=None):
         if _app_initialized:
             return STORE, OFFICE
         os.chdir(base_dir)
+        try:
+            import support_ai
+
+            support_ai.load_dotenv(os.path.join(base_dir, ".env"))
+        except Exception:
+            pass
         production_checks()
         persist = make_persist(base_dir)
         STORE = AuthStore(persist)
@@ -3641,6 +3681,12 @@ def init_app(base_dir=None):
 
 def main():
     global STORE, OFFICE
+    try:
+        import support_ai
+
+        support_ai.load_dotenv(os.path.join(DIRECTORY, ".env"))
+    except Exception:
+        pass
     parser = argparse.ArgumentParser(description="VaksinaMed GPS Monitor Server")
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--dir", type=str, default=DIRECTORY)
@@ -3666,6 +3712,12 @@ def main():
     import hr_api as _hr
 
     hr_line = "yoqilgan (VM_HR_API_KEY)" if _hr.hr_api_key() else "ochiq emas — VM_HR_API_KEY qo'ying"
+    try:
+        import support_ai as _sup
+
+        ai_line = "AI yoqilgan" if _sup.ai_enabled() else "FAQ (OPENAI_API_KEY qo'ying)"
+    except Exception:
+        ai_line = "modul yo'q"
 
     print(f"""
   +==========================================+
@@ -3674,7 +3726,8 @@ def main():
   |  Manzil: http://localhost:{args.port:<14}  |
   |  Kirish: login + parol majburiy          |
   |  Saqlash: {persist_line:<29} |
-  |  HR API: {hr_line:<30} |{seed_note}
+  |  HR API: {hr_line:<30} |
+  |  Yordamchi: {ai_line:<27} |{seed_note}
   +==========================================+
   Toxtatish: Ctrl+C
 """)
