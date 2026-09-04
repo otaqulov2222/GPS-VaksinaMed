@@ -552,7 +552,7 @@ body.app-body {
 
         <div class="tb-title">Haydovchi kabineti</div>
 
-        <div class="tb-sub" id="who-line">Faqat koʻrish</div>
+        <div class="tb-sub" id="who-line">Faqat ko'rish</div>
 
       </div>
 
@@ -560,7 +560,7 @@ body.app-body {
 
     </header>
 
-<div class="drv-note">Kabinet avtomatik yangilanadi. Bugungi kun uchun GPS maʼlumotlari doimiy kuzatiladi — oʻzgartirish faqat admin orqali.</div>
+<div class="drv-note">Kabinet avtomatik yangilanadi. Bugungi kun uchun GPS ma'lumotlari doimiy kuzatiladi — o'zgartirish faqat admin orqali.</div>
 
 <div class="wrap">
 
@@ -574,7 +574,7 @@ body.app-body {
     <span class="drv-live-dot" aria-hidden="true"></span>
     <div class="drv-live-main">
       <div class="drv-live-title" id="live-title">Avto-yangilanish</div>
-      <div class="drv-live-sub" id="live-sub">Maʼlumotlar yuklanmoqda…</div>
+      <div class="drv-live-sub" id="live-sub">Ma'lumotlar yuklanmoqda…</div>
     </div>
     <div class="drv-live-actions">
       <span class="drv-live-chip" id="live-chip">—</span>
@@ -583,22 +583,22 @@ body.app-body {
   </div>
 
   <div class="kpis">
-    <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys / toʻxtash</s></div>
+    <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys / to'xtash</s></div>
     <div class="kpi is-score"><i>Ball</i><b id="k-score">—</b><s id="k-grade">Kunlik baho</s></div>
-    <div class="kpi is-miss"><i>Oʻtkazib yuborilgan</i><b id="k-miss">—</b><s>nuqta</s></div>
-    <div class="kpi is-bad"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan toʻxtash</s></div>
+    <div class="kpi is-miss"><i>O'tkazib yuborilgan</i><b id="k-miss">—</b><s>nuqta</s></div>
+    <div class="kpi is-bad"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan to'xtash</s></div>
   </div>
 
   <div class="card">
-    <div class="card-h">Xarita — yoʻnalish va toʻxtashlar</div>
+    <div class="card-h">Xarita — yo'nalish va to'xtashlar</div>
     <div class="map-frame" id="map-frame">
       <div id="driver-map"></div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-h">Yoqilgʻi</div>
-    <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilgʻi yozuvi yoʻq</div></div>
+    <div class="card-h">Yoqilg'i</div>
+    <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilg'i yozuvi yo'q</div></div>
   </div>
 
   <div class="card">
@@ -607,7 +607,7 @@ body.app-body {
   </div>
 
   <div class="card">
-    <div class="card-h">Yoʻnalish va toʻxtashlar</div>
+    <div class="card-h">Yo'nalish va to'xtashlar</div>
     <div class="card-b" id="stop-box"></div>
   </div>
 
@@ -660,9 +660,9 @@ function stopKind(st) {
   if (st.isOffice) return ['Ofis', 'badge-office', 'is-office'];
   if (st.isOutside) return ['Shahar tashqari', 'badge-warn', 'is-warn'];
   if (st.isProblem) return ['Muammo', 'badge-bad', 'is-bad'];
-  if (st.matchType === 'own') return ['Oʻz nuqtasi', 'badge-ok', 'is-ok'];
-  if (st.matchType === 'other') return ['Boshqa yoʻnalish', 'badge-warn', 'is-warn'];
-  return ['Toʻxtash', 'badge-mute', ''];
+  if (st.matchType === 'own') return ['O'z nuqtasi', 'badge-ok', 'is-ok'];
+  if (st.matchType === 'other') return ['Boshqa yo'nalish', 'badge-warn', 'is-warn'];
+  return ['To'xtash', 'badge-mute', ''];
 }
 
 
@@ -713,17 +713,17 @@ function updateLiveFromDay(day, opts) {
   } else if (day && day.updatedAt) {
     gpsTxt = 'GPS: ' + String(day.updatedAt).slice(11, 16);
   } else {
-    gpsTxt = 'GPS hali yoʻq';
+    gpsTxt = 'GPS hali yo'q';
   }
   if (upd) {
     upd.textContent = 'Ekran: ' + fmtClock(now) + (gpsTxt ? ' · ' + gpsTxt : '');
   }
   if (o.busy) {
-    setLiveState('is-busy', 'Yangilanmoqda…', 'GPS dan soʻnggi maʼlumot olinmoqda', 'SYNC');
+    setLiveState('is-busy', 'Yangilanmoqda…', 'GPS dan so'nggi ma'lumot olinmoqda', 'SYNC');
     return;
   }
   if (!isTodaySelected()) {
-    setLiveState('is-off', 'Arxiv kuni', 'Oʻtgan sanalar avto-yangilanmaydi — faqat saqlangan natija', 'ARXIV');
+    setLiveState('is-off', 'Arxiv kuni', 'O'tgan sanalar avto-yangilanmaydi — faqat saqlangan natija', 'ARXIV');
     return;
   }
   const ageMin = day && day.syncedAt ? Math.max(0, Math.round((now / 1000 - Number(day.syncedAt)) / 60)) : null;
@@ -993,7 +993,7 @@ async function refreshGpsFromServer(opts) {
       setLiveState(
         'is-on',
         'Jonli kabinet',
-        'GPS yaqinda yangilangan · qayta soʻrov ~' + (r.retryIn || 60) + ' s dan keyin',
+        'GPS yaqinda yangilangan · qayta so'rov ~' + (r.retryIn || 60) + ' s dan keyin',
         'LIVE'
       );
     }
@@ -1058,7 +1058,7 @@ function paint(day) {
 
   const whoEl = document.getElementById('who-line');
 
-  if (whoEl) whoEl.textContent = [titleName, titleCar].filter(Boolean).join(' · ') || 'Faqat koʻrish';
+  if (whoEl) whoEl.textContent = [titleName, titleCar].filter(Boolean).join(' · ') || 'Faqat ko'rish';
 
   const missed = Array.isArray(a.missedList) ? a.missedList : [];
 
@@ -1068,11 +1068,11 @@ function paint(day) {
 
   document.getElementById('k-km').textContent = st.km ? Number(st.km).toFixed(1) + ' km' : '—';
 
-  document.getElementById('k-trips').textContent = (st.trips || 0) + ' reys · ' + (st.stops || 0) + ' toʻxtash';
+  document.getElementById('k-trips').textContent = (st.trips || 0) + ' reys · ' + (st.stops || 0) + ' to'xtash';
 
   document.getElementById('k-score').textContent = day.hasGps && a.score != null ? Number(a.score).toFixed(1) : '—';
 
-  document.getElementById('k-grade').textContent = a.grade && a.grade !== '—' ? ('Bahosi ' + a.grade) : 'GPS hisobot yoʻq';
+  document.getElementById('k-grade').textContent = a.grade && a.grade !== '—' ? ('Bahosi ' + a.grade) : 'GPS hisobot yo'q';
 
   document.getElementById('k-miss').textContent = String(missed.length);
 
@@ -1083,7 +1083,7 @@ function paint(day) {
   const fb = document.getElementById('fuel-box');
 
   if (!fuel) {
-    fb.innerHTML = '<div class="empty">Bu kun uchun yoqilgʻi yozuvi yoʻq</div>';
+    fb.innerHTML = '<div class="empty">Bu kun uchun yoqilg'i yozuvi yo'q</div>';
   } else {
     const gasR = Number(fuel.gasR || 0);
     const benR = Number(fuel.benR || 0);
@@ -1114,12 +1114,12 @@ function paint(day) {
 
   let th = '';
 
-  if (day.routes) th += `<div class="route-chip">Yoʻnalish: ${esc(day.routes)}</div>`;
+  if (day.routes) th += `<div class="route-chip">Yo'nalish: ${esc(day.routes)}</div>`;
 
   const geoCount = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo.length : 0;
 
   if (hasGps && ph.length && !geoCount) {
-    th += '<div class="empty" style="color:var(--warn);text-align:left">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi. Dashboard da toʻxtashga «Ruxsat» bering (dorixona tanlang).</div>';
+    th += '<div class="empty" style="color:var(--warn);text-align:left">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi. Dashboard da to'xtashga «Ruxsat» bering (dorixona tanlang).</div>';
   } else if (hasGps && geoCount) {
     th += `<div class="sec-label" style="margin-top:10px">${geoCount} ta geozona faol</div>`;
   }
@@ -1137,7 +1137,7 @@ function paint(day) {
   }
 
   if (tasks.length) {
-    th += '<div class="sec-label">Admin topshirigʻi</div>';
+    th += '<div class="sec-label">Admin topshirig'i</div>';
     th += '<div class="task-cards">' + tasks.map(t => {
       const byStr = t.by ? `<span>— ${esc(t.by)}</span>` : '';
       const dateStr = t.date ? `<span>${esc(t.date)}</span>` : '';
@@ -1149,7 +1149,7 @@ function paint(day) {
   if (!th) th = '<div class="empty">Hali topshiriq yozilmagan</div>';
 
   if (missed.length) {
-    th += '<div class="sec-label" style="color:var(--warn);margin-top:14px">Oʻtkazib yuborilgan</div><div style="color:var(--warn);font-weight:600;line-height:1.45">' + missed.map(esc).join(', ') + '</div>';
+    th += '<div class="sec-label" style="color:var(--warn);margin-top:14px">O'tkazib yuborilgan</div><div style="color:var(--warn);font-weight:600;line-height:1.45">' + missed.map(esc).join(', ') + '</div>';
   }
 
   document.getElementById('task-box').innerHTML = th;
@@ -1166,7 +1166,7 @@ function paint(day) {
 
   } else if (!stops.length) {
 
-    sb.innerHTML = '<div class="empty">Toʻxtashlar roʻyxati yoʻq</div>';
+    sb.innerHTML = '<div class="empty">To'xtashlar ro'yxati yo'q</div>';
 
   } else {
     sb.innerHTML = '<div class="stop-list">' + stops.map(s => {
@@ -1200,7 +1200,7 @@ function paint(day) {
           <span class="badge ${good ? 'badge-ok' : 'badge-bad'}">${good ? 'Yaxshi' : 'Kamchilik'}</span>
         </div>`;
       }).join('') + '</div>'
-    : '<div class="empty">Jurnal yozuvi yoʻq</div>';
+    : '<div class="empty">Jurnal yozuvi yo'q</div>';
 }
 
 

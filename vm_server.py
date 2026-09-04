@@ -3325,7 +3325,6 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             _driver_refresh_at[key] = now
             try:
                 import gps_sync
-                global _gps_sync_lock_until
                 if is_serverless():
                     got_lock = _gps_sync_lock.acquire(blocking=False)
                     if not got_lock:
