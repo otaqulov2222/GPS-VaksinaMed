@@ -19,197 +19,402 @@
 <link rel="stylesheet" href="shell.css?v=15"/>
 
 <style>
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html { scrollbar-width: thin; scrollbar-color: #8aa0b8 #e4e7ec; }
-
-* { scrollbar-width: thin; scrollbar-color: #8aa0b8 #e4e7ec; }
-
+html { scrollbar-width: thin; scrollbar-color: #9bb4d0 #eef3f9; }
+* { scrollbar-width: thin; scrollbar-color: #9bb4d0 #eef3f9; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
-
-*::-webkit-scrollbar-track { background: #e8ebf0; }
-
-*::-webkit-scrollbar-thumb { background: #a8bdd4; border-radius: 8px; border: 2px solid #e8ebf0; }
-
+*::-webkit-scrollbar-track { background: #eef3f9; }
+*::-webkit-scrollbar-thumb { background: #a8bdd4; border-radius: 8px; border: 2px solid #eef3f9; }
 *::-webkit-scrollbar-button { display: none !important; width: 0; height: 0; }
 
 :root {
-
-  --bg: #eef3f9; --card: #ffffff; --ink: #0b1f3a; --muted: #5a7190;
-
-  --line: #c5d4e6; --header: #0b1f3a; --header-2: #123050;
-
-  --on-header-dim: #8eb6df; --accent: #1a5fb4; --info: #1a5fb4;
-
-  --mark: #1a5fb4; --mark-2: #ffffff; --brand: #8eb6df;
-
-  --gold: var(--mark);
-
-  --ok: #1a5fb4; --bad: #0b1f3a; --warn: #0b1f3a;
-
+  --bg: #e8f0f8;
+  --card: #ffffff;
+  --ink: #0b1f3a;
+  --muted: #5a7190;
+  --line: #d5e2f0;
+  --accent: #1a5fb4;
+  --accent-2: #2a74c9;
+  --ok: #1a7a4c;
+  --bad: #b42318;
+  --warn: #b54708;
+  --soft: #f4f8fc;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
-
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
-
+  --radius: 18px;
+  --shadow: 0 10px 28px rgba(11, 31, 58, 0.07);
 }
 
-body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 13px; min-height: 100vh; }
-
-.topbar { /* glass via shell.css */ }
-
-.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-
-.brand img { width: 36px; height: 36px; display: block; }
-
-.tb-name { font-size: 14px; font-weight: 700; letter-spacing: .04em; color: var(--brand); line-height: 1; }
-
-.tb-name span { color: var(--ink); }
-
-.tb-line { font-size: 8px; font-weight: 600; letter-spacing: .16em; color: var(--muted); margin-top: 3px; }
-
-.tb-page { border-left: 0; padding-left: 0; margin-left: 0; }
-
-.tb-title { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
-
-.tb-sub { font-size: 10px; color: var(--muted); letter-spacing: .08em; margin-top: 2px; }
-
-.acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-.btn {
-
-  height: 32px; padding: 0 11px;
-
-  display: inline-flex; align-items: center; justify-content: center;
-
-  border: 1px solid var(--line); background: #fff; color: var(--ink);
-
-  font: 700 11px/1 var(--sans); letter-spacing: .05em; cursor: pointer; text-decoration: none;
-
-  border-radius: 10px;
-
+body.app-body {
+  font-family: var(--sans);
+  color: var(--ink);
+  font-size: 13px;
 }
 
-.btn:hover { background: #e3eef9; color: var(--ink); }
+.drv-note {
+  margin: 12px 16px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(26,95,180,.08), rgba(26,95,180,.02));
+  border: 1px solid rgba(26,95,180,.16);
+  color: #123050;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 500;
+}
 
-.note {
+.wrap {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 14px 16px 40px;
+}
 
-  background: rgba(255,255,255,.72); color: var(--ink); font-size: 12px; padding: 8px 14px;
+.drv-daybar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
 
+.drv-daybar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.drv-daybar input,
+.drv-daybar select {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  border-radius: 12px;
+  font: 600 13px/1 var(--mono);
+  color: var(--ink);
+}
+
+.drv-day-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.kpi {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 14px 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.kpi::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--accent);
+}
+
+.kpi.is-score::before { background: #0b1f3a; }
+.kpi.is-miss::before { background: var(--warn); }
+.kpi.is-bad::before { background: var(--bad); }
+
+.kpi i {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kpi b {
+  display: block;
+  font-size: clamp(18px, 4vw, 24px);
+  font-weight: 700;
+  margin-top: 6px;
+  font-family: var(--mono);
+  color: var(--ink);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.kpi s {
+  display: block;
+  text-decoration: none;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  margin-bottom: 14px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.card-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8fc 100%);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
   border-bottom: 1px solid var(--line);
-
 }
 
-.wrap { max-width: none; margin: 0; padding: 14px 16px 32px; }
+.card-b { padding: 14px 16px; }
 
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-
-.toolbar input, .toolbar select {
-
-  height: 36px; padding: 0 10px; border: 1px solid var(--line); background: #fff;
-
-  font: 600 13px/1 var(--mono); color: var(--ink);
-
+.fuel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.fuel-cell {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 12px 10px;
+  min-width: 0;
+}
 
-.kpi { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; border-radius: 16px; }
+.fuel-cell .lab {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
 
-.kpi i { display: block; font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.fuel-cell .val {
+  display: block;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
 
-.kpi b { display: block; font-size: 22px; font-weight: 700; margin-top: 4px; font-family: var(--mono); }
+.fuel-cell.is-neg .val { color: var(--bad); }
 
-.kpi s { display: block; text-decoration: none; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.stop-list { display: flex; flex-direction: column; gap: 10px; }
 
-.card { background: var(--card); border: 1px solid var(--line); margin-bottom: 12px; border-radius: 16px; overflow: hidden; }
+.stop-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(11, 31, 58, 0.04);
+  border-left: 4px solid #8aa0b8;
+}
 
-.card-h { padding: 10px 14px; background: rgba(247,250,252,.9); color: var(--ink); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+.stop-item.is-ok { border-left-color: var(--accent); }
+.stop-item.is-bad { border-left-color: var(--bad); background: #fff8f7; }
+.stop-item.is-warn { border-left-color: var(--warn); background: #fffaf3; }
+.stop-item.is-office { border-left-color: #123050; }
 
-.card-b { padding: 12px 14px; }
+.stop-item .nm {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
 
-.row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.stop-item .meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--mono);
+  line-height: 1.4;
+}
 
-.row:last-child { border-bottom: 0; }
+.stop-item .note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7c90;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
 
-.nm { font-weight: 600; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
 
-.meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.badge-ok { background: #e8f5ee; color: var(--ok); border-color: #c6e6d4; }
+.badge-bad { background: #fdecea; color: var(--bad); border-color: #f3c4bf; }
+.badge-warn { background: #fff4e5; color: var(--warn); border-color: #f0d2a8; }
+.badge-mute { background: #eef3f9; color: #5a7190; border-color: #d5e2f0; }
+.badge-office { background: #123050; color: #fff; border-color: #123050; }
 
-.tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border: 1px solid var(--line); }
+.pharm-list { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.pharm-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
 
-.tag-ok { background: #e3eef9; color: var(--ok); border-color: #c5d4e6; }
+.sec-label {
+  margin: 12px 0 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
-.tag-bad { background: #e8eef5; color: var(--bad); border-color: #c5d4e6; }
+.task-cards { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.task-card {
+  background: linear-gradient(135deg, #0b1f3a 0%, #123050 100%);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 18px rgba(11, 31, 58, 0.18);
+}
+.task-text { font-weight: 600; color: #f1f5f9; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.task-meta { margin-top: 6px; font-size: 12px; color: #8eb6df; display: flex; gap: 8px; flex-wrap: wrap; }
 
-.tag-warn { background: #e8eef5; color: var(--warn); border-color: #c5d4e6; }
+.empty {
+  color: var(--muted);
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+}
 
-.empty { color: var(--muted); padding: 8px 0; }
+.map-frame {
+  position: relative;
+  border-radius: 0 0 var(--radius) var(--radius);
+  overflow: hidden;
+}
 
-#driver-map { height: 340px; background: #c5ccd6; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; cursor: pointer; }
+#driver-map {
+  height: 360px;
+  background: #dce6f0;
+  cursor: pointer;
+}
 
 #driver-map.active { cursor: grab; }
 
-.map-hint { text-align:center; font-size:11px; color:var(--muted); margin-top:4px; }
-
-.leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #c5ccd6; }
-
-.leaflet-popup-content-wrapper { background: var(--header); color: #f4f4f2; border-radius: 0; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-
-.leaflet-popup-content { margin: 10px 12px; font-size: 12px; line-height: 1.45; }
-
-.leaflet-popup-content b { color: #f4f4f2; }
-
-.leaflet-popup-tip { background: var(--header); }
-
-.vm-pin { background: none !important; border: none !important; }
-
-.vm-pin-dot {
-
-  display: flex; align-items: center; justify-content: center;
-
-  width: 20px; height: 20px; font-family: var(--mono);
-
-  font-size: 8px; font-weight: 700; color: #fff;
-
-  border: 1.5px solid #fff; border-radius: 50%;
-
+.map-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 450;
+  pointer-events: none;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(255,255,255,.96);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 18px rgba(11, 31, 58, 0.12);
 }
 
-.vm-pin-end { width: 24px; height: 24px; background: var(--header) !important; border-color: var(--mark); color: var(--mark); }
+.map-frame.is-active .map-hint { display: none; }
 
-ul.plain { list-style: none; }
+.leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #dce6f0; }
+.leaflet-popup-content-wrapper {
+  background: #0b1f3a; color: #e8eef5; border-radius: 12px !important;
+  box-shadow: 0 14px 28px rgba(11,31,58,.28) !important;
+}
+.leaflet-popup-content { margin: 12px 14px; font-size: 12px; line-height: 1.5; }
+.leaflet-popup-content b { color: #fff; }
+.leaflet-popup-tip { background: #0b1f3a; }
+.vm-pin { background: none !important; border: none !important; }
+.vm-pin-dot {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; font-family: var(--mono);
+  font-size: 9px; font-weight: 700; color: #fff;
+  border: 2px solid #fff; border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(11,31,58,.3);
+}
+.vm-pin-end {
+  width: 26px; height: 26px; background: #0b1f3a !important;
+  border-radius: 8px; color: #fff;
+}
 
-ul.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); }
-
-ul.plain li:last-child { border-bottom: 0; }
-
-.task-cards { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
-
-.task-card { background:#123050; border-left:3px solid var(--mark); border-radius:3px; padding:10px 14px; }
-
-.task-text { font-weight:600; color:#f1f5f9; font-size:14px; }
-
-.task-meta { margin-top:4px; font-size:12px; color:#8aa0b8; display:flex; gap:8px; flex-wrap:wrap; }
+.route-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  font-weight: 600;
+  color: var(--ink);
+}
 
 @media (max-width: 980px) {
-  .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .kpi { min-width: 0; }
-  .kpi b, .kpi i { overflow-wrap: anywhere; }
-  .topbar .tb-title, .topbar .tb-sub { overflow-wrap: anywhere; }
-  .tb-sub { display: none; }
-  #driver-map { height: min(42dvh, 300px) !important; min-height: 240px; }
-  .card-h, .sec-head { flex-wrap: wrap; gap: 8px; }
-  .btn { min-height: 42px; white-space: normal; line-height: 1.25; }
-  table { min-width: 520px; }
-  .task-text { overflow-wrap: anywhere; }
-  input, select, textarea { font-size: 16px; min-height: 42px; }
-}
-
-@media (max-width: 640px) {
   .kpis { grid-template-columns: 1fr 1fr; }
+  #driver-map { height: min(44dvh, 320px); min-height: 240px; }
+  .fuel-grid { grid-template-columns: 1fr 1fr; }
+  input, select, textarea { font-size: 16px; }
 }
 
+@media (max-width: 520px) {
+  .wrap { padding: 12px 12px 36px; }
+  .drv-day-meta { width: 100%; margin-left: 0; }
+  .stop-item { grid-template-columns: 1fr; }
+  .badge { justify-self: start; }
+}
 </style>
 
 </head>
@@ -272,80 +477,49 @@ ul.plain li:last-child { border-bottom: 0; }
 
     </header>
 
-<div class="note">Bu sahifada hech narsa oʻzgartirilmaydi. Faqat oʻzingizga biriktirilgan kunlik natija koʻrinadi.</div>
+<div class="drv-note">Bu sahifada hech narsa oʻzgartirilmaydi. Faqat oʻzingizga biriktirilgan kunlik natija koʻrinadi.</div>
 
 <div class="wrap">
 
-  <div class="toolbar">
-
+  <div class="drv-daybar">
     <label>Sana <input type="date" id="d-date"></label>
-
-    <span class="meta" id="day-updated" style="font-size:11px;color:var(--muted)"></span>
-
-    <label id="staff-pick" hidden>Mashina
-
-      <select id="d-car"></select>
-
-    </label>
-
+    <label id="staff-pick" hidden>Mashina <select id="d-car"></select></label>
+    <span class="drv-day-meta" id="day-updated"></span>
   </div>
 
   <div class="kpis">
-
     <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys / toʻxtash</s></div>
-
-    <div class="kpi"><i>Ball</i><b id="k-score">—</b><s id="k-grade">Kunlik baho</s></div>
-
-    <div class="kpi"><i>Oʻtkazib yuborilgan</i><b id="k-miss">—</b><s>nuqta</s></div>
-
-    <div class="kpi"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan toʻxtash</s></div>
-
+    <div class="kpi is-score"><i>Ball</i><b id="k-score">—</b><s id="k-grade">Kunlik baho</s></div>
+    <div class="kpi is-miss"><i>Oʻtkazib yuborilgan</i><b id="k-miss">—</b><s>nuqta</s></div>
+    <div class="kpi is-bad"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan toʻxtash</s></div>
   </div>
 
   <div class="card">
-
     <div class="card-h">Xarita — yoʻnalish va toʻxtashlar</div>
-
-    <div class="card-b" style="padding:0">
-
+    <div class="map-frame" id="map-frame">
       <div id="driver-map"></div>
-
       <div class="map-hint" id="map-hint">Xaritani boshqarish uchun ustiga bosing</div>
-
     </div>
-
   </div>
 
   <div class="card">
-
     <div class="card-h">Yoqilgʻi</div>
-
     <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilgʻi yozuvi yoʻq</div></div>
-
   </div>
 
   <div class="card">
-
     <div class="card-h">Topshiriqlar — biriktirilgan nuqtalar</div>
-
     <div class="card-b" id="task-box"></div>
-
   </div>
 
   <div class="card">
-
     <div class="card-h">Yoʻnalish va toʻxtashlar</div>
-
     <div class="card-b" id="stop-box"></div>
-
   </div>
 
   <div class="card">
-
     <div class="card-h">Jurnal</div>
-
     <div class="card-b" id="jr-box"></div>
-
   </div>
 
 </div>
@@ -387,23 +561,14 @@ function modeLabel(m) {
 }
 
 function stopKind(st) {
-
-  if (st && st.reviewStatus === 'violation') return ['Qoidabuzarlik', 'tag-bad'];
-
-  if (st && st.reviewStatus === 'allowed') return ['Ruxsat', 'tag-ok'];
-
-  if (st.isOffice) return ['Ofis', 'tag-ok'];
-
-  if (st.isOutside) return ['Shahar tashqari', 'tag-warn'];
-
-  if (st.isProblem) return ['Muammo', 'tag-bad'];
-
-  if (st.matchType === 'own') return ['Oʻz nuqtasi', 'tag-ok'];
-
-  if (st.matchType === 'other') return ['Boshqa yoʻnalish', 'tag-warn'];
-
-  return ['Toʻxtash', ''];
-
+  if (st && st.reviewStatus === 'violation') return ['Qoidabuzarlik', 'badge-bad', 'is-bad'];
+  if (st && st.reviewStatus === 'allowed') return ['Ruxsat', 'badge-ok', 'is-ok'];
+  if (st.isOffice) return ['Ofis', 'badge-office', 'is-office'];
+  if (st.isOutside) return ['Shahar tashqari', 'badge-warn', 'is-warn'];
+  if (st.isProblem) return ['Muammo', 'badge-bad', 'is-bad'];
+  if (st.matchType === 'own') return ['Oʻz nuqtasi', 'badge-ok', 'is-ok'];
+  if (st.matchType === 'other') return ['Boshqa yoʻnalish', 'badge-warn', 'is-warn'];
+  return ['Toʻxtash', 'badge-mute', ''];
 }
 
 
@@ -493,19 +658,14 @@ function initDriverMap() {
   }).setView([41.3111, 69.2797], 12);
 
   drvMap.once('click', function () {
-
     drvMap.scrollWheelZoom.enable();
-
     drvMap.dragging.enable();
-
     if (L.Browser.touch && drvMap.tap) drvMap.tap.enable();
-
     el.classList.add('active');
-
+    const frame = document.getElementById('map-frame');
+    if (frame) frame.classList.add('is-active');
     const h = document.getElementById('map-hint');
-
     if (h) h.style.display = 'none';
-
   });
 
   if (typeof vmAddMapTiles === 'function') vmAddMapTiles(drvMap);
@@ -726,27 +886,21 @@ function paint(day) {
   const fb = document.getElementById('fuel-box');
 
   if (!fuel) {
-
     fb.innerHTML = '<div class="empty">Bu kun uchun yoqilgʻi yozuvi yoʻq</div>';
-
   } else {
-
+    const gasR = Number(fuel.gasR || 0);
+    const benR = Number(fuel.benR || 0);
+    const neg = (gasR < -0.01 || benR < -0.01) ? ' is-neg' : '';
     fb.innerHTML = `
-
-      <div class="row"><span class="nm">Rejim</span><span class="meta">${esc(modeLabel(fuel.mode))}</span></div>
-
-      <div class="row"><span class="nm">Km (Boshqaruv)</span><span class="meta">${Number(fuel.km||0).toFixed(1)}</span></div>
-
-      <div class="row"><span class="nm">Sarf gaz</span><span class="meta">${Number(fuel.gasUsed||0).toFixed(2)} m\u00B3</span></div>
-
-      <div class="row"><span class="nm">Sarf benzin/dizel</span><span class="meta">${Number(fuel.benUsed||0).toFixed(2)} l</span></div>
-
-      <div class="row"><span class="nm">Olingan gaz / benzin</span><span class="meta">${Number(fuel.gasIn||0).toFixed(2)} / ${Number(fuel.benzinIn||0).toFixed(2)}</span></div>
-
-      <div class="row"><span class="nm">Qoldiq gaz / benzin</span><span class="meta">${Number(fuel.gasR||0).toFixed(2)} / ${Number(fuel.benR||0).toFixed(2)}</span></div>
-
-      ${fuel.station ? `<div class="row"><span class="nm">Zapravka</span><span class="meta">${esc(fuel.station)}</span></div>` : ''}`;
-
+      <div class="fuel-grid">
+        <div class="fuel-cell"><span class="lab">Rejim</span><span class="val">${esc(modeLabel(fuel.mode))}</span></div>
+        <div class="fuel-cell"><span class="lab">Km (Boshqaruv)</span><span class="val">${Number(fuel.km||0).toFixed(1)}</span></div>
+        <div class="fuel-cell"><span class="lab">Sarf gaz</span><span class="val">${Number(fuel.gasUsed||0).toFixed(2)} m³</span></div>
+        <div class="fuel-cell"><span class="lab">Sarf benzin/dizel</span><span class="val">${Number(fuel.benUsed||0).toFixed(2)} l</span></div>
+        <div class="fuel-cell"><span class="lab">Olingan gaz / benzin</span><span class="val">${Number(fuel.gasIn||0).toFixed(2)} / ${Number(fuel.benzinIn||0).toFixed(2)}</span></div>
+        <div class="fuel-cell${neg}"><span class="lab">Qoldiq gaz / benzin</span><span class="val">${gasR.toFixed(2)} / ${benR.toFixed(2)}</span></div>
+        ${fuel.station ? `<div class="fuel-cell" style="grid-column:1/-1"><span class="lab">Zapravka</span><span class="val">${esc(fuel.station)}</span></div>` : ''}
+      </div>`;
   }
 
 
@@ -763,66 +917,42 @@ function paint(day) {
 
   let th = '';
 
-  if (day.routes) th += `<div class="row"><span class="nm">Yoʻnalish</span><span class="meta">${esc(day.routes)}</span></div>`;
+  if (day.routes) th += `<div class="route-chip">Yoʻnalish: ${esc(day.routes)}</div>`;
 
   const geoCount = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo.length : 0;
 
   if (hasGps && ph.length && !geoCount) {
-
-    th += '<div class="empty" style="color:var(--warn);margin:8px 0">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi. Dashboard da toʻxtashga «Ruxsat» bering (dorixona tanlang).</div>';
-
+    th += '<div class="empty" style="color:var(--warn);text-align:left">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi. Dashboard da toʻxtashga «Ruxsat» bering (dorixona tanlang).</div>';
   } else if (hasGps && geoCount) {
-
-    th += `<div class="meta" style="margin:4px 0 8px">${geoCount} ta geozona faol</div>`;
-
+    th += `<div class="sec-label" style="margin-top:10px">${geoCount} ta geozona faol</div>`;
   }
 
   if (ph.length) {
-
-    th += '<div style="margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Biriktirilgan dorixonalar</div>';
-
-    th += '<ul class="plain">' + ph.map(n => {
-
+    th += '<div class="sec-label">Biriktirilgan dorixonalar</div>';
+    th += '<ul class="pharm-list">' + ph.map(n => {
       const miss = missedSet.has(normPh(n));
-
       let tag;
-
-      if (!hasGps) tag = '<span class="tag">reja</span>';
-
-      else if (miss) tag = '<span class="tag tag-warn">borilmadi</span>';
-
-      else tag = '<span class="tag tag-ok">borildi</span>';
-
-      return `<li>${esc(n)} ${tag}</li>`;
-
+      if (!hasGps) tag = '<span class="badge badge-mute">reja</span>';
+      else if (miss) tag = '<span class="badge badge-warn">borilmadi</span>';
+      else tag = '<span class="badge badge-ok">borildi</span>';
+      return `<li><span>${esc(n)}</span>${tag}</li>`;
     }).join('') + '</ul>';
-
   }
 
   if (tasks.length) {
-
-    th += '<div style="margin:10px 0 4px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Admin topshirigʻi</div>';
-
+    th += '<div class="sec-label">Admin topshirigʻi</div>';
     th += '<div class="task-cards">' + tasks.map(t => {
-
-      const byStr = t.by ? `<span class="meta">— ${esc(t.by)}</span>` : '';
-
-      const dateStr = t.date ? `<span class="meta">${esc(t.date)}</span>` : '';
-
+      const byStr = t.by ? `<span>— ${esc(t.by)}</span>` : '';
+      const dateStr = t.date ? `<span>${esc(t.date)}</span>` : '';
       const created = (t.createdAt || '').slice(0, 10);
-
-      return `<div class="task-card"><span class="task-text">${esc(t.text)}</span><div class="task-meta">${dateStr} ${byStr} ${created ? '<span class="meta">' + esc(created) + '</span>' : ''}</div></div>`;
-
+      return `<div class="task-card"><span class="task-text">${esc(t.text)}</span><div class="task-meta">${dateStr} ${byStr} ${created ? '<span>' + esc(created) + '</span>' : ''}</div></div>`;
     }).join('') + '</div>';
-
   }
 
   if (!th) th = '<div class="empty">Hali topshiriq yozilmagan</div>';
 
   if (missed.length) {
-
-    th += '<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--warn)">Oʻtkazib yuborilgan: ' + missed.map(esc).join(', ') + '</div>';
-
+    th += '<div class="sec-label" style="color:var(--warn);margin-top:14px">Oʻtkazib yuborilgan</div><div style="color:var(--warn);font-weight:600;line-height:1.45">' + missed.map(esc).join(', ') + '</div>';
   }
 
   document.getElementById('task-box').innerHTML = th;
@@ -842,53 +972,38 @@ function paint(day) {
     sb.innerHTML = '<div class="empty">Toʻxtashlar roʻyxati yoʻq</div>';
 
   } else {
-
-    sb.innerHTML = stops.map(s => {
-
-      const [lab, cls] = stopKind(s);
-
+    sb.innerHTML = '<div class="stop-list">' + stops.map(s => {
+      const [lab, badgeCls, itemCls] = stopKind(s);
       const note = s.reviewNote || s.problemRule || '';
-
-      const noteHtml = note ? `<div class="meta" style="margin-top:2px;color:#8aa0b8;">${esc(note)}</div>` : '';
-
+      const noteHtml = note ? `<div class="note">${esc(note)}</div>` : '';
       const durHtml = s.duration ? `<div class="meta">Turgani: ${esc(s.duration)}</div>` : '';
-
-      return `<div class="row">
-
+      return `<div class="stop-item ${itemCls}">
         <div>
-
           <div class="nm">${esc(stopLabel(s))}</div>
-
           <div class="meta">${esc(s.inTime || '')}${s.outTime ? ' → ' + esc(s.outTime) : ''}</div>
-
           ${durHtml}
-
           ${noteHtml}
-
         </div>
-
-        <span class="tag ${cls}">${lab}</span>
-
+        <span class="badge ${badgeCls}">${lab}</span>
       </div>`;
-
-    }).join('');
-
+    }).join('') + '</div>';
   }
-
-
 
   refreshDriverMap(day);
 
-
-
   const jr = day.journal || [];
-
   document.getElementById('jr-box').innerHTML = jr.length
-
-    ? jr.map(j => `<div class="row"><div><div class="nm">${esc(j.reason || (j.kind === 'good' ? 'Maktov' : 'Kamchilik'))}</div><div class="meta">${esc(j.note || '')}</div></div><span class="tag ${j.kind==='good'?'tag-ok':'tag-bad'}">${j.kind==='good'?'Yaxshi':'Kamchilik'}</span></div>`).join('')
-
+    ? '<div class="stop-list">' + jr.map(j => {
+        const good = j.kind === 'good';
+        return `<div class="stop-item ${good ? 'is-ok' : 'is-bad'}">
+          <div>
+            <div class="nm">${esc(j.reason || (good ? 'Maktov' : 'Kamchilik'))}</div>
+            <div class="note">${esc(j.note || '')}</div>
+          </div>
+          <span class="badge ${good ? 'badge-ok' : 'badge-bad'}">${good ? 'Yaxshi' : 'Kamchilik'}</span>
+        </div>`;
+      }).join('') + '</div>'
     : '<div class="empty">Jurnal yozuvi yoʻq</div>';
-
 }
 
 
