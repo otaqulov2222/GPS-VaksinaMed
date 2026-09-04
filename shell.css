@@ -13,6 +13,10 @@
   --shell-inset: 12px;
 }
 
+/* Desktop: full label; mobile media query switches to .lbl-short */
+.lbl-short { display: none !important; }
+.lbl-full { display: inline; }
+
 /* Atmospheric canvas — glass needs color behind it */
 /* Lock viewport — only .app-main scrolls; left rail stays fixed in place */
 html {
@@ -791,10 +795,15 @@ body.app-body::before {
     line-height: 1;
     box-sizing: border-box;
   }
-  .app-main .topbar .acts > .month-pick {
+  .app-main .topbar .acts > .month-wrap {
     min-width: 128px;
-    max-width: 140px;
-    padding: 0 8px;
+    max-width: 148px;
+    height: 38px;
+  }
+  .app-main .topbar .acts > .month-pick {
+    min-width: 0;
+    max-width: none;
+    padding: 0;
   }
   .app-main .topbar .lbl-full { display: none !important; }
   .app-main .topbar .lbl-short { display: inline !important; }

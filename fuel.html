@@ -14,7 +14,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="shell.css?v=15"/>
+<link rel="stylesheet" href="shell.css?v=16"/>
 
 <style>
 
@@ -747,25 +747,58 @@ html, body { overflow-x: clip; max-width: 100%; }
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+  min-width: 148px;
+  height: 36px;
+  padding: 0 34px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .month-pick {
-  width: 148px;
-  color: transparent;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0 !important;
+  border-radius: inherit;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+  /* native "September 2024" matni hech qachon ko'rinmasin */
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
   caret-color: transparent;
-  background: #fff;
-  border: 1px solid var(--line);
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .month-pick::-webkit-calendar-picker-indicator {
-  opacity: 1;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
   cursor: pointer;
 }
 
+.month-pick::-webkit-datetime-edit,
+.month-pick::-webkit-datetime-edit-fields-wrapper,
+.month-pick::-webkit-datetime-edit-text,
+.month-pick::-webkit-datetime-edit-month-field,
+.month-pick::-webkit-datetime-edit-year-field {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  opacity: 0 !important;
+}
+
 .month-label {
-  position: absolute;
-  left: 10px;
-  right: 28px;
+  position: relative;
+  z-index: 1;
   pointer-events: none;
   font-weight: 600;
   font-size: 12px;
@@ -773,7 +806,25 @@ html, body { overflow-x: clip; max-width: 100%; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 120px;
 }
+
+.month-wrap::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 1;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b1f3a' stroke-width='2'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* Desktop: faqat to'liq yozuv; mobil: faqat qisqa */
+.lbl-short { display: none !important; }
+.lbl-full { display: inline; }
 
 .btn, .tab, .chip-car, .day-pill, .subtab, .tog button { touch-action: manipulation; }
 
@@ -838,8 +889,9 @@ table.dtable td.day {
   .brand { flex-wrap: nowrap; align-items: center; gap: 8px; }
   .tb-page { display: none; }
 
-  .acts .month-pick { min-width: 120px; max-width: 136px; }
-  .lbl-short { display: none; }
+  .acts .month-wrap { min-width: 120px; max-width: 136px; }
+  .lbl-full { display: none !important; }
+  .lbl-short { display: inline !important; }
 
   .tb-user { margin-left: 0; padding-left: 0; border-left: 0; justify-content: space-between; flex-wrap: wrap; }
   .tb-user .btn { min-height: 42px; flex: 1; }
@@ -1122,7 +1174,7 @@ table.dtable td.day {
 
         <label class="month-wrap" for="month-input">
           <span id="month-input-label" class="month-label">—</span>
-          <input type="month" id="month-input" class="btn btn-sm month-pick" title="Oy">
+          <input type="month" id="month-input" class="month-pick" title="Oy">
         </label>
 
         <button class="btn btn-sm" type="button" id="btn-excel" title="Excel yuklab olish"><span class="lbl-full">Excel yuklab olish</span><span class="lbl-short">Yuklash</span></button>
