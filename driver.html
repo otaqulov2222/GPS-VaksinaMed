@@ -35,6 +35,8 @@ html { scrollbar-width: thin; scrollbar-color: #9bb4d0 #eef3f9; }
   --line: #d5e2f0;
   --accent: #1a5fb4;
   --accent-2: #2a74c9;
+  --header: #0b1f3a;
+  --mark: #1a5fb4;
   --ok: #1a7a4c;
   --bad: #b42318;
   --warn: #b54708;
@@ -722,13 +724,10 @@ function refreshDriverMap(day) {
   const routeGen = ++refreshDriverMap._gen;
 
   function drawRouteLines(pts) {
-
     if (!pts || pts.length < 2) return;
-
-    drvMapLayers.push(L.polyline(pts, { color: 'var(--header)', weight: 5, opacity: 0.35 }).addTo(drvMap));
-
-    drvMapLayers.push(L.polyline(pts, { color: 'var(--mark)', weight: 2.4, opacity: 0.95 }).addTo(drvMap));
-
+    // Leaflet SVG stroke CSS var() ni ishonchli qabul qilmaydi — hex ishlatiladi
+    drvMapLayers.push(L.polyline(pts, { color: '#0b1f3a', weight: 5, opacity: 0.35 }).addTo(drvMap));
+    drvMapLayers.push(L.polyline(pts, { color: '#1a5fb4', weight: 2.4, opacity: 0.95 }).addTo(drvMap));
   }
 
   if (latlngs.length > 1) {
