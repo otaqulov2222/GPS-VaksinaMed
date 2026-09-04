@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 
 <html lang="uz">
 
@@ -2746,13 +2746,17 @@ if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document);
 
   if (!me || (me.role !== 'admin_pro' && me.role !== 'admin')) {
 
-    location.replace('/');
+    if (me && me.role === 'driver') location.replace('/driver.html');
+
+    else location.replace('/');
 
     return;
 
   }
 
-  // Oddiy admin ham to'liq panel (adminpro yashirin — server); hech narsa yashirilmaydi
+  if (typeof vmGatePage === 'function') vmGatePage(me);
+
+  if (typeof vmApplyChrome === 'function') vmApplyChrome(me);
 
   const note = document.getElementById('persist-note');
 
