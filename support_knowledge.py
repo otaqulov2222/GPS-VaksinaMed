@@ -301,7 +301,7 @@ FAQ_OFFLINE = [
             "• Yangilash — xaritani qayta chizadi.\n"
             "• + / − yoki g'ildirak — zoom. Yaqinlashtirishda ko'cha-ko'cha ko'rinadi.\n"
             "• Legenda: o'z dorixona, boshqa yo'nalish, muammo, ofis, GPS chiziq.\n"
-            "Agar fon bo'sh/yozuv chiqsa — sahifani yangilang (Ctrl+F5); tile manbasi Carto/OSM."
+            "Agar fon bo'sh/yozuv chiqsa — sahifani yangilang (Ctrl+F5); tile manbasi OpenStreetMap."
         ),
     },
     {

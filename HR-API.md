@@ -12,7 +12,7 @@ HR platformasiga shu hujjatni bering. Asosiy VHK / yoqilg‘i / login o‘zgarma
 ## Manzil
 
 Production misol:
-`https://gps-vaksinamed.onrender.com`
+`https://gps-vaksina-med.vercel.app`
 
 ## Autentifikatsiya
 
@@ -53,8 +53,8 @@ Ixtiyoriy: `&car=01%20887%20UKA`
 ## Misol (curl)
 
 ```bash
-curl -s -H "X-API-Key: SIZNING_KALITINGIZ" ^
-  "https://gps-vaksinamed.onrender.com/api/hr/fleet?date=2026-08-20"
+curl -s -H "X-API-Key: SIZNING_KALITINGIZ" \
+  "https://gps-vaksina-med.vercel.app/api/hr/fleet?date=2026-08-20"
 ```
 
 ## Muhim

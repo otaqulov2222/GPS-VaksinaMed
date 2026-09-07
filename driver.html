@@ -16,7 +16,7 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-<link rel="stylesheet" href="shell.css?v=20"/>
+<link rel="stylesheet" href="shell.css?v=21"/>
 
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -541,6 +541,7 @@ body.app-body {
 
     <div class="nav-foot">
       <a class="nav-link" href="/profile.html">Profil</a>
+      <button type="button" class="nav-link nav-logout" id="btn-logout">Chiqish</button>
     </div>
 
 </aside>
@@ -631,7 +632,7 @@ body.app-body {
 
 <script src="auth.js?v=26"></script>
 
-<script src="map-tiles.js?v=2"></script>
+<script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=1"></script>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -810,7 +811,7 @@ function initDriverMap() {
     scrollWheelZoom: true,
     dragging: true,
     tap: true,
-    maxZoom: 19,
+    maxZoom: 18,
     minZoom: 3
   }).setView([41.3111, 69.2797], 12);
 
@@ -821,8 +822,8 @@ function initDriverMap() {
   el.addEventListener('click', () => { try { drvMap.scrollWheelZoom.enable(); } catch (e) {} });
 
   if (typeof vmAddMapTiles === 'function') vmAddMapTiles(drvMap);
-  else L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
-    attribution: '', subdomains: 'abcd', maxZoom: 19, maxNativeZoom: 19, detectRetina: false
+  else L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+    attribution: '', subdomains: 'abc', maxZoom: 18, maxNativeZoom: 18, detectRetina: false
   }).addTo(drvMap);
 }
 

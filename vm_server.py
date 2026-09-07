@@ -606,7 +606,7 @@ class AuthStore:
                     u.get("role") == "admin_pro" or u.get("protected")
                 ):
                     continue
-                show_pw = viewer_role in ("admin_pro", "admin")
+                show_pw = viewer_role == "admin_pro"
                 out.append(self.public_user(u, include_password=show_pw))
             return out
 

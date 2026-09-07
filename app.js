@@ -855,6 +855,8 @@ function lockMapInteraction() {
     STATE.map.dragging.disable();
     STATE.map.doubleClickZoom.disable();
     STATE.map.boxZoom.disable();
+    try { if (STATE.map.touchZoom) STATE.map.touchZoom.disable(); } catch (e) {}
+    try { if (STATE.map.tap) STATE.map.tap.disable(); } catch (e) {}
     STATE.mapLocked = true;
     setMapLockState(false);
 }
@@ -865,6 +867,8 @@ function unlockMapInteraction() {
     STATE.map.dragging.enable();
     STATE.map.doubleClickZoom.enable();
     STATE.map.boxZoom.enable();
+    try { if (STATE.map.touchZoom) STATE.map.touchZoom.enable(); } catch (e) {}
+    try { if (STATE.map.tap) STATE.map.tap.enable(); } catch (e) {}
     STATE.mapLocked = false;
     setMapLockState(true);
 }
@@ -873,11 +877,20 @@ function bindMapLock() {
     const frame = document.getElementById('map-frame');
     if (!frame || STATE._mapLockBound) return;
     STATE._mapLockBound = true;
-    frame.addEventListener('click', () => unlockMapInteraction());
-    frame.addEventListener('mouseleave', () => lockMapInteraction());
+    const unlock = () => unlockMapInteraction();
+    const lock = () => lockMapInteraction();
+    frame.addEventListener('click', unlock);
+    frame.addEventListener('mouseleave', lock);
+    frame.addEventListener('touchend', (e) => {
+        // Birinchi bosish — ochish; tashqariga tegish document listener da
+        if (e.target && frame.contains(e.target)) unlock();
+    }, { passive: true });
     document.addEventListener('click', (e) => {
-        if (!frame.contains(e.target)) lockMapInteraction();
+        if (!frame.contains(e.target)) lock();
     });
+    document.addEventListener('touchstart', (e) => {
+        if (!frame.contains(e.target)) lock();
+    }, { passive: true });
 }
 
 function addMapTiles(map) {
@@ -885,8 +898,8 @@ function addMapTiles(map) {
         STATE.mapTileLayer = vmAddMapTiles(map);
         return;
     }
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
-        attribution: '', subdomains: 'abcd', maxZoom: 19, maxNativeZoom: 19,
+    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+        attribution: '', subdomains: 'abc', maxZoom: 18, maxNativeZoom: 18,
         detectRetina: false, updateWhenIdle: true, updateWhenZooming: false
     }).addTo(map);
 }
@@ -961,7 +974,7 @@ function initMap() {
         doubleClickZoom: false,
         boxZoom: false,
         keyboard: false,
-        maxZoom: 19,
+        maxZoom: 18,
         minZoom: 3
     }).setView([41.3111, 69.2797], 12);
     addMapTiles(STATE.map);
@@ -2073,9 +2086,54 @@ async function syncFromGPS(dateVal, cfg, opts) {
             ((cfg.password && String(cfg.password).trim()) || (cfg.token && String(cfg.token).trim()))
         );
 
+        // Saqlangan secret bor, forma bo'sh — server sync (parol qayta so'ralmasin)
         if (!canBrowser) {
-            updateProg(0, 'Parol yoki token kiriting (Boomerang to‘liq yuklash uchun)', '');
-            throw new Error('Brauzer GPS uchun parol yoki token kerak. Maydonlarni to‘ldirib qayta bosing.');
+            const savedOk = !!(STATE.gpsConfig && (
+                STATE.gpsConfig.hasPassword || STATE.gpsConfig.hasToken || STATE.gpsConfig.serverConfigured
+            ));
+            if (!savedOk) {
+                updateProg(0, 'Parol yoki token kiriting', '');
+                throw new Error('Brauzer GPS uchun parol yoki token kerak. Maydonlarni to‘ldirib qayta bosing.');
+            }
+            updateProg(15, 'Server orqali GPS sync…', '');
+            let rounds = 0;
+            let busy = true;
+            while (rounds < 40 && busy) {
+                if (cancelled()) return;
+                rounds += 1;
+                const res = await vmApi('/api/office/gps/sync', {
+                    method: 'POST',
+                    body: JSON.stringify({ date: dateVal, force: rounds === 1 })
+                });
+                busy = !!(res && res.busy);
+                const fetched = (res && (res.fetched != null ? res.fetched : res.cars)) || 0;
+                const total = (res && res.total) || Math.max(fetched, 1);
+                updateProg(
+                    Math.min(90, 15 + Math.round((fetched / total) * 70)),
+                    busy ? `Server sync… ${fetched}/${total}` : `Server: ${fetched} mashina`,
+                    ''
+                );
+                if (!busy) break;
+                await sleepMs(900);
+            }
+            if (cancelled()) return;
+            if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
+            if (cancelled()) return;
+            STATE.currentDate = dateVal;
+            const cars = STATE.data[dateVal] || {};
+            done = Object.keys(cars).length;
+            if (!STATE.currentCar && done) {
+                const first = Object.keys(cars)[0];
+                if (first) STATE.currentCar = first;
+            }
+            const d0 = new Date(dateVal); CAL.y = d0.getFullYear(); CAL.m = d0.getMonth();
+            saveAll();
+            renderCalendar(); renderDriverTabs(); refreshUI();
+            if (window.VMOffice) VMOffice.renderFleetBoard();
+            updateProg(100, done ? `Tayyor: ${done} mashina (server)` : 'Server sync tugadi', '');
+            setGpsUi(done ? 'on' : 'off');
+            if (!silent) showToast(done ? `GPS: ${done} mashina` : 'GPS sync tugadi — maʼlumot kam', done ? 'success' : 'warn');
+            return;
         }
 
         // To'g'ridan Boomerang — Vercel 504/busy yo'q
@@ -2146,7 +2204,8 @@ async function syncFromGPS(dateVal, cfg, opts) {
             await sleepMs(0);
         }
         if (!matched) throw new Error('Hech qanday mashina haydovchi ro\'yxatiga mos kelmadi.');
-        STATE.data[dateVal] = fresh;
+        // Faqat muvaffaqiyatli mashinalarni qo'shamiz — eski yaxshi yozuvlarni o'chirmaymiz
+        STATE.data[dateVal] = Object.assign({}, STATE.data[dateVal] || {}, fresh);
         if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
         updateProg(95, `Boomerang: ${done} ta mashina yuklandi`, '');
 

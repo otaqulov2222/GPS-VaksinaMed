@@ -1,35 +1,35 @@
 'use strict';
 /**
- * Xarita plitkalari — Carto/OSM (yuqori zoom ishlaydi).
- * ArcGIS Street olib tashlandi: yaqin zoomda "Map data not yet available" berardi.
+ * Xarita plitkalari — API kalitsiz ochiq manbalar.
+ * Carto (API KEY REQUIRED) va ArcGIS Street ("Map data not yet available") ishlatilmaydi.
  */
 
 const VM_TILE_SOURCES = [
     {
-        // Carto Voyager — shaharlarda z18–20 yaxshi
-        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        subdomains: 'abcd',
-        maxZoom: 20,
-        maxNativeZoom: 20
-    },
-    {
+        // OSM France HOT — shaharlarda yuqori zoom yaxshi, kalit yo‘q
         url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
         subdomains: 'abc',
-        maxZoom: 20,
-        maxNativeZoom: 19
+        maxZoom: 18,
+        maxNativeZoom: 18
+    },
+    {
+        url: 'https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png',
+        subdomains: 'abc',
+        maxZoom: 18,
+        maxNativeZoom: 18
     },
     {
         url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         subdomains: 'abc',
-        maxZoom: 19,
+        maxZoom: 18,
         maxNativeZoom: 19
     }
 ];
 
 const VM_TILE_OPTS = {
     attribution: '',
-    maxZoom: 19,
-    maxNativeZoom: 19,
+    maxZoom: 18,
+    maxNativeZoom: 18,
     minZoom: 3,
     crossOrigin: true,
     updateWhenIdle: true,
@@ -55,8 +55,7 @@ function vmAddMapTiles(map) {
         let switched = false;
         layer.on('tileerror', () => {
             failCount += 1;
-            // Bir nechta xato bo‘lsa keyingi manbaga o‘tish
-            if (switched || idx !== i || failCount < 4) return;
+            if (switched || idx !== i || failCount < 6) return;
             switched = true;
             failCount = 0;
             try { map.removeLayer(layer); } catch (e) {}
@@ -69,14 +68,13 @@ function vmAddMapTiles(map) {
     }
 
     try {
-        if (map.setMaxZoom) map.setMaxZoom(19);
+        if (map.setMaxZoom) map.setMaxZoom(18);
     } catch (e) {}
 
     active = mount(0);
     return active;
 }
 
-/** Plitkalar yuklanguncha og'ir ishni kechiktirish */
 function vmDefer(fn, ms) {
     const wait = ms == null ? 320 : ms;
     return new Promise(resolve => {

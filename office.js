@@ -109,7 +109,9 @@ const VMOffice = {
             this.renderFleetBoard();
             return;
         }
-        if (hasLocal && force) delete STATE.data[dateVal];
+        if (hasLocal && force) {
+            // Localni oldindan o'chirmaymiz — server muvaffaqiyatsiz bo'lsa kun bo'sh qolmasin
+        }
         try {
             const d = await vmApi('/api/office/report?date=' + encodeURIComponent(dateVal));
             if (d.reviews) {

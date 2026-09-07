@@ -406,7 +406,9 @@ function splitDayKm(src, km, mix) {
   let gasKm = 0;
   let liqKm = 0;
   const hasGasKm = src.gasKm != null && src.gasKm !== '' && Number.isFinite(n(src.gasKm));
-  if (hasGasKm) {
+  // Explicit 0 faqat benzin/dizel/aralash uchun — gaz rejimida 0 = kiritilmagan
+  const treatUnset = hasGasKm && n(src.gasKm) === 0 && mode === 'gaz';
+  if (hasGasKm && !treatUnset) {
     gasKm = Math.max(0, Math.min(km, n(src.gasKm)));
     liqKm = Math.max(0, km - gasKm);
   } else if (mode === 'gaz') {
@@ -3538,6 +3540,9 @@ async function restoreBackup(file) {
     STATE.month = month;
     document.getElementById('month-input').value = month;
     STATE.cars = cars;
+    Object.keys(STATE.cars).forEach((k) => {
+      if (STATE.cars[k] && typeof STATE.cars[k] === 'object') STATE.cars[k]._replaceDays = true;
+    });
     await saveMonth();
   }
   setMonthLabel();
@@ -3555,6 +3560,9 @@ async function reloadOriginal() {
   STATE.cars = (month.data && month.data.cars) || {};
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   STATE.dirty = false;
+  try {
+    localStorage.removeItem(localMonthKey(STATE.month));
+  } catch (e) {}
   renderAll();
   toast('Serverdagi asl ma\'lumot yuklandi');
 }
@@ -3611,7 +3619,10 @@ function bind() {
     const row = ensureDay(getCar(STATE.car), d);
     row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
     if (f === 'km' || f === 'odo') row.kmSrc = 'user';
-    if (f === 'gasKm') row.gasKm = n(el.value);
+    if (f === 'gasKm') {
+      const raw = String(el.value || '').trim();
+      row.gasKm = raw === '' ? null : n(raw);
+    }
     const syncGasKmInput = (val) => {
       const gInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="gasKm"]');
       if (gInp && gInp !== el) gInp.value = val === '' || val == null ? '' : String(val);
