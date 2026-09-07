@@ -1277,7 +1277,7 @@ class OfficeStore:
             "fetched": int(st.get("fetched") or st.get("cars") or 0),
             "total": int(st.get("total") or 0),
             "error": str(st.get("error") or "")[:200],
-            "autoIntervalSec": int(os.environ.get("GPS_SYNC_INTERVAL", "600")),
+            "autoIntervalSec": int(os.environ.get("GPS_SYNC_INTERVAL", "180")),
             "syncDate": str(st.get("syncDate") or ""),
             "lastDate": str(st.get("lastDate") or ""),
             "message": str(st.get("message") or "")[:180],

@@ -4,11 +4,11 @@ Kunlik to'liq GPS odat — GitHub Actions (Vercel 25s limitsiz).
 
 Mantiq (Toshkent vaqti):
 1) Bugun to'liq emas → yetishmayotgan mashinalarni to'ldirish
-2) Ish vaqti (06–22) va oxirgi sync eskirgan (≥15 daqiqa) → barcha mashinani yangilash
+2) Ish vaqti (06–22) va oxirgi sync eskirgan (≥3 daqiqa) → barcha mashinani yangilash
 3) Kecha bo'sh/qisman → kechani ham to'ldirish
 
 GitHub schedule har 10 daqiqada ISHONCHSIZ (throttle). Shuning uchun
-GPS_CRON_LOOP_MIN>0 bo'lsa bitta job ichida bir necha marta sync qiladi.
+GPS_CRON_LOOP_MIN>0 bo'lsa bitta job ichida har ~3 daqiqada sync qiladi.
 """
 from __future__ import annotations
 
@@ -24,9 +24,9 @@ os.chdir(ROOT)
 os.environ.setdefault("VM_PRODUCTION", "1")
 
 TZ5 = timezone(timedelta(hours=5))
-REFRESH_EVERY_SEC = int(os.environ.get("GPS_REFRESH_EVERY_SEC", str(15 * 60)))
+REFRESH_EVERY_SEC = int(os.environ.get("GPS_REFRESH_EVERY_SEC", str(3 * 60)))
 LOOP_MINUTES = int(os.environ.get("GPS_CRON_LOOP_MIN", "0"))
-LOOP_SLEEP = int(os.environ.get("GPS_CRON_LOOP_SLEEP", "600"))
+LOOP_SLEEP = int(os.environ.get("GPS_CRON_LOOP_SLEEP", "180"))
 
 
 def _count_synced(cars):

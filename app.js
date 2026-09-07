@@ -2003,7 +2003,7 @@ function updateGpsLastSyncUi(iso, running, extra) {
     if (habit) {
         habit.textContent = total > 0
             ? ('Kunlik odat: avto ' + fetched + '/' + total + ' mashina')
-            : 'Kunlik odat: server har ~10 daqiqada avto-yuklaydi';
+            : 'Kunlik odat: server har ~3 daqiqada avto-yuklaydi';
     }
     if (!el) return;
     if (running) {
@@ -3022,7 +3022,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             showToast(
                 todayCars
                     ? ('Bugun ' + todayCars + '/' + fleetN + ' — avto-yuklash davom etadi')
-                    : 'Kunlik GPS avto-yuklanmoqda (har 10 daqiqa)…',
+                    : 'Kunlik GPS avto-yuklanmoqda (har ~3 daqiqa)…',
                 'info'
             );
             // Faqat holatni poll qilish — to'liq yuklash GitHub cron
