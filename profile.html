@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Profil ó VaksinaMed</title>
+<title>Profil ‚Äî VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shell.css?v=18"/>
@@ -145,18 +145,18 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
       <label for="nav-open" class="nav-burger">Menyu</label>
       <div>
         <div class="top-title">Profil</div>
-        <div class="top-sub">Hisob ∑ xavfsizlik ∑ chiqish</div>
+        <div class="top-sub">Hisob ¬∑ xavfsizlik ¬∑ chiqish</div>
       </div>
       <div class="acts"></div>
     </header>
 
     <div class="profile-wrap">
       <section class="hero">
-        <div class="avatar" id="p-avatar">ó</div>
+        <div class="avatar" id="p-avatar">‚Äî</div>
         <div>
-          <h1 id="p-name">ó</h1>
-          <div class="sub" id="p-username">@ó</div>
-          <span class="badge-role" id="p-role">ó</span>
+          <h1 id="p-name">‚Äî</h1>
+          <div class="sub" id="p-username">@‚Äî</div>
+          <span class="badge-role" id="p-role">‚Äî</span>
         </div>
         <div class="hero-actions">
           <button class="btn btn-out" type="button" id="btn-logout">Chiqish</button>
@@ -168,14 +168,14 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
           <div class="card-h">Hisob ma'lumotlari</div>
           <div class="card-b">
             <dl class="kv">
-              <dt>Toëliq ism</dt><dd id="p-fullname2">ó</dd>
-              <dt>Login</dt><dd id="p-login">ó</dd>
-              <dt>Rol</dt><dd id="p-role2">ó</dd>
-              <dt>Mashina</dt><dd id="p-car">ó</dd>
-              <dt>Holat</dt><dd id="p-active">ó</dd>
-              <dt>Yaratilgan</dt><dd id="p-created">ó</dd>
-              <dt>Oxirgi kirish</dt><dd id="p-last">ó</dd>
-              <dt>Saqlash</dt><dd id="p-persist">ó</dd>
+              <dt>To‚Äòliq ism</dt><dd id="p-fullname2">‚Äî</dd>
+              <dt>Login</dt><dd id="p-login">‚Äî</dd>
+              <dt>Rol</dt><dd id="p-role2">‚Äî</dd>
+              <dt>Mashina</dt><dd id="p-car">‚Äî</dd>
+              <dt>Holat</dt><dd id="p-active">‚Äî</dd>
+              <dt>Yaratilgan</dt><dd id="p-created">‚Äî</dd>
+              <dt>Oxirgi kirish</dt><dd id="p-last">‚Äî</dd>
+              <dt>Saqlash</dt><dd id="p-persist">‚Äî</dd>
             </dl>
           </div>
         </section>
@@ -183,25 +183,27 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
         <section class="card">
           <div class="card-h">Tezkor havolalar</div>
           <div class="card-b links">
-            <a class="btn staff-only" href="/" id="link-vhk" hidden>< Dashboard</a>
-            <a class="btn staff-only" href="/fuel.html" id="link-fuel" hidden>Boshqaruv (yoqilgëi)</a>
+            <a class="btn staff-only" href="/" id="link-vhk" hidden>‚Üê Dashboard</a>
+            <a class="btn staff-only" href="/fuel.html" id="link-fuel" hidden>Boshqaruv (yoqilg‚Äòi)</a>
             <a class="btn btn-blue staff-only" href="/admin.html" id="link-admin" hidden>Admin panel</a>
-            <a class="btn btn-blue driver-only" href="/driver.html" id="link-driver" hidden>< Haydovchi kabineti</a>
-            <p class="hint" id="profile-links-hint">YuklanmoqdaÖ</p>
+            <a class="btn btn-blue" href="/attendance.html" id="link-davomat">Davomat / Face</a>
+            <a class="btn btn-blue driver-only" href="/driver.html" id="link-driver" hidden>‚Üê Haydovchi kabineti</a>
+            <p class="hint" id="profile-links-hint">Yuklanmoqda‚Ä¶</p>
           </div>
         </section>
       </div>
 
-        <section class="card">
-          <div class="card-h">Face ulash ∑ Davomat</div>
-          <div class="card-b">
-            <p class="hint" id="face-hint">Login qilib kirgach, bir marta yuzingizni ulang. Keyin har kuni Davomat boëlimidan oëtasiz.</p>
-            <p class="hint" id="face-status">Holat: tekshirilmoqdaÖ</p>
-            <div class="links" style="margin-top:10px">
-              <a class="btn btn-blue" href="/attendance.html">Davomat / Face ulash ></a>
-            </div>
+
+      <section class="card" style="margin-top:12px">
+        <div class="card-h">Face ID / Davomat</div>
+        <div class="card-b">
+          <p class="hint" id="face-hint">Login qilib kirgach, bir marta yuzingizni ulang. Keyin har kuni Davomat bo'limidan o'tasiz.</p>
+          <p class="hint" id="p-face">Holat yuklanmoqda...</p>
+          <div class="links" style="margin-top:10px">
+            <a class="btn btn-blue" href="/attendance.html">Davomat / Face ulash</a>
           </div>
-        </section>
+        </div>
+      </section>
 
       <section class="card">
         <div class="card-h">Parolni almashtirish</div>
@@ -231,7 +233,7 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
-<script src="auth.js?v=21"></script>
+<script src="auth.js?v=22"></script>
 <script>
 (function () {
   const ROLE_LABEL = {
@@ -246,7 +248,7 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
   }
   function setText(id, v) {
     const el = document.getElementById(id);
-    if (el) el.textContent = v == null || v === '' ? 'ó' : String(v);
+    if (el) el.textContent = v == null || v === '' ? '‚Äî' : String(v);
   }
   function initials(name, user) {
     const s = String(name || user || '?').trim();
@@ -263,28 +265,29 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
     vmApplyChrome(u);
     vmStartHeartbeat();
 
-    const roleLabel = ROLE_LABEL[u.role] || u.role || 'ó';
-    const name = u.name || u.username || 'ó';
+    const roleLabel = ROLE_LABEL[u.role] || u.role || '‚Äî';
+    const name = u.name || u.username || '‚Äî';
     document.getElementById('p-avatar').textContent = initials(u.name, u.username);
     setText('p-name', name);
-    setText('p-username', '@' + (u.username || 'ó'));
+    setText('p-username', '@' + (u.username || '‚Äî'));
     setText('p-role', roleLabel);
     setText('p-fullname2', name);
     setText('p-login', u.username);
     setText('p-role2', roleLabel);
-    setText('p-car', u.car || (u.role === 'driver' ? 'ó' : 'Kerak emas'));
-    setText('p-active', u.active === false ? 'Oëchirilgan' : 'Faol');
-    setText('p-created', u.created_at || 'ó');
-    setText('p-last', u.last_login || 'ó');
+    setText('p-car', u.car || (u.role === 'driver' ? '‚Äî' : 'Kerak emas'));
+    setText('p-active', u.active === false ? 'O‚Äòchirilgan' : 'Faol');
+    setText('p-created', u.created_at || '‚Äî');
+    setText('p-last', u.last_login || '‚Äî');
     const pers = me.persist || {};
-    setText('p-persist', pers.mode || pers.backend || (pers.ok ? 'OK' : 'ó'));
+    setText('p-persist', pers.mode || pers.backend || (pers.ok ? 'OK' : '‚Äî'));
 
-    const faceEl = document.getElementById('face-status');
+    const faceEl = document.getElementById('p-face');
     if (faceEl) {
       faceEl.textContent = me.faceEnrolled
-        ? 'Holat: Face ulangan ? ó kunlik stamp uchun Davomatga oëting'
-        : 'Holat: Face ulanmagan ó Davomat sahifasida birinchi marta ulang';
+        ? "Holat: Face ulangan - kunlik stamp uchun Davomatga o'ting"
+        : "Holat: Face ulanmagan - Davomat sahifasida birinchi marta ulang";
     }
+
 
     const staff = vmIsStaff(u);
     const drv = vmIsDriver(u);
@@ -319,7 +322,7 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
       return;
     }
     if (n1.length < 6) {
-      msg.textContent = 'Yangi parol kamida 6 belgi boëlsin';
+      msg.textContent = 'Yangi parol kamida 6 belgi bo‚Äòlsin';
       msg.className = 'msg show bad';
       return;
     }

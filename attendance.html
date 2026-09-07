@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Davomat — VaksinaMed</title>
+<title>Davomat - VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shell.css?v=18"/>
-<link rel="stylesheet" href="attendance.css?v=7"/>
+<link rel="stylesheet" href="attendance.css?v=8"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -39,25 +39,24 @@
       <label for="nav-open" class="nav-burger">Menyu</label>
       <div>
         <div class="top-title">Davomat</div>
-        <div class="top-sub">Face · GPS · vaqt</div>
+        <div class="top-sub">Face / GPS / vaqt</div>
       </div>
       <div class="acts">
-        <span id="tb-user-name" class="tb-user-name">—</span>
+        <span id="tb-user-name" class="tb-user-name">-</span>
         <span id="tb-user-role" class="tb-role" hidden></span>
       </div>
     </header>
 
     <main class="att-main" id="att-app">
-      <div class="att-loading">Yuklanmoqda…</div>
+      <div class="att-loading">Yuklanmoqda...</div>
     </main>
   </div>
 </div>
 
-<!-- Face ID scanner modal (alohida oyna) -->
 <div id="fid-modal" class="fid-modal" hidden aria-hidden="true">
   <div class="fid-backdrop"></div>
   <div class="fid-panel" role="dialog" aria-modal="true" aria-labelledby="fid-title">
-    <button type="button" class="fid-close" id="fid-close" aria-label="Yopish">?</button>
+    <button type="button" class="fid-close" id="fid-close" aria-label="Yopish">&times;</button>
     <div class="fid-head">
       <div class="fid-kicker">VAKSINAMED BIOMETRIC</div>
       <h2 id="fid-title" class="fid-title">FACE ID</h2>
@@ -77,9 +76,9 @@
     </div>
 
     <div class="fid-meta">
-      <div class="fid-status" id="fid-status">LOADING…</div>
+      <div class="fid-status" id="fid-status">LOADING...</div>
       <div class="fid-seg" id="fid-seg" aria-hidden="true"></div>
-      <p class="fid-hint" id="fid-hint">Kameraga to‘g‘ri qarang — harakatsiz turing</p>
+      <p class="fid-hint" id="fid-hint">Kameraga to'g'ri qarang - harakatsiz turing</p>
       <div class="fid-actions" id="fid-actions" hidden>
         <button type="button" class="fid-btn fid-btn-in" id="fid-keldim">Keldim</button>
         <button type="button" class="fid-btn fid-btn-out" id="fid-ketdim">Ketdim</button>
@@ -90,7 +89,7 @@
 
 <canvas id="att-canvas" hidden></canvas>
 
-<script src="auth.js?v=21"></script>
-<script src="attendance.js?v=7"></script>
+<script src="auth.js?v=22"></script>
+<script src="attendance.js?v=8"></script>
 </body>
 </html>
