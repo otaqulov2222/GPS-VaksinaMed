@@ -27,6 +27,12 @@ TZ5 = timezone(timedelta(hours=5))
 REFRESH_EVERY_SEC = int(os.environ.get("GPS_REFRESH_EVERY_SEC", str(3 * 60)))
 LOOP_MINUTES = int(os.environ.get("GPS_CRON_LOOP_MIN", "0"))
 LOOP_SLEEP = int(os.environ.get("GPS_CRON_LOOP_SLEEP", "180"))
+# Qo'lda "Run workflow" — bitta sync, tez yashil ✓ (soatlik schedule esa loop)
+if (
+    os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+    and os.environ.get("GPS_CRON_FORCE_LOOP", "").strip() != "1"
+):
+    LOOP_MINUTES = 0
 
 
 def _count_synced(cars):
