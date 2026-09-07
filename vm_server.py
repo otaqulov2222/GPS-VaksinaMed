@@ -29,6 +29,7 @@ SEED_USER = "adminpro"
 DEFAULT_SEED_PASS = "AdminPro@2026"
 SEED_PASS = os.environ.get("VM_SEED_PASS", DEFAULT_SEED_PASS)
 SESSIONS_KEY = "auth:sessions"
+SESSION_TOMBS_KEY = "auth:session_tombs"
 
 PUBLIC_PATHS = {"/login.html", "/favicon.ico"}
 PUBLIC_PREFIX = ("/fonts/", "/logo/")
@@ -414,29 +415,107 @@ class AuthStore:
         self.persist = persist
         self.lock = threading.Lock()
         self.sessions = {}
+        # Vercel: boshqa instance logout qilganda merge qayta tiklamasligi uchun
+        self._removed_sids = set()
         self.seeded = False
         self._users_cache = None
         self._load_sessions()
         self._ensure()
 
-    def _load_sessions(self):
-        raw = self.persist.get(SESSIONS_KEY, {})
-        if not isinstance(raw, dict):
-            raw = {}
+    def _sessions_alive(self, raw):
         t = now_ts()
+        tombs = self._tombstones()
         cleaned = {}
+        if not isinstance(raw, dict):
+            return cleaned
         for sid, sess in raw.items():
             if not isinstance(sess, dict):
                 continue
+            if sid in self._removed_sids or sid in tombs:
+                continue
             if t - int(sess.get("last_seen") or 0) <= SESSION_TTL:
                 cleaned[sid] = sess
-        self.sessions = cleaned
-        if len(cleaned) != len(raw):
-            self._save_sessions()
+        return cleaned
+
+    def _tombstones(self):
+        """Logout qilingan sid lar — boshqa instance qayta yozmasin."""
+        raw = self.persist.get(SESSION_TOMBS_KEY, {})
+        if not isinstance(raw, dict):
+            return {}
+        t = now_ts()
+        out = {}
+        for sid, ts in raw.items():
+            try:
+                when = int(ts)
+            except (TypeError, ValueError):
+                continue
+            if t - when <= SESSION_TTL:
+                out[str(sid)] = when
+        return out
+
+    def _load_sessions(self):
+        raw = self.persist.get(SESSIONS_KEY, {})
+        self.sessions = self._sessions_alive(raw)
+
+    def _hydrate_session(self, sid):
+        """Serverless: boshqa instance yaratgan sessiyani DB dan olish."""
+        if not sid or sid in self._removed_sids:
+            return None
+        if sid in self._tombstones():
+            self.sessions.pop(sid, None)
+            return None
+        if sid in self.sessions:
+            return self.sessions.get(sid)
+        self._pull_all_sessions()
+        return self.sessions.get(sid)
+
+    def _pull_all_sessions(self):
+        """DB dagi barcha tirik sessiyalarni xotiraga birlashtirish."""
+        tombs = self._tombstones()
+        for sid in tombs:
+            self.sessions.pop(sid, None)
+        raw = self.persist.get(SESSIONS_KEY, {})
+        alive = self._sessions_alive(raw)
+        for sid, sess in alive.items():
+            local = self.sessions.get(sid)
+            if not local or int(sess.get("last_seen") or 0) >= int(
+                local.get("last_seen") or 0
+            ):
+                self.sessions[sid] = sess
+        return alive
 
     def _save_sessions(self):
+        """DB bilan birlashtirib saqlash — multi-instance sessiyani o'chirmaslik."""
         try:
-            self.persist.put(SESSIONS_KEY, self.sessions)
+            tombs = self._tombstones()
+            for sid in list(self._removed_sids):
+                tombs[sid] = now_ts()
+            raw = self.persist.get(SESSIONS_KEY, {})
+            merged = {}
+            if isinstance(raw, dict):
+                t = now_ts()
+                for sid, sess in raw.items():
+                    if not isinstance(sess, dict):
+                        continue
+                    if sid in tombs or sid in self._removed_sids:
+                        continue
+                    if t - int(sess.get("last_seen") or 0) <= SESSION_TTL:
+                        merged[sid] = sess
+            for sid in tombs:
+                merged.pop(sid, None)
+                self.sessions.pop(sid, None)
+            for sid, sess in self.sessions.items():
+                if not isinstance(sess, dict) or sid in tombs:
+                    continue
+                other = merged.get(sid)
+                if not other or int(sess.get("last_seen") or 0) >= int(
+                    other.get("last_seen") or 0
+                ):
+                    merged[sid] = sess
+            self.sessions = merged
+            self.persist.put(SESSIONS_KEY, merged)
+            self.persist.put(SESSION_TOMBS_KEY, tombs)
+            self._removed_sids.clear()
         except Exception as e:
             print("[WARN] Sessiya saqlanmadi:", e)
 
@@ -568,7 +647,9 @@ class AuthStore:
 
     def logout(self, sid):
         with self.lock:
-            self.sessions.pop(sid, None)
+            if sid:
+                self.sessions.pop(sid, None)
+                self._removed_sids.add(sid)
             self._save_sessions()
 
     def get_session(self, sid):
@@ -577,9 +658,13 @@ class AuthStore:
         with self.lock:
             sess = self.sessions.get(sid)
             if not sess:
+                # Vercel Fluid: login boshqa instance da bo'lishi mumkin
+                sess = self._hydrate_session(sid)
+            if not sess:
                 return None
-            if now_ts() - sess["last_seen"] > SESSION_TTL:
+            if now_ts() - int(sess.get("last_seen") or 0) > SESSION_TTL:
                 self.sessions.pop(sid, None)
+                self._removed_sids.add(sid)
                 self._save_sessions()
                 return None
             self._touch_session(sess)
@@ -587,6 +672,7 @@ class AuthStore:
             user = self.find_user(data, uid=sess["user_id"])
             if not user or not user.get("active", True):
                 self.sessions.pop(sid, None)
+                self._removed_sids.add(sid)
                 self._save_sessions()
                 return None
             sess["role"] = user.get("role") or "admin"
@@ -686,6 +772,7 @@ class AuthStore:
                 for sid, s in list(self.sessions.items()):
                     if s["user_id"] == uid:
                         self.sessions.pop(sid, None)
+                        self._removed_sids.add(sid)
                 self._save_sessions()
             self._audit(data, "user_toggle", actor, f"{user['username']} active={user['active']}")
             self._write(data)
@@ -703,6 +790,7 @@ class AuthStore:
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
                     self.sessions.pop(sid, None)
+                    self._removed_sids.add(sid)
             self._save_sessions()
             self._audit(data, "user_del", actor, user["username"])
             self._write(data)
@@ -730,6 +818,7 @@ class AuthStore:
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
                     self.sessions.pop(sid, None)
+                    self._removed_sids.add(sid)
             self._save_sessions()
             self._audit(data, "pw_reset", actor, user["username"])
             self._write(data)
@@ -755,6 +844,7 @@ class AuthStore:
 
     def list_sessions(self, viewer_role=None):
         with self.lock:
+            self._pull_all_sessions()
             out = []
             t = now_ts()
             for s in self.sessions.values():
@@ -780,12 +870,13 @@ class AuthStore:
 
     def kick(self, actor, sid, actor_role=None):
         with self.lock:
-            s = self.sessions.get(sid)
+            s = self.sessions.get(sid) or self._hydrate_session(sid)
             if not s:
                 return None, "Sessiya topilmadi"
             if actor_role == "admin" and s.get("role") == "admin_pro":
                 return None, "Ruxsat yo'q"
             self.sessions.pop(sid, None)
+            self._removed_sids.add(sid)
             self._save_sessions()
             data = self._read()
             self._audit(data, "kick", actor, s.get("username"))
