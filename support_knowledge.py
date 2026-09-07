@@ -347,6 +347,17 @@ FAQ_OFFLINE = [
     },
     # ── Umumiy / profil / login ──
     {
+        "keys": ["davomat", "face id", "face ulash", "kirish chiqish", "ertalab davomat"],
+        "a": (
+            "Davomat — Face ulash + kunlik stamp.\n"
+            "1) Login/parol bilan kiring\n"
+            "2) Profil yoki Davomat → birinchi marta yuz (kamera) + Face ID ulang\n"
+            "3) Har kuni Davomat → Kirish (ertalab) / Chiqish (kechqurun)\n"
+            "Tekshiruv: biometriya + ofis GPS zonasi + vaqt oynasi.\n"
+            "Admin: bugungi taxta va sozlamalar (lat/lng, radius, soatlar)."
+        ),
+    },
+    {
         "keys": ["profil", "profile", "profil sahifa", "profil tugma", "parolni saqlash", "parolni almashtirish"],
         "a": (
             "Profil — chap menyuning pastidagi bo'lim (yoki Profil sahifasi).\n\n"

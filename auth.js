@@ -17,6 +17,7 @@ async function vmApi(path, opts) {
 async function vmMe() {
     const d = await vmApi('/api/me');
     window.VM_USER = d.user;
+    window._vmFaceEnrolled = !!d.faceEnrolled;
     if (d.vehicles && typeof applyFleetNameOverrides === 'function') {
         applyFleetNameOverrides(d.vehicles);
     }
@@ -51,11 +52,12 @@ function vmGatePage(user) {
     const path = (location.pathname || '').replace(/\\/g, '/');
     const onDriver = path.endsWith('/driver.html');
     const onProfile = path.endsWith('/profile.html');
+    const onAttendance = path.endsWith('/attendance.html');
     const onLogin = path.endsWith('/login.html');
     if (onLogin) return;
     if (vmIsDriver(user)) {
-        // Haydovchi: faqat kabinet + profil
-        if (!onDriver && !onProfile) location.replace('/driver.html');
+        // Haydovchi: kabinet + profil + davomat
+        if (!onDriver && !onProfile && !onAttendance) location.replace('/driver.html');
         return;
     }
     if (onDriver && !vmIsStaff(user)) {
@@ -112,9 +114,61 @@ function vmApplyRoleNav(user) {
     }
 }
 
+function vmEnsureDavomatNav() {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    const onAtt = path.endsWith('/attendance.html');
+    const faceOn = !!window._vmFaceEnrolled;
+
+    document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {
+        let link = nav.querySelector('a[href="/attendance.html"], a[href="attendance.html"], #nav-davomat');
+        if (!link) {
+            link = document.createElement('a');
+            link.href = '/attendance.html';
+            link.className = 'nav-link';
+            link.id = 'nav-davomat';
+            link.textContent = 'Davomat';
+            const fuel = nav.querySelector('#nav-fuel, a[href="/fuel.html"], a[href="fuel.html"]');
+            if (fuel) fuel.insertAdjacentElement('afterend', link);
+            else {
+                const dash = nav.querySelector('a[href="/"], a[href="/index.html"]');
+                if (dash) dash.insertAdjacentElement('afterend', link);
+                else nav.insertBefore(link, nav.firstChild);
+            }
+        } else {
+            link.textContent = 'Davomat';
+            link.href = '/attendance.html';
+        }
+        // Haydovchi va staff — hammaga ko'rinsin
+        link.removeAttribute('hidden');
+        link.style.display = '';
+        link.classList.toggle('on', onAtt);
+        if (onAtt) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    });
+
+    document.querySelectorAll('.nav-rail .nav-foot').forEach((foot) => {
+        let st = foot.querySelector('.vm-face-status');
+        if (!st) {
+            st = document.createElement('a');
+            st.className = 'vm-face-status';
+            st.href = '/attendance.html';
+            const profil = foot.querySelector('a[href="/profile.html"], a[href="profile.html"]');
+            if (profil) foot.insertBefore(st, profil);
+            else foot.appendChild(st);
+        }
+        st.classList.toggle('on', faceOn);
+        st.classList.toggle('off', !faceOn);
+        st.innerHTML = faceOn
+            ? '<i></i> Face ulangan'
+            : '<i></i> Face ulanmagan';
+        st.title = faceOn ? 'Davomat · Face tayyor' : 'Face ulash uchun bosing';
+    });
+}
+
 function vmApplyChrome(user) {
     if (!user) return;
     vmApplyRoleNav(user);
+    vmEnsureDavomatNav();
     const name = document.getElementById('tb-user-name');
     const role = document.getElementById('tb-user-role');
     const panel = document.getElementById('btn-admin-panel');
@@ -145,6 +199,12 @@ function vmApplyChrome(user) {
 }
 
 window.vmApplyRoleNav = vmApplyRoleNav;
+window.vmApplyChrome = vmApplyChrome;
+window.vmGatePage = vmGatePage;
+window.vmMe = vmMe;
+window.vmApi = vmApi;
+window.vmIsStaff = vmIsStaff;
+window.vmIsDriver = vmIsDriver;
 
 function vmStartHeartbeat() {
     if (window._vmHeartbeat) return;

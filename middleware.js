@@ -5,6 +5,7 @@ const BLOCK = [
   /^\/vm_runtime\.py$/i,
   /^\/gps_sync\.py$/i,
   /^\/hr_api\.py$/i,
+  /^\/attendance\.py$/i,
   /^\/support_ai\.py$/i,
   /^\/support_knowledge\.py$/i,
   /^\/office-seed\.json$/i,

@@ -8,13 +8,13 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-<title>Boshqaruv Â· VaksinaMed</title>
+<title>Boshqaruv · VaksinaMed</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="shell.css?v=16"/>
+<link rel="stylesheet" href="shell.css?v=18"/>
 
 <style>
 
@@ -1195,6 +1195,7 @@ table.dtable td.day {
       <nav class="nav-links" style="flex:0 0 auto; overflow:visible;">
         <a class="nav-link" href="/">Dashboard</a>
         <a class="nav-link on" href="/fuel.html" aria-current="page">Boshqaruv</a>
+        <a class="nav-link" href="/attendance.html" id="nav-davomat">Davomat</a>
       </nav>
     </div>
 
@@ -1241,7 +1242,7 @@ table.dtable td.day {
 
         <div class="tb-title" style="color:var(--ink)">Boshqaruv</div>
 
-        <div class="tb-sub" style="color:var(--muted)">Park Â· hisobot Â· hujjat Â· narx</div>
+        <div class="tb-sub" style="color:var(--muted)">Park · hisobot · hujjat · narx</div>
 
       </div>
 
@@ -1250,7 +1251,7 @@ table.dtable td.day {
         <span class="badge badge-bad" id="docs-badge" style="display:none">0 hujjat muddati</span>
 
         <label class="month-wrap" for="month-input">
-          <span id="month-input-label" class="month-label">â€”</span>
+          <span id="month-input-label" class="month-label">—</span>
           <input type="month" id="month-input" class="month-pick" title="Oy">
         </label>
 
@@ -1288,7 +1289,7 @@ table.dtable td.day {
 
         <h3 id="car-title">Mashina tanlang</h3>
 
-        <span class="save-st" id="save-st">â€”</span>
+        <span class="save-st" id="save-st">—</span>
 
       </div>
 
@@ -1302,11 +1303,11 @@ table.dtable td.day {
 
           <div class="fld"><label>Spidometr oy boshi</label><input id="p-odoStart" data-p="odoStart" type="number" step="0.1"></div>
 
-          <div class="fld fuel-gaz"><label id="lbl-gasStart">Gaz oy boshi qoldiq (mÂ³)</label><input id="p-gasStart" data-p="gasStart" type="number" step="0.0001"></div>
+          <div class="fld fuel-gaz"><label id="lbl-gasStart">Gaz oy boshi qoldiq (m?)</label><input id="p-gasStart" data-p="gasStart" type="number" step="0.0001"></div>
 
           <div class="fld fuel-liq"><label id="lbl-benzinStart">Benzin oy boshi qoldiq (l)</label><input id="p-benzinStart" data-p="benzinStart" type="number" step="0.0001"></div>
 
-          <div class="fld fuel-gaz"><label id="lbl-gasPrice">1 mÂ³ gaz narxi (so'm)</label><input id="p-gasPrice" data-p="gasPrice" type="number" step="1"></div>
+          <div class="fld fuel-gaz"><label id="lbl-gasPrice">1 m? gaz narxi (so'm)</label><input id="p-gasPrice" data-p="gasPrice" type="number" step="1"></div>
 
           <div class="fld fuel-liq"><label id="lbl-benzinPrice">1 l benzin / dizel narxi (so'm)</label><input id="p-benzinPrice" data-p="benzinPrice" type="number" step="1"></div>
 
@@ -1349,7 +1350,7 @@ table.dtable td.day {
           </div>
         </div>
 
-        <div class="hint" style="margin-top:12px;">Jami km + <b>Gaz km</b> yozing â€” Dizel/Benzin km avtomatik (jami - gaz). Sarf shu km bo'yicha hisoblanadi. Exceldan ham gaz km ustuni olinadi.</div>
+        <div class="hint" style="margin-top:12px;">Jami km + <b>Gaz km</b> yozing — Dizel/Benzin km avtomatik (jami - gaz). Sarf shu km bo'yicha hisoblanadi. Exceldan ham gaz km ustuni olinadi.</div>
 
         <div id="changes-box" class="note" style="margin-top:8px;"></div>
 
@@ -1360,9 +1361,9 @@ table.dtable td.day {
     <div class="card daily-table-card">
       <div class="card-h">
         <h3>Kunlik jadval</h3>
-        <span class="daily-table-meta">Keng jadval â€” gorizontal suring</span>
+        <span class="daily-table-meta">Keng jadval — gorizontal suring</span>
       </div>
-      <p class="swipe-hint">Keng jadval â€” barmoq bilan chap-o'ng suring.</p>
+      <p class="swipe-hint">Keng jadval — barmoq bilan chap-o'ng suring.</p>
       <div class="table-wrap">
         <table class="dtable" id="daily-table">
           <thead>
@@ -1380,9 +1381,9 @@ table.dtable td.day {
 
             <th>Zapravka nomi</th>
 
-            <th>Olingan gaz (mÂ³)</th>
+            <th>Olingan gaz (m?)</th>
 
-            <th>1 mÂ³ gaz narxi</th>
+            <th>1 m? gaz narxi</th>
 
             <th>Gaz summa</th>
 
@@ -1459,13 +1460,13 @@ table.dtable td.day {
 
     <div class="modal-head">
 
-      <div style="font-size:28px;line-height:1;">ðŸ“Š</div>
+      <div style="font-size:28px;line-height:1;">??</div>
 
       <div>
 
         <h3>Excel orqali to'ldirish</h3>
 
-        <p>Excel (.xlsx) yuklang: har mashina varag'i (masalan Â«255 gazÂ», Â«668 benÂ») o'qiladi. Putevoy kunlik yoki oylik hisobot (OTCHET) qo'llab-quvvatlanadi. Oy fayl nomidan/matndan aniqlanadi.</p>
+        <p>Excel (.xlsx) yuklang: har mashina varag'i (masalan «255 gaz», «668 ben») o'qiladi. Putevoy kunlik yoki oylik hisobot (OTCHET) qo'llab-quvvatlanadi. Oy fayl nomidan/matndan aniqlanadi.</p>
 
       </div>
 
@@ -1583,7 +1584,7 @@ table.dtable td.day {
 <script src="excel-style.js?v=1"></script>
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
-<script src="auth.js?v=19"></script>
+<script src="auth.js?v=21"></script>
 <script src="fuel.js?v=51"></script>
 <script src="journal.js?v=11"></script>
 </body>

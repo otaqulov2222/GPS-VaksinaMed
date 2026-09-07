@@ -2081,6 +2081,7 @@ class OfficeStore:
 
 STORE = None
 OFFICE = None
+ATTENDANCE = None
 
 
 class _HeaderMap:
@@ -2443,6 +2444,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.path = "/index.html"
             return super().do_GET()
 
+        if path == "/attendance.html":
+            if not sess:
+                self.redirect("/login.html")
+                return
+            return super().do_GET()
+
         if path == "/admin.html":
             if not sess:
                 self.redirect("/login.html")
@@ -2561,14 +2568,93 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 "role": sess["role"],
                 "car": sess.get("car") or "",
             }
+            face_enrolled = False
+            try:
+                if ATTENDANCE:
+                    face_enrolled = ATTENDANCE.is_enrolled(str(sess["user_id"]))
+            except Exception:
+                face_enrolled = False
             self.send_json(
                 {
                     "ok": True,
                     "user": user,
                     "persist": STORE.persist_info(),
                     "vehicles": (OFFICE.fuel_meta() or {}).get("vehicles") or {},
+                    "faceEnrolled": face_enrolled,
                 }
             )
+            return
+
+        if path == "/api/attendance/me":
+            sess = self.require_user()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            self.send_json(
+                ATTENDANCE.me_payload(
+                    str(sess["user_id"]),
+                    {
+                        "username": sess.get("username"),
+                        "name": sess.get("name"),
+                        "role": sess.get("role"),
+                    },
+                )
+            )
+            return
+
+        if path == "/api/attendance/board":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            date = (qs.get("date") or [None])[0] or ""
+            if not valid_date(date):
+                import attendance as att_mod
+
+                date = att_mod.today_str()
+            users = STORE.list_users(viewer_role=sess.get("role"))
+            # Faqat faol haydovchi + adminlar
+            users = [u for u in users if u.get("active", True)]
+            self.send_json({"ok": True, **ATTENDANCE.board(date, users)})
+            return
+
+        if path == "/api/attendance/history":
+            sess = self.require_user()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            try:
+                limit = int((qs.get("limit") or ["60"])[0])
+            except (TypeError, ValueError):
+                limit = 60
+            uid = str(sess["user_id"])
+            # Admin boshqa userni ko'ra oladi
+            want = (qs.get("userId") or [None])[0]
+            if want and sess.get("role") in ("admin", "admin_pro"):
+                uid = str(want)
+            self.send_json({
+                "ok": True,
+                "userId": uid,
+                "rows": ATTENDANCE.user_history(uid, limit),
+            })
+            return
+
+        if path == "/api/attendance/settings":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            self.send_json({"ok": True, "settings": ATTENDANCE.settings()})
             return
         if path == "/api/users":
             sess = self.require_staff()
@@ -3463,6 +3549,76 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(e)[:200]}, 500)
             return
 
+        if path == "/api/attendance/challenge":
+            sess = self.require_user()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            purpose = str(body.get("purpose") or "punch")[:20]
+            self.send_json({"ok": True, **ATTENDANCE.issue_challenge(str(sess["user_id"]), purpose)})
+            return
+
+        if path == "/api/attendance/enroll":
+            sess = self.require_user()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            result, err = ATTENDANCE.enroll(
+                str(sess["user_id"]),
+                username=str(sess.get("username") or ""),
+                name=str(sess.get("name") or ""),
+                photo=body.get("photo"),
+                credential_id=body.get("credentialId"),
+                descriptor=body.get("descriptor"),
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({"ok": True, **result})
+            return
+
+        if path == "/api/attendance/punch":
+            sess = self.require_user()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            result, err = ATTENDANCE.punch(
+                user_id=str(sess["user_id"]),
+                username=str(sess.get("username") or ""),
+                name=str(sess.get("name") or ""),
+                role=str(sess.get("role") or ""),
+                kind=str(body.get("kind") or ""),
+                lat=body.get("lat"),
+                lng=body.get("lng"),
+                accuracy=body.get("accuracy"),
+                photo=body.get("photo"),
+                credential_id=body.get("credentialId"),
+                challenge=body.get("challenge"),
+                descriptor=body.get("descriptor"),
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json(result)
+            return
+
+        if path == "/api/attendance/settings":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            saved = ATTENDANCE.save_settings(body if isinstance(body, dict) else {})
+            self.send_json({"ok": True, "settings": saved})
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_gps_proxy(self, parsed):
@@ -3651,7 +3807,7 @@ _app_init_lock = threading.Lock()
 
 def init_app(base_dir=None):
     """STORE/OFFICE yuklash — lokal server va Vercel serverless uchun."""
-    global STORE, OFFICE, _app_initialized
+    global STORE, OFFICE, ATTENDANCE, _app_initialized
     base_dir = base_dir or DIRECTORY
     with _app_init_lock:
         if _app_initialized:
@@ -3667,6 +3823,13 @@ def init_app(base_dir=None):
         persist = make_persist(base_dir)
         STORE = AuthStore(persist)
         OFFICE = OfficeStore(persist, os.path.join(base_dir, "office-seed.json"))
+        try:
+            import attendance as attendance_mod
+
+            ATTENDANCE = attendance_mod.AttendanceStore(persist)
+        except Exception as e:
+            print("[attendance-init]", e)
+            ATTENDANCE = None
         seed_gps_from_env(OFFICE)
         if not is_serverless():
             start_gps_worker(OFFICE, base_dir)

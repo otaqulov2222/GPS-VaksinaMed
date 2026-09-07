@@ -80,16 +80,17 @@ body.app-body::before {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 18px 14px;
-  background:
-    #ffffff;
+  padding: 16px 12px;
+  background: #ffffff;
   border: 1px solid var(--shell-border);
   border-radius: 22px;
   box-shadow:
     var(--shell-shadow),
     inset 0 1px 0 rgba(255,255,255,0.85);
   z-index: 120;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 .nav-rail::before {
   display: none;
@@ -124,10 +125,13 @@ body.app-body::before {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
-  overflow-y: auto;
+  min-width: 0;
+  width: 100%;
+  overflow: visible;
   padding: 2px 0;
+  box-sizing: border-box;
 }
 
 /* Uniform glass nav items — kill .btn / .btn-nav-fuel bleed */
@@ -140,45 +144,93 @@ body.app-body::before {
 .nav-rail button.nav-link {
   display: flex !important;
   align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  padding: 0 14px !important;
+  gap: 8px;
+  min-height: 40px;
+  max-width: 100%;
+  padding: 0 12px !important;
   border-radius: 12px !important;
-  border: 1px solid transparent !important;
-  background: #f0f5fb !important;
+  border: 1px solid #d7e3f0 !important;
+  background: #eef4fb !important;
   color: var(--shell-navy) !important;
-  font: 700 12px/1 'IBM Plex Sans', system-ui, sans-serif !important;
-  letter-spacing: .04em !important;
+  font: 700 12px/1.2 'IBM Plex Sans', system-ui, sans-serif !important;
+  letter-spacing: .02em !important;
   text-decoration: none !important;
   text-transform: none !important;
   cursor: pointer;
   text-align: left;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box !important;
   box-shadow: none !important;
   height: auto !important;
+  opacity: 1 !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
   transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
 }
 .nav-rail .nav-link:hover,
 .nav-rail a.nav-link:hover,
 .nav-rail a.btn-nav-fuel:hover {
   background: #ffffff !important;
-  border-color: rgba(26, 95, 180, 0.18) !important;
+  border-color: rgba(26, 95, 180, 0.35) !important;
   color: var(--shell-navy) !important;
+  opacity: 1 !important;
 }
 .nav-rail .nav-link.on,
 .nav-rail .nav-link.active,
 .nav-rail a.nav-link[aria-current="page"],
 .nav-rail a.nav-link.on {
-  background: linear-gradient(135deg, #1a5fb4 0%, #2a74c9 100%) !important;
+  background: #1a5fb4 !important;
   color: #fff !important;
-  border-color: transparent !important;
-  box-shadow: 0 2px 0 rgba(11, 31, 58, 0.12) !important;
+  border-color: #1a5fb4 !important;
+  box-shadow: 0 4px 12px rgba(26, 95, 180, 0.28) !important;
+  opacity: 1 !important;
 }
 .nav-rail .nav-link.on:hover,
 .nav-rail a.nav-link[aria-current="page"]:hover {
-  background: linear-gradient(135deg, #174f98 0%, #1a5fb4 100%) !important;
+  background: #154e96 !important;
   color: #fff !important;
+  border-color: #154e96 !important;
+  opacity: 1 !important;
 }
+
+/* Face holati — nav pastida */
+.vm-face-status {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px !important;
+  border-radius: 10px !important;
+  font: 700 11px/1.2 'IBM Plex Sans', system-ui, sans-serif !important;
+  text-decoration: none !important;
+  border: 1px solid transparent !important;
+  opacity: 1 !important;
+}
+.vm-face-status i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.vm-face-status.on {
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  border-color: #6ee7b7 !important;
+}
+.vm-face-status.on i { background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.25); }
+.vm-face-status.off {
+  background: #fef2f2 !important;
+  color: #991b1b !important;
+  border-color: #fca5a5 !important;
+}
+.vm-face-status.off i { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
 
 /* Fuel tabs — same language */
 .nav-rail #tabs,
@@ -723,13 +775,18 @@ body.app-body::before {
   .nav-rail .tab,
   .nav-rail a,
   .nav-rail button {
-    min-height: 44px !important;
-    white-space: normal !important;
-    overflow-wrap: anywhere;
+    min-height: 42px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal;
     line-height: 1.25 !important;
     position: relative;
     z-index: 2;
     pointer-events: auto !important;
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+  }
     -webkit-tap-highlight-color: rgba(26, 95, 180, 0.18);
     touch-action: manipulation;
     cursor: pointer;
