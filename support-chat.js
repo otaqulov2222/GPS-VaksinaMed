@@ -40,6 +40,14 @@
       'Haydovchilar jurnali',
       'Rasmiy hisobot'
     ],
+    'attendance.html': [
+      'Keldim nima?',
+      'Ketdim',
+      'Face ID ulash',
+      'Joylashuv',
+      'Timer',
+      'Tarix'
+    ],
     'index.html': [
       'Kunlik ball nima?',
       'Barcha mashinalar',

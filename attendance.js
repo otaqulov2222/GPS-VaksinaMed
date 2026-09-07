@@ -281,7 +281,7 @@
       return await getGpsOnce({
         enableHighAccuracy: false,
         timeout: 15000,
-        maximumAge: 30000
+        maximumAge: 0
       });
     } catch (e1) {
       try {
@@ -917,6 +917,19 @@
     try {
       setFidUI({
         status: kind === 'in' ? 'KELDIM…' : 'KETDIM…',
+        hint: 'Tasdiq kaliti…',
+        progress: 92,
+        tone: 'ok'
+      });
+      const chalRes = await api('/api/attendance/challenge', {
+        method: 'POST',
+        body: JSON.stringify({ purpose: kind })
+      });
+      const challenge = chalRes && chalRes.challenge;
+      if (!challenge) throw new Error('Challenge olinmadi');
+
+      setFidUI({
+        status: kind === 'in' ? 'KELDIM…' : 'KETDIM…',
         hint: 'Yozilmoqda…',
         progress: 100,
         tone: 'ok'
@@ -932,7 +945,7 @@
           photo,
           descriptor,
           credentialId: null,
-          challenge: null
+          challenge
         })
       });
       setFidUI({
@@ -1067,7 +1080,6 @@
     try {
       const body = {
         in_start: document.getElementById('s-in-start').value,
-        in_end: document.getElementById('s-in-start').value,
         in_late_after: document.getElementById('s-late').value,
         out_start: document.getElementById('s-out-start').value,
         out_end: document.getElementById('s-out-end').value,

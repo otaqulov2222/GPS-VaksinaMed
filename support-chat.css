@@ -14,7 +14,7 @@ body.fid-lock .vm-sup-root {
   --vm-sup-card: #ffffff;
   position: fixed;
   right: 18px;
-  bottom: 18px;
+  bottom: max(18px, env(safe-area-inset-bottom, 0px));
   z-index: 99990;
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   pointer-events: none;
@@ -374,7 +374,10 @@ body.fid-lock .vm-sup-root {
 }
 
 @media (max-width: 520px) {
-  .vm-sup-root { right: 10px; bottom: 10px; }
+  .vm-sup-root {
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  }
   .vm-sup-panel {
     width: calc(100vw - 20px);
     height: min(78vh, 640px);

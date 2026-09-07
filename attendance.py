@@ -368,6 +368,11 @@ class AttendanceStore:
                 return None, perr
             photo = photo_c
 
+        # Bir martalik challenge (replay oldini olish)
+        chal_err = self.consume_challenge(user_id, challenge or "", purpose=str(kind))
+        if chal_err:
+            return None, chal_err
+
         # GPS
         dist_gps = None
         office = settings.get("office") or {}
@@ -377,6 +382,17 @@ class AttendanceStore:
                 lng_f = float(lng)
             except (TypeError, ValueError):
                 return None, "Joylashuv ruxsati kerak"
+            if not (-90.0 <= lat_f <= 90.0 and -180.0 <= lng_f <= 180.0):
+                return None, "Joylashuv koordinatasi noto'g'ri"
+            try:
+                acc_f = float(accuracy) if accuracy is not None else None
+            except (TypeError, ValueError):
+                acc_f = None
+            if acc_f is not None and acc_f > 150:
+                return None, (
+                    f"Joylashuv aniq emas ({int(acc_f)} m). "
+                    "Ochig'roq joyda qayta urinib ko'ring."
+                )
             try:
                 olat = float(office.get("lat"))
                 olng = float(office.get("lng"))
@@ -395,6 +411,12 @@ class AttendanceStore:
                 lng_f = float(lng) if lng is not None else None
             except (TypeError, ValueError):
                 lat_f = lng_f = None
+            acc_f = None
+            try:
+                if accuracy is not None:
+                    acc_f = float(accuracy)
+            except (TypeError, ValueError):
+                acc_f = None
 
         slot_ok, slot_msg, is_late = self._slot_ok(kind, settings)
         if not slot_ok:

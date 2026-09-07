@@ -702,22 +702,22 @@ function syncParamsToMeta(plate, car) {
   if (car.fuelType) rec.fuelType = car.fuelType;
 }
 
-/** Meta (Mashina va narx) — norma/tip manbai; oy yozuvidagi eski 12/4 ni ustiga yozmasin. */
+/** Meta (Mashina va narx) — faqat bo'sh norma/tipni to'ldirish (oy qiymatini bosib yubormaslik). */
 function applyMetaNormsToCars() {
   let changed = false;
   Object.keys(STATE.cars || {}).forEach(plate => {
     const info = vehicleInfo(plate);
     const car = STATE.cars[plate];
     if (!car || !info) return;
-    if (n(info.gasNorm) > 0 && n(car.gasNorm) !== n(info.gasNorm)) {
+    if (n(info.gasNorm) > 0 && !(n(car.gasNorm) > 0)) {
       car.gasNorm = n(info.gasNorm);
       changed = true;
     }
-    if (n(info.benzinNorm) > 0 && n(car.benzinNorm) !== n(info.benzinNorm)) {
+    if (n(info.benzinNorm) > 0 && !(n(car.benzinNorm) > 0)) {
       car.benzinNorm = n(info.benzinNorm);
       changed = true;
     }
-    if (info.fuelType && car.fuelType !== info.fuelType) {
+    if (info.fuelType && !car.fuelType) {
       car.fuelType = info.fuelType;
       changed = true;
     }
@@ -2111,17 +2111,16 @@ function sheetToAoa(sheet) {
   }));
 }
 
-/** Excel ba'zan 11.607 ni 11607 qilib beradi — kunlik zapravka uchun */
+/** Excel ba'zan 11.607 ni 11607 qilib beradi — faqat aniq ~1000x xatolarni tuzatish */
 function sanitizeDailyFill(qty, kind) {
   let v = n(qty);
   if (v <= 0) return 0;
-  // Labo/gaz: bir zapravka odatda 5–80 m³; 200+ deyarli doim 1000x xato
-  if ((kind === 'gaz' || kind === 'dizel_gaz') && v >= 200) {
+  // 200–999 oralig'idagi haqiqiy qiymatlarni buzmaslik — faqat 1000+
+  if ((kind === 'gaz' || kind === 'dizel_gaz') && v >= 1000) {
     const s = v / 1000;
     if (s >= 0.5 && s <= 150) return s;
   }
-  // Benzin/dizel: odatda 5–100 l; 300+ shubhali
-  if ((kind === 'benzin' || kind === 'dizel') && v >= 300) {
+  if ((kind === 'benzin' || kind === 'dizel') && v >= 1000) {
     const s = v / 1000;
     if (s >= 0.5 && s <= 200) return s;
   }

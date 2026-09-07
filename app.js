@@ -450,7 +450,7 @@ async function processXLSX(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onerror = () => reject(new Error('Faylni o\'qib bo\'lmadi'));
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const wb = XLSX.read(e.target.result, { type: 'binary', cellDates: true });
 
@@ -471,11 +471,9 @@ async function processXLSX(file) {
                 }
 
                 if (!driver) {
-                    // Agar topilmasa — faylda ko'rsatilgan raqam bilan haydovchi yaratamiz
                     console.warn('Haydovchi topilmadi:', carRaw, file.name);
                 }
 
-                // Xronologiya varaqini topamiz
                 let chronoSheet = null;
                 for (const sn of wb.SheetNames) {
                     if (/хрон|chron|хронол/i.test(sn) || /маршрут/i.test(sn)) {
@@ -486,7 +484,6 @@ async function processXLSX(file) {
 
                 const rows = XLSX.utils.sheet_to_json(chronoSheet, { header:1, defval:'' });
 
-                // Sanani topamiz
                 let dateFound = null;
                 for (let i = 0; i < Math.min(20, rows.length); i++) {
                     const row = rows[i];
@@ -504,10 +501,7 @@ async function processXLSX(file) {
                 }
                 if (!dateFound) dateFound = STATE.currentDate || dateStr(new Date());
 
-                // To'xtashlarni tahlil qilamiz
                 const stops = parseChronoRows(rows, driver ? driver.car : carRaw);
-
-                // Statistikani hisoblaymiz
                 const stats = parseStats(rows, stops);
                 const carKey = driver ? driver.car : carRaw;
 
@@ -526,20 +520,20 @@ async function processXLSX(file) {
                 STATE.currentDate = dateFound;
                 if (!STATE.currentCar) STATE.currentCar = carKey;
 
-                // CAL ni yangilash
                 const d = new Date(dateFound);
                 CAL.y = d.getFullYear(); CAL.m = d.getMonth();
 
-                // Ball — server yagona manba (xato bo'lsa lokal qoladi)
-                analyzeOnServer(stops, carKey, stats, dateFound, { reenrich: true }).then(r => {
+                // Ball — server yagona manba; saqlashdan OLDIN kutamiz
+                try {
+                    const r = await analyzeOnServer(stops, carKey, stats, dateFound, { reenrich: true });
                     const rec = STATE.data[dateFound] && STATE.data[dateFound][carKey];
-                    if (!rec) return;
-                    rec.analysis = r.analysis;
-                    if (r.stops) rec.stops = r.stops;
-                    if (STATE.currentDate === dateFound && typeof refreshUI === 'function') refreshUI();
-                    if (window.VMOffice && typeof VMOffice.renderFleetBoard === 'function') VMOffice.renderFleetBoard();
-                    if (typeof saveAll === 'function') saveAll();
-                }).catch(() => {});
+                    if (rec && r) {
+                        rec.analysis = r.analysis;
+                        if (r.stops) rec.stops = r.stops;
+                    }
+                } catch (err) {
+                    console.warn('analyzeOnServer excel:', err);
+                }
 
                 resolve(processedData);
             } catch(err) {
@@ -1199,6 +1193,9 @@ async function refreshMap(stops, points) {
         STATE.map.fitBounds(L.latLngBounds(fitPts), { padding: [40, 40], maxZoom: 15 });
     } else if (fitPts.length === 1) {
         STATE.map.setView(fitPts[0], 14);
+    } else {
+        STATE.map.setView([41.3111, 69.2797], 12);
+        setMapStats([], 0);
     }
     if (window.VMOffice) {
         const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => { setTimeout(fn, ms || 200); };
@@ -1380,9 +1377,16 @@ function refreshUI() {
     const driver = rawDrv
         ? (typeof resolveDriver === 'function' ? resolveDriver(rawDrv.car, rawDrv) : rawDrv)
         : null;
-    const dayData = STATE.currentDate && STATE.data[STATE.currentDate]
-                    ? STATE.data[STATE.currentDate][STATE.currentCar]
-                    : null;
+    const dayBag = STATE.currentDate && STATE.data[STATE.currentDate]
+        ? STATE.data[STATE.currentDate]
+        : null;
+    let dayData = null;
+    if (dayBag) {
+        dayData = dayBag[STATE.currentCar] || null;
+        if (!dayData && window.VMOffice && typeof VMOffice.recForPlate === 'function') {
+            dayData = VMOffice.recForPlate(dayBag, STATE.currentCar);
+        }
+    }
 
     // Banner
     renderBanner(driver, dayData);
@@ -1591,42 +1595,80 @@ function reviewBtnHtml(idx, rev) {
     </span>`;
 }
 
+function pickPharmacyDialog(names) {
+    return new Promise((resolve) => {
+        const old = document.getElementById('vm-ph-pick-modal');
+        if (old) old.remove();
+        const bg = document.createElement('div');
+        bg.id = 'vm-ph-pick-modal';
+        bg.className = 'modal-bg open';
+        bg.style.zIndex = '400';
+        const list = (names || []).map((n, i) =>
+            `<button type="button" class="btn btn-light" data-ph="${i}" style="width:100%;margin:4px 0;justify-content:flex-start;text-align:left">${i + 1}. ${String(n).replace(/</g, '&lt;')}</button>`
+        ).join('');
+        bg.innerHTML = `
+          <div class="modal-card" style="max-width:420px;width:min(94vw,420px);padding:18px" role="dialog" aria-modal="true">
+            <h3 style="margin:0 0 8px;font-size:16px">Dorixona tanlang</h3>
+            <p style="margin:0 0 12px;font-size:12px;color:var(--muted)">Ruxsat uchun qaysi dorixona ekanini belgilang.</p>
+            <div style="max-height:46vh;overflow:auto">${list || '<p class="muted">Ro‘yxat bo‘sh</p>'}</div>
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+              <button type="button" class="btn btn-ink" id="vm-ph-skip">Nomsiz ruxsat</button>
+              <button type="button" class="btn btn-light" id="vm-ph-cancel">Bekor</button>
+            </div>
+          </div>`;
+        document.body.appendChild(bg);
+        const done = (val) => { try { bg.remove(); } catch (e) {} resolve(val); };
+        bg.addEventListener('click', (e) => { if (e.target === bg) done(null); });
+        bg.querySelector('#vm-ph-cancel')?.addEventListener('click', () => done(null));
+        bg.querySelector('#vm-ph-skip')?.addEventListener('click', () => done(''));
+        bg.querySelectorAll('[data-ph]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const i = Number(btn.getAttribute('data-ph'));
+                done(names[i] || '');
+            });
+        });
+    });
+}
+
 function bindReviewClicks(root) {
     if (!root || root.dataset.revBound === '1') return;
     root.dataset.revBound = '1';
-    root.addEventListener('click', (e) => {
+    root.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-rev]');
         if (!btn || !window.VMOffice) return;
+        if (btn.disabled) return;
         const i = Number(btn.getAttribute('data-i'));
         const status = btn.getAttribute('data-rev') || '';
-        const rec = STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][STATE.currentCar];
+        const bag = STATE.data[STATE.currentDate];
+        let rec = bag && bag[STATE.currentCar];
+        if (!rec && bag && VMOffice.recForPlate) rec = VMOffice.recForPlate(bag, STATE.currentCar);
         const st = rec && rec.stops && rec.stops[i];
         if (!st) return;
         if (status === 'allowed') {
             const names = VMOffice.ownNames(STATE.currentCar);
             let phName = st.phName || '';
             if (!phName && names.length) {
-                const opts = names.map((n, idx) => `${idx + 1}. ${n}`).join('\n');
-                const pick = window.prompt(
-                    'Bu to\'xtash qaysi dorixona?\n(nomer yoki nomini yozing)\n\n' + opts,
-                    ''
-                );
+                const pick = await pickPharmacyDialog(names);
                 if (pick == null) return;
-                const num = parseInt(pick, 10);
-                if (num >= 1 && num <= names.length) phName = names[num - 1];
-                else {
-                    const fold = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-яўқғҳ]/gi, '');
-                    const hit = names.find(n => fold(n).includes(fold(pick)) || fold(pick).includes(fold(n)));
-                    phName = hit || pick.trim();
-                }
+                phName = pick;
             }
             if (!phName) {
                 showToast('Dorixona tanlanmadi — geozona o\'rganilmaydi', 'warn');
             }
-            VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status, phName);
+            btn.disabled = true;
+            try {
+                await VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status, phName);
+            } finally {
+                btn.disabled = false;
+            }
             return;
         }
-        VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status);
+        btn.disabled = true;
+        try {
+            await VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status);
+        } finally {
+            btn.disabled = false;
+        }
     });
 }
 
