@@ -147,21 +147,38 @@ function vmEnsureDavomatNav() {
     });
 
     document.querySelectorAll('.nav-rail .nav-foot').forEach((foot) => {
-        let st = foot.querySelector('.vm-face-status');
+        // Eski alohida Face tugmasini olib tashlash
+        foot.querySelectorAll('a.vm-face-status').forEach((el) => el.remove());
+
+        const profil = foot.querySelector('a[href="/profile.html"], a[href="profile.html"]');
+        if (!profil) return;
+
+        profil.classList.add('nav-profil-row');
+        // "Profil" matnini birinchi span ichida saqlash
+        let label = profil.querySelector('.nav-profil-label');
+        if (!label) {
+            label = document.createElement('span');
+            label.className = 'nav-profil-label';
+            const existing = (profil.textContent || 'Profil').replace(/\s*Face ulan(gan|magan)\s*/gi, '').trim() || 'Profil';
+            // Ichidagi eski statusni tozalab, faqat Profil qoldirish
+            profil.querySelectorAll('.vm-face-status').forEach((el) => el.remove());
+            while (profil.firstChild) profil.removeChild(profil.firstChild);
+            label.textContent = existing;
+            profil.appendChild(label);
+        }
+
+        let st = profil.querySelector('.vm-face-status');
         if (!st) {
-            st = document.createElement('a');
+            st = document.createElement('span');
             st.className = 'vm-face-status';
-            st.href = '/attendance.html';
-            const profil = foot.querySelector('a[href="/profile.html"], a[href="profile.html"]');
-            if (profil) foot.insertBefore(st, profil);
-            else foot.appendChild(st);
+            profil.appendChild(st);
         }
         st.classList.toggle('on', faceOn);
         st.classList.toggle('off', !faceOn);
         st.innerHTML = faceOn
             ? '<i></i> Face ulangan'
             : '<i></i> Face ulanmagan';
-        st.title = faceOn ? 'Davomat · Face tayyor' : 'Face ulash uchun bosing';
+        st.setAttribute('aria-label', faceOn ? 'Face ulangan' : 'Face ulanmagan');
     });
 }
 

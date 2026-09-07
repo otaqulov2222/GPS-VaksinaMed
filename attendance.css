@@ -581,8 +581,8 @@ body.fid-lock { overflow: hidden; }
 .fid-viewport {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 3.6;
-  max-height: min(58vh, 440px);
+  aspect-ratio: 3 / 4;
+  max-height: min(62vh, 520px);
   margin: 0 auto;
   border-radius: 18px;
   overflow: hidden;
@@ -594,12 +594,12 @@ body.fid-lock { overflow: hidden; }
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(62,203,255,0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(62,203,255,0.06) 1px, transparent 1px);
-  background-size: 28px 28px;
+    linear-gradient(rgba(62,203,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(62,203,255,0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.7;
+  opacity: 0.55;
 }
 .fid-video {
   position: absolute;
@@ -607,8 +607,10 @@ body.fid-lock { overflow: hidden; }
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scaleX(-1);
-  filter: saturate(0.35) brightness(0.55) contrast(1.15) hue-rotate(170deg);
+  object-position: center 38%;
+  transform: scaleX(-1) scale(0.78);
+  transform-origin: center center;
+  filter: saturate(0.55) brightness(0.78) contrast(1.08) hue-rotate(155deg);
   opacity: 0;
   transition: opacity 0.35s ease;
 }
@@ -619,33 +621,42 @@ body.fid-lock { overflow: hidden; }
   width: 100%;
   height: 100%;
   pointer-events: none;
-  transform: scaleX(-1);
+  transform: scaleX(-1) scale(0.78);
+  transform-origin: center center;
   z-index: 3;
 }
 .fid-ring {
   position: absolute;
-  inset: 10%;
+  left: 14%;
+  right: 14%;
+  top: 8%;
+  bottom: 14%;
   border-radius: 50%;
-  border: 2px dotted rgba(62,203,255,0.45);
-  box-shadow: 0 0 24px rgba(62,203,255,0.15);
+  border: 2px dashed rgba(62,203,255,0.5);
+  box-shadow:
+    0 0 0 1px rgba(62,203,255,0.12),
+    0 0 28px rgba(62,203,255,0.18);
   pointer-events: none;
   z-index: 2;
   animation: fidPulse 2.4s ease-in-out infinite;
 }
 @keyframes fidPulse {
   0%, 100% { opacity: 0.55; transform: scale(1); }
-  50% { opacity: 0.95; transform: scale(1.015); }
+  50% { opacity: 0.95; transform: scale(1.012); }
 }
 .fid-brackets {
   position: absolute;
-  inset: 8%;
+  left: 12%;
+  right: 12%;
+  top: 6%;
+  bottom: 12%;
   pointer-events: none;
   z-index: 4;
 }
 .fid-brackets i {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-color: #3ecbff;
   border-style: solid;
   filter: drop-shadow(0 0 6px rgba(62,203,255,0.8));
@@ -657,10 +668,10 @@ body.fid-lock { overflow: hidden; }
 
 .fid-scanline {
   position: absolute;
-  left: 8%;
-  right: 8%;
+  left: 16%;
+  right: 16%;
   height: 2px;
-  top: 18%;
+  top: 14%;
   z-index: 5;
   pointer-events: none;
   background: linear-gradient(90deg, transparent, #3ecbff, #fff, #3ecbff, transparent);
@@ -672,9 +683,9 @@ body.fid-lock { overflow: hidden; }
   animation: fidScan 2.1s linear infinite;
 }
 @keyframes fidScan {
-  0% { top: 16%; }
-  50% { top: 72%; }
-  100% { top: 16%; }
+  0% { top: 12%; }
+  50% { top: 78%; }
+  100% { top: 12%; }
 }
 
 .fid-vignette {
@@ -682,7 +693,13 @@ body.fid-lock { overflow: hidden; }
   inset: 0;
   pointer-events: none;
   z-index: 2;
-  background: radial-gradient(ellipse 55% 50% at 50% 42%, transparent 40%, rgba(2,8,16,0.75) 100%);
+  background: radial-gradient(
+    ellipse 46% 56% at 50% 44%,
+    transparent 0%,
+    transparent 52%,
+    rgba(2, 8, 16, 0.55) 72%,
+    rgba(2, 8, 16, 0.88) 100%
+  );
 }
 
 .fid-viewport.locked {
@@ -803,34 +820,101 @@ body.fid-lock { overflow: hidden; }
 
 @media (max-width: 480px) {
   .fid-modal {
-    padding: 8px;
-    align-items: flex-end;
+    padding: 0;
+    align-items: stretch;
   }
   .fid-panel {
-    padding: 14px 12px calc(18px + env(safe-area-inset-bottom, 0px));
-    border-radius: 18px 18px 14px 14px;
+    padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0;
     width: 100%;
-    max-height: min(96dvh, 920px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
   }
-  .fid-title { font-size: 18px; letter-spacing: 0.14em; }
-  .fid-viewport { max-height: 42dvh; aspect-ratio: 3 / 3.2; }
+  .fid-head {
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+  .fid-kicker { font-size: 9px; letter-spacing: 0.18em; }
+  .fid-title { font-size: 17px; letter-spacing: 0.12em; margin-top: 4px; }
+  .fid-sub { font-size: 11px; margin-top: 4px; }
+  .fid-viewport {
+    flex: 1 1 auto;
+    width: 100%;
+    aspect-ratio: auto;
+    min-height: 0;
+    height: min(62dvh, 520px);
+    max-height: none;
+    border-radius: 16px;
+  }
+  /* Telefonda tabiiy selfie: zoom-out + yuz ovalga mos */
+  .fid-video {
+    transform: scaleX(-1) scale(0.68);
+    object-position: center 36%;
+    filter: saturate(0.7) brightness(0.88) contrast(1.05) hue-rotate(140deg);
+  }
+  .fid-overlay {
+    transform: scaleX(-1) scale(0.68);
+  }
+  .fid-ring {
+    left: 11%;
+    right: 11%;
+    top: 6%;
+    bottom: 10%;
+    border-width: 2.5px;
+  }
+  .fid-brackets {
+    left: 9%;
+    right: 9%;
+    top: 4%;
+    bottom: 8%;
+  }
+  .fid-brackets i {
+    width: 22px;
+    height: 22px;
+  }
+  .fid-vignette {
+    background: radial-gradient(
+      ellipse 48% 58% at 50% 44%,
+      transparent 0%,
+      transparent 50%,
+      rgba(2, 8, 16, 0.5) 70%,
+      rgba(2, 8, 16, 0.9) 100%
+    );
+  }
+  .fid-meta {
+    margin-top: 10px;
+    flex-shrink: 0;
+  }
+  .fid-status { font-size: 13px; letter-spacing: 0.2em; }
+  .fid-hint {
+    font-size: 12px;
+    margin-top: 8px;
+    max-width: 34ch;
+  }
+  .fid-seg { margin-top: 10px; }
   .fid-actions,
   .fid-retry-wrap {
     flex-direction: column;
     align-items: stretch;
+    margin-top: 12px;
   }
   .fid-btn {
     width: 100%;
     min-width: 0;
-    min-height: 54px;
+    min-height: 52px;
   }
   .fid-close {
     width: 44px;
     height: 44px;
     top: 8px;
     right: 8px;
+    z-index: 2;
   }
   .att-hero { padding: 14px; }
   .att-hero h1 { font-size: 18px; }
@@ -844,6 +928,7 @@ body.fid-lock { overflow: hidden; }
     background: rgba(232, 240, 248, 0.92);
     backdrop-filter: blur(8px);
     padding: 6px 0;
+  }
     margin-bottom: 10px;
   }
   .att-tab { min-height: 40px; padding: 10px 14px; }
@@ -900,8 +985,34 @@ body.fid-lock { overflow: hidden; }
   color: var(--att-ink);
   letter-spacing: .04em;
 }
-.att-timer-box.live .att-timer-val { color: #047857; }
-.att-table .mono {
-  font-family: 'IBM Plex Mono', monospace;
-  font-weight: 600;
+.att-geo-box {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #fca5a5;
+  background: #fff7f7;
+}
+.att-geo-box[hidden] { display: none !important; }
+.att-geo-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #991b1b;
+}
+.att-geo-text {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #7f1d1d;
+}
+.att-geo-steps {
+  margin: 10px 0 12px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #7f1d1d;
+}
+.att-geo-steps li { margin: 4px 0; }
+.att-geo-box .att-btn {
+  width: 100%;
+  min-height: 48px;
 }

@@ -62,6 +62,57 @@
     if (el) el.className = 'att-msg';
   }
 
+  function hideGeoHelp() {
+    const box = document.getElementById('att-geo-box');
+    if (box) box.hidden = true;
+  }
+
+  function showGeoHelp(detail) {
+    const box = document.getElementById('att-geo-box');
+    const text = document.getElementById('att-geo-text');
+    const steps = document.getElementById('att-geo-steps');
+    if (!box) {
+      msg(detail || 'Joylashuv kerak', 'err');
+      return;
+    }
+    clearMsg();
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (text) {
+      text.textContent = detail || 'Davomat uchun joylashuv ruxsati majburiy. Pastdagi qadamlarni bajaring.';
+    }
+    if (steps) {
+      if (isIOS) {
+        steps.innerHTML = [
+          'Sozlamalar → <b>Maxfiylik</b> → <b>Joylashuv xizmatlari</b> → yoqilgan',
+          'Shu yerda <b>Safari Veb-saytlari</b> → <b>Ilovadan foydalanganda</b>',
+          'Saytda manzil chapidagi <b>aA</b> → <b>Veb-sayt sozlamalari</b>',
+          '<b>Joylashuv</b> → <b>Ruxsat</b> (Safari «barcha saytlar» yetarli emas)',
+          'Keyin <b>Joylashuvni tekshirish</b> ni bosing'
+        ].map((x) => '<li>' + x + '</li>').join('');
+      } else {
+        steps.innerHTML = [
+          'Manzil qatoridagi qulf / (!) ni bosing',
+          '<b>Joylashuv</b> → <b>Ruxsat</b>',
+          'Keyin <b>Joylashuvni tekshirish</b> ni bosing'
+        ].map((x) => '<li>' + x + '</li>').join('');
+      }
+    }
+    box.hidden = false;
+  }
+
+  async function checkGeoNow() {
+    try {
+      hideGeoHelp();
+      msg('Joylashuv tekshirilmoqda…', 'info');
+      const g = await getGps();
+      msg('Joylashuv OK (' + Math.round(g.accuracy || 0) + ' m). Endi Keldim bosing.', 'ok');
+      hideGeoHelp();
+    } catch (e) {
+      showGeoHelp(e.message || 'Joylashuv olinmadi');
+    }
+  }
+
   function setFidUI({ status, hint, progress, tone }) {
     const st = document.getElementById('fid-status');
     const hi = document.getElementById('fid-hint');
@@ -206,28 +257,26 @@
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (code === 1 || permState === 'denied') {
       if (isIOS) {
-        return 'Joylashuv bloklangan. iPhone: Sozlamalar → Safari (yoki Chrome) → Joylashuv → «So‘rash/Ruxsat». Keyin saytda aA → Veb-sayt sozlamalari → Joylashuv → Ruxsat. Keyin Qayta urinish.';
+        // Global Safari «Разрешить» yetarli emas — sayt uchun aA orqali ruxsat kerak
+        return 'Bu sayt uchun joylashuv yopiq. Safari «barcha saytlar» ruxsati yetarli emas.';
       }
-      return 'Joylashuv ruxsati berilmadi. Brauzer manzil qatoridagi qulf/(!) → Joylashuv → Ruxsat, keyin Qayta urinish.';
+      return 'Bu sayt uchun joylashuv yopiq. Manzil qatoridagi qulf → Joylashuv → Ruxsat.';
     }
     if (code === 3) {
-      return 'Joylashuv vaqti tugadi. GPS yoqilganini tekshiring (aniq joylashuv) va Qayta urinish bosing.';
+      return 'Joylashuv vaqti tugadi. GPS yoqing va «Tekshirish» bosing.';
     }
     if (code === 2) {
-      return 'Joylashuv mavjud emas. Telefon GPS yoqing va ochiq joyda urinib ko‘ring.';
+      return 'Joylashuv topilmadi. Ochig‘roq joyda «Tekshirish» bosing.';
     }
-    return 'Joylashuv olinmadi. Ruxsatni tekshirib Qayta urinish bosing.';
+    return 'Joylashuv olinmadi. «Tekshirish» bosing.';
   }
 
   async function getGps() {
     if (!window.isSecureContext) {
       throw new Error('Joylashuv faqat HTTPS da ishlaydi');
     }
-    const perm = await readGeoPermission();
-    if (perm === 'denied') {
-      throw Object.assign(new Error(gpsHelpText(1, perm)), { code: 1 });
-    }
-    // Avval tez/soft, keyin aniq — iOS da parallel kamera bilan aralashmasin
+    // Safari ba'zan Permissions API ni "denied" deb yolg'on ko'rsatadi —
+    // shuning uchun avval baribir getCurrentPosition chaqiramiz (prompt chiqishi mumkin).
     try {
       return await getGpsOnce({
         enableHighAccuracy: false,
@@ -293,7 +342,12 @@
       throw new Error('Kamera qo‘llab-quvvatlanmaydi (HTTPS kerak)');
     }
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 960 } },
+      video: {
+        facingMode: { ideal: 'user' },
+        width: { ideal: 720 },
+        height: { ideal: 960 },
+        aspectRatio: { ideal: 0.75 }
+      },
       audio: false
     });
     video.srcObject = stream;
@@ -667,6 +721,12 @@
               <p class="att-hint">Keldim/Ketdim → Face ID → tasdiq. Joylashuv ruxsatini bering — aks holda stamp yozilmaydi.</p>
             `}
             <div class="att-msg" id="att-msg"></div>
+            <div class="att-geo-box" id="att-geo-box" hidden>
+              <div class="att-geo-title">Joylashuv kerak</div>
+              <p class="att-geo-text" id="att-geo-text"></p>
+              <ol class="att-geo-steps" id="att-geo-steps"></ol>
+              <button type="button" class="att-btn att-btn-in" id="btn-geo-check">Joylashuvni tekshirish</button>
+            </div>
           </div>
         </section>
 
@@ -757,6 +817,8 @@
     if (board) bindTap(board, () => loadBoard());
     if (kIn) bindTap(kIn, () => startAttendanceFlow('in'));
     if (kOut) bindTap(kOut, () => startAttendanceFlow('out'));
+    const geoBtn = document.getElementById('btn-geo-check');
+    if (geoBtn) bindTap(geoBtn, () => checkGeoNow());
   }
 
   /** Face verify → Keldim/Ketdim tasdiq */
@@ -806,7 +868,7 @@
 
       const scan = await scanFace({
         needSamples: 3,
-        label: 'Yuzni markazda ushlang',
+        label: 'Telefonni odatdagidek ushlang — yuz oval ichida',
         timeoutMs: 25000
       });
 
@@ -825,9 +887,18 @@
         busy = false;
       }
     } catch (e) {
-      if (modal) { modal.classList.add('err'); modal.classList.remove('ok', 'scanning'); }
       stopCam();
       const text = e.message || 'Xato';
+      const isGeo = /joylashuv|geolocation|GPS|location|yopiq/i.test(text) || e.code === 1 || e.code === 2 || e.code === 3;
+      if (isGeo) {
+        // Modal ichida qora ekran chalkashtiradi — asosiy sahifada yo'riqnoma
+        closeModal();
+        showGeoHelp(text);
+        msg('Avval joylashuvni yoqing, keyin Keldim.', 'err');
+        busy = false;
+        return;
+      }
+      if (modal) { modal.classList.add('err'); modal.classList.remove('ok', 'scanning'); }
       setFidUI({ status: 'FAILED', hint: text, progress: 0, tone: 'err' });
       msg(text, 'err');
       showRetry(text);
@@ -901,7 +972,7 @@
       await ensureModels();
       const scan = await scanFace({
         needSamples: 5,
-        label: 'Yuzni markazda ushlang — harakatsiz',
+        label: 'Telefonni odatdagidek ushlang — yuz oval ichida',
         timeoutMs: 28000
       });
       setFidUI({ status: 'SAVING…', hint: 'Face ID saqlanmoqda', progress: 100, tone: 'ok' });
@@ -1054,6 +1125,15 @@
     }
   });
 
+  async function probeGeoOnBoot() {
+    if (!STATE || !STATE.enrolled) return;
+    const perm = await readGeoPermission();
+    // Faqat aniq "denied" bo'lsa yo'riqnoma — aks holda har ochilishda prompt chiqmasin
+    if (perm === 'denied') {
+      showGeoHelp('Joylashuv bloklangan. Pastdagi qadamlarni bajaring, keyin «Joylashuvni tekshirish».');
+    }
+  }
+
   async function boot() {
     try {
       const user = await vmMe();
@@ -1066,6 +1146,8 @@
       vmGatePage(user);
       await reload();
       ensureModels().catch(() => {});
+      // Mobil: joylashuv bloklangan bo'lsa darhol yo'riqnoma + Tekshirish tugmasi
+      probeGeoOnBoot();
     } catch (e) {
       app.innerHTML = `<p class="att-loading">${esc(e.message || 'Xato')}</p>`;
     }

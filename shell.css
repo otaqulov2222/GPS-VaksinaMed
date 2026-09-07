@@ -199,38 +199,52 @@ body.app-body::before {
   opacity: 1 !important;
 }
 
-/* Face holati — nav pastida */
-.vm-face-status {
+/* Profil qatori: chapda Profil, o‘ngda Face holati (tugma emas) */
+.nav-rail a.nav-link.nav-profil-row,
+.nav-rail a.nav-link[href="/profile.html"].nav-profil-row {
   display: flex !important;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 0 12px !important;
-  border-radius: 10px !important;
-  font: 700 11px/1.2 'IBM Plex Sans', system-ui, sans-serif !important;
+  justify-content: space-between;
+  gap: 10px;
+}
+.nav-profil-label {
+  flex-shrink: 0;
+}
+.vm-face-status {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  min-height: 0 !important;
+  font: 600 11px/1.2 'IBM Plex Sans', system-ui, sans-serif !important;
   text-decoration: none !important;
-  border: 1px solid transparent !important;
+  white-space: nowrap;
+  pointer-events: none;
   opacity: 1 !important;
 }
 .vm-face-status i {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
   display: inline-block;
 }
 .vm-face-status.on {
-  background: #ecfdf5 !important;
-  color: #065f46 !important;
-  border-color: #6ee7b7 !important;
+  color: #059669 !important;
+  background: transparent !important;
+  border: 0 !important;
 }
-.vm-face-status.on i { background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.25); }
+.vm-face-status.on i { background: #10b981; box-shadow: none; }
 .vm-face-status.off {
-  background: #fef2f2 !important;
-  color: #991b1b !important;
-  border-color: #fca5a5 !important;
+  color: #b91c1c !important;
+  background: transparent !important;
+  border: 0 !important;
 }
-.vm-face-status.off i { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
+.vm-face-status.off i { background: #ef4444; box-shadow: none; }
 
 /* Fuel tabs — same language */
 .nav-rail #tabs,
