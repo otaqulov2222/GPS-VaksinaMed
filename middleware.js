@@ -5,6 +5,8 @@ const BLOCK = [
   /^\/vm_runtime\.py$/i,
   /^\/gps_sync\.py$/i,
   /^\/hr_api\.py$/i,
+  /^\/support_ai\.py$/i,
+  /^\/support_knowledge\.py$/i,
   /^\/office-seed\.json$/i,
   /^\/render\.yaml$/i,
   /^\/Procfile$/i,
@@ -21,7 +23,8 @@ export default function middleware(request) {
   if (BLOCK.some((re) => re.test(path))) {
     return new Response("Not Found", { status: 404 });
   }
-  return fetch(request);
+  // Muhim: fetch(request) QAYTARILMASIN — Vercel 508 INFINITE_LOOP beradi.
+  // Hech narsa qaytarmaslik = so'rov oddiy davom etadi.
 }
 
 export const config = {
