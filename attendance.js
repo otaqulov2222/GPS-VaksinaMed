@@ -31,6 +31,12 @@
   let pendingScan = null; // { descriptor, photo, gps }
   let timerId = null;
   let uiTab = 'bugun';
+  let boardDate = '';
+  let reportMonth = '';
+  let personId = '';
+  let personMonth = '';
+  let REPORT = null;
+  let PERSON = null;
 
   const modal = document.getElementById('fid-modal');
   const video = document.getElementById('att-cam');
@@ -646,6 +652,154 @@
     return Math.max(0, Math.floor((Date.now() - t0) / 1000));
   }
 
+  function roleLabel(r) {
+    return ({ admin_pro: 'Admin Pro', admin: 'Admin', driver: 'Haydovchi' })[r] || r || '—';
+  }
+
+  function monthInputValue(ym) {
+    if (ym && /^\d{4}-\d{2}$/.test(ym)) return ym;
+    const t = (STATE && STATE.settings && STATE.settings.today) || '';
+    if (t.length >= 7) return t.slice(0, 7);
+    const n = new Date();
+    return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0');
+  }
+
+  function dayInputValue(d) {
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    return (STATE && STATE.settings && STATE.settings.today) || '';
+  }
+
+  function kpiCard(label, value, tone) {
+    return `<div class="att-kpi ${tone || ''}"><div class="att-kpi-v">${esc(String(value))}</div><div class="att-kpi-l">${esc(label)}</div></div>`;
+  }
+
+  function renderBoardHtml(d) {
+    const rows = (d && d.rows) || [];
+    const c = (d && d.counts) || {};
+    return `
+      <div class="att-kpi-row">
+        ${kpiCard('Jami', c.total != null ? c.total : rows.length)}
+        ${kpiCard('Kelgan', c.present || 0, 'ok')}
+        ${kpiCard('Ishda', c.working || 0, 'info')}
+        ${kpiCard('Kechikdi', c.late || 0, 'warn')}
+        ${kpiCard('Yo‘q', c.absent || 0, 'bad')}
+        ${kpiCard('Face', c.enrolled || 0)}
+      </div>
+      <div class="scroll-x">
+      <table class="att-table">
+        <thead><tr><th>Ism</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Keldim</th><th>Ketdim</th><th>Ish</th><th>Face</th><th></th></tr></thead>
+        <tbody>
+          ${rows.map((r) => `
+            <tr>
+              <td><b>${esc(r.name || r.username)}</b><div class="att-sub">@${esc(r.username || '')}</div></td>
+              <td>${esc(roleLabel(r.role))}</td>
+              <td class="mono">${esc(r.car || '—')}</td>
+              <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
+              <td class="mono">${r.in ? fmtTime(r.in.at) + (r.in.late ? ' !' : '') : '—'}</td>
+              <td class="mono">${r.out ? fmtTime(r.out.at) : '—'}</td>
+              <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
+              <td>${r.enrolled ? '✓' : '—'}</td>
+              <td><button type="button" class="att-link-btn" data-person="${esc(r.userId)}">Oy</button></td>
+            </tr>`).join('') || '<tr><td colspan="9">Bo‘sh</td></tr>'}
+        </tbody>
+      </table></div>`;
+  }
+
+  function renderReportHtml(rep) {
+    if (!rep) return `<p class="att-hint">Yuklanmoqda…</p>`;
+    const s = rep.summary || {};
+    const people = rep.people || [];
+    const dates = rep.dates || [];
+    return `
+      <div class="att-kpi-row">
+        ${kpiCard('Odam', s.people || 0)}
+        ${kpiCard('Face ulangan', s.enrolled || 0, 'ok')}
+        ${kpiCard('Kelgan kunlar', s.presentDays || 0, 'info')}
+        ${kpiCard('Kechikish', s.lateDays || 0, 'warn')}
+        ${kpiCard('Yo‘qlik', s.absentDays || 0, 'bad')}
+        ${kpiCard('O‘rt. kelish', s.avgArrival || '—')}
+      </div>
+      <p class="att-hint" style="margin:0 0 10px">Qatorni bosing — shaxsiy oylik ochiladi. Bugun: kelgan ${(s.today && s.today.present) || 0} / ${(s.today && s.today.total) || 0}.</p>
+      <div class="scroll-x">
+      <table class="att-table att-table-dense">
+        <thead>
+          <tr>
+            <th>Xodim</th><th>Kun</th><th>Kech</th><th>Yo‘q</th><th>O‘rt. kelish</th><th>Ish soati</th>
+            ${dates.map((d) => `<th class="att-day-h" title="${esc(d)}">${esc(d.slice(8))}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${people.map((p) => {
+            const byDate = {};
+            (p.days || []).forEach((x) => { byDate[x.date] = x; });
+            return `<tr class="att-row-click" data-person="${esc(p.userId)}" title="Oylikni ochish">
+              <td><b>${esc(p.name || p.username)}</b>
+                <div class="att-sub">${esc(roleLabel(p.role))}${p.car ? ' · ' + esc(p.car) : ''}${p.enrolled ? '' : ' · Face yo‘q'}</div>
+              </td>
+              <td class="mono">${p.presentDays}</td>
+              <td class="mono">${p.lateDays}</td>
+              <td class="mono">${p.absentDays}</td>
+              <td class="mono">${esc(p.avgIn || '—')}</td>
+              <td class="mono">${p.worked_sec ? fmtDur(p.worked_sec) : '—'}</td>
+              ${dates.map((d) => {
+                const x = byDate[d];
+                if (!x || x.status === 'absent') return `<td class="att-cell absent" title="${esc(d)}">·</td>`;
+                const cls = x.late ? 'late' : (x.status === 'done' ? 'done' : 'in');
+                return `<td class="att-cell ${cls}" title="${esc(d)} ${esc(x.inAt || '')}">${esc(x.inAt || '✓')}</td>`;
+              }).join('')}
+            </tr>`;
+          }).join('') || '<tr><td colspan="6">Ma’lumot yo‘q</td></tr>'}
+        </tbody>
+      </table></div>`;
+  }
+
+  function renderPersonHtml(p) {
+    if (!p) return `<p class="att-hint">Xodimni tanlang</p>`;
+    const u = p.user || {};
+    const st = p.stats || {};
+    const days = p.days || [];
+    return `
+      <div class="att-person-head">
+        <div>
+          <div class="att-person-name">${esc(u.name || u.username || '—')}</div>
+          <div class="att-sub">@${esc(u.username || '')} · ${esc(roleLabel(u.role))}${u.car ? ' · ' + esc(u.car) : ''} · Face ${u.enrolled ? 'ulangan' : 'yo‘q'}</div>
+        </div>
+      </div>
+      <div class="att-kpi-row">
+        ${kpiCard('Kelgan', st.presentDays || 0, 'ok')}
+        ${kpiCard('Kechikish', st.lateDays || 0, 'warn')}
+        ${kpiCard('Yo‘qlik', st.absentDays || 0, 'bad')}
+        ${kpiCard('O‘rt. kelish', st.avgIn || '—')}
+        ${kpiCard('Jami ish', st.worked_sec ? fmtDur(st.worked_sec) : '—')}
+      </div>
+      <div class="att-cal">
+        ${days.map((d) => {
+          const cls = d.status || 'absent';
+          return `<div class="att-cal-day ${esc(cls)}${d.late ? ' late' : ''}" title="${esc(d.note || '')}">
+            <div class="d">${esc(d.date.slice(8))} <span>${esc(d.weekday || '')}</span></div>
+            <div class="t">${d.status === 'future' ? '—' : (d.inAt ? esc(d.inAt) + (d.late ? ' !' : '') : 'yo‘q')}</div>
+            <div class="o">${d.outAt ? esc(d.outAt) : (d.inAt && d.status !== 'future' ? '…' : '')}</div>
+            <div class="w">${d.worked_sec != null ? fmtDur(d.worked_sec) : ''}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="scroll-x" style="margin-top:14px">
+      <table class="att-table">
+        <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish</th><th>Masofa</th><th>Holat</th></tr></thead>
+        <tbody>
+          ${days.filter((d) => d.status !== 'future').slice().reverse().map((d) => `
+            <tr>
+              <td>${fmtDate(d.date)}</td>
+              <td class="mono">${d.inAt ? esc(d.inAt) + (d.late ? ' !' : '') : '—'}</td>
+              <td class="mono">${d.outAt ? esc(d.outAt) : '—'}</td>
+              <td class="mono">${d.worked_sec != null ? fmtDur(d.worked_sec) : '—'}</td>
+              <td class="mono">${d.distance_m != null ? Math.round(d.distance_m) + ' m' : '—'}</td>
+              <td><span class="att-badge ${esc(d.status)}">${esc(statusLabel(d.status))}</span></td>
+            </tr>`).join('') || '<tr><td colspan="6">Yozuv yo‘q</td></tr>'}
+        </tbody>
+      </table></div>`;
+  }
+
   function render() {
     if (!STATE) return;
     stopTimer();
@@ -659,12 +813,17 @@
     const history = STATE.history || [];
     const working = !!(inn && !out);
     const done = !!(inn && out);
+    if (!boardDate) boardDate = dayInputValue('');
+    if (!reportMonth) reportMonth = monthInputValue('');
+    if (!personMonth) personMonth = monthInputValue('');
 
     app.innerHTML = `
       <section class="att-hero">
         <div>
           <h1>Davomat</h1>
-          <p>Face ID → <b>Keldim</b> / <b>Ketdim</b>. Ish vaqti avtomatik hisoblanadi. GPS + yuz himoyasi.</p>
+          <p>${staff
+            ? 'Jamoa dashboard, oylik hisobot va xodim tahlili. Face ID + GPS himoyasi.'
+            : 'Face ID → <b>Keldim</b> / <b>Ketdim</b>. Ish vaqti avtomatik hisoblanadi. GPS + yuz himoyasi.'}</p>
           <div class="att-chips">
             <span class="att-chip">${esc(s.today || '')}</span>
             <span class="att-chip">Keldim ${esc(s.in_start)} dan</span>
@@ -677,8 +836,10 @@
 
       <div class="att-tabs" role="tablist">
         <button type="button" class="att-tab ${uiTab === 'bugun' ? 'on' : ''}" data-tab="bugun">Bugun</button>
+        ${staff ? `<button type="button" class="att-tab ${uiTab === 'dash' ? 'on' : ''}" data-tab="dash">Dashboard</button>` : ''}
+        ${staff ? `<button type="button" class="att-tab ${uiTab === 'hisobot' ? 'on' : ''}" data-tab="hisobot">Hisobot</button>` : ''}
+        ${staff ? `<button type="button" class="att-tab ${uiTab === 'shaxs' ? 'on' : ''}" data-tab="shaxs">Xodim</button>` : ''}
         <button type="button" class="att-tab ${uiTab === 'tarix' ? 'on' : ''}" data-tab="tarix">Tarix</button>
-        ${staff ? `<button type="button" class="att-tab ${uiTab === 'jamoa' ? 'on' : ''}" data-tab="jamoa">Jamoa</button>` : ''}
         ${staff ? `<button type="button" class="att-tab ${uiTab === 'soz' ? 'on' : ''}" data-tab="soz">Sozlamalar</button>` : ''}
       </div>
 
@@ -770,15 +931,46 @@
       </div>
 
       ${staff ? `
-      <div class="att-panel" id="panel-jamoa" ${uiTab === 'jamoa' ? '' : 'hidden'}>
+      <div class="att-panel" id="panel-dash" ${uiTab === 'dash' ? '' : 'hidden'}>
         <section class="att-card">
           <div class="att-card-h">
-            <span>Bugungi jamoa</span>
-            <button type="button" class="att-btn att-btn-face" id="btn-board" style="padding:8px 12px;min-width:0;font-size:12px">Yangilash</button>
+            <span>Jamoa dashboard</span>
+            <div class="att-toolbar">
+              <input type="date" id="board-date" value="${esc(dayInputValue(boardDate))}">
+              <button type="button" class="att-btn att-btn-face" id="btn-board" style="padding:8px 12px;min-width:0;font-size:12px">Yangilash</button>
+            </div>
           </div>
           <div class="att-card-b" id="att-board"><p class="att-hint">Yuklanmoqda…</p></div>
         </section>
       </div>
+
+      <div class="att-panel" id="panel-hisobot" ${uiTab === 'hisobot' ? '' : 'hidden'}>
+        <section class="att-card">
+          <div class="att-card-h">
+            <span>Oylik hisobot</span>
+            <div class="att-toolbar">
+              <input type="month" id="report-month" value="${esc(monthInputValue(reportMonth))}">
+              <button type="button" class="att-btn att-btn-face" id="btn-report" style="padding:8px 12px;min-width:0;font-size:12px">Yangilash</button>
+            </div>
+          </div>
+          <div class="att-card-b" id="att-report"><p class="att-hint">Yuklanmoqda…</p></div>
+        </section>
+      </div>
+
+      <div class="att-panel" id="panel-shaxs" ${uiTab === 'shaxs' ? '' : 'hidden'}>
+        <section class="att-card">
+          <div class="att-card-h">
+            <span>Xodim tahlili</span>
+            <div class="att-toolbar">
+              <select id="person-select"><option value="">— tanlang —</option></select>
+              <input type="month" id="person-month" value="${esc(monthInputValue(personMonth))}">
+              <button type="button" class="att-btn att-btn-face" id="btn-person" style="padding:8px 12px;min-width:0;font-size:12px">Ko‘rish</button>
+            </div>
+          </div>
+          <div class="att-card-b" id="att-person"><p class="att-hint">Xodimni tanlang — kunlik kelish/ketish va oylik statistika.</p></div>
+        </section>
+      </div>
+
       <div class="att-panel" id="panel-soz" ${uiTab === 'soz' ? '' : 'hidden'}>
         <section class="att-card">
           <div class="att-card-h">Sozlamalar</div>
@@ -789,13 +981,22 @@
     `;
 
     bindActions(staff);
-    if (staff && uiTab === 'jamoa') loadBoard();
+    if (staff && uiTab === 'dash') loadBoard();
+    if (staff && uiTab === 'hisobot') loadReport();
+    if (staff && uiTab === 'shaxs') loadPersonPanel();
     if (staff && uiTab === 'soz') renderSettings();
     if (working) startLiveTimer();
   }
 
   function statusLabel(s) {
-    return ({ in: 'Ishda', late: 'Kechikdi', done: 'To‘liq', absent: 'Yo‘q' })[s] || s;
+    return ({ in: 'Ishda', late: 'Kechikdi', done: 'To‘liq', absent: 'Yo‘q', future: '—' })[s] || s;
+  }
+
+  function openPerson(uid) {
+    if (!uid) return;
+    personId = String(uid);
+    uiTab = 'shaxs';
+    render();
   }
 
   function bindActions(staff) {
@@ -811,14 +1012,60 @@
     const board = document.getElementById('btn-board');
     const kIn = document.getElementById('btn-keldim-main');
     const kOut = document.getElementById('btn-ketdim-main');
+    const boardDateEl = document.getElementById('board-date');
+    const reportBtn = document.getElementById('btn-report');
+    const reportMonthEl = document.getElementById('report-month');
+    const personBtn = document.getElementById('btn-person');
+    const personSel = document.getElementById('person-select');
+    const personMonthEl = document.getElementById('person-month');
 
     if (enroll) bindTap(enroll, () => doEnroll());
     if (re) bindTap(re, () => { if (!busy) doEnroll(true); });
-    if (board) bindTap(board, () => loadBoard());
+    if (board) bindTap(board, () => {
+      if (boardDateEl) boardDate = boardDateEl.value || boardDate;
+      loadBoard();
+    });
+    if (boardDateEl) {
+      boardDateEl.addEventListener('change', () => {
+        boardDate = boardDateEl.value || boardDate;
+        loadBoard();
+      });
+    }
+    if (reportBtn) bindTap(reportBtn, () => {
+      if (reportMonthEl) reportMonth = reportMonthEl.value || reportMonth;
+      loadReport(true);
+    });
+    if (reportMonthEl) {
+      reportMonthEl.addEventListener('change', () => {
+        reportMonth = reportMonthEl.value || reportMonth;
+        loadReport(true);
+      });
+    }
+    if (personBtn) bindTap(personBtn, () => {
+      if (personSel) personId = personSel.value || '';
+      if (personMonthEl) personMonth = personMonthEl.value || personMonth;
+      loadPerson(true);
+    });
+    if (personSel) {
+      personSel.addEventListener('change', () => {
+        personId = personSel.value || '';
+        loadPerson(true);
+      });
+    }
+    if (personMonthEl) {
+      personMonthEl.addEventListener('change', () => {
+        personMonth = personMonthEl.value || personMonth;
+        if (personId) loadPerson(true);
+      });
+    }
     if (kIn) bindTap(kIn, () => startAttendanceFlow('in'));
     if (kOut) bindTap(kOut, () => startAttendanceFlow('out'));
     const geoBtn = document.getElementById('btn-geo-check');
     if (geoBtn) bindTap(geoBtn, () => checkGeoNow());
+
+    app.querySelectorAll('[data-person]').forEach((el) => {
+      bindTap(el, () => openPerson(el.getAttribute('data-person')));
+    });
   }
 
   /** Face verify → Keldim/Ketdim tasdiq */
@@ -1012,27 +1259,97 @@
   async function loadBoard() {
     const box = document.getElementById('att-board');
     if (!box) return;
+    const date = dayInputValue(boardDate);
+    boardDate = date;
     try {
-      const d = await api('/api/attendance/board');
-      const rows = d.rows || [];
-      box.innerHTML = `
-        <div class="scroll-x">
-        <table class="att-table">
-          <thead><tr><th>Ism</th><th>Rol</th><th>Holat</th><th>Keldim</th><th>Ketdim</th><th>Face</th></tr></thead>
-          <tbody>
-            ${rows.map((r) => `
-              <tr>
-                <td>${esc(r.name || r.username)}</td>
-                <td>${esc(r.role)}</td>
-                <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
-                <td>${r.in ? fmtTime(r.in.at) + (r.in.late ? ' !' : '') : '—'}</td>
-                <td>${r.out ? fmtTime(r.out.at) : '—'}</td>
-                <td>${r.enrolled ? '✓' : '—'}</td>
-              </tr>`).join('') || '<tr><td colspan="6">Bo‘sh</td></tr>'}
-          </tbody>
-        </table></div>`;
+      const d = await api('/api/attendance/board?date=' + encodeURIComponent(date));
+      box.innerHTML = renderBoardHtml(d);
+      box.querySelectorAll('[data-person]').forEach((el) => {
+        bindTap(el, () => openPerson(el.getAttribute('data-person')));
+      });
     } catch (e) {
       box.innerHTML = `<p class="att-hint">${esc(e.message || 'Taxta xato')}</p>`;
+    }
+  }
+
+  async function loadReport(force) {
+    const box = document.getElementById('att-report');
+    if (!box) return;
+    const month = monthInputValue(reportMonth);
+    reportMonth = month;
+    if (!force && REPORT && REPORT.month === month) {
+      box.innerHTML = renderReportHtml(REPORT);
+      box.querySelectorAll('[data-person]').forEach((el) => {
+        bindTap(el, () => openPerson(el.getAttribute('data-person')));
+      });
+      return;
+    }
+    box.innerHTML = `<p class="att-hint">Yuklanmoqda…</p>`;
+    try {
+      const d = await api('/api/attendance/report?month=' + encodeURIComponent(month));
+      REPORT = d;
+      box.innerHTML = renderReportHtml(d);
+      box.querySelectorAll('[data-person]').forEach((el) => {
+        bindTap(el, () => openPerson(el.getAttribute('data-person')));
+      });
+    } catch (e) {
+      box.innerHTML = `<p class="att-hint">${esc(e.message || 'Hisobot xato')}</p>`;
+    }
+  }
+
+  async function fillPersonSelect() {
+    const sel = document.getElementById('person-select');
+    if (!sel) return;
+    try {
+      let people = (REPORT && REPORT.people) || null;
+      if (!people) {
+        const month = monthInputValue(personMonth || reportMonth);
+        const d = await api('/api/attendance/report?month=' + encodeURIComponent(month));
+        REPORT = d;
+        people = d.people || [];
+      }
+      const cur = personId || '';
+      sel.innerHTML = `<option value="">— tanlang —</option>` + people.map((p) =>
+        `<option value="${esc(p.userId)}" ${p.userId === cur ? 'selected' : ''}>${esc(p.name || p.username)}${p.car ? ' · ' + esc(p.car) : ''}</option>`
+      ).join('');
+      if (cur) sel.value = cur;
+    } catch (e) {
+      sel.innerHTML = `<option value="">Xato: ${esc(e.message || '')}</option>`;
+    }
+  }
+
+  async function loadPersonPanel() {
+    await fillPersonSelect();
+    if (personId) await loadPerson(false);
+    else {
+      const box = document.getElementById('att-person');
+      if (box) box.innerHTML = `<p class="att-hint">Xodimni tanlang — kunlik kelish/ketish va oylik statistika.</p>`;
+    }
+  }
+
+  async function loadPerson(force) {
+    const box = document.getElementById('att-person');
+    if (!box) return;
+    if (!personId) {
+      box.innerHTML = `<p class="att-hint">Xodimni tanlang</p>`;
+      return;
+    }
+    const month = monthInputValue(personMonth);
+    personMonth = month;
+    if (!force && PERSON && PERSON.month === month && PERSON.user && PERSON.user.userId === personId) {
+      box.innerHTML = renderPersonHtml(PERSON);
+      return;
+    }
+    box.innerHTML = `<p class="att-hint">Yuklanmoqda…</p>`;
+    try {
+      const d = await api(
+        '/api/attendance/person?userId=' + encodeURIComponent(personId) +
+        '&month=' + encodeURIComponent(month)
+      );
+      PERSON = d;
+      box.innerHTML = renderPersonHtml(d);
+    } catch (e) {
+      box.innerHTML = `<p class="att-hint">${esc(e.message || 'Xodim hisoboti xato')}</p>`;
     }
   }
 

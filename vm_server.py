@@ -2738,6 +2738,48 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        if path == "/api/attendance/report":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            month = (qs.get("month") or [None])[0] or ""
+            if not re.match(r"^\d{4}-\d{2}$", str(month or "")):
+                import attendance as att_mod
+
+                month = att_mod.today_str()[:7]
+            users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
+            self.send_json({"ok": True, **ATTENDANCE.month_report(month, users)})
+            return
+
+        if path == "/api/attendance/person":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            uid = (qs.get("userId") or [None])[0]
+            if not uid:
+                self.send_json({"ok": False, "error": "userId kerak"}, 400)
+                return
+            month = (qs.get("month") or [None])[0] or ""
+            if not re.match(r"^\d{4}-\d{2}$", str(month or "")):
+                import attendance as att_mod
+
+                month = att_mod.today_str()[:7]
+            users = STORE.list_users(viewer_role=sess.get("role"))
+            meta = next((u for u in users if str(u.get("id")) == str(uid)), None)
+            if not meta:
+                self.send_json({"ok": False, "error": "Foydalanuvchi topilmadi"}, 404)
+                return
+            self.send_json({"ok": True, **ATTENDANCE.person_month(str(uid), month, meta)})
+            return
+
         if path == "/api/attendance/settings":
             sess = self.require_staff()
             if not sess:

@@ -539,8 +539,8 @@ class AttendanceStore:
             if not uid:
                 continue
             rec = day.get(uid) if isinstance(day.get(uid), dict) else {}
-            inn = rec.get("in") if isinstance(rec.get("in"), dict) else None
-            out = rec.get("out") if isinstance(rec.get("out"), dict) else None
+            inn = self._strip_punch(rec.get("in") if isinstance(rec.get("in"), dict) else None)
+            out = self._strip_punch(rec.get("out") if isinstance(rec.get("out"), dict) else None)
             status = "absent"
             if inn and out:
                 status = "done"
@@ -556,10 +556,287 @@ class AttendanceStore:
                     "status": status,
                     "in": inn,
                     "out": out,
+                    "worked_sec": self._worked_sec(inn, out),
                     "enrolled": self.is_enrolled(uid),
                 }
             )
-        return {"date": date, "rows": rows, "settings": self.public_settings()}
+        counts = {
+            "total": len(rows),
+            "present": sum(1 for r in rows if r["status"] in ("in", "late", "done")),
+            "late": sum(1 for r in rows if r["status"] == "late" or (r.get("in") and r["in"].get("late"))),
+            "done": sum(1 for r in rows if r["status"] == "done"),
+            "absent": sum(1 for r in rows if r["status"] == "absent"),
+            "working": sum(1 for r in rows if r["status"] in ("in", "late")),
+            "enrolled": sum(1 for r in rows if r.get("enrolled")),
+        }
+        return {
+            "date": date,
+            "rows": rows,
+            "counts": counts,
+            "settings": self.public_settings(),
+        }
+
+    @staticmethod
+    def _strip_punch(p: dict | None) -> dict | None:
+        if not isinstance(p, dict):
+            return None
+        out = {k: v for k, v in p.items() if k != "photo"}
+        return out
+
+    @staticmethod
+    def _worked_sec(inn, out) -> int | None:
+        if not inn or not out or not inn.get("at") or not out.get("at"):
+            return None
+        try:
+            t0 = datetime.fromisoformat(str(inn["at"]))
+            t1 = datetime.fromisoformat(str(out["at"]))
+            if t0.tzinfo is None:
+                t0 = t0.replace(tzinfo=TZ)
+            if t1.tzinfo is None:
+                t1 = t1.replace(tzinfo=TZ)
+            return max(0, int((t1 - t0).total_seconds()))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _month_dates(month: str) -> list[str]:
+        """month = YYYY-MM → shu oydagi barcha sanalar."""
+        m = re.match(r"^(\d{4})-(\d{2})$", str(month or "").strip())
+        if not m:
+            return []
+        y, mo = int(m.group(1)), int(m.group(2))
+        if mo < 1 or mo > 12:
+            return []
+        if mo == 12:
+            nxt = datetime(y + 1, 1, 1, tzinfo=TZ)
+        else:
+            nxt = datetime(y, mo + 1, 1, tzinfo=TZ)
+        cur = datetime(y, mo, 1, tzinfo=TZ)
+        out = []
+        while cur < nxt:
+            out.append(cur.strftime("%Y-%m-%d"))
+            cur += timedelta(days=1)
+        return out
+
+    @staticmethod
+    def _hhmm_from_iso(iso_s) -> str | None:
+        if not iso_s:
+            return None
+        try:
+            t = datetime.fromisoformat(str(iso_s))
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=TZ)
+            t = t.astimezone(TZ)
+            return f"{t.hour:02d}:{t.minute:02d}"
+        except Exception:
+            return None
+
+    def month_report(self, month: str, users: list) -> dict:
+        """Admin: oy bo'yicha jamoa hisoboti + KPI."""
+        dates = self._month_dates(month)
+        if not dates:
+            today = today_str()
+            month = today[:7]
+            dates = self._month_dates(month)
+        day_cache = {d: self.day_records(d) for d in dates}
+        people = []
+        sum_late = 0
+        sum_present_days = 0
+        sum_absent_days = 0
+        arrival_mins = []
+
+        for u in users or []:
+            uid = str(u.get("id") or "")
+            if not uid:
+                continue
+            days = []
+            present = 0
+            late_n = 0
+            absent = 0
+            worked_total = 0
+            user_arrivals = []
+            for d in dates:
+                # Kelajak kunlar — hisobga olmaymiz
+                if d > today_str():
+                    continue
+                rec = day_cache.get(d) or {}
+                urec = rec.get(uid) if isinstance(rec.get(uid), dict) else None
+                inn = self._strip_punch(
+                    urec.get("in") if urec and isinstance(urec.get("in"), dict) else None
+                )
+                out = self._strip_punch(
+                    urec.get("out") if urec and isinstance(urec.get("out"), dict) else None
+                )
+                status = "absent"
+                if inn and out:
+                    status = "done"
+                elif inn:
+                    status = "late" if inn.get("late") else "in"
+                if status == "absent":
+                    absent += 1
+                else:
+                    present += 1
+                    if inn and inn.get("late"):
+                        late_n += 1
+                    hhmm = self._hhmm_from_iso(inn.get("at") if inn else None)
+                    if hhmm:
+                        try:
+                            h, mi = map(int, hhmm.split(":"))
+                            user_arrivals.append(h * 60 + mi)
+                            arrival_mins.append(h * 60 + mi)
+                        except ValueError:
+                            pass
+                ws = self._worked_sec(inn, out)
+                if ws is not None:
+                    worked_total += ws
+                days.append(
+                    {
+                        "date": d,
+                        "status": status,
+                        "inAt": self._hhmm_from_iso(inn.get("at") if inn else None),
+                        "outAt": self._hhmm_from_iso(out.get("at") if out else None),
+                        "late": bool(inn.get("late")) if inn else False,
+                        "worked_sec": ws,
+                        "distance_m": (inn or {}).get("distance_m") if inn else None,
+                    }
+                )
+            avg_in = None
+            if user_arrivals:
+                avg_m = int(sum(user_arrivals) / len(user_arrivals))
+                avg_in = f"{avg_m // 60:02d}:{avg_m % 60:02d}"
+            sum_late += late_n
+            sum_present_days += present
+            sum_absent_days += absent
+            people.append(
+                {
+                    "userId": uid,
+                    "username": u.get("username"),
+                    "name": u.get("name"),
+                    "role": u.get("role"),
+                    "car": u.get("car") or "",
+                    "enrolled": self.is_enrolled(uid),
+                    "presentDays": present,
+                    "lateDays": late_n,
+                    "absentDays": absent,
+                    "avgIn": avg_in,
+                    "worked_sec": worked_total,
+                    "days": days,
+                }
+            )
+
+        people.sort(
+            key=lambda x: (
+                -(x["presentDays"]),
+                x["lateDays"],
+                str(x.get("name") or "").lower(),
+            )
+        )
+        avg_arrival = None
+        if arrival_mins:
+            am = int(sum(arrival_mins) / len(arrival_mins))
+            avg_arrival = f"{am // 60:02d}:{am % 60:02d}"
+
+        today_board = self.board(today_str(), users)
+        return {
+            "month": month,
+            "dates": [d for d in dates if d <= today_str()],
+            "summary": {
+                "people": len(people),
+                "enrolled": sum(1 for p in people if p.get("enrolled")),
+                "presentDays": sum_present_days,
+                "lateDays": sum_late,
+                "absentDays": sum_absent_days,
+                "avgArrival": avg_arrival,
+                "today": today_board.get("counts") or {},
+            },
+            "people": people,
+            "todayBoard": today_board,
+            "settings": self.public_settings(),
+        }
+
+    def person_month(self, user_id: str, month: str, user_meta: dict | None = None) -> dict:
+        """Bitta foydalanuvchi — oy kalendari + statistika."""
+        dates = self._month_dates(month)
+        if not dates:
+            month = today_str()[:7]
+            dates = self._month_dates(month)
+        uid = str(user_id)
+        meta = user_meta or {}
+        days = []
+        present = late_n = absent = 0
+        worked_total = 0
+        arrivals = []
+        for d in dates:
+            future = d > today_str()
+            rec = self.day_records(d)
+            urec = rec.get(uid) if isinstance(rec.get(uid), dict) else None
+            inn = self._strip_punch(
+                urec.get("in") if urec and isinstance(urec.get("in"), dict) else None
+            )
+            out = self._strip_punch(
+                urec.get("out") if urec and isinstance(urec.get("out"), dict) else None
+            )
+            if future:
+                status = "future"
+            elif inn and out:
+                status = "done"
+                present += 1
+            elif inn:
+                status = "late" if inn.get("late") else "in"
+                present += 1
+            else:
+                status = "absent"
+                absent += 1
+            if inn and inn.get("late"):
+                late_n += 1
+            hhmm = self._hhmm_from_iso(inn.get("at") if inn else None)
+            if hhmm and not future:
+                try:
+                    h, mi = map(int, hhmm.split(":"))
+                    arrivals.append(h * 60 + mi)
+                except ValueError:
+                    pass
+            ws = self._worked_sec(inn, out)
+            if ws is not None:
+                worked_total += ws
+            days.append(
+                {
+                    "date": d,
+                    "weekday": datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=TZ).strftime("%a"),
+                    "status": status,
+                    "inAt": hhmm,
+                    "outAt": self._hhmm_from_iso(out.get("at") if out else None),
+                    "late": bool(inn.get("late")) if inn else False,
+                    "worked_sec": ws,
+                    "distance_m": (inn or {}).get("distance_m") if inn else None,
+                    "note": (inn or {}).get("note") if inn else None,
+                }
+            )
+        avg_in = None
+        if arrivals:
+            am = int(sum(arrivals) / len(arrivals))
+            avg_in = f"{am // 60:02d}:{am % 60:02d}"
+        return {
+            "month": month,
+            "user": {
+                "userId": uid,
+                "username": meta.get("username"),
+                "name": meta.get("name"),
+                "role": meta.get("role"),
+                "car": meta.get("car") or "",
+                "enrolled": self.is_enrolled(uid),
+            },
+            "stats": {
+                "presentDays": present,
+                "lateDays": late_n,
+                "absentDays": absent,
+                "avgIn": avg_in,
+                "worked_sec": worked_total,
+                "workDays": present + absent,
+            },
+            "days": days,
+            "settings": self.public_settings(),
+        }
 
     def public_settings(self) -> dict:
         s = self.settings()

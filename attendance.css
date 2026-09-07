@@ -36,7 +36,7 @@ body.app-body {
 
 .att-main {
   padding: 16px 16px 40px;
-  max-width: 980px;
+  max-width: 1180px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -928,7 +928,6 @@ body.fid-lock { overflow: hidden; }
     background: rgba(232, 240, 248, 0.92);
     backdrop-filter: blur(8px);
     padding: 6px 0;
-  }
     margin-bottom: 10px;
   }
   .att-tab { min-height: 40px; padding: 10px 14px; }
@@ -1016,3 +1015,116 @@ body.fid-lock { overflow: hidden; }
   width: 100%;
   min-height: 48px;
 }
+
+/* Admin dashboard / hisobot */
+.att-card-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.att-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.att-toolbar input[type='date'],
+.att-toolbar input[type='month'],
+.att-toolbar select {
+  border: 1px solid var(--att-line);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font: 600 12px/1.2 'IBM Plex Sans', system-ui, sans-serif;
+  color: var(--att-ink);
+  background: #fff;
+  min-height: 36px;
+}
+.att-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.att-kpi {
+  background: linear-gradient(180deg, #f4f8fc, #eef4fa);
+  border: 1px solid var(--att-line);
+  border-radius: 14px;
+  padding: 12px 12px 10px;
+  text-align: center;
+}
+.att-kpi-v {
+  font: 700 20px/1.1 'IBM Plex Mono', monospace;
+  color: var(--att-ink);
+}
+.att-kpi-l {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--att-muted);
+  letter-spacing: .02em;
+}
+.att-kpi.ok { border-color: #86efac; background: linear-gradient(180deg, #f0fdf4, #ecfdf5); }
+.att-kpi.ok .att-kpi-v { color: #166534; }
+.att-kpi.warn { border-color: #fcd34d; background: linear-gradient(180deg, #fffbeb, #fef3c7); }
+.att-kpi.warn .att-kpi-v { color: #92400e; }
+.att-kpi.bad { border-color: #fca5a5; background: linear-gradient(180deg, #fff1f2, #ffe4e6); }
+.att-kpi.bad .att-kpi-v { color: #9f1239; }
+.att-kpi.info { border-color: #93c5fd; background: linear-gradient(180deg, #eff6ff, #dbeafe); }
+.att-kpi.info .att-kpi-v { color: #1e40af; }
+.att-sub {
+  font-size: 11px;
+  color: var(--att-muted);
+  margin-top: 2px;
+}
+.att-link-btn {
+  appearance: none;
+  border: 1px solid var(--att-line);
+  background: #fff;
+  color: var(--att-blue);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font: 650 11px/1 'IBM Plex Sans', system-ui, sans-serif;
+  cursor: pointer;
+}
+.att-row-click { cursor: pointer; }
+.att-row-click:hover { background: #f0f7ff; }
+.att-table-dense th,
+.att-table-dense td { padding: 6px 6px; font-size: 12px; }
+.att-day-h { min-width: 28px; text-align: center; font-size: 10px !important; }
+.att-cell {
+  text-align: center;
+  font: 650 10px/1.2 'IBM Plex Mono', monospace;
+  border-radius: 6px;
+}
+.att-cell.in { background: #dbeafe; color: #1e40af; }
+.att-cell.done { background: #dcfce7; color: #166534; }
+.att-cell.late { background: #fef3c7; color: #92400e; }
+.att-cell.absent { color: #94a3b8; }
+.att-person-head { margin-bottom: 12px; }
+.att-person-name { font-size: 18px; font-weight: 700; color: var(--att-ink); }
+.att-cal {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+.att-cal-day {
+  border: 1px solid var(--att-line);
+  border-radius: 12px;
+  padding: 8px;
+  background: #fff;
+  min-height: 78px;
+}
+.att-cal-day .d { font-size: 11px; font-weight: 700; color: var(--att-muted); }
+.att-cal-day .d span { font-weight: 500; opacity: .8; }
+.att-cal-day .t { margin-top: 6px; font: 700 13px/1 'IBM Plex Mono', monospace; color: var(--att-ink); }
+.att-cal-day .o { margin-top: 3px; font: 600 11px/1 'IBM Plex Mono', monospace; color: var(--att-muted); }
+.att-cal-day .w { margin-top: 4px; font-size: 10px; color: var(--att-muted); }
+.att-cal-day.done { border-color: #86efac; background: #f0fdf4; }
+.att-cal-day.in { border-color: #93c5fd; background: #eff6ff; }
+.att-cal-day.late,
+.att-cal-day.in.late { border-color: #fcd34d; background: #fffbeb; }
+.att-cal-day.absent { background: #f8fafc; opacity: .85; }
+.att-cal-day.future { opacity: .45; }
+.att-badge.future { background: #e2e8f0; color: #64748b; }
