@@ -204,18 +204,22 @@ def offline_answer(
     page_key = _page_key(page)
     act = _norm(active_label or "").replace("'", "")
     img_t = _norm(image_text or "").replace("'", "")
+    labels_t = _norm(" ".join(str(x) for x in (ui_labels or [])[:40])).replace("'", "")
+    # Skrin matni + sahifa yorliqlari — qidiruv uchun birlashtiriladi
+    ctx = " ".join(x for x in (t, img_t, labels_t) if x).strip()
     from_img = _extract_known_from_text(img_t) if img_t else ""
     from_msg = _extract_known_from_text(t) if t else ""
-    # Yozilgan yoki skrindan o'qilgan ANIQ nom — eng ustun (aktiv tab yengolmaydi)
-    named = from_img or from_msg
+    from_ctx = _extract_known_from_text(ctx) if ctx else ""
+    named = from_img or from_msg or from_ctx
 
-    vague = any(
+    vague = (not t and has_image) or any(
         x in t
         for x in (
             "tugma", "tugmacha", "tugmachi", "vazifa", "nima qil",
             "bu nima", "ushbu", "nima degani", "nima uchun", "qanday ishlaydi",
             "ichida", "ichi ", " nima bor", "nimalar bor", "bajaradi",
-            "haqida", "malumot", "ma'lumot",
+            "haqida", "malumot", "ma'lumot", "skrin", "screenshot", "rasm",
+            "tushuntir", "yordam",
         )
     )
 
@@ -231,33 +235,40 @@ def offline_answer(
     for item in FAQ_OFFLINE:
         s_named = _faq_score(item, named) if named else 0
         s_msg = _faq_score(item, t)
+        s_img = _faq_score(item, img_t) if img_t else 0
+        s_ctx = _faq_score(item, ctx) if ctx and ctx != t else 0
         s_act = 0
         if act and not named and (vague or has_image):
             s_act = _faq_score(item, act)
-        score = s_named * 12 + s_msg * 3 + s_act
+        # Skrin OCR / kontekst — kuchliroq
+        score = s_named * 12 + s_msg * 3 + s_img * 8 + s_ctx * 4 + s_act
         if score > best_score:
             best_score = score
-            best_msg = s_msg
+            best_msg = max(s_msg, s_img, s_ctx)
             best = item
 
-    # 1) Nom aniq (Profil, Oylik hisobot, …)
+    # 1) Nom aniq (Profil, Oylik hisobot, kunlik ball…)
     if named and best and best_score >= 5:
         return best["a"] + _role_note(role)
 
-    # 2) Savolda kalitlar yetarli (aktiv tabsiz)
+    # 2) Savol yoki skrin matnida kalitlar yetarli
     if best and best_msg >= 4:
         return best["a"] + _role_note(role)
 
-    # 3) Skrin + noaniq — taxmin qilmaymiz
+    # 3) Skrin + noaniq — FAQ zaif bo'lsa ham eng yaxshi javob
+    if has_image and best and best_score >= 8:
+        return best["a"] + _role_note(role)
+
     if has_image and vague and not named:
+        if best and best_score >= 5:
+            return best["a"] + _role_note(role)
         guide = PAGE_BUTTON_GUIDE.get(page_key, "")
         return (
-            "Skrindagi yozuvni aniq o'qiy olmadim. "
-            "Tugma yoki bo'lim nomini yozing — masalan: Profil, Oylik hisobot, GPS dan km.\n\n"
-            + (guide or "")
+            "Skrinda aniq tugma nomini ajrata olmadim, lekin siz shu sahifadasiz:\n\n"
+            + (guide or "Tugma yoki bo'lim nomini yozing (masalan: Kunlik ball, GPS yuklash).")
         )
 
-    # 4) Noaniq savol — sahifa qo'llanmasi (yoki zaif aktiv tab FAQ)
+    # 4) Noaniq savol — sahifa qo'llanmasi
     if vague and not named:
         if best and best_score >= 5:
             return best["a"] + _role_note(role)
@@ -270,10 +281,10 @@ def offline_answer(
 
     guide = PAGE_BUTTON_GUIDE.get(page_key)
     if guide:
-        return "Aniq topilmadi. " + guide
+        return guide
 
     return (
-        "Qaysi tugma yoki bo'lim? Masalan: Profil, Oylik hisobot, Asl ma'lumot, GPS dan km."
+        "Qaysi tugma yoki bo'lim? Masalan: Kunlik ball, GPS yuklash, Oylik hisobot, Profil."
     )
 
 

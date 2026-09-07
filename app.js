@@ -885,8 +885,8 @@ function addMapTiles(map) {
         STATE.mapTileLayer = vmAddMapTiles(map);
         return;
     }
-    L.tileLayer('https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png', {
-        attribution: '', subdomains: 'abc', maxZoom: 19,
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
+        attribution: '', subdomains: 'abcd', maxZoom: 19, maxNativeZoom: 19,
         detectRetina: false, updateWhenIdle: true, updateWhenZooming: false
     }).addTo(map);
 }
@@ -960,7 +960,9 @@ function initMap() {
         dragging: false,
         doubleClickZoom: false,
         boxZoom: false,
-        keyboard: false
+        keyboard: false,
+        maxZoom: 19,
+        minZoom: 3
     }).setView([41.3111, 69.2797], 12);
     addMapTiles(STATE.map);
     bindMapLock();

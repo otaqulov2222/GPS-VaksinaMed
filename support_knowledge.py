@@ -14,7 +14,7 @@ KNOWLEDGE = """
 Maqsad: kunlik GPS kuzatuv, ball, xarita, to'xtashlar.
 Yuqori: GPS yuklash, Excel yuklash, Excel saqlash, PDF, Sozlamalar.
 Chap: Kalendar (oy < > , kun tanlash); GPS tizimi → Ulanish/Yangilash.
-O'rtada: mashina strip (dtab), KPI, jadval, xarita (+ Yangilash), to'xtashlar.
+Markaz: haydovchi kartasi; Kunlik ball (katta raqam); marshrut xaritasi; to'xtashlar; Barcha mashinalar jadvali.
 To'xtash qatorida: Ruxsat | Qoidabuzarlik | Bekor — baholash.
 GPS modal: sana, Kecha/Bugun, server/login/parol/token, Shu kunni yuklash.
 Sozlamalar: norma jadvali, JSON saqlash/yuklash, Tozalash, Saqlash.
@@ -274,12 +274,35 @@ FAQ_OFFLINE = [
         ),
     },
     {
-        "keys": ["xarita", "marshrut", "xarita yangilash", "leaflet"],
-        "a": "Marshrut xaritasi — tanlangan mashina/kun yo'nalishi va to'xtashlar. Yangilash — xaritani qayta chizadi. Legenda ranglarini ko'rsatadi.",
+        "keys": [
+            "kunlik ball", "kunlik baholash", "ball", "jarima", "bonus",
+            "8.0", "kunlik ball nima", "score", "baholash",
+        ],
+        "a": (
+            "Kunlik ball — tanlangan haydovchi/kun uchun umumiy baho (masalan 8.0).\n"
+            "• Yuqorida katta raqam — shu kun balli.\n"
+            "• Ball dorixona tashrifi, muammoli to'xtashlar, reja bajarilishi va boshqa KPI dan hisoblanadi.\n"
+            "• Chapda haydovchi kartasi (ism, raqam, yo'nalish); pastda Barcha mashinalar jadvali.\n"
+            "• To'xtashlarni Ruxsat / Qoidabuzarlik bilan belgilash ballga ta'sir qilishi mumkin.\n"
+            "Haydovchi kabinetida ham Ball KPI ko'rinadi (faqat o'qish)."
+        ),
     },
     {
-        "keys": ["kunlik baholash", "ball", "jarima", "bonus"],
-        "a": "Kunlik baholash — tanlangan kun/mashina uchun ball, jarima, bonus va tavsiyalar (ko'rsatish). Haydovchi kabinetida ham Ball KPI bor.",
+        "keys": ["barcha mashinalar", "mashinalar jadvali", "dtab", "haydovchi qator"],
+        "a": (
+            "Barcha mashinalar — Dashboard pastidagi jadval: haydovchi, raqam, ball, km, reja, muammo, tezlik.\n"
+            "Qatorni bossangiz — shu mashina tanlanadi: yuqorida kartochka, xarita va to'xtashlar yangilanadi."
+        ),
+    },
+    {
+        "keys": ["marshrut xaritasi", "xarita", "marshrut", "xarita yangilash", "leaflet", "map data", "zoom xarita"],
+        "a": (
+            "Marshrut xaritasi — tanlangan mashina/kun GPS yo'li va to'xtashlar.\n"
+            "• Yangilash — xaritani qayta chizadi.\n"
+            "• + / − yoki g'ildirak — zoom. Yaqinlashtirishda ko'cha-ko'cha ko'rinadi.\n"
+            "• Legenda: o'z dorixona, boshqa yo'nalish, muammo, ofis, GPS chiziq.\n"
+            "Agar fon bo'sh/yozuv chiqsa — sahifani yangilang (Ctrl+F5); tile manbasi Carto/OSM."
+        ),
     },
     {
         "keys": ["dorixona tahlili", "otkazib", "o'tkazib yuborilgan"],
@@ -445,11 +468,16 @@ PAGE_BUTTON_GUIDE = {
         "Aniq nom yozing yoki pastdagi tezkor tugmani bosing."
     ),
     "index.html": (
-        "Siz Dashboarddasiz.\n\n"
+        "Siz Dashboarddasiz — kunlik GPS nazorat.\n\n"
         "Yuqori: GPS yuklash, Excel yuklash, Excel saqlash, PDF, Sozlamalar.\n"
-        "Chap: Kalendar; GPS tizimi → Ulanish/Yangilash.\n"
-        "Past: xarita Yangilash; to'xtashlarda Ruxsat / Qoidabuzarlik / Bekor.\n"
-        "Aniq tugma nomini yozing — batafsil aytaman."
+        "Chap: Kalendar; GPS tizimi → Ulanish / Yangilash.\n"
+        "Markaz:\n"
+        "• Haydovchi kartasi (ism, raqam, yo'nalish)\n"
+        "• Kunlik ball — katta raqam (masalan 8.0)\n"
+        "• Marshrut xaritasi + Yangilash, to'xtash/nuqta/muammo\n"
+        "• Barcha to'xtashlar — Ruxsat / Qoidabuzarlik / Bekor\n"
+        "• Barcha mashinalar jadvali — qatorni tanlang\n\n"
+        "Aniqroq: «Kunlik ball», «GPS yuklash», «Xarita» deb yozing yoki tezkor tugmani bosing."
     ),
     "admin.html": (
         "Admin panel:\n"

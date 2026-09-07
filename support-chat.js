@@ -41,13 +41,14 @@
       'Rasmiy hisobot'
     ],
     'index.html': [
+      'Kunlik ball nima?',
+      'Barcha mashinalar',
       'GPS yuklash',
       'Ulanish',
+      'Xarita',
       'Excel saqlash',
       'Sozlamalar',
-      'Ruxsat nima?',
-      'Xarita',
-      'Ball nima?'
+      'Ruxsat nima?'
     ],
     'admin.html': [
       'Shofyor qo\'shish',
@@ -99,13 +100,15 @@
       seen[k] = 1;
       out.push(t);
     };
-    document.querySelectorAll('.tab, button.tab, [data-tab], .btn, a.nav-link, .nav-rail button, .nav-rail a').forEach((node) => {
+    document.querySelectorAll(
+      '.tab, button.tab, [data-tab], .btn, a.nav-link, .nav-rail button, .nav-rail a, h2, h3, .kpi-label, .map-stat, .legend span, .card-title'
+    ).forEach((node) => {
       push(node.getAttribute('title'));
       push(node.getAttribute('aria-label'));
       const full = node.querySelector('.lbl-full');
       push(full ? full.textContent : node.textContent);
     });
-    return out.slice(0, 60);
+    return out.slice(0, 80);
   }
 
   function loadStore() {
@@ -323,11 +326,14 @@
   async function readImageText(dataUrl) {
     try {
       await loadTesseract();
-      const res = await window.Tesseract.recognize(dataUrl, 'eng', { logger: function () {} });
+      const res = await window.Tesseract.recognize(dataUrl, 'eng', {
+        logger: function () {},
+        tessedit_pageseg_mode: '6'
+      });
       return String((res && res.data && res.data.text) || '')
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 400);
+        .slice(0, 800);
     } catch (e) {
       return '';
     }

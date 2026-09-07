@@ -629,9 +629,9 @@ body.app-body {
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 
-<script src="auth.js?v=25"></script>
+<script src="auth.js?v=26"></script>
 
-<script src="map-tiles.js?v=1"></script>
+<script src="map-tiles.js?v=2"></script>
 <script src="map-route.js?v=1"></script>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -809,7 +809,9 @@ function initDriverMap() {
     attributionControl: false,
     scrollWheelZoom: true,
     dragging: true,
-    tap: true
+    tap: true,
+    maxZoom: 19,
+    minZoom: 3
   }).setView([41.3111, 69.2797], 12);
 
   // Sichqoncha g'ildiragi faqat xarita ustida — sahifa scrollini ushlab qolmasin
@@ -819,8 +821,8 @@ function initDriverMap() {
   el.addEventListener('click', () => { try { drvMap.scrollWheelZoom.enable(); } catch (e) {} });
 
   if (typeof vmAddMapTiles === 'function') vmAddMapTiles(drvMap);
-  else L.tileLayer('https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png', {
-    attribution: '', subdomains: 'abc', maxZoom: 19, detectRetina: false
+  else L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
+    attribution: '', subdomains: 'abcd', maxZoom: 19, maxNativeZoom: 19, detectRetina: false
   }).addTo(drvMap);
 }
 
