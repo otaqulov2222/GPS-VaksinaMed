@@ -1245,9 +1245,10 @@ function monthDayDetailHtml(plate) {
   return `
     <div class="month-days-wrap">
       <div class="month-days-h">
+        <span class="month-days-badge">Kunma-kun</span>
         <strong>${esc(plateDisp(plate))}</strong>
         <span>${esc(info.name)}</span>
-        <span class="muted">${dim} kun · oy ichidagi kunma-kun</span>
+        <span class="muted">${dim} kun</span>
       </div>
       <div class="scroll-x">
         <table class="gtable gtable-days">
@@ -1335,14 +1336,14 @@ function renderMonth() {
   }, { km: 0, gasKm: 0, liqKm: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0 });
   document.getElementById('panel-month').innerHTML = `
     <div class="card"><div class="card-h"><h3>Oylik jamlanma — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
-      <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-month">PDF (jami + kunma-kun)</button></div>
+      <button class="btn btn-sm no-print" type="button" id="btn-pdf-month" title="Jami + har mashina kunma-kun PDF">PDF · jami + kunma-kun</button></div>
     <div class="card-b">
-      <p class="note no-print" style="margin:0 0 10px;">Mashina qatoriga bosing — shu mashinaning <b>kunma-kun</b> oylik jadvali ochiladi. Yopish uchun qayta bosing.</p>
+      <p class="note no-print" style="margin:0 0 10px;">Chapdagi <b>▶</b> yoki mashina qatoriga bosing — <b>kunma-kun</b> jadval ochiladi. Yopish uchun qayta bosing.</p>
       ${mobSwipeHint()}<div class="scroll-x">
       <table class="gtable" id="month-summary-table">
         <thead><tr><th></th><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
         <tbody>${rows.map(r => `<tr class="month-sum-row" data-plate="${esc(r.plate)}" title="Kunma-kun ochish">
-          <td class="month-caret" aria-hidden="true">▸</td>
+          <td class="month-caret" aria-hidden="true"><span class="month-caret-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span></td>
           <td>${r.n}</td><td>${esc(plateDisp(r.plate))}</td><td>${esc(r.name)}</td>
           <td class="num">${fmt(r.km, 2)}</td>
           <td class="num">${fmt(r.gasKm, 2)}</td>

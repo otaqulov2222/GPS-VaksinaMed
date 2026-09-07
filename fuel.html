@@ -623,28 +623,77 @@ table.gtable th {
 table.gtable td.num { font-family: var(--mono); text-align: right; }
 
 table.gtable tr:hover td { background: #f3f4f6; }
-table.gtable tr.month-sum-row { cursor: pointer; }
+table.gtable tr.month-sum-row { cursor: pointer; transition: background 0.12s ease; }
+table.gtable tr.month-sum-row:hover > td { background: #eef4fb; }
 table.gtable tr.month-sum-row td.month-caret {
-  width: 22px; text-align: center; color: var(--mark, #1a5fb4);
-  font-size: 12px; user-select: none;
+  width: 28px;
+  min-width: 28px;
+  text-align: center;
+  vertical-align: middle;
+  padding: 6px 4px !important;
+  user-select: none;
 }
+table.gtable tr.month-sum-row .month-caret-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: #1a5fb4;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(11, 31, 58, 0.18);
+  transition: transform 0.15s ease, background 0.12s ease;
+}
+table.gtable tr.month-sum-row .month-caret-ico svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+table.gtable tr.month-sum-row:hover .month-caret-ico { background: #0f3a6e; }
 table.gtable tr.month-sum-row.open > td { background: #e8f0fa; }
-table.gtable tr.month-sum-row.open .month-caret {
-  display: inline-block;
+table.gtable tr.month-sum-row.open .month-caret-ico {
+  background: #0b1f3a;
   transform: rotate(90deg);
 }
 table.gtable tr.month-detail-row > td {
   padding: 0 !important;
-  background: #f7fafc;
+  background: #f4f8fc;
   border-top: none;
+  box-shadow: inset 3px 0 0 #1a5fb4;
 }
-table.gtable tr.month-detail-row:hover > td { background: #f7fafc; }
+table.gtable tr.month-detail-row:hover > td { background: #f4f8fc; }
 .month-days-wrap { padding: 12px 14px 16px; }
 .month-days-h {
   display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline;
   margin-bottom: 10px; font-size: 13px;
 }
 .month-days-h .muted { color: #5a7190; font-size: 12px; }
+.month-days-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 650;
+  color: #0b1f3a;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+#btn-pdf-month {
+  background: #1a5fb4;
+  color: #fff;
+  border-color: #1a5fb4;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 2px rgba(11, 31, 58, 0.15);
+}
+#btn-pdf-month:hover {
+  background: #0f3a6e;
+  color: #fff;
+  border-color: #0f3a6e;
+}
 table.gtable-days { font-size: 12px; }
 table.gtable-days th { font-size: 10px; }
 table.gtable-days tr.day-empty td { color: #9aa8b8; }
@@ -1535,7 +1584,7 @@ table.dtable td.day {
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 <script src="auth.js?v=19"></script>
-<script src="fuel.js?v=50"></script>
+<script src="fuel.js?v=51"></script>
 <script src="journal.js?v=11"></script>
 </body>
 </html>
