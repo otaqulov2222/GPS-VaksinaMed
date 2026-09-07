@@ -441,7 +441,7 @@ function vmLoadSupportChat() {
     window._vmSupportAssets = true;
     const css = document.createElement('link');
     css.rel = 'stylesheet';
-    css.href = 'support-chat.css?v=8';
+    css.href = 'support-chat.css?v=9';
     document.head.appendChild(css);
     const s = document.createElement('script');
     s.src = 'support-chat.js?v=8';

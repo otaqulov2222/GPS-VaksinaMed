@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="uz">
 <head>
 <meta charset="UTF-8">
@@ -6,8 +6,8 @@
 <title>Davomat - VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="shell.css?v=18"/>
-<link rel="stylesheet" href="attendance.css?v=8"/>
+<link rel="stylesheet" href="shell.css?v=19"/>
+<link rel="stylesheet" href="attendance.css?v=9"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -83,13 +83,17 @@
         <button type="button" class="fid-btn fid-btn-in" id="fid-keldim">Keldim</button>
         <button type="button" class="fid-btn fid-btn-out" id="fid-ketdim">Ketdim</button>
       </div>
+      <div class="fid-retry-wrap" id="fid-retry-wrap" hidden>
+        <button type="button" class="fid-btn fid-btn-retry" id="fid-retry">Qayta urinish</button>
+        <button type="button" class="fid-btn fid-btn-cancel" id="fid-cancel">Yopish</button>
+      </div>
     </div>
   </div>
 </div>
 
 <canvas id="att-canvas" hidden></canvas>
 
-<script src="auth.js?v=22"></script>
-<script src="attendance.js?v=8"></script>
+<script src="auth.js?v=23"></script>
+<script src="attendance.js?v=9"></script>
 </body>
 </html>

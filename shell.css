@@ -906,6 +906,11 @@ body.app-body::before {
   /* Toast / modal above drawer */
   .toast { z-index: 300 !important; }
   .modal-bg { z-index: 320 !important; }
+
+  /* Face ID ochiq bo'lganda yordamchi FAB boshqa tugmani bosib yubormasin */
+  body.fid-lock .vm-sup-root {
+    display: none !important;
+  }
 }
 
 @media (max-width: 640px) {

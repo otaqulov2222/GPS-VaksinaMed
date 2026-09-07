@@ -198,6 +198,21 @@ body.app-body {
   min-height: 48px;
   font-size: 14px;
 }
+.att-actions-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.att-actions-stack .att-btn {
+  width: 100%;
+  min-height: 52px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.att-btn {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
 .att-btn {
   appearance: none;
   border: 0;
@@ -728,16 +743,27 @@ body.fid-lock { overflow: hidden; }
   margin-top: 16px;
   flex-wrap: wrap;
 }
+.fid-retry-wrap {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.fid-retry-wrap[hidden],
+.fid-actions[hidden] { display: none !important; }
 .fid-btn {
   appearance: none;
   border: 0;
-  border-radius: 12px;
-  min-height: 46px;
-  min-width: 120px;
+  border-radius: 14px;
+  min-height: 52px;
+  min-width: 140px;
   padding: 0 18px;
-  font: 700 14px/1 'IBM Plex Sans', system-ui, sans-serif;
+  font: 700 15px/1 'IBM Plex Sans', system-ui, sans-serif;
   cursor: pointer;
   color: #041018;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   transition: transform .12s ease, filter .12s;
 }
 .fid-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); }
@@ -755,11 +781,63 @@ body.fid-lock { overflow: hidden; }
   background: linear-gradient(160deg, #7ad4ff, #2a7ec9);
   box-shadow: 0 8px 20px rgba(42, 126, 201, 0.35);
 }
+.fid-btn-retry {
+  background: linear-gradient(160deg, #ffd36a, #f59e0b);
+  color: #1f1300;
+  min-width: 160px;
+}
+.fid-btn-cancel {
+  background: rgba(255,255,255,0.08);
+  color: #dff6ff;
+  border: 1px solid rgba(62,203,255,0.35);
+}
 
 @media (max-width: 480px) {
-  .fid-panel { padding: 14px 12px 18px; border-radius: 18px; }
+  .fid-modal {
+    padding: 8px;
+    align-items: flex-end;
+  }
+  .fid-panel {
+    padding: 14px 12px calc(18px + env(safe-area-inset-bottom, 0px));
+    border-radius: 18px 18px 14px 14px;
+    width: 100%;
+    max-height: min(96dvh, 920px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   .fid-title { font-size: 18px; letter-spacing: 0.14em; }
-  .fid-viewport { max-height: 52vh; }
+  .fid-viewport { max-height: 42dvh; aspect-ratio: 3 / 3.2; }
+  .fid-actions,
+  .fid-retry-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .fid-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 54px;
+  }
+  .fid-close {
+    width: 44px;
+    height: 44px;
+    top: 8px;
+    right: 8px;
+  }
+  .att-hero { padding: 14px; }
+  .att-hero h1 { font-size: 18px; }
+  .att-chips { gap: 6px; }
+  .att-chip { font-size: 10px; padding: 5px 9px; }
+  .att-timer-val { font-size: 26px; }
+  .att-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: rgba(232, 240, 248, 0.92);
+    backdrop-filter: blur(8px);
+    padding: 6px 0;
+    margin-bottom: 10px;
+  }
+  .att-tab { min-height: 40px; padding: 10px 14px; }
 }
 
 /* Tabs + timer */

@@ -39,6 +39,11 @@
   const fidActions = document.getElementById('fid-actions');
   const btnKeldim = document.getElementById('fid-keldim');
   const btnKetdim = document.getElementById('fid-ketdim');
+  const fidRetryWrap = document.getElementById('fid-retry-wrap');
+  const btnRetry = document.getElementById('fid-retry');
+  const btnCancel = document.getElementById('fid-cancel');
+  let pendingKind = null; // 'in' | 'out' | null
+  let flowRetry = null;
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -80,20 +85,58 @@
     if (fidActions) fidActions.hidden = true;
   }
 
+  function hideRetry() {
+    if (fidRetryWrap) fidRetryWrap.hidden = true;
+  }
+
+  function showRetry(errText) {
+    hideFidActions();
+    if (fidRetryWrap) fidRetryWrap.hidden = false;
+    if (errText) {
+      setFidUI({ status: 'FAILED', hint: errText, progress: 0, tone: 'err' });
+    }
+  }
+
   function showFidActions() {
     if (!fidActions || !STATE) return;
+    hideRetry();
     const today = STATE.today || {};
     const canIn = !today.in;
     const canOut = !!(today.in && !today.out);
-    if (btnKeldim) {
-      btnKeldim.disabled = !canIn;
-      btnKeldim.classList.toggle('ghost', !canIn);
-    }
-    if (btnKetdim) {
-      btnKetdim.disabled = !canOut;
-      btnKetdim.classList.toggle('ghost', !canOut);
+    // Agar foydalanuvchi aniq Keldim/Ketdim tanlagan bo'lsa — faqat shu
+    if (pendingKind === 'in') {
+      if (btnKeldim) { btnKeldim.disabled = !canIn; btnKeldim.classList.toggle('ghost', !canIn); }
+      if (btnKetdim) { btnKetdim.disabled = true; btnKetdim.classList.add('ghost'); }
+    } else if (pendingKind === 'out') {
+      if (btnKeldim) { btnKeldim.disabled = true; btnKeldim.classList.add('ghost'); }
+      if (btnKetdim) { btnKetdim.disabled = !canOut; btnKetdim.classList.toggle('ghost', !canOut); }
+    } else {
+      if (btnKeldim) {
+        btnKeldim.disabled = !canIn;
+        btnKeldim.classList.toggle('ghost', !canIn);
+      }
+      if (btnKetdim) {
+        btnKetdim.disabled = !canOut;
+        btnKetdim.classList.toggle('ghost', !canOut);
+      }
     }
     fidActions.hidden = false;
+  }
+
+  function bindTap(el, fn) {
+    if (!el || el._vmTapBound) return;
+    el._vmTapBound = true;
+    let lock = false;
+    const run = (ev) => {
+      if (lock) return;
+      lock = true;
+      if (ev && ev.preventDefault) ev.preventDefault();
+      Promise.resolve()
+        .then(() => fn(ev))
+        .catch(() => {})
+        .finally(() => { setTimeout(() => { lock = false; }, 450); });
+    };
+    el.addEventListener('click', run, { passive: false });
   }
 
   async function api(path, opts) {
@@ -130,7 +173,7 @@
     finally { modelsLoading = null; }
   }
 
-  function getGps() {
+  function getGpsOnce(opts) {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error('Joylashuv qo‘llab-quvvatlanmaydi'));
@@ -142,12 +185,38 @@
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy
         }),
-        (err) => reject(new Error(
-          err.code === 1 ? 'Joylashuv ruxsati berilmadi' : (err.message || 'Joylashuv olinmadi')
-        )),
-        { enableHighAccuracy: true, timeout: 18000, maximumAge: 4000 }
+        (err) => reject(err),
+        opts
       );
     });
+  }
+
+  async function getGps() {
+    // Telefonda highAccuracy ba'zan timeout/deny beradi — soft fallback
+    try {
+      return await getGpsOnce({
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 15000
+      });
+    } catch (e1) {
+      try {
+        return await getGpsOnce({
+          enableHighAccuracy: false,
+          timeout: 20000,
+          maximumAge: 60000
+        });
+      } catch (e2) {
+        const code = (e2 && e2.code) || (e1 && e1.code);
+        if (code === 1) {
+          throw new Error('Joylashuv ruxsati berilmadi. Telefon Sozlamalarida brauzer uchun Joylashuvni yoqing, keyin Qayta urinish.');
+        }
+        if (code === 3) {
+          throw new Error('Joylashuv vaqti tugadi. GPS yoqilganini tekshiring va Qayta urinish bosing.');
+        }
+        throw new Error((e2 && e2.message) || (e1 && e1.message) || 'Joylashuv olinmadi');
+      }
+    }
   }
 
   function openModal(title, sub) {
@@ -159,6 +228,7 @@
     modalOpen = true;
     pendingScan = null;
     hideFidActions();
+    hideRetry();
     const t = document.getElementById('fid-title');
     const s = document.getElementById('fid-sub');
     if (t) t.textContent = title || 'FACE ID';
@@ -174,7 +244,10 @@
     }
     stopCam();
     pendingScan = null;
+    pendingKind = null;
+    flowRetry = null;
     hideFidActions();
+    hideRetry();
     if (!modal) return;
     modal.classList.remove('open', 'ok', 'err', 'warn', 'scanning');
     modal.hidden = true;
@@ -416,10 +489,28 @@
     });
   }
 
+  function parseTs(iso) {
+    if (!iso) return NaN;
+    let s = String(iso).trim();
+    if (/^\d{4}-\d{2}-\d{2} /.test(s)) s = s.replace(' ', 'T');
+    let t = Date.parse(s);
+    if (!Number.isNaN(t)) return t;
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+      return new Date(
+        Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+        Number(m[4]), Number(m[5]), Number(m[6] || 0)
+      ).getTime();
+    }
+    return NaN;
+  }
+
   function fmtTime(iso) {
     if (!iso) return '—';
     try {
-      const d = new Date(iso);
+      const ms = parseTs(iso);
+      if (Number.isNaN(ms)) return '—';
+      const d = new Date(ms);
       return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
     } catch (e) { return '—'; }
   }
@@ -447,10 +538,11 @@
     stopTimer();
     const today = (STATE && STATE.today) || {};
     if (!today.in || !today.in.at || today.out) return;
+    const t0 = parseTs(today.in.at);
+    if (Number.isNaN(t0)) return;
     const tick = () => {
       const el = document.getElementById('att-live-timer');
       if (!el) return;
-      const t0 = new Date(today.in.at).getTime();
       const sec = Math.max(0, Math.floor((Date.now() - t0) / 1000));
       el.textContent = fmtDur(sec);
     };
@@ -460,10 +552,14 @@
 
   function dayWorkedSec(rec) {
     if (!rec || !rec.in || !rec.in.at) return null;
+    const t0 = parseTs(rec.in.at);
+    if (Number.isNaN(t0)) return null;
     if (rec.out && rec.out.at) {
-      return Math.max(0, Math.floor((new Date(rec.out.at) - new Date(rec.in.at)) / 1000));
+      const t1 = parseTs(rec.out.at);
+      if (Number.isNaN(t1)) return null;
+      return Math.max(0, Math.floor((t1 - t0) / 1000));
     }
-    return Math.max(0, Math.floor((Date.now() - new Date(rec.in.at).getTime()) / 1000));
+    return Math.max(0, Math.floor((Date.now() - t0) / 1000));
   }
 
   function render() {
@@ -528,14 +624,17 @@
                 <button type="button" class="att-btn att-btn-face-cta" id="btn-enroll">Face ID ulash</button>
               </div>
             ` : `
-              <div class="att-actions att-actions-main">
+              <div class="att-actions att-actions-main att-actions-stack">
                 ${done
                   ? `<button type="button" class="att-btn att-btn-done" disabled>Bugun yakunlandi</button>`
-                  : `<button type="button" class="att-btn att-btn-in" id="btn-go">${working ? 'Davomat · Ketdim' : 'Davomatdan o‘tish'}</button>`
+                  : `
+                    <button type="button" class="att-btn att-btn-in" id="btn-keldim-main" ${inn ? 'disabled' : ''}>Keldim</button>
+                    <button type="button" class="att-btn att-btn-out" id="btn-ketdim-main" ${(!inn || out) ? 'disabled' : ''}>Ketdim</button>
+                  `
                 }
                 <button type="button" class="att-btn att-btn-face" id="btn-reenroll">Yuzni qayta ulash</button>
               </div>
-              <p class="att-hint">Tugma → Face ID oynasi → yuz tasdiqi → <b>Keldim</b> yoki <b>Ketdim</b>.</p>
+              <p class="att-hint">Keldim/Ketdim → Face ID → tasdiq. Joylashuv ruxsatini bering — aks holda stamp yozilmaydi.</p>
             `}
             <div class="att-msg" id="att-msg"></div>
           </div>
@@ -611,25 +710,27 @@
 
   function bindActions(staff) {
     app.querySelectorAll('.att-tab').forEach((btn) => {
-      btn.onclick = () => {
+      bindTap(btn, () => {
         uiTab = btn.getAttribute('data-tab') || 'bugun';
         render();
-      };
+      });
     });
 
-    const go = document.getElementById('btn-go');
     const enroll = document.getElementById('btn-enroll');
     const re = document.getElementById('btn-reenroll');
     const board = document.getElementById('btn-board');
+    const kIn = document.getElementById('btn-keldim-main');
+    const kOut = document.getElementById('btn-ketdim-main');
 
-    if (go) go.onclick = () => startAttendanceFlow();
-    if (enroll) enroll.onclick = () => doEnroll();
-    if (re) re.onclick = () => { if (!busy) doEnroll(true); };
-    if (board) board.onclick = () => loadBoard();
+    if (enroll) bindTap(enroll, () => doEnroll());
+    if (re) bindTap(re, () => { if (!busy) doEnroll(true); });
+    if (board) bindTap(board, () => loadBoard());
+    if (kIn) bindTap(kIn, () => startAttendanceFlow('in'));
+    if (kOut) bindTap(kOut, () => startAttendanceFlow('out'));
   }
 
-  /** Face verify → Keldim/Ketdim tanlash */
-  async function startAttendanceFlow() {
+  /** Face verify → Keldim/Ketdim tasdiq */
+  async function startAttendanceFlow(kind) {
     if (busy) return;
     if (!STATE || !STATE.enrolled) {
       msg('Avval Face ID ulang', 'err');
@@ -640,40 +741,78 @@
       msg('Bugun allaqachon yakunlangan', 'info');
       return;
     }
+    if (kind === 'in' && today.in) {
+      msg('Bugun Keldim allaqachon bor', 'info');
+      return;
+    }
+    if (kind === 'out' && !today.in) {
+      msg('Avval Keldim qiling', 'info');
+      return;
+    }
+    if (kind === 'out' && today.out) {
+      msg('Bugun Ketdim allaqachon bor', 'info');
+      return;
+    }
 
+    pendingKind = kind || null;
     busy = true;
     clearMsg();
-    openModal('FACE ID', today.in ? 'Ketdim uchun yuzni tasdiqlang' : 'Keldim uchun yuzni tasdiqlang');
+    openModal(
+      'FACE ID',
+      kind === 'out' ? 'Ketdim uchun yuzni tasdiqlang' : 'Keldim uchun yuzni tasdiqlang'
+    );
+    flowRetry = () => startAttendanceFlow(kind);
+
     try {
-      setFidUI({ status: 'GPS…', hint: 'Joylashuv ruxsati', progress: 4, tone: 'load' });
-      const gps = await getGps();
-      setFidUI({ status: 'LOADING…', hint: 'Kamera ochilmoqda', progress: 12, tone: 'load' });
+      // Muhim: user gesture ichida kamera + GPS parallel (iOS)
+      setFidUI({ status: 'RUXSAT…', hint: 'Kamera va joylashuv so‘ralmoqda — Ruxsat bering', progress: 6, tone: 'load' });
+      const gpsPromise = getGps();
+      const camPromise = startCam();
+      let gps;
+      try {
+        gps = await gpsPromise;
+      } catch (ge) {
+        // Kamerani tozalab, aniq xato ko‘rsatamiz — oynani yopmaymiz
+        try { await camPromise; } catch (e) {}
+        stopCam();
+        throw ge;
+      }
+      try {
+        await camPromise;
+      } catch (ce) {
+        throw ce;
+      }
+
+      setFidUI({ status: 'LOADING…', hint: 'Yuz modeli…', progress: 18, tone: 'load' });
       await ensureModels();
-      await startCam();
 
       const scan = await scanFace({
         needSamples: 3,
         label: 'Yuzni markazda ushlang',
-        timeoutMs: 22000
+        timeoutMs: 25000
       });
 
-      // Kamerani o‘chirmaymiz — HUD qoladi; skan ma’lumotini saqlaymiz
       stopScanLoop();
       if (stream) {
-        // keep last frame feel — stop tracks to free cam but keep UI
         stream.getTracks().forEach((t) => t.stop());
         stream = null;
       }
 
       pendingScan = { descriptor: scan.descriptor, photo: scan.photo, gps };
       showFidActions();
-      busy = false; // tugmalar bosilishi uchun
+      // Agar kind aniq — darhol yozish (bitta bosish mobil uchun)
+      if (kind === 'in' || kind === 'out') {
+        await confirmPunch(kind);
+      } else {
+        busy = false;
+      }
     } catch (e) {
       if (modal) { modal.classList.add('err'); modal.classList.remove('ok', 'scanning'); }
-      setFidUI({ status: 'FAILED', hint: e.message || 'Xato', progress: 0, tone: 'err' });
-      msg(e.message || 'Xato', 'err');
-      await new Promise((r) => setTimeout(r, 1400));
-      closeModal();
+      stopCam();
+      const text = e.message || 'Xato';
+      setFidUI({ status: 'FAILED', hint: text, progress: 0, tone: 'err' });
+      msg(text, 'err');
+      showRetry(text);
       busy = false;
     }
   }
@@ -683,9 +822,9 @@
       msg('Avval yuzni tasdiqlang', 'err');
       return;
     }
-    if (busy) return;
     busy = true;
     hideFidActions();
+    hideRetry();
     try {
       setFidUI({
         status: kind === 'in' ? 'KELDIM…' : 'KETDIM…',
@@ -713,16 +852,17 @@
         progress: 100,
         tone: 'ok'
       });
-      await new Promise((x) => setTimeout(x, 700));
+      await new Promise((x) => setTimeout(x, 650));
       closeModal();
       msg(r.message || (kind === 'in' ? 'Keldim — vaqt boshlandi' : 'Ketdim — kun yakunlandi'), 'ok');
       uiTab = 'bugun';
       await reload();
     } catch (e) {
       if (modal) modal.classList.add('err');
-      setFidUI({ status: 'DENIED', hint: e.message || 'Xato', progress: 0, tone: 'err' });
-      msg(e.message || 'Xato', 'err');
-      showFidActions();
+      const text = e.message || 'Xato';
+      setFidUI({ status: 'DENIED', hint: text, progress: 0, tone: 'err' });
+      msg(text, 'err');
+      showRetry(text);
     } finally {
       busy = false;
     }
@@ -732,11 +872,15 @@
     if (busy) return;
     busy = true;
     clearMsg();
+    pendingKind = null;
     openModal('FACE ID', isRe ? 'Yuzni qayta ulash' : 'Birinchi ulash');
+    flowRetry = () => doEnroll(isRe);
     try {
-      await ensureModels();
+      setFidUI({ status: 'RUXSAT…', hint: 'Kameraga ruxsat bering', progress: 8, tone: 'load' });
       await startCam();
-      try { await getGps(); } catch (e) {}
+      try { await getGps(); } catch (e) { /* enroll uchun GPS shart emas */ }
+      setFidUI({ status: 'LOADING…', hint: 'Yuz modeli…', progress: 20, tone: 'load' });
+      await ensureModels();
       const scan = await scanFace({
         needSamples: 5,
         label: 'Yuzni markazda ushlang — harakatsiz',
@@ -747,16 +891,17 @@
         method: 'POST',
         body: JSON.stringify({ photo: scan.photo, descriptor: scan.descriptor, credentialId: null })
       });
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 500));
       closeModal();
-      msg('Face ID ulandi. Endi Davomatdan o‘ting → Keldim.', 'ok');
+      msg('Face ID ulandi. Endi Keldim bosing.', 'ok');
       await reload();
     } catch (e) {
       if (modal) modal.classList.add('err');
-      setFidUI({ status: 'FAILED', hint: e.message || 'Xato', progress: 0, tone: 'err' });
-      msg(e.message || 'Ulanish xato', 'err');
-      await new Promise((r) => setTimeout(r, 1400));
-      closeModal();
+      stopCam();
+      const text = e.message || 'Ulanish xato';
+      setFidUI({ status: 'FAILED', hint: text, progress: 0, tone: 'err' });
+      msg(text, 'err');
+      showRetry(text);
     } finally {
       busy = false;
     }
@@ -859,16 +1004,29 @@
     render();
   }
 
-  if (btnKeldim) btnKeldim.onclick = () => confirmPunch('in');
-  if (btnKetdim) btnKetdim.onclick = () => confirmPunch('out');
-
-  const closeBtn = document.getElementById('fid-close');
-  if (closeBtn) {
-    closeBtn.onclick = () => {
+  if (btnKeldim) bindTap(btnKeldim, () => confirmPunch('in'));
+  if (btnKetdim) bindTap(btnKetdim, () => confirmPunch('out'));
+  if (btnRetry) {
+    bindTap(btnRetry, () => {
+      hideRetry();
+      if (typeof flowRetry === 'function') flowRetry();
+    });
+  }
+  if (btnCancel) {
+    bindTap(btnCancel, () => {
       if (abortScan) abortScan();
       closeModal();
       busy = false;
-    };
+    });
+  }
+
+  const closeBtn = document.getElementById('fid-close');
+  if (closeBtn) {
+    bindTap(closeBtn, () => {
+      if (abortScan) abortScan();
+      closeModal();
+      busy = false;
+    });
   }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && modalOpen) {

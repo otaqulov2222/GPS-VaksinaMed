@@ -1,5 +1,7 @@
-/* VaksinaMed — Yordamchi (premium) */
-.vm-sup-root {
+/* Face ID ochiq — chat FAB yashirin (desktop ham) */
+body.fid-lock .vm-sup-root {
+  display: none !important;
+}
   --vm-sup-navy: #0b1f3a;
   --vm-sup-blue: #1a5fb4;
   --vm-sup-blue-2: #2a74c9;
