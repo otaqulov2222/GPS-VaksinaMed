@@ -824,17 +824,18 @@ body.fid-lock { overflow: hidden; }
     align-items: stretch;
   }
   .fid-panel {
-    padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+    padding: max(10px, env(safe-area-inset-top, 0px)) 12px calc(14px + env(safe-area-inset-bottom, 0px));
     border-radius: 0;
     width: 100%;
     min-height: 100dvh;
     max-height: 100dvh;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     border-left: 0;
     border-right: 0;
-    border-radius: 0;
   }
   .fid-head {
     margin-bottom: 8px;
@@ -847,9 +848,9 @@ body.fid-lock { overflow: hidden; }
     flex: 1 1 auto;
     width: 100%;
     aspect-ratio: auto;
-    min-height: 0;
-    height: min(62dvh, 520px);
-    max-height: none;
+    min-height: 180px;
+    height: auto;
+    max-height: min(48dvh, 420px);
     border-radius: 16px;
   }
   /* Telefonda tabiiy selfie: zoom-out + yuz ovalga mos */
@@ -923,14 +924,18 @@ body.fid-lock { overflow: hidden; }
   .att-timer-val { font-size: 26px; }
   .att-tabs {
     position: sticky;
-    top: 0;
+    top: var(--shell-sticky-top, 52px);
     z-index: 5;
-    background: rgba(232, 240, 248, 0.92);
+    background: rgba(232, 240, 248, 0.96);
     backdrop-filter: blur(8px);
     padding: 6px 0;
     margin-bottom: 10px;
   }
-  .att-tab { min-height: 40px; padding: 10px 14px; }
+  .att-tab {
+    min-height: 44px;
+    padding: 10px 14px;
+    touch-action: manipulation;
+  }
 }
 
 /* Tabs + timer */
@@ -1128,3 +1133,23 @@ body.fid-lock { overflow: hidden; }
 .att-cal-day.absent { background: #f8fafc; opacity: .85; }
 .att-cal-day.future { opacity: .45; }
 .att-badge.future { background: #e2e8f0; color: #64748b; }
+
+@media (max-width: 980px) {
+  .att-toolbar {
+    width: 100%;
+  }
+  .att-toolbar input[type='date'],
+  .att-toolbar input[type='month'],
+  .att-toolbar select {
+    min-height: 44px;
+    font-size: 16px;
+    flex: 1 1 140px;
+  }
+  .att-link-btn {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+  .att-tab { min-height: 44px; }
+  .att-btn { min-height: 48px; }
+}

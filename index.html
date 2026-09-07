@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://a.tile.openstreetmap.de">
 <link rel="dns-prefetch" href="https://server.arcgisonline.com">
 
-<link rel="stylesheet" href="shell.css?v=21"/>
+<link rel="stylesheet" href="shell.css?v=22"/>
 
 <style>
 
@@ -837,16 +837,12 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 
 
 
-.rev-btns { display: flex; flex-wrap: wrap; gap: 4px; }
-
+.rev-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .rev-btn {
-
-  height: 24px; padding: 0 7px; border: 1px solid var(--line);
-
-  background: #fff; color: var(--ink-2); font: 700 9px/1 var(--sans);
-
-  letter-spacing: .04em; cursor: pointer;
-
+  min-height: 40px; height: auto; padding: 8px 12px; border: 1px solid var(--line);
+  background: #fff; color: var(--ink-2); font: 700 12px/1.2 var(--sans);
+  letter-spacing: .04em; cursor: pointer; border-radius: 8px;
+  touch-action: manipulation;
 }
 
 .rev-btn:hover { background: #f3f4f6; }
@@ -1358,15 +1354,12 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 }
 
 .modal-close {
-
   background: transparent; border: 1px solid #3a4450;
-
-  width: 26px; height: 26px;
-
-  cursor: pointer; font-size: 14px; color: #a8bdd4;
-
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px;
+  cursor: pointer; font-size: 20px; color: #a8bdd4;
   display: flex; align-items: center; justify-content: center;
-
+  touch-action: manipulation; border-radius: 10px;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .modal-close:hover { background: var(--bad); color: #fff; border-color: var(--bad); }
@@ -1598,7 +1591,7 @@ input, select, textarea { max-width: 100%; }
     padding: 0 max(8px, env(safe-area-inset-left));
     -webkit-overflow-scrolling: touch;
     position: sticky;
-    top: 0;
+    top: var(--shell-sticky-top, 52px);
     z-index: 90;
     background: #fff;
     border-bottom: 1px solid #d7e3f0;
@@ -1639,11 +1632,35 @@ input, select, textarea { max-width: 100%; }
   .sec-head h3 { overflow-wrap: anywhere; }
 
   .modal-bg { padding: 0; align-items: flex-end; }
-  .modal-box { max-height: min(92dvh, 92vh); max-width: 100%; width: 100%; border-radius: 18px 18px 0 0; }
-  .modal-footer { flex-wrap: wrap; }
-  .modal-footer .btn { flex: 1 1 auto; min-height: 44px; justify-content: center; }
+  .modal-box {
+    max-height: min(92dvh, 92vh);
+    max-width: 100%;
+    width: 100%;
+    border-radius: 18px 18px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .modal-footer {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+  .modal-footer .btn { flex: 1 1 auto; min-height: 48px; justify-content: center; }
+  .form-row label { font-size: 12px; letter-spacing: .06em; }
+  #modal-gps .form-row input,
+  #modal-gps .form-row select,
+  #modal-settings .form-row input,
+  #modal-settings .form-row select {
+    font-size: 16px;
+    min-height: 48px;
+  }
+  #gps-date-yesterday, #gps-date-today { min-height: 44px; padding: 0 14px; }
 
-  .toast { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: none; }
+  .toast-msg, .toast {
+    left: 12px;
+    right: 12px;
+    bottom: max(76px, calc(64px + env(safe-area-inset-bottom)));
+    max-width: none;
+  }
 
   .table-wrap { border-radius: 12px; }
   table.gtable { min-width: 560px; }
@@ -1652,8 +1669,9 @@ input, select, textarea { max-width: 100%; }
     overflow-wrap: anywhere;
   }
 
-  .btn { min-height: 42px; height: auto; padding: 8px 12px; white-space: normal; line-height: 1.25; }
-  .btn-sm { min-height: 40px; height: auto; }
+  .btn { min-height: 44px; height: auto; padding: 10px 12px; white-space: normal; line-height: 1.25; }
+  .btn-sm { min-height: 44px; height: auto; font-size: 12px; padding: 0 12px; }
+  .rev-btn { min-height: 44px; font-size: 13px; padding: 10px 14px; }
 }
 
 @media (max-width: 640px) {
@@ -2346,12 +2364,12 @@ input, select, textarea { max-width: 100%; }
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 
-<script src="auth.js?v=27"></script>
+<script src="auth.js?v=28"></script>
 
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app.js?v=73"></script>
+<script src="app.js?v=74"></script>
 
 <script src="office.js?v=15"></script>
 

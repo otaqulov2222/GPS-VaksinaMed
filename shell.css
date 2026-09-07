@@ -706,7 +706,8 @@ body.app-body::before {
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    --shell-sticky-top: calc(52px + env(safe-area-inset-top, 0px));
   }
   .app-main > .topbar,
   .app-shell .topbar {
@@ -731,8 +732,8 @@ body.app-body::before {
     display: inline-flex !important;
     align-self: center;
     min-width: 44px;
-    min-height: 40px;
-    height: 40px;
+    min-height: 44px;
+    height: 44px;
     padding: 0 12px;
     border-radius: 10px;
     flex-shrink: 0;
@@ -789,7 +790,7 @@ body.app-body::before {
   .nav-rail .tab,
   .nav-rail a,
   .nav-rail button {
-    min-height: 42px !important;
+    min-height: 44px !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
@@ -856,19 +857,20 @@ body.app-body::before {
   .app-main .topbar .acts > .month-pick,
   .app-main .topbar .acts > input {
     flex: 0 0 auto;
-    min-height: 38px;
-    height: 38px;
-    padding: 0 10px;
+    min-height: 44px;
+    height: 44px;
+    padding: 0 12px;
     white-space: nowrap;
     max-width: none;
     overflow-wrap: normal;
     line-height: 1;
     box-sizing: border-box;
+    touch-action: manipulation;
   }
   .app-main .topbar .acts > .month-wrap {
     min-width: 128px;
     max-width: 148px;
-    height: 38px;
+    height: 44px;
   }
   .app-main .topbar .acts > .month-pick {
     min-width: 0;
@@ -896,13 +898,14 @@ body.app-body::before {
   }
   .app-body .btn,
   .app-body .btn-sm {
-    min-height: 42px;
+    min-height: 44px;
     height: auto;
-    padding-top: 8px;
-    padding-bottom: 8px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     white-space: normal;
     line-height: 1.25;
     overflow-wrap: anywhere;
+    touch-action: manipulation;
   }
   .app-body .card-h,
   .app-body .sec-head {
@@ -917,12 +920,23 @@ body.app-body::before {
   }
 
   /* Toast / modal above drawer */
-  .toast { z-index: 300 !important; }
+  .toast,
+  .toast-msg { z-index: 300 !important; }
   .modal-bg { z-index: 320 !important; }
 
-  /* Face ID ochiq bo'lganda yordamchi FAB boshqa tugmani bosib yubormasin */
-  body.fid-lock .vm-sup-root {
+  /* Face ID / modal ochiq — Yordamchi FAB to‘smasin */
+  body.fid-lock .vm-sup-root,
+  body:has(.modal-bg.open) .vm-sup-root,
+  body:has(.fid-modal.open) .vm-sup-root,
+  body:has(.fid-modal.show) .vm-sup-root {
     display: none !important;
+  }
+
+  /* Sticky ichki panel topbardan pastroq */
+  .driver-strip-wrap,
+  .att-tabs,
+  .sticky-under-topbar {
+    top: var(--shell-sticky-top, 52px) !important;
   }
 }
 
@@ -961,11 +975,11 @@ body.app-body::before {
 }
 .pw-eye {
   position: absolute;
-  right: 4px;
+  right: 2px;
   top: 50%;
   transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: 0;
   background: transparent;
   color: #5a7190;
@@ -975,6 +989,7 @@ body.app-body::before {
   justify-content: center;
   z-index: 2;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .pw-eye:hover,
 .pw-eye.on { color: #1a5fb4; }

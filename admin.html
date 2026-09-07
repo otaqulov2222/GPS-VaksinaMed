@@ -14,7 +14,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="shell.css?v=21"/>
+<link rel="stylesheet" href="shell.css?v=22"/>
 
 <style>
 
@@ -532,13 +532,19 @@ body { overflow-x: clip; }
     max-height: min(92dvh, 92vh);
   }
   .btn-lg, .btn { min-height: 44px; white-space: normal; line-height: 1.25; }
+  .btn-sm { min-height: 44px; padding: 0 12px; font-size: 12px; }
+  .row-btns { flex-wrap: wrap; gap: 8px; }
   .stats { gap: 8px; }
   .field input, .field select {
     font-size: 16px; min-height: 44px;
   }
   .toast {
-    left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px; right: 12px;
+    bottom: max(76px, calc(64px + env(safe-area-inset-bottom)));
     max-width: none; z-index: 300;
+  }
+  .modal {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
@@ -1293,7 +1299,7 @@ body { overflow-x: clip; }
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 
-<script src="auth.js?v=27"></script>
+<script src="auth.js?v=28"></script>
 
 <script>
 

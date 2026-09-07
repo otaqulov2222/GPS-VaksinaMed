@@ -1,6 +1,16 @@
 /* Face ID ochiq — chat FAB yashirin */
-body.fid-lock .vm-sup-root {
+body.fid-lock .vm-sup-root,
+body:has(.modal-bg.open) .vm-sup-root,
+body:has(.fid-modal.open) .vm-sup-root {
   display: none !important;
+}
+
+/* Yoqilg‘i kunlik pastki panel — FAB tepaga */
+body:has(#panel-daily.on) .vm-sup-root {
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+body:has(#panel-daily.on) .vm-sup-panel {
+  bottom: calc(72px + 96px + env(safe-area-inset-bottom, 0px));
 }
 
 /* VaksinaMed — Yordamchi (premium) */
@@ -378,11 +388,22 @@ body.fid-lock .vm-sup-root {
     right: 10px;
     bottom: max(10px, env(safe-area-inset-bottom, 0px));
   }
+  body:has(#panel-daily.on) .vm-sup-root {
+    bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  }
+  body:has(#panel-daily.on) .vm-sup-panel {
+    bottom: calc(68px + 100px + env(safe-area-inset-bottom, 0px));
+  }
   .vm-sup-panel {
     width: calc(100vw - 20px);
     height: min(78vh, 640px);
     bottom: 68px;
     border-radius: 18px;
   }
-  .vm-sup-fab { width: 52px; height: 52px; border-radius: 16px; }
+  .vm-sup-fab {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    touch-action: manipulation;
+  }
 }

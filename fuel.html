@@ -14,7 +14,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="shell.css?v=21"/>
+<link rel="stylesheet" href="shell.css?v=22"/>
 
 <style>
 
@@ -1151,11 +1151,11 @@ table.dtable td.day {
   .kpis, .kpis[style] { grid-template-columns: 1fr !important; }
   .row-btns { grid-template-columns: 1fr; }
   .chips { grid-template-columns: 1fr 1fr; max-height: min(34dvh, 220px); }
-  .chip-car { min-width: 0; min-height: 42px; }
+  .chip-car { min-width: 0; min-height: 44px; }
   .daily-primary {
-    grid-template-columns: 1fr 1fr 1fr !important;
+    grid-template-columns: 1fr 1fr;
   }
-  .daily-primary #btn-save { grid-column: auto !important; }
+  .daily-primary #btn-save { grid-column: 1 / -1; min-height: 50px; }
 }
 
 </style>
@@ -1584,7 +1584,7 @@ table.dtable td.day {
 <script src="excel-style.js?v=1"></script>
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
-<script src="auth.js?v=27"></script>
+<script src="auth.js?v=28"></script>
 <script src="fuel.js?v=53"></script>
 <script src="journal.js?v=11"></script>
 </body>
