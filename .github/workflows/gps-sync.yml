@@ -1,8 +1,9 @@
 # Kunlik to'liq GPS odat — GitHub Actions (Vercel Fluid 25s limitsiz).
 #
-# Har 10 daqiqada:
-#   - yetishmagan mashinalarni to'ldiradi
-#   - ish vaqtida (06–22 Toshkent) 15 daqiqadan eski bo'lsa hammasi yangilanadi
+# MUAMMO: GitHub `*/10 * * * *` schedule ishonchsiz — soatlab kechikadi/yutiladi.
+# YECHIM: har soat ishga tushadi + job ICHIDA ~50 daqiqa loop (har ~10 daqiqa sync).
+#
+# Toshkent ish kuni 06–22 ≈ UTC 01–17
 #
 # GitHub → Settings → Secrets and variables → Actions:
 #   DATABASE_URL   — Neon pooler URL (Vercel dagi bilan bir xil)
@@ -18,14 +19,18 @@ name: GPS sync
 
 on:
   schedule:
-    # Har 10 daqiqa — kunlik odat (UTC; Toshkent = UTC+5)
-    - cron: '*/10 * * * *'
+    # Har soat :07 UTC — ish kunida (Toshkent 06–22)
+    - cron: '7 1-17 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: gps-sync-habit
+  cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +48,7 @@ jobs:
           echo "--- run_gps_cron.py (birinchi 40 qator) ---"
           sed -n '1,40p' scripts/run_gps_cron.py
 
-      - name: Run daily GPS habit
+      - name: Run daily GPS habit (hourly loop)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GPS_HOST: ${{ secrets.GPS_HOST }}
@@ -53,4 +58,7 @@ jobs:
           VM_PRODUCTION: '1'
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           GPS_REFRESH_EVERY_SEC: '900'
+          # Bitta job ichida 50 daqiqa: ~har 10 daqiqada yangilash
+          GPS_CRON_LOOP_MIN: '50'
+          GPS_CRON_LOOP_SLEEP: '600'
         run: python scripts/run_gps_cron.py

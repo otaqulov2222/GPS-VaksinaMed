@@ -2003,7 +2003,7 @@ function updateGpsLastSyncUi(iso, running, extra) {
     if (habit) {
         habit.textContent = total > 0
             ? ('Kunlik odat: avto ' + fetched + '/' + total + ' mashina')
-            : 'Kunlik odat: har 10 daqiqada avto-yuklash';
+            : 'Kunlik odat: server har ~10 daqiqada avto-yuklaydi';
     }
     if (!el) return;
     if (running) {

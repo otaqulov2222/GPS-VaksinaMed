@@ -6,6 +6,9 @@ Mantiq (Toshkent vaqti):
 1) Bugun to'liq emas → yetishmayotgan mashinalarni to'ldirish
 2) Ish vaqti (06–22) va oxirgi sync eskirgan (≥15 daqiqa) → barcha mashinani yangilash
 3) Kecha bo'sh/qisman → kechani ham to'ldirish
+
+GitHub schedule har 10 daqiqada ISHONCHSIZ (throttle). Shuning uchun
+GPS_CRON_LOOP_MIN>0 bo'lsa bitta job ichida bir necha marta sync qiladi.
 """
 from __future__ import annotations
 
@@ -22,6 +25,8 @@ os.environ.setdefault("VM_PRODUCTION", "1")
 
 TZ5 = timezone(timedelta(hours=5))
 REFRESH_EVERY_SEC = int(os.environ.get("GPS_REFRESH_EVERY_SEC", str(15 * 60)))
+LOOP_MINUTES = int(os.environ.get("GPS_CRON_LOOP_MIN", "0"))
+LOOP_SLEEP = int(os.environ.get("GPS_CRON_LOOP_SLEEP", "600"))
 
 
 def _count_synced(cars):
@@ -60,7 +65,7 @@ def _should_force_refresh(cars, total_fleet, now_ts, hour):
     return (now_ts - newest) >= REFRESH_EVERY_SEC
 
 
-def main():
+def run_once():
     if not (os.environ.get("DATABASE_URL") or "").strip():
         print("ERROR: DATABASE_URL yo'q")
         return 1
@@ -193,6 +198,37 @@ def main():
         print("EXCEPTION:", e)
         traceback.print_exc()
         return 1
+
+
+def main():
+    if LOOP_MINUTES <= 0:
+        return run_once()
+
+    deadline = time.time() + LOOP_MINUTES * 60
+    round_n = 0
+    last_code = 1
+    print(
+        "LOOP mode: %d daqiqa, sleep=%ds, refresh≥%ds"
+        % (LOOP_MINUTES, LOOP_SLEEP, REFRESH_EVERY_SEC)
+    )
+    while True:
+        round_n += 1
+        now = datetime.now(TZ5)
+        print("=== LOOP #%d | %s Toshkent ===" % (round_n, now.strftime("%Y-%m-%d %H:%M")))
+        # Tungi soatda uzoq loop kerak emas
+        if now.hour < 6 or now.hour > 22:
+            print("Ish vaqtidan tashqari — bitta urinish va chiqish")
+            return run_once()
+
+        last_code = run_once()
+        remain = deadline - time.time()
+        if remain < max(30, LOOP_SLEEP // 2):
+            print("LOOP tugadi (deadline). rounds=%d last=%d" % (round_n, last_code))
+            break
+        sleep_for = min(LOOP_SLEEP, max(30, int(remain - 15)))
+        print("Keyingi sync uchun kutish: %ds" % sleep_for)
+        time.sleep(sleep_for)
+    return last_code
 
 
 if __name__ == "__main__":
