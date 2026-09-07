@@ -623,6 +623,34 @@ table.gtable th {
 table.gtable td.num { font-family: var(--mono); text-align: right; }
 
 table.gtable tr:hover td { background: #f3f4f6; }
+table.gtable tr.month-sum-row { cursor: pointer; }
+table.gtable tr.month-sum-row td.month-caret {
+  width: 22px; text-align: center; color: var(--mark, #1a5fb4);
+  font-size: 12px; user-select: none;
+}
+table.gtable tr.month-sum-row.open > td { background: #e8f0fa; }
+table.gtable tr.month-sum-row.open .month-caret {
+  display: inline-block;
+  transform: rotate(90deg);
+}
+table.gtable tr.month-detail-row > td {
+  padding: 0 !important;
+  background: #f7fafc;
+  border-top: none;
+}
+table.gtable tr.month-detail-row:hover > td { background: #f7fafc; }
+.month-days-wrap { padding: 12px 14px 16px; }
+.month-days-h {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline;
+  margin-bottom: 10px; font-size: 13px;
+}
+.month-days-h .muted { color: #5a7190; font-size: 12px; }
+table.gtable-days { font-size: 12px; }
+table.gtable-days th { font-size: 10px; }
+table.gtable-days tr.day-empty td { color: #9aa8b8; }
+@media print {
+  .month-caret, tr.month-detail-row { display: none !important; }
+}
 
 table.gtable input, table.gtable select {
 
@@ -1507,7 +1535,7 @@ table.dtable td.day {
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 <script src="auth.js?v=19"></script>
-<script src="fuel.js?v=48"></script>
+<script src="fuel.js?v=50"></script>
 <script src="journal.js?v=11"></script>
 </body>
 </html>

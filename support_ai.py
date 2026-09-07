@@ -14,6 +14,8 @@ import time
 import urllib.error
 import urllib.request
 
+from support_knowledge import FAQ_OFFLINE, KNOWLEDGE, PAGE_BUTTON_GUIDE
+
 # ── Muhit ──────────────────────────────────────────────────
 _RATE = {}  # user_id -> [timestamps]
 _RATE_LOCK = threading.Lock()
@@ -34,223 +36,14 @@ Vazifa: foydalanuvchiga FAQAT shu tizimni tushuntirish.
 
 QOIDALAR (majburiy):
 1) Faqat VaksinaMed GPS/avtopark tizimi: Dashboard, Boshqaruv (fuel), Admin panel, Haydovchi kabineti, Profil, GPS, yoqilg'i, dorixona, jurnal.
-2) Tizimdan tashqari mavzu (VHK, boshqa dastur, siyosat, umumiy suhbat, kod yozish, boshqa kompaniya) — qisqa rad eting: tizimga tegishli emas.
-3) Skrinshot bo'lsa: ko'rinadigan tugma/maydonni aniqlang va shu tizimdagi vazifasini tushuntiring. Aniq bilmasangiz — taxmin ekanini ayting.
-4) Parol, token, API kalit, shaxsiy ma'lumot so'ramang va oshkor qilmang.
-5) Foydalanuvchi rolini hisobga oling: haydovchi faqat kabinet/profil; admin — Dashboard/Boshqaruv/Panel.
+2) Tizimdan tashqari mavzu — qisqa rad eting.
+3) Skrinshot: ko'rinadigan tugma/maydonni aniqlang va vazifasini aniq tushuntiring. Bilmasangiz — taxmin ekanini ayting.
+4) Parol, token, API kalit so'ramang va oshkor qilmang.
+5) Rol: haydovchi faqat kabinet/profil; admin — Dashboard/Boshqaruv/Panel.
 6) Javob o'zbek lotinida, aniq, qadam-baqadam. Keraksiz uzunlikdan qoching.
 7) Tizim o'zgartirishni va'da qilmang — faqat mavjud funksiyani tushuntiring.
+8) Bilim bazasidagi tugma nomlariga amal qiling; chalkashtirmang (masalan Excel yuklash ≠ Excel saqlash; Asl ma'lumot ≠ Zaxira).
 """
-
-# To'liq ichki qo'llanma — model kontekstiga beriladi
-KNOWLEDGE = """
-# VaksinaMed Fleet Control — ichki qo'llanma
-
-## Umumiy
-- Kirish: login.html — login + parol. Sessiyasiz sahifalar ochilmaydi.
-- Rollar: Admin Pro (to'liq), Admin (dashboard/boshqaruv; panel huquqi bor), Haydovchi (faqat driver.html + profile.html).
-- Brend: VaksinaMed Machine Control. Til: o'zbek lotin.
-
-## Dashboard (index.html / bosh sahifa)
-Maqsad: GPS kunlik kuzatuv, mashina holati, xarita, ball.
-Asosiy elementlar:
-- GPS yuklash / Ulanish: tanlangan kun uchun GPS (Boomerang/Wialon) dan ma'lumot tortish.
-- Excel yuklash / Excel saqlash: GPS/hisobotni Excel orqali olish yoki saqlash.
-- PDF: chop etish / PDF.
-- Sozlamalar: lokal sozlamalar, JSON import/export, tozalash (ehtiyot!).
-- Kalendar (< >): oy/kun tanlash.
-- Jadval: mashinalar, km, reys, to'xtash, ball, muammolar.
-- Xarita: yo'nalish, to'xtashlar; Yangilash — xaritani yangilaydi.
-- GPS status: ULANGAN N/M — nechta mashina GPS dan kelgan.
-
-## Boshqaruv (fuel.html)
-Maqsad: yoqilg'i, spidometr, kunlik kiritish, hisobotlar, hujjatlar.
-Chap menyu bo'limlari:
-- Bosh sahifa: umumiy ko'rinish.
-- Kunlik kiritish: mashina tanlash, norma/narx, kunlik jadval, Saqlash.
-- Kun hisoboti / Oylik hisobot / Rasmiy hisobot / Yillik jamlanma: hisobotlar.
-- Zapravka reestri: zapravka yozuvlari.
-- Gaz akti: gaz hujjati.
-- Hujjat muddatlari: muddat ogohlantirishlari.
-- Haydovchilar jurnali: jurnal yozuvlari.
-- Mashina va narx: park va narx sozlamalari.
-
-Yuqori tugmalar:
-- Oy tanlash (masalan Sentabr 2026).
-- Excel yuklab olish: joriy ma'lumotni Excel ga.
-- Excel to'ldirish: Excel dan oylik/kunlikni import.
-- Zaxira saqlash / Zaxiradan tiklash: lokal zaxira.
-- Asl ma'lumot: serverdagi asl holatga qaytarish (ehtiyot).
-
-Kunlik kiritish maydonlari:
-- Gaz/benzin-dizel normasi (100 km), spidometr oy boshi, oy boshi qoldiqlar, narxlar, aralashda gaz %.
-- Yoqilg'i turi: Gaz+benzin, Dizel+gaz, Faqat gaz/benzin/dizel.
-- Oldingi oydan qoldiqni yig'ish: oldingi oy oxiridagi qoldiqni olib kelish.
-- Barchasini yangilash: hisoblarni yangilash.
-- Spidometr bo'yicha kunlarni to'ldirish: spidometr ketma-ketligidan km.
-- Norma/narx o'zgarishi: oy ichida norma yoki narx o'zgarganda.
-- Haydovchini kun belgilab almashtirish: shofyor almashinuvi.
-- GPS dan km: GPS yurgan masofani kunlarga yozish.
-- Excel orqali to'ldirish: modal orqali .xlsx import.
-- Saqlash: o'zgarishlarni saqlash (haydovchi yozolmaydi).
-
-Kunlik jadval ustunlari: kun, yurgan masofa, gaz km, dizel/benzin km, spidometr, nimada yurdi, zapravka, olingan gaz/benzin, narx, summa, sarf, qoldiq, qo'shimcha.
-
-## Haydovchi kabineti (driver.html)
-- Faqat o'z mashinasi. O'zgartirish yo'q — faqat ko'rish.
-- LIVE: avtomatik yangilanish (~1 daqiqa UI, GPS ~3 daqiqa).
-- KPI: yurilgan km, ball, o'tkazib yuborilgan nuqtalar, qoidabuzarlik.
-- Xarita: yo'nalish chizig'i + to'xtashlar (A/B va raqamlar).
-- Yoqilg'i: rejim, km (boshqaruv), sarf, olingan, qoldiq (admin kiritganiga bog'liq).
-- Sana tanlash: kun bo'yicha ko'rish.
-- Mashina select yo'q (biriktirilgan mashina).
-
-## Admin panel (admin.html)
-- Admin qo'shish / Shofyor qo'shish.
-- Kunlik vazifa (haydovchi kabinetida o'qiladi).
-- Foydalanuvchilar: blok, parol, o'chirish.
-- Kim tizimda: sessiyalar, chiqarish.
-- O'z parolini almashtirish.
-- Dorixona biriktirish: GPS joylaridan, radius.
-- Geozonalarni o'rganish va qayta hisoblash.
-- Telegram ogohlantirish: bot token + chat ID (maxfiy).
-
-## Profil (profile.html)
-- Hisob ma'lumotlari, tezkor havolalar, parolni almashtirish.
-- Haydovchida faqat Kabinet + Profil menyu.
-
-## Muhim eslatmalar
-- GPS km va Boshqaruvdagi km farq qilishi mumkin (qo'lda kiritish / sync vaqti).
-- Manfiy yoqilg'i qoldig'i — odatda oy boshi qoldiq yoki zapravka to'liq kiritilmagan.
-- Haydovchi Excel/Saqlash/Admin paneldan foydalana olmaydi.
-- Chiqish: Profil yoki Chiqish tugmasi.
-"""
-
-FAQ_OFFLINE = [
-    {
-        "keys": ["asl malumot", "asl ma'lumot", "asl ma lumot", "btn-reload"],
-        "a": (
-            "Asl ma'lumot (Boshqaruv) — serverdagi asl (saqlangan) ma'lumotni qayta yuklaydi. "
-            "Siz lokalda o'zgartirgan, lekin Saqlash qilmagan yoki chalkashib ketgan o'zgarishlar yo'qolishi mumkin. "
-            "Zaxira saqlash dan farq qiladi: zaxira — fayl nusxa; Asl ma'lumot — tizimdagi asosiy ma'lumotga qaytish. "
-            "Ehtiyot: muhim o'zgarishlar bo'lsa avval Zaxira saqlash qiling."
-        ),
-    },
-    {
-        "keys": ["zaxira saqlash", "zaxiradan tiklash", "zaxira", "tiklash"],
-        "a": (
-            "Zaxira saqlash — joriy Boshqaruv ma'lumotidan nusxa oladi.\n"
-            "Zaxiradan tiklash — shu nusxani qayta yuklaydi.\n"
-            "Asl ma'lumot — serverdagi asl holatga qaytaradi (zaxiradan boshqacha)."
-        ),
-    },
-    {
-        "keys": [
-            "boshqaruv tugma", "fuel.html", "excel yuklab", "excel toldirish",
-            "gps dan km", "oldingi oydan", "barchasini yangilash",
-        ],
-        "a": (
-            "Boshqaruv (yuqori/qator tugmalar):\n\n"
-            "• Excel yuklab olish — eksport\n"
-            "• Excel to'ldirish — Excel dan import\n"
-            "• Zaxira saqlash / Zaxiradan tiklash — lokal nusxa\n"
-            "• Asl ma'lumot — serverdagi asl ma'lumotni qayta yuklash (ehtiyot!)\n"
-            "• GPS dan km — GPS masofasini kunlarga yozish\n"
-            "• Saqlash — o'zgarishlarni saqlash\n"
-            "• Oldingi oydan qoldiq / Barchasini yangilash / Spidometr to'ldirish — hisob yordamchilari"
-        ),
-    },
-    {
-        "keys": [
-            "gps yuklash", "excel yuklash", "excel saqlash", "pdf",
-            "sozlamalar", "deklarats", "dashboard tugma",
-        ],
-        "a": (
-            "Dashboard yuqori tugmalari:\n\n"
-            "1) GPS yuklash — tanlangan kun uchun GPS dan ma'lumot oladi.\n"
-            "2) Excel yuklash — Excel import.\n"
-            "3) Excel saqlash — Excel eksport.\n"
-            "4) PDF — PDF / chop etish.\n"
-            "5) Sozlamalar — tizim sozlamalari."
-        ),
-    },
-    {
-        "keys": [
-            "tizim", "tzim", "tushuntir", "tushuntr", "umumiy",
-            "toliq tizim", "to'liq tizim", "qanaqa tizim", "bu tizim",
-        ],
-        "a": (
-            "VaksinaMed Fleet Control — avtopark GPS + yoqilg'i + haydovchi kabineti.\n\n"
-            "1) Dashboard — kunlik GPS, ball, xarita\n"
-            "2) Boshqaruv — yoqilg'i/kunlik/hisobot\n"
-            "3) Haydovchi kabineti — o'z kuni (faqat ko'rish)\n"
-            "4) Admin panel — foydalanuvchi, dorixona\n"
-            "5) Profil — hisob/parol"
-        ),
-    },
-    {
-        "keys": ["kirish", "login", "parol", "sessiya"],
-        "a": "Tizimga login.html orqali login va parol bilan kiriladi. Sessiyasiz Dashboard/Boshqaruv ochilmaydi. Parolni Profilda almashtirasiz.",
-    },
-    {
-        "keys": ["dashboard", "gps sync", "ulanish", "kalendar"],
-        "a": "Dashboardda GPS yuklash / Ulanish tanlangan kun uchun GPS dan ma'lumot oladi. Kalendar bilan kun/oy tanlang. Status ULANGAN N/M nechta mashina kelganini ko'rsatadi.",
-    },
-    {
-        "keys": ["excel yuklash", "excel saqlash", "excel yuklab", "excel toldirish", "excel to'ldirish", "to'ldirish"],
-        "a": "Dashboard: Excel yuklash - import, Excel saqlash - eksport. Boshqaruvda: Excel yuklab olish - eksport, Excel to'ldirish - import.",
-    },
-    {
-        "keys": ["boshqaruv", "kunlik", "saqlash", "norma", "spidometr", "kunlik kiritish"],
-        "a": "Boshqaruv - Kunlik kiritish: mashinani tanlang, norma/narx/qoldiqni to'ldiring, jadvalga kunlik km va zapravkani yozing, Saqlash bosing. GPS dan km GPS masofasini kunlarga yozadi.",
-    },
-    {
-        "keys": ["gps dan km", "gpsdan"],
-        "a": "GPS dan km tugmasi tanlangan oy/mashina uchun GPS yurgan masofani kunlik jadvalga yozishga yordam beradi. Keyin tekshirib Saqlash qiling.",
-    },
-    {
-        "keys": ["haydovchi", "kabinet", "live", "xarita"],
-        "a": "Haydovchi kabineti faqat o'z kunini ko'rsatadi (LIVE yangilanadi). Xaritada yo'nalish va to'xtashlar bor. Ma'lumotni o'zgartirish mumkin emas - admin Boshqaruvdan kiritadi.",
-    },
-    {
-        "keys": ["admin", "panel", "shofyor", "dorixona", "telegram"],
-        "a": "Admin panelda foydalanuvchi/haydovchi yaratish, vazifa, dorixona biriktirish, geozona, Telegram sozlamalari bor. Haydovchi bu panelni ko'rmaydi.",
-    },
-    {
-        "keys": ["profil", "chiqish"],
-        "a": "Profil da hisob ma'lumoti va parol almashtirish bor. Chiqish sessiyani yopadi.",
-    },
-    {
-        "keys": ["qoldiq", "manfiy", "sarf"],
-        "a": "Manfiy gaz/benzin qoldig'i odatda oy boshi qoldiq yoki zapravka to'liq kiritilmaganidan chiqadi. Kunlik kiritishda qoldiq va olingan yoqilg'ini tekshiring.",
-    },
-]
-
-PAGE_BUTTON_GUIDE = {
-    "fuel.html": (
-        "Siz Boshqaruv sahifasidasiz. Asosiy tugmalar:\n\n"
-        "• Excel yuklab olish / Excel to'ldirish — eksport va import\n"
-        "• Zaxira saqlash / Zaxiradan tiklash — nusxa olish/qaytarish\n"
-        "• Asl ma'lumot — serverdagi asl ma'lumotni qayta yuklash (saqlanmagan o'zgarishlar yo'qolishi mumkin)\n"
-        "• GPS dan km — GPS masofasini kunlarga yozish\n"
-        "• Saqlash — o'zgarishlarni saqlash\n\n"
-        "Aniq tugma nomini yozsangiz (masalan: Asl ma'lumot), shu tugmani batafsil tushuntiraman."
-    ),
-    "index.html": (
-        "Siz Dashboarddasiz. Yuqori tugmalar: GPS yuklash, Excel yuklash, Excel saqlash, PDF, Sozlamalar.\n"
-        "Aniq tugma nomini yozing — batafsil aytaman."
-    ),
-    "admin.html": (
-        "Admin panel: foydalanuvchi/haydovchi qo'shish, vazifa, dorixona, geozona, Telegram, Chiqish.\n"
-        "Qaysi bo'lim kerak?"
-    ),
-    "driver.html": (
-        "Haydovchi kabineti: sana, LIVE, KPI, xarita, yoqilg'i — faqat ko'rish. O'zgartirish yo'q."
-    ),
-    "profile.html": (
-        "Profil: hisob ma'lumoti va parolni almashtirish, Chiqish."
-    ),
-}
 
 
 def load_dotenv(path: str | None = None) -> None:
@@ -305,9 +98,12 @@ def _has_system_signal(t: str) -> bool:
         "zapravka", "spidometr", "dorixona", "admin", "panel", "excel",
         "xarita", "mashina", "tugma", "profil", "login", "vaksina",
         "tizim", "tzim", "avtopark", "fleet", "ball", "kunlik", "oylik",
-        "spidometr", "yordamchi", "geozona", "reja", "reys", "toxtash",
-        "to'xtash", "saqlash", "hisobot", "jornal", "jurnal", "gaz",
-        "benzin", "dizel", "norma", "narx", "skrin", "screenshot",
+        "yordamchi", "geozona", "reja", "reys", "toxtash", "to'xtash",
+        "saqlash", "hisobot", "jornal", "jurnal", "gaz", "benzin", "dizel",
+        "norma", "narx", "skrin", "screenshot", "rasmiy", "yillik", "hujjat",
+        "zaxira", "asl", "ulanish", "ruxsat", "qoidabuzar", "telegram",
+        "shofyor", "sessiya", "kalendar", "marshrut", "pdf", "csv",
+        "jamlanma", "reestr", "topshiriq", "vazifa", "chip",
     )
     return any(g in t for g in good)
 
@@ -316,10 +112,8 @@ def looks_offtopic(text: str) -> bool:
     t = _norm(text)
     if not t or len(t) < 2:
         return False
-    # Tizim haqida so'rov (hatto ichida 'vhk' bo'lsa ham) — ON-TOPIC
     if _has_system_signal(t):
         return False
-    # Faqat tashqi mavzu
     bad = (
         "vhk", "1c ", "1с", "telegram bot yoz", "kripto", "bitcoin",
         "siyosat", "futbol", "retsept", "dori yoz", "homework", "python dars",
@@ -327,57 +121,159 @@ def looks_offtopic(text: str) -> bool:
     return any(b in t for b in bad)
 
 
-def offline_answer(message: str, role: str, page: str = "", has_image: bool = False) -> str:
+def _page_key(page: str) -> str:
+    pg = _norm(page or "").replace("'", "")
+    if "fuel" in pg:
+        return "fuel.html"
+    if "admin" in pg:
+        return "admin.html"
+    if "driver" in pg:
+        return "driver.html"
+    if "profile" in pg:
+        return "profile.html"
+    return "index.html"
+
+
+def _faq_score(item: dict, text: str) -> int:
+    """Uzun/aniq kalit ustun. So'zma-so'z qisman moslik ham hisoblanadi."""
+    if not text:
+        return 0
+    score = 0
+    for k in item.get("keys") or []:
+        kn = _norm(k).replace("'", "")
+        if not kn or len(kn) < 2:
+            continue
+        if kn in text:
+            # Uzunroq kalit = aniqroq moslik
+            score += 4 + min(14, len(kn) // 2)
+            continue
+        parts = [p for p in kn.split() if len(p) > 2]
+        if len(parts) >= 2 and all(p in text for p in parts):
+            score += 3 + len(parts) * 2
+        elif len(parts) == 1 and parts[0] in text and len(parts[0]) >= 5:
+            score += 2
+    return score
+
+
+def _role_note(role: str) -> str:
+    if (role or "").strip() == "driver":
+        return "\n\nSiz haydovchisiz: faqat kabinet va profil (o'zgartirish yo'q)."
+    return ""
+
+
+def _known_terms() -> list[str]:
+    """FAQ kalitlaridan uzunlik bo'yicha tartiblangan atamalar."""
+    terms = set()
+    for item in FAQ_OFFLINE:
+        for k in item.get("keys") or []:
+            kn = _norm(k).replace("'", "")
+            if kn and len(kn) >= 4:
+                terms.add(kn)
+    # Nav / UI qisqa nomlar
+    for extra in (
+        "profil", "dashboard", "boshqaruv", "kabinet", "panel", "admin",
+        "chiqish", "kirish", "menyu", "live", "ulanis", "ulanish",
+    ):
+        terms.add(extra)
+    return sorted(terms, key=len, reverse=True)
+
+
+def _extract_known_from_text(text: str) -> str:
+    """Skrin/OCR matnidan eng uzun mos UI atamasini topish."""
+    t = _norm(text or "").replace("'", "")
+    if not t:
+        return ""
+    for term in _known_terms():
+        if term in t:
+            return term
+    return ""
+
+
+def offline_answer(
+    message: str,
+    role: str,
+    page: str = "",
+    has_image: bool = False,
+    ui_labels=None,
+    active_label: str = "",
+    image_text: str = "",
+) -> str:
     if looks_offtopic(message):
         return OFFTOPIC_REPLY
     t = _norm(message).replace("'", "")
-    pg = _norm(page or "").replace("'", "")
-    if "fuel" in pg:
-        page_key = "fuel.html"
-    elif "admin" in pg:
-        page_key = "admin.html"
-    elif "driver" in pg:
-        page_key = "driver.html"
-    elif "profile" in pg:
-        page_key = "profile.html"
-    else:
-        page_key = "index.html"
+    page_key = _page_key(page)
+    act = _norm(active_label or "").replace("'", "")
+    img_t = _norm(image_text or "").replace("'", "")
+    from_img = _extract_known_from_text(img_t) if img_t else ""
+    from_msg = _extract_known_from_text(t) if t else ""
+    # Yozilgan yoki skrindan o'qilgan ANIQ nom — eng ustun (aktiv tab yengolmaydi)
+    named = from_img or from_msg
 
-    # Salom / qisqa
+    vague = any(
+        x in t
+        for x in (
+            "tugma", "tugmacha", "tugmachi", "vazifa", "nima qil",
+            "bu nima", "ushbu", "nima degani", "nima uchun", "qanday ishlaydi",
+            "ichida", "ichi ", " nima bor", "nimalar bor", "bajaradi",
+            "haqida", "malumot", "ma'lumot",
+        )
+    )
+
     if t in ("salom", "hello", "hi", "assalom", "assalomu alaykum"):
-        return "Salom! Qaysi tugma yoki sahifa kerak?"
+        return (
+            "Salom! Men VaksinaMed yordamchisiman. "
+            "Tugma yoki bo'lim nomini yozing yoki skrin yuboring."
+        )
 
-    # Aniq tugma nomi — uzun kalit ustun
     best = None
     best_score = 0
+    best_msg = 0
     for item in FAQ_OFFLINE:
-        score = 0
-        for k in item["keys"]:
-            kn = _norm(k).replace("'", "")
-            if kn and kn in t:
-                score += 2 + min(8, len(kn) // 3)
+        s_named = _faq_score(item, named) if named else 0
+        s_msg = _faq_score(item, t)
+        s_act = 0
+        if act and not named and (vague or has_image):
+            s_act = _faq_score(item, act)
+        score = s_named * 12 + s_msg * 3 + s_act
         if score > best_score:
             best_score = score
+            best_msg = s_msg
             best = item
 
-    # Umumiy "bu tugma nima" + skrin/sahifa
-    vague = any(x in t for x in ("tugma", "tugmacha", "tugmachi", "vazifa", "nima qil", "bu nima"))
-    if best_score < 4 and (vague or has_image or not t):
+    # 1) Nom aniq (Profil, Oylik hisobot, …)
+    if named and best and best_score >= 5:
+        return best["a"] + _role_note(role)
+
+    # 2) Savolda kalitlar yetarli (aktiv tabsiz)
+    if best and best_msg >= 4:
+        return best["a"] + _role_note(role)
+
+    # 3) Skrin + noaniq — taxmin qilmaymiz
+    if has_image and vague and not named:
+        guide = PAGE_BUTTON_GUIDE.get(page_key, "")
+        return (
+            "Skrindagi yozuvni aniq o'qiy olmadim. "
+            "Tugma yoki bo'lim nomini yozing — masalan: Profil, Oylik hisobot, GPS dan km.\n\n"
+            + (guide or "")
+        )
+
+    # 4) Noaniq savol — sahifa qo'llanmasi (yoki zaif aktiv tab FAQ)
+    if vague and not named:
+        if best and best_score >= 5:
+            return best["a"] + _role_note(role)
         guide = PAGE_BUTTON_GUIDE.get(page_key)
         if guide:
             return guide
 
     if best and best_score > 0:
-        extra = ""
-        if role == "driver":
-            extra = "\n\nSiz haydovchisiz: faqat kabinet va profil."
-        return best["a"] + extra
+        return best["a"] + _role_note(role)
 
-    if page_key in PAGE_BUTTON_GUIDE and (vague or has_image):
-        return PAGE_BUTTON_GUIDE[page_key]
+    guide = PAGE_BUTTON_GUIDE.get(page_key)
+    if guide:
+        return "Aniq topilmadi. " + guide
 
     return (
-        "Qaysi tugma yoki sahifa? Masalan: Asl ma'lumot, GPS dan km, GPS yuklash."
+        "Qaysi tugma yoki bo'lim? Masalan: Profil, Oylik hisobot, Asl ma'lumot, GPS dan km."
     )
 
 
@@ -453,6 +349,9 @@ def answer_support(
     image_data_url: str | None = None,
     history: list | None = None,
     user_id: str = "anon",
+    ui_labels=None,
+    active_label: str = "",
+    image_text: str = "",
 ) -> dict:
     """Asosiy kirish nuqtasi. {"ok", "reply", "mode", "error?"}"""
     msg = (message or "").strip()
@@ -474,17 +373,35 @@ def answer_support(
 
     role = (role or "").strip() or "user"
     page = (page or "").strip()[:120]
+    labels = ui_labels if isinstance(ui_labels, list) else []
+    labels = [str(x)[:80] for x in labels[:40]]
+    active = str(active_label or "").strip()[:60]
+    img_txt = str(image_text or "").strip()[:500]
+
+    offline_kw = dict(
+        role=role,
+        page=page,
+        has_image=bool(img),
+        ui_labels=labels,
+        active_label=active,
+        image_text=img_txt,
+    )
 
     if not ai_enabled():
-        reply = offline_answer(msg or "", role, page, has_image=bool(img))
+        reply = offline_answer(msg or "", **offline_kw)
         return {"ok": True, "reply": reply, "mode": "offline"}
 
     # AI yo'li
     sys = SYSTEM_RULES + "\n\n# BILIM BAZASI\n" + KNOWLEDGE
     sys += f"\n\nFoydalanuvchi roli: {role}. Joriy sahifa: {page or 'nomalum'}."
+    if active:
+        sys += f"\nAktiv bo'lim/tugma: {active}."
+    if img_txt:
+        sys += f"\nSkrindan o'qilgan matn: {img_txt}"
+    if labels:
+        sys += "\nSahifadagi asosiy yorliqlar: " + ", ".join(labels[:25]) + "."
 
     messages = [{"role": "system", "content": sys}]
-    # Qisqa tarix (faqat matn)
     for h in (history or [])[-12:]:
         if not isinstance(h, dict):
             continue
@@ -495,12 +412,13 @@ def answer_support(
 
     user_content: list | str
     if img:
-        parts = []
-        parts.append({
-            "type": "text",
-            "text": msg or "Bu skrinshotdagi tugma yoki element nima qiladi? VaksinaMed tizimi bo'yicha tushuntiring.",
-        })
-        parts.append({"type": "image_url", "image_url": {"url": img}})
+        hint = msg or "Bu skrinshotdagi tugma yoki element nima qiladi? Ichidagilarini ham ayting."
+        if img_txt:
+            hint += f"\n(Skrin matni: {img_txt})"
+        parts = [
+            {"type": "text", "text": hint},
+            {"type": "image_url", "image_url": {"url": img}},
+        ]
         user_content = parts
     else:
         user_content = msg
@@ -508,8 +426,7 @@ def answer_support(
     messages.append({"role": "user", "content": user_content})
     text, err = _openai_chat(messages)
     if err:
-        # Yumshoq fallback
-        fb = offline_answer(msg or "", role, page, has_image=bool(img))
+        fb = offline_answer(msg or "", **offline_kw)
         return {"ok": True, "reply": fb, "mode": "fallback"}
     return {"ok": True, "reply": text, "mode": "ai"}
 

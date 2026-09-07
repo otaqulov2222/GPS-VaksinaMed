@@ -1237,6 +1237,91 @@ function renderDayRep() {
   if (pdfDay) pdfDay.onclick = () => downloadFuelPdf('dayrep').catch(err => toast(err.message));
 }
 
+function monthDayDetailHtml(plate) {
+  const info = fleet().find(f => f.car === plate) || { car: plate, name: '—' };
+  const car = getCar(plate);
+  const rows = calcCar(car);
+  const dim = daysInMonth(STATE.month);
+  return `
+    <div class="month-days-wrap">
+      <div class="month-days-h">
+        <strong>${esc(plateDisp(plate))}</strong>
+        <span>${esc(info.name)}</span>
+        <span class="muted">${dim} kun · oy ichidagi kunma-kun</span>
+      </div>
+      <div class="scroll-x">
+        <table class="gtable gtable-days">
+          <thead><tr>
+            <th>Kun</th><th>Haydovchi</th><th>Probeg (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th>
+            <th>Nimada</th><th>Zapravka</th>
+            <th>Olingan gaz</th><th>Gaz summa</th><th>Olingan benzin</th><th>Benzin summa</th>
+            <th>Qo'shimcha</th><th>Sarf gaz</th><th>Sarf benzin</th>
+            <th>Gaz qoldiq</th><th>Benzin qoldiq</th>
+          </tr></thead>
+          <tbody>${rows.map(r => {
+            const empty = !(r.km || r.gasIn || r.benzinIn || r.extra);
+            const drv = driverOnDay(info, car, r.d);
+            return `<tr class="${empty ? 'day-empty' : ''}">
+              <td>${r.d}</td>
+              <td>${esc(drv)}</td>
+              <td class="num">${r.km ? fmt(r.km, 2) : '—'}</td>
+              <td class="num">${r.gasKm ? fmt(r.gasKm, 2) : '—'}</td>
+              <td class="num">${r.liqKm ? fmt(r.liqKm, 2) : '—'}</td>
+              <td>${esc(modeLabel(r.mode))}</td>
+              <td>${esc(r.station || '—')}</td>
+              <td class="num">${r.gasIn ? fmt(r.gasIn, 4) : '—'}</td>
+              <td class="num">${r.gasIn ? money(r.gasSum) : '—'}</td>
+              <td class="num">${r.benzinIn ? fmt(r.benzinIn, 4) : '—'}</td>
+              <td class="num">${r.benzinIn ? money(r.benzinSum) : '—'}</td>
+              <td class="num">${r.extra ? money(r.extra) : '—'}</td>
+              <td class="num">${r.gasUsed ? fmtNum(r.gasUsed) : '—'}</td>
+              <td class="num">${r.benUsed ? fmtNum(r.benUsed) : '—'}</td>
+              <td class="num ${remainClass(r.gasR)}">${fmt(r.gasR, 4)}</td>
+              <td class="num ${remainClass(r.benR)}">${fmt(r.benR, 4)}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function bindMonthExpand(root) {
+  if (!root) return;
+  root.querySelectorAll('tr.month-sum-row').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const plate = tr.getAttribute('data-plate');
+      if (!plate) return;
+      const open = tr.classList.contains('open');
+      // Shu qatorning detailini yopish/ochish
+      let detail = tr.nextElementSibling;
+      if (detail && !detail.classList.contains('month-detail-row')) detail = null;
+      if (open && detail) {
+        tr.classList.remove('open');
+        detail.remove();
+        return;
+      }
+      if (!open) {
+        // boshqa ochiqlar yopilsin (bitta mashina diqqatda)
+        root.querySelectorAll('tr.month-sum-row.open').forEach(other => {
+          other.classList.remove('open');
+          const d = other.nextElementSibling;
+          if (d && d.classList.contains('month-detail-row')) d.remove();
+        });
+        tr.classList.add('open');
+        const row = document.createElement('tr');
+        row.className = 'month-detail-row';
+        row.setAttribute('data-plate', plate);
+        const td = document.createElement('td');
+        td.colSpan = 15;
+        td.innerHTML = monthDayDetailHtml(plate);
+        row.appendChild(td);
+        tr.insertAdjacentElement('afterend', row);
+        try { row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+      }
+    });
+  });
+}
+
 function renderMonth() {
   const rows = fleet().map((f, i) => {
     const t = totals(calcCar(getCar(f.car)));
@@ -1250,11 +1335,14 @@ function renderMonth() {
   }, { km: 0, gasKm: 0, liqKm: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0 });
   document.getElementById('panel-month').innerHTML = `
     <div class="card"><div class="card-h"><h3>Oylik jamlanma — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
-      <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-month">PDF yuklab olish</button></div>
-    <div class="card-b">${mobSwipeHint()}<div class="scroll-x">
-      <table class="gtable">
-        <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
-        <tbody>${rows.map(r => `<tr>
+      <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-month">PDF (jami + kunma-kun)</button></div>
+    <div class="card-b">
+      <p class="note no-print" style="margin:0 0 10px;">Mashina qatoriga bosing — shu mashinaning <b>kunma-kun</b> oylik jadvali ochiladi. Yopish uchun qayta bosing.</p>
+      ${mobSwipeHint()}<div class="scroll-x">
+      <table class="gtable" id="month-summary-table">
+        <thead><tr><th></th><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
+        <tbody>${rows.map(r => `<tr class="month-sum-row" data-plate="${esc(r.plate)}" title="Kunma-kun ochish">
+          <td class="month-caret" aria-hidden="true">▸</td>
           <td>${r.n}</td><td>${esc(plateDisp(r.plate))}</td><td>${esc(r.name)}</td>
           <td class="num">${fmt(r.km, 2)}</td>
           <td class="num">${fmt(r.gasKm, 2)}</td>
@@ -1265,7 +1353,7 @@ function renderMonth() {
           <td class="num ${remainClass(r.gasR)}">${fmt(r.gasR, 4)}</td>
           <td class="num ${remainClass(r.benR)}">${fmt(r.benR, 4)}</td>
         </tr>`).join('')}
-        <tr><td colspan="3"><b>JAMI</b></td>
+        <tr class="month-total-row"><td></td><td colspan="3"><b>JAMI</b></td>
           <td class="num"><b>${fmt(sum.km, 2)}</b></td>
           <td class="num"><b>${fmt(sum.gasKm, 2)}</b></td>
           <td class="num"><b>${fmt(sum.liqKm, 2)}</b></td>
@@ -1278,6 +1366,7 @@ function renderMonth() {
     </div></div></div>`;
   const pdfMonth = document.getElementById('btn-pdf-month');
   if (pdfMonth) pdfMonth.onclick = () => downloadFuelPdf('month').catch(err => toast(err.message));
+  bindMonthExpand(document.getElementById('month-summary-table'));
 }
 
 function renderOfficial() {
@@ -3062,11 +3151,12 @@ function monthReportData() {
     return Object.assign({ n: i + 1, plate: f.car, name: f.name, short: f.short, brand: f.brand }, t);
   });
   const sum = rows.reduce((a, r) => {
-    a.km += r.km || 0; a.gasIn += r.gasIn || 0; a.benzinIn += r.benzinIn || 0;
+    a.km += r.km || 0; a.gasKm += r.gasKm || 0; a.liqKm += r.liqKm || 0;
+    a.gasIn += r.gasIn || 0; a.benzinIn += r.benzinIn || 0;
     a.gasSum += r.gasSum || 0; a.benzinSum += r.benzinSum || 0; a.extra += r.extra || 0; a.cost += r.cost || 0;
     a.gasUsed += r.gasUsed || 0; a.benUsed += r.benUsed || 0;
     return a;
-  }, { km: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0, gasUsed: 0, benUsed: 0 });
+  }, { km: 0, gasKm: 0, liqKm: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0, gasUsed: 0, benUsed: 0 });
   return { rows, sum };
 }
 
@@ -3154,9 +3244,91 @@ async function downloadFuelPdf(kind) {
     doc.setFontSize(8);
     doc.setTextColor(92, 101, 115);
     doc.text('Mexanik: ' + (firm.mechanic || '_______________') + '          Hisobchi: _______________          Direktor: ' + (firm.director || '_______________'), 12, Math.min(fy + 12, h - 16));
+
+    // Kunma-kun: har mashina alohida sahifa
+    rows.forEach((sumRow, idx) => {
+      const car = getCar(sumRow.plate);
+      const info = fleet().find(f => f.car === sumRow.plate) || { name: sumRow.name, car: sumRow.plate };
+      const dayRows = calcCar(car);
+      doc.addPage();
+      fuelPdfHeader(doc, w, pageLabel);
+      let yPos = 32;
+      fuelPdfF(doc, 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(18, 21, 28);
+      doc.text('Kunma-kun — ' + plateDisp(sumRow.plate), 12, yPos);
+      fuelPdfF(doc, 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(42, 48, 58);
+      doc.text((info.name || sumRow.name || '') + '  ·  ' + pageLabel + '  ·  ' + (idx + 1) + '/' + rows.length, 12, yPos + 6);
+      yPos = fuelPdfKpis(doc, yPos + 11, [
+        ['KM', fmt(sumRow.km, 2)],
+        ['GAZ KM', fmt(sumRow.gasKm, 2)],
+        ['DIZEL/BENZIN', fmt(sumRow.liqKm, 2)],
+        ['XARAJAT', money(sumRow.cost)],
+        ['GAZ QOLDIQ', fmt(sumRow.gasR, 3)]
+      ], w);
+      const dayBody = dayRows.map(r => [
+        r.d,
+        driverOnDay(info, car, r.d),
+        r.km ? fmt(r.km, 2) : '',
+        r.gasKm ? fmt(r.gasKm, 2) : '',
+        r.liqKm ? fmt(r.liqKm, 2) : '',
+        modeLabel(r.mode) || '',
+        r.station || '',
+        r.gasIn ? fmt(r.gasIn, 3) : '',
+        r.gasIn ? money(r.gasSum) : '',
+        r.benzinIn ? fmt(r.benzinIn, 3) : '',
+        r.benzinIn ? money(r.benzinSum) : '',
+        r.extra ? money(r.extra) : '',
+        r.gasUsed ? fmt(r.gasUsed, 3) : '',
+        r.benUsed ? fmt(r.benUsed, 3) : '',
+        fmt(r.gasR, 3),
+        fmt(r.benR, 3)
+      ]);
+      fuelPdfTable(doc, w, {
+        pageLabel,
+        startY: yPos,
+        styles: {
+          font: FUEL_PDF_FONT,
+          fontSize: 6.5,
+          textColor: [18, 21, 28],
+          cellPadding: 1.2,
+          overflow: 'linebreak',
+          lineColor: [220, 224, 230],
+          lineWidth: 0.1
+        },
+        headStyles: {
+          fillColor: [12, 16, 22],
+          textColor: [244, 244, 242],
+          fontStyle: 'bold',
+          fontSize: 6,
+          font: FUEL_PDF_FONT,
+          cellPadding: 1.3
+        },
+        head: [['Kun', 'Haydovchi', 'Km', 'Gaz km', 'D/B km', 'Nimada', 'Zapravka', 'Gaz m³', 'Gaz sum', 'Benzin l', 'Ben. sum', "Qo'sh.", 'Sarf gaz', 'Sarf ben.', 'Gaz qoldiq', 'Ben. qoldiq']],
+        body: dayBody,
+        columnStyles: {
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 28 },
+          2: {halign: 'right' }, 3: {halign: 'right' }, 4: {halign: 'right' },
+          7: {halign: 'right' }, 8: {halign: 'right' }, 9: {halign: 'right' },
+          10: {halign: 'right' }, 11: {halign: 'right' }, 12: {halign: 'right' },
+          13: {halign: 'right' }, 14: {halign: 'right' }, 15: {halign: 'right' }
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const r = dayRows[data.row.index];
+          if (!r) return;
+          if (data.column.index === 14 && n(r.gasR) < 0) data.cell.styles.textColor = [155, 28, 28];
+          if (data.column.index === 15 && n(r.benR) < 0) data.cell.styles.textColor = [155, 28, 28];
+        }
+      });
+    });
+
     fuelPdfFooter(doc, w, h, pageLabel);
     doc.save('oylik-hisobot-' + STATE.month + '.pdf');
-    toast('Oylik hisobot PDF yuklab olindi');
+    toast('Oylik PDF: jami + kunma-kun yuklandi');
     return;
   }
 

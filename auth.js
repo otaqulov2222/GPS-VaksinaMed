@@ -381,10 +381,10 @@ function vmLoadSupportChat() {
     window._vmSupportAssets = true;
     const css = document.createElement('link');
     css.rel = 'stylesheet';
-    css.href = 'support-chat.css?v=5';
+    css.href = 'support-chat.css?v=8';
     document.head.appendChild(css);
     const s = document.createElement('script');
-    s.src = 'support-chat.js?v=5';
+    s.src = 'support-chat.js?v=8';
     s.defer = true;
     document.head.appendChild(s);
 }

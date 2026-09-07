@@ -3453,6 +3453,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     image_data_url=body.get("image"),
                     history=body.get("history") if isinstance(body.get("history"), list) else [],
                     user_id=str(sess.get("user_id") or sess.get("username") or "u"),
+                    ui_labels=body.get("ui_labels") if isinstance(body.get("ui_labels"), list) else [],
+                    active_label=str(body.get("active_label") or ""),
+                    image_text=str(body.get("image_text") or ""),
                 )
                 code = 200 if result.get("ok") else 400
                 self.send_json(result, code)
