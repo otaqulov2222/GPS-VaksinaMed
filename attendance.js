@@ -176,7 +176,7 @@
   function getGpsOnce(opts) {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
-        reject(new Error('Joylashuv qo‘llab-quvvatlanmaydi'));
+        reject(Object.assign(new Error('Joylashuv qo‘llab-quvvatlanmaydi'), { code: 0 }));
         return;
       }
       navigator.geolocation.getCurrentPosition(
@@ -191,30 +191,60 @@
     });
   }
 
+  async function readGeoPermission() {
+    try {
+      if (!navigator.permissions || !navigator.permissions.query) return null;
+      const st = await navigator.permissions.query({ name: 'geolocation' });
+      return st && st.state ? st.state : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function gpsHelpText(code, permState) {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (code === 1 || permState === 'denied') {
+      if (isIOS) {
+        return 'Joylashuv bloklangan. iPhone: Sozlamalar → Safari (yoki Chrome) → Joylashuv → «So‘rash/Ruxsat». Keyin saytda aA → Veb-sayt sozlamalari → Joylashuv → Ruxsat. Keyin Qayta urinish.';
+      }
+      return 'Joylashuv ruxsati berilmadi. Brauzer manzil qatoridagi qulf/(!) → Joylashuv → Ruxsat, keyin Qayta urinish.';
+    }
+    if (code === 3) {
+      return 'Joylashuv vaqti tugadi. GPS yoqilganini tekshiring (aniq joylashuv) va Qayta urinish bosing.';
+    }
+    if (code === 2) {
+      return 'Joylashuv mavjud emas. Telefon GPS yoqing va ochiq joyda urinib ko‘ring.';
+    }
+    return 'Joylashuv olinmadi. Ruxsatni tekshirib Qayta urinish bosing.';
+  }
+
   async function getGps() {
-    // Telefonda highAccuracy ba'zan timeout/deny beradi — soft fallback
+    if (!window.isSecureContext) {
+      throw new Error('Joylashuv faqat HTTPS da ishlaydi');
+    }
+    const perm = await readGeoPermission();
+    if (perm === 'denied') {
+      throw Object.assign(new Error(gpsHelpText(1, perm)), { code: 1 });
+    }
+    // Avval tez/soft, keyin aniq — iOS da parallel kamera bilan aralashmasin
     try {
       return await getGpsOnce({
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 15000
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 30000
       });
     } catch (e1) {
       try {
         return await getGpsOnce({
-          enableHighAccuracy: false,
+          enableHighAccuracy: true,
           timeout: 20000,
-          maximumAge: 60000
+          maximumAge: 0
         });
       } catch (e2) {
         const code = (e2 && e2.code) || (e1 && e1.code);
-        if (code === 1) {
-          throw new Error('Joylashuv ruxsati berilmadi. Telefon Sozlamalarida brauzer uchun Joylashuvni yoqing, keyin Qayta urinish.');
-        }
-        if (code === 3) {
-          throw new Error('Joylashuv vaqti tugadi. GPS yoqilganini tekshiring va Qayta urinish bosing.');
-        }
-        throw new Error((e2 && e2.message) || (e1 && e1.message) || 'Joylashuv olinmadi');
+        const perm2 = await readGeoPermission();
+        throw Object.assign(new Error(gpsHelpText(code, perm2)), { code: code });
       }
     }
   }
@@ -764,26 +794,14 @@
     flowRetry = () => startAttendanceFlow(kind);
 
     try {
-      // Muhim: user gesture ichida kamera + GPS parallel (iOS)
-      setFidUI({ status: 'RUXSAT…', hint: 'Kamera va joylashuv so‘ralmoqda — Ruxsat bering', progress: 6, tone: 'load' });
-      const gpsPromise = getGps();
-      const camPromise = startCam();
-      let gps;
-      try {
-        gps = await gpsPromise;
-      } catch (ge) {
-        // Kamerani tozalab, aniq xato ko‘rsatamiz — oynani yopmaymiz
-        try { await camPromise; } catch (e) {}
-        stopCam();
-        throw ge;
-      }
-      try {
-        await camPromise;
-      } catch (ce) {
-        throw ce;
-      }
+      // iOS: kamera + GPS birga so'ralsa joylashuv "denied" bo'lishi mumkin — avval GPS
+      setFidUI({ status: 'JOYLASHUV…', hint: 'Joylashuvga Ruxsat bosing (birinchi qadam)', progress: 8, tone: 'load' });
+      const gps = await getGps();
 
-      setFidUI({ status: 'LOADING…', hint: 'Yuz modeli…', progress: 18, tone: 'load' });
+      setFidUI({ status: 'KAMERA…', hint: 'Endi kameraga ruxsat bering', progress: 16, tone: 'load' });
+      await startCam();
+
+      setFidUI({ status: 'LOADING…', hint: 'Yuz modeli…', progress: 24, tone: 'load' });
       await ensureModels();
 
       const scan = await scanFace({

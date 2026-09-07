@@ -734,6 +734,15 @@ body.fid-lock { overflow: hidden; }
   font-size: 12.5px;
   line-height: 1.45;
   color: rgba(180, 230, 255, 0.72);
+  max-width: 36ch;
+  margin-left: auto;
+  margin-right: auto;
+  text-wrap: pretty;
+}
+.fid-status.err + .fid-seg + .fid-hint,
+.fid-hint:has(+ .fid-retry-wrap:not([hidden])) {
+  color: #ffc9cf;
+  max-width: 42ch;
 }
 
 .fid-actions {
