@@ -2078,7 +2078,7 @@ input, select, textarea { max-width: 100%; }
           <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
           <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
           <button class="btn btn-light btn-sm" id="btn-refresh-map">Yangilash</button>
-          <span id="vm-build" title="Xarita build" style="font:700 12px/1 IBM Plex Mono,monospace;color:#fff;padding:8px 10px;background:#c0392b;border-radius:6px">m93</span>
+          <span id="vm-build" title="Xarita build" style="font:700 12px/1 IBM Plex Mono,monospace;color:#fff;padding:8px 10px;background:#c0392b;border-radius:6px">m94</span>
         </div>
       </div>
       <div class="map-legend">
@@ -2370,31 +2370,49 @@ input, select, textarea { max-width: 100%; }
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app-m92.js"></script>
+<script src="app-m94.js?v=m94"></script>
 
 <script src="office.js?v=16"></script>
 
 <script>
-/* m93: xarita pinlarini majburiy 1,2,3… qilish (eski app.js kesh bo'lsa ham) */
+/* m94: pinlar — kirish VAQTI bo'yicha 1,2,3… (trek aralashmasin) */
 (function () {
-  function trackPts() {
+  function visitScore(inTime) {
+    var t = 0;
+    try {
+      if (typeof parseTimeStr === 'function') t = parseTimeStr(inTime) || 0;
+      else {
+        var m = String(inTime || '').match(/(\d{1,2}):(\d{2})/);
+        if (m) t = (+m[1]) * 3600 + (+m[2]) * 60;
+      }
+    } catch (e) {}
+    if (t && t < 4 * 3600) t += 86400;
+    return t || 1e12;
+  }
+
+  function dayStops() {
     try {
       var day = STATE && STATE.data && STATE.currentDate && STATE.data[STATE.currentDate]
         ? STATE.data[STATE.currentDate][STATE.currentCar]
         : null;
-      if (typeof normalizeTrackPoints === 'function') return normalizeTrackPoints(day && day.points) || [];
-    } catch (e) {}
-    return [];
+      var stops = (day && day.stops) || [];
+      if (typeof prepareStopsList === 'function') stops = prepareStopsList(stops);
+      return stops.filter(function (s) {
+        if (typeof isLongOfficeStop === 'function' && isLongOfficeStop(s)) return false;
+        return true;
+      });
+    } catch (e) { return []; }
   }
 
-  function trackIdx(ll, track) {
-    if (!track || track.length < 2 || !ll) return 0;
-    var best = 0, bestD = 1e99, i, dlat, dlng, d;
-    for (i = 0; i < track.length; i++) {
-      dlat = track[i][0] - ll.lat;
-      dlng = track[i][1] - ll.lng;
+  function nearestStop(ll, stops) {
+    var best = null, bestD = 1e99, i, s, dlat, dlng, d;
+    for (i = 0; i < stops.length; i++) {
+      s = stops[i];
+      if (!s || !s.lat || !s.lng) continue;
+      dlat = Number(s.lat) - ll.lat;
+      dlng = Number(s.lng) - ll.lng;
       d = dlat * dlat + dlng * dlng;
-      if (d < bestD) { bestD = d; best = i; }
+      if (d < bestD) { bestD = d; best = s; }
     }
     return best;
   }
@@ -2402,7 +2420,7 @@ input, select, textarea { max-width: 100%; }
   function vmForceSequentialPins() {
     if (!window.STATE || !STATE.map || typeof L === 'undefined') return false;
     var pins = [];
-    var track = trackPts();
+    var stops = dayStops();
     function consider(layer) {
       if (!layer || typeof layer.getLatLng !== 'function') return;
       if (!(layer instanceof L.Marker)) return;
@@ -2414,7 +2432,13 @@ input, select, textarea { max-width: 100%; }
       var t = String(dot.textContent || '').trim();
       if (t === 'A' || t === 'B' || t === 'O' || t === 'R') return;
       if (!/^\d+$/.test(t)) return;
-      pins.push({ dot: dot, ll: layer.getLatLng() });
+      var ll = layer.getLatLng();
+      var st = nearestStop(ll, stops);
+      pins.push({
+        dot: dot,
+        ll: ll,
+        score: st ? visitScore(st.inTime) : 1e12
+      });
     }
     try { STATE.map.eachLayer(consider); } catch (e2) {}
     if (STATE.mapMarkers && STATE.mapMarkers.length) STATE.mapMarkers.forEach(consider);
@@ -2425,34 +2449,34 @@ input, select, textarea { max-width: 100%; }
       return true;
     });
     if (pins.length < 1) return false;
-    pins.sort(function (a, b) { return trackIdx(a.ll, track) - trackIdx(b.ll, track); });
+    pins.sort(function (a, b) { return a.score - b.score; });
     pins.forEach(function (p, i) { p.dot.textContent = String(i + 1); });
     var ov = document.getElementById('map-overlay-info');
     if (ov) {
       var base = String(ov.textContent || '').replace(/\s*·\s*m\d+✓?/g, '').trim();
-      ov.textContent = (base ? base + ' · ' : '') + 'm93';
+      ov.textContent = (base ? base + ' · ' : '') + 'm94';
       ov.style.display = 'block';
     }
     var stamp = document.getElementById('vm-build');
     if (stamp) {
-      stamp.textContent = 'm93✓ ' + pins.length;
+      stamp.textContent = 'm94✓ ' + pins.length;
       stamp.style.background = '#1a7f37';
     }
     return true;
   }
 
   function patchRefresh() {
-    if (typeof window.refreshMap !== 'function' || window.refreshMap._vmM93) return;
+    if (typeof window.refreshMap !== 'function' || window.refreshMap._vmM94) return;
     var orig = window.refreshMap;
     window.refreshMap = async function () {
       var ret = await orig.apply(this, arguments);
       setTimeout(vmForceSequentialPins, 50);
       setTimeout(vmForceSequentialPins, 300);
-      setTimeout(vmForceSequentialPins, 800);
-      setTimeout(vmForceSequentialPins, 1600);
+      setTimeout(vmForceSequentialPins, 900);
+      setTimeout(vmForceSequentialPins, 1800);
       return ret;
     };
-    window.refreshMap._vmM93 = true;
+    window.refreshMap._vmM94 = true;
   }
 
   function boot() {
@@ -2460,14 +2484,14 @@ input, select, textarea { max-width: 100%; }
     setTimeout(vmForceSequentialPins, 400);
     setTimeout(vmForceSequentialPins, 1200);
     setTimeout(vmForceSequentialPins, 2500);
-    setInterval(vmForceSequentialPins, 4000);
+    setInterval(vmForceSequentialPins, 5000);
   }
 
   if (document.readyState === 'complete') boot();
   else window.addEventListener('load', boot);
   document.getElementById('btn-refresh-map')?.addEventListener('click', function () {
-    setTimeout(vmForceSequentialPins, 300);
-    setTimeout(vmForceSequentialPins, 900);
+    setTimeout(vmForceSequentialPins, 200);
+    setTimeout(vmForceSequentialPins, 800);
   });
 })();
 </script>

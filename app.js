@@ -1198,34 +1198,24 @@ function isLongOfficeStop(st) {
     return false;
 }
 
-/** To'xtashlarni GPS trek bo'yicha tartibla (yo'l ketma-ketligi). */
-function orderStopsAlongTrack(stops, track) {
-    const pts = normalizeTrackPoints(track);
+/** Ish kuni bo'yicha vaqt tartibi (1-chi tashrif = #1). */
+function orderStopsByVisitTime(stops) {
     if (!stops || !stops.length) return [];
-    if (pts.length < 2) return stops.slice();
-    const scored = stops.map((st, idx) => {
-        let bestI = 0;
-        let bestD = Infinity;
-        const la = Number(st.lat);
-        const ln = Number(st.lng);
-        for (let i = 0; i < pts.length; i++) {
-            const dlat = pts[i][0] - la;
-            const dlng = pts[i][1] - ln;
-            const d = dlat * dlat + dlng * dlng;
-            if (d < bestD) {
-                bestD = d;
-                bestI = i;
-            }
-        }
-        return { st, bestI, idx };
+    function adj(t) {
+        // Tun yarimidan keyin ertalab (00–04) — kun oxiri deb emas, ertalab deb
+        if (!t) return 1e12;
+        return t < 4 * 3600 ? t + 86400 : t;
+    }
+    return stops.slice().sort((a, b) => {
+        const aa = adj(parseTimeStr(a.inTime));
+        const bb = adj(parseTimeStr(b.inTime));
+        if (aa !== bb) return aa - bb;
+        return (Number(a.num) || 0) - (Number(b.num) || 0);
     });
-    scored.sort((a, b) => (a.bestI - b.bestI) || (a.idx - b.idx));
-    return scored.map(x => x.st);
 }
 
 /**
- * Xarita: ofis alohida (O), marshrut 1,2,3… trek tartibida.
- * A dan keyin 7 chiqmasligi shu yerda hal.
+ * Xarita: ofis = O, qolganlari kirish vaqti bo'yicha 1,2,3…
  */
 function buildMapStops(stops, track) {
     const hydrated = hydrateStopCoords(stops, track).filter(st => validUzCoord(st.lat, st.lng));
@@ -1236,12 +1226,12 @@ function buildMapStops(stops, track) {
         else route.push(st);
     });
     const base = route.length ? route : hydrated;
-    const ordered = orderStopsAlongTrack(base, track);
+    // Avval GPS chron tartibi (ro'yxat), keyin vaqt — barqarorroq
+    const ordered = orderStopsByVisitTime(base);
     const numbered = ordered.map((st, i) => {
-        const tableNum = st.num;
+        const tableNum = st.tableNum != null ? st.tableNum : st.num;
         return Object.assign({}, st, {
             mapNum: i + 1,
-            // Pin hech qachon eski jadval # ni ko'rsatmasin
             num: i + 1,
             tableNum: tableNum,
             _mapRole: 'route'
