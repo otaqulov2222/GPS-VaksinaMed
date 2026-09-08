@@ -1087,14 +1087,41 @@ function sortStopsForRoute(stops) {
     return prepareStopsList(stops);
 }
 
-/** Koordinatasi yo'q to'xtashlarni qo'shnilar / trek bo'yicha taxminiy joyga qo'yamiz — raqam sakramasligi uchun. */
+function parseCoordPair(text) {
+    const m = String(text || '').match(/(-?\d{1,2}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)/);
+    if (!m) return null;
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (validUzCoord(a, b)) return [a, b];
+    if (validUzCoord(b, a)) return [b, a];
+    return null;
+}
+
+/** Koordinatasi yo'q to'xtashlarni trek/qo'shni bo'yicha joylashtiramiz. */
 function hydrateStopCoords(stops, track) {
-    const list = prepareStopsList(stops).map(s => Object.assign({}, s, {
-        lat: Number(s.lat) || 0,
-        lng: Number(s.lng) || 0
-    }));
+    const list = prepareStopsList(stops).map(s => {
+        let lat = Number(s.lat);
+        let lng = Number(s.lng);
+        if (!Number.isFinite(lat)) lat = 0;
+        if (!Number.isFinite(lng)) lng = 0;
+        // Ba'zan lat/lng almashtirib keladi
+        if (!validUzCoord(lat, lng) && validUzCoord(lng, lat)) {
+            const t = lat;
+            lat = lng;
+            lng = t;
+        }
+        if (!validUzCoord(lat, lng)) {
+            const p = parseCoordPair(s.place);
+            if (p) {
+                lat = p[0];
+                lng = p[1];
+            }
+        }
+        return Object.assign({}, s, { lat, lng });
+    });
     const pts = normalizeTrackPoints(track);
 
+    // 1) Qo'shnilar orasida interpolatsiya
     for (let i = 0; i < list.length; i++) {
         if (validUzCoord(list[i].lat, list[i].lng)) continue;
         let prev = -1;
@@ -1105,39 +1132,49 @@ function hydrateStopCoords(stops, track) {
         for (let j = i + 1; j < list.length; j++) {
             if (validUzCoord(list[j].lat, list[j].lng)) { next = j; break; }
         }
-        let lat = 0;
-        let lng = 0;
-        let approx = true;
         if (prev >= 0 && next >= 0) {
             const t = (i - prev) / Math.max(next - prev, 1);
-            lat = list[prev].lat + (list[next].lat - list[prev].lat) * t;
-            lng = list[prev].lng + (list[next].lng - list[prev].lng) * t;
+            list[i] = Object.assign({}, list[i], {
+                lat: list[prev].lat + (list[next].lat - list[prev].lat) * t,
+                lng: list[prev].lng + (list[next].lng - list[prev].lng) * t,
+                _approx: true
+            });
         } else if (prev >= 0) {
-            lat = list[prev].lat;
-            lng = list[prev].lng;
+            list[i] = Object.assign({}, list[i], {
+                lat: list[prev].lat, lng: list[prev].lng, _approx: true
+            });
         } else if (next >= 0) {
-            lat = list[next].lat;
-            lng = list[next].lng;
-        } else if (pts.length) {
-            const idx = Math.round((i / Math.max(list.length - 1, 1)) * (pts.length - 1));
-            lat = pts[idx][0];
-            lng = pts[idx][1];
-        } else {
-            continue;
+            list[i] = Object.assign({}, list[i], {
+                lat: list[next].lat, lng: list[next].lng, _approx: true
+            });
         }
-        list[i] = Object.assign({}, list[i], { lat, lng, _approx: approx });
     }
 
-    // Bir xil nuqtada yopilib qolgan raqamlar — biroz surib ko'rsatish
+    // 2) Hali ham yo'q — trek bo'yicha majburiy (A→7 sakrashni yo'qotadi)
+    for (let i = 0; i < list.length; i++) {
+        if (validUzCoord(list[i].lat, list[i].lng)) continue;
+        if (!pts.length) continue;
+        const idx = Math.min(
+            pts.length - 1,
+            Math.max(0, Math.round((i / Math.max(list.length - 1, 1)) * (pts.length - 1)))
+        );
+        list[i] = Object.assign({}, list[i], {
+            lat: pts[idx][0],
+            lng: pts[idx][1],
+            _approx: true
+        });
+    }
+
+    // 3) Bir nuqtada yopilgan raqamlar — aniqroq surish (A ostida qolmasin)
     const seen = Object.create(null);
     return list.map(s => {
         if (!validUzCoord(s.lat, s.lng)) return s;
-        const key = Number(s.lat).toFixed(5) + ',' + Number(s.lng).toFixed(5);
+        const key = Number(s.lat).toFixed(4) + ',' + Number(s.lng).toFixed(4);
         const n = seen[key] || 0;
         seen[key] = n + 1;
         if (!n) return s;
-        const ang = n * 1.35;
-        const d = 0.00014 * n;
+        const ang = n * 0.95;
+        const d = 0.00028 * n; // ~30m+
         return Object.assign({}, s, {
             lat: s.lat + d * Math.cos(ang),
             lng: s.lng + d * Math.sin(ang),
@@ -1146,9 +1183,17 @@ function hydrateStopCoords(stops, track) {
     });
 }
 
-/** Xarita — jadvaldagi BARCHA raqamlar (1,2,3…), koordinata to'ldirilgan. */
+/**
+ * Xarita pinlari — doim 1,2,3… ketma-ket (jadval # saqlanadi).
+ * A dan keyin 7 chiqmasligi uchun.
+ */
 function mapWorthyStops(stops, track) {
-    return hydrateStopCoords(stops, track).filter(st => validUzCoord(st.lat, st.lng));
+    return hydrateStopCoords(stops, track)
+        .filter(st => validUzCoord(st.lat, st.lng))
+        .map((st, i) => Object.assign({}, st, {
+            mapNum: i + 1,
+            tableNum: st.num
+        }));
 }
 
 function setMapOverlay(info) {
@@ -1257,27 +1302,32 @@ async function refreshMap(stops, points) {
         setMapOverlay(bits.join(' · '));
     }
 
-    // Start / finish trek bo'yicha
+    // Start / finish — pastroq z-index; to'xtash raqamlari ustida
     if (track.length >= 2) {
         const aIcon = mapPinIcon('A', '#0b1f3a', true);
         const bIcon = mapPinIcon('B', '#1a5fb4', true);
-        STATE.mapMarkers.push(L.marker(track[0], { icon: aIcon, zIndexOffset: 800 }).addTo(STATE.map)
+        STATE.mapMarkers.push(L.marker(track[0], { icon: aIcon, zIndexOffset: 100 }).addTo(STATE.map)
             .bindPopup('<b>Boshlanish</b><br>Kunlik marshrut A nuqtasi'));
-        STATE.mapMarkers.push(L.marker(track[track.length - 1], { icon: bIcon, zIndexOffset: 800 }).addTo(STATE.map)
+        STATE.mapMarkers.push(L.marker(track[track.length - 1], { icon: bIcon, zIndexOffset: 100 }).addTo(STATE.map)
             .bindPopup('<b>Tugash</b><br>Kunlik marshrut B nuqtasi'));
     }
 
     markerStops.forEach((st) => {
-        const num = st.num || 0;
+        // Xaritada doim 1,2,3… (A dan keyin 7 chiqmasin)
+        const num = st.mapNum || st.num || 0;
+        const tableNum = st.tableNum || st.num || num;
         const color = stopColor(st);
         const label = String(num);
         const marker = L.marker([st.lat, st.lng], {
             icon: mapPinIcon(label, color, false),
-            zIndexOffset: 200 + num
+            zIndexOffset: 1000 + num
         }).addTo(STATE.map);
 
         const approxNote = st._approx
             ? '<br><span style="color:#f0c674">Joy taxminiy (GPS nuqta yo\'q edi)</span>'
+            : '';
+        const tableNote = (tableNum && tableNum !== num)
+            ? `<br><span style="color:#8eb6df">Jadval #${tableNum}</span>`
             : '';
         marker.bindPopup(`
             <div style="min-width:190px">
@@ -1288,6 +1338,7 @@ async function refreshMap(stops, points) {
                 Chiqish: <span style="color:#fff">${st.outTime || '—'}</span><br>
                 Turgani: <span style="color:#fff">${st.duration || '—'}</span>
                 ${st.phName ? '<br>Dorixona: <span style="color:#fff">' + uiTxt(st.phName) + '</span>' : ''}
+                ${tableNote}
                 ${approxNote}
               </div>
             </div>
@@ -1295,11 +1346,13 @@ async function refreshMap(stops, points) {
         STATE.mapMarkers.push(marker);
     });
 
-    const fitPts = routeLatlngs.length > 1
-        ? routeLatlngs
-        : markerStops.map(st => [st.lat, st.lng]);
+    const fitPts = [];
+    if (routeLatlngs.length > 1) {
+        for (let i = 0; i < routeLatlngs.length; i++) fitPts.push(routeLatlngs[i]);
+    }
+    markerStops.forEach(st => fitPts.push([st.lat, st.lng]));
     if (fitPts.length > 1) {
-        STATE.map.fitBounds(L.latLngBounds(fitPts), { padding: [40, 40], maxZoom: 15 });
+        STATE.map.fitBounds(L.latLngBounds(fitPts), { padding: [48, 48], maxZoom: 15 });
     } else if (fitPts.length === 1) {
         STATE.map.setView(fitPts[0], 14);
     } else {
