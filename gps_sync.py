@@ -191,31 +191,8 @@ def format_dur_sec(sec):
 
 
 def sort_stops_chronological(stops):
-    """
-    GPS kun hisoboti tartibi.
-    Agar kechqurun (18+) va ertalab (<12) aralashsa — ertalab keyingi kun (+24h).
-    """
-    arr = list(stops or [])
-    if len(arr) < 2:
-        return arr
-    meta = []
-    for i, st in enumerate(arr):
-        raw = str((st or {}).get("inTime") or "").strip()
-        t = parse_dur_sec(raw) if raw else 0
-        meta.append((st, t, i, raw))
-    has_evening = any(m[1] >= 18 * 3600 for m in meta if m[3])
-    has_morning = any(m[1] < 12 * 3600 for m in meta if m[3])
-
-    def sort_key(m):
-        _st, t, i, raw = m
-        if not raw:
-            return (1, i, 0)
-        if has_evening and has_morning and t < 12 * 3600:
-            return (0, t + 86400, i)
-        return (0, t, i)
-
-    meta.sort(key=sort_key)
-    return [m[0] for m in meta]
+    """GPS (Wialon) tartibini saqlash — soat bo'yicha qayta sort qilmaslik."""
+    return list(stops or [])
 
 def haversine_m(lat1, lng1, lat2, lng2):
     r = 6371000

@@ -22,7 +22,8 @@ function plateCompact(p) {
 }
 
 function vmStopKey(dateVal, car, st) {
-    const t = String((st && st.inTime) || '');
+    const rawT = String((st && st.inTime) || '');
+    const t = (typeof normalizeClock === 'function' ? normalizeClock(rawT) : rawT) || rawT;
     const p = String((st && st.place) || '').slice(0, 50);
     const lat = Number((st && st.lat) || 0).toFixed(4);
     const lng = Number((st && st.lng) || 0).toFixed(4);
@@ -151,9 +152,12 @@ const VMOffice = {
         const key = vmStopKey(dateVal, car, st);
         const bag = STATE.reviews[dateVal] || {};
         if (bag[key]) return bag[key];
-        // Yumshoq moslash: vaqt + joy (kalit farqi bo'lsa)
+        // Yumshoq moslash: vaqt + joy (HH:MM vs HH:MM:SS farqi bo'lsa ham)
         const want = plateCompact(car);
-        const t = String((st && st.inTime) || '');
+        const normT = (typeof normalizeClock === 'function')
+            ? normalizeClock((st && st.inTime) || '')
+            : String((st && st.inTime) || '');
+        const tShort = normT ? normT.slice(0, 5) : '';
         const p = String((st && st.place) || '').slice(0, 50);
         for (const k of Object.keys(bag)) {
             const rv = bag[k];
@@ -162,7 +166,10 @@ const VMOffice = {
             if (parts.length < 6) continue;
             const carK = rv.car || parts[1] || '';
             if (plateCompact(carK) !== want) continue;
-            if (parts[2] === t && String(parts[5] || '').slice(0, 50) === p) return rv;
+            const kt = String(parts[2] || '');
+            const ktNorm = (typeof normalizeClock === 'function') ? normalizeClock(kt) : kt;
+            const timeOk = ktNorm === normT || kt === normT || (tShort && (kt === tShort || ktNorm.slice(0, 5) === tShort));
+            if (timeOk && String(parts[5] || '').slice(0, 50) === p) return rv;
         }
         return null;
     },

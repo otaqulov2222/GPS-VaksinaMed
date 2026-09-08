@@ -178,28 +178,11 @@ function formatDurSec(sec) {
 }
 
 /**
- * Vaqt bo'yicha. Kechqurun (18+) + ertalab (<12) aralashsa — ertalab keyingi kun.
- * Keyin 1..N raqam + Turgani = Kirish/Chiqish.
+ * GPS tartibini saqlaymiz (Wialon allaqachon chronologik, tunlik ofis ham).
+ * Soat bo'yicha qayta sort qilmaslik — kunduzgi 08→19 marshrutni buzmaslik uchun.
  */
 function sortStopsChronological(stops) {
-    const arr = (stops || []).slice();
-    if (arr.length < 2) return arr;
-    const meta = arr.map((st, i) => {
-        const raw = String((st && st.inTime) || '').trim();
-        const t = raw ? parseTimeStr(raw) : 0;
-        return { st, t, i, raw };
-    });
-    const hasEvening = meta.some(m => m.raw && m.t >= 18 * 3600);
-    const hasMorning = meta.some(m => m.raw && m.t < 12 * 3600);
-    meta.sort((a, b) => {
-        if (!a.raw && !b.raw) return a.i - b.i;
-        if (!a.raw) return 1;
-        if (!b.raw) return -1;
-        const ka = (hasEvening && hasMorning && a.t < 12 * 3600) ? a.t + 86400 : a.t;
-        const kb = (hasEvening && hasMorning && b.t < 12 * 3600) ? b.t + 86400 : b.t;
-        return ka - kb || a.i - b.i;
-    });
-    return meta.map(x => x.st);
+    return (stops || []).slice();
 }
 
 function prepareStopsList(stops) {
@@ -1104,15 +1087,9 @@ function sortStopsForRoute(stops) {
     return prepareStopsList(stops);
 }
 
-/** Xarita markerlari — mikro-to'xtashlarni (2 sek) yashirish; raqam jadvaldagi # bilan bir xil */
+/** Xarita — jadvaldagi barcha raqamli to'xtashlar (koordinatasi bor). Raqam sakramasligi uchun. */
 function mapWorthyStops(stops) {
-    return prepareStopsList(stops).filter(st => {
-        if (!validUzCoord(st.lat, st.lng)) return false;
-        const dur = Number(st.durSec) || parseTimeStr(st.duration) || 0;
-        if (st.matchType === 'own' || st.matchType === 'other' || st.isOffice) return true;
-        if (stopIsProblem(st, STATE.currentCar, STATE.currentDate)) return true;
-        return dur >= 60;
-    });
+    return prepareStopsList(stops).filter(st => validUzCoord(st.lat, st.lng));
 }
 
 function setMapOverlay(info) {
@@ -1711,7 +1688,8 @@ function bindReviewClicks(root) {
         const bag = STATE.data[STATE.currentDate];
         let rec = bag && bag[STATE.currentCar];
         if (!rec && bag && VMOffice.recForPlate) rec = VMOffice.recForPlate(bag, STATE.currentCar);
-        const st = rec && rec.stops && rec.stops[i];
+        // Jadval prepareStopsList tartibida — indeksi shu ro'yxatdan
+        const st = rec && prepareStopsList(rec.stops || [])[i];
         if (!st) return;
         if (status === 'allowed') {
             const names = VMOffice.ownNames(STATE.currentCar);
