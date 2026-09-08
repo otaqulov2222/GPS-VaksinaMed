@@ -8,7 +8,10 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-<title>Dashboard — VaksinaMed</title>
+<title>Dashboard — VaksinaMed · m95</title>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<script>window.__VM_BUILD = 'm95';</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 
@@ -2078,9 +2081,10 @@ input, select, textarea { max-width: 100%; }
           <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
           <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
           <button class="btn btn-light btn-sm" id="btn-refresh-map">Yangilash</button>
-          <span id="vm-build" title="Xarita build" style="font:700 12px/1 IBM Plex Mono,monospace;color:#fff;padding:8px 10px;background:#c0392b;border-radius:6px">m94</span>
+          <span id="vm-build" title="Xarita build" style="font:700 12px/1 IBM Plex Mono,monospace;color:#fff;padding:8px 10px;background:#c0392b;border-radius:6px">m95</span>
         </div>
       </div>
+      <div id="vm-build-banner" style="background:#c0392b;color:#fff;font:700 13px/1.2 IBM Plex Mono,monospace;padding:8px 12px;letter-spacing:.04em">BUILD m95 — agar bu qizil satr ko‘rinmasa, Ctrl+Shift+R qiling</div>
       <div class="map-legend">
         <span class="leg-item"><span class="leg-dot" style="background:#1a5fb4"></span> O'z dorixonasi / geozona</span>
         <span class="leg-item"><span class="leg-dot" style="background:#5b9fe0"></span> Boshqa yo'nalish</span>
@@ -2370,12 +2374,12 @@ input, select, textarea { max-width: 100%; }
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app-m94.js?v=m94"></script>
+<script src="app-m95.js?v=m95"></script>
 
 <script src="office.js?v=16"></script>
 
 <script>
-/* m94: pinlar — kirish VAQTI bo'yicha 1,2,3… (trek aralashmasin) */
+/* m95: pinlar — kirish VAQTI bo'yicha 1,2,3… (trek aralashmasin) */
 (function () {
   function visitScore(inTime) {
     var t = 0;
@@ -2396,10 +2400,12 @@ input, select, textarea { max-width: 100%; }
         ? STATE.data[STATE.currentDate][STATE.currentCar]
         : null;
       var stops = (day && day.stops) || [];
+      var track = (day && day.points) || [];
       if (typeof prepareStopsList === 'function') stops = prepareStopsList(stops);
+      if (typeof hydrateStopCoords === 'function') stops = hydrateStopCoords(stops, track);
       return stops.filter(function (s) {
         if (typeof isLongOfficeStop === 'function' && isLongOfficeStop(s)) return false;
-        return true;
+        return s && s.lat && s.lng;
       });
     } catch (e) { return []; }
   }
@@ -2454,19 +2460,24 @@ input, select, textarea { max-width: 100%; }
     var ov = document.getElementById('map-overlay-info');
     if (ov) {
       var base = String(ov.textContent || '').replace(/\s*·\s*m\d+✓?/g, '').trim();
-      ov.textContent = (base ? base + ' · ' : '') + 'm94';
+      ov.textContent = (base ? base + ' · ' : '') + 'm95';
       ov.style.display = 'block';
     }
     var stamp = document.getElementById('vm-build');
     if (stamp) {
-      stamp.textContent = 'm94✓ ' + pins.length;
+      stamp.textContent = 'm95✓ ' + pins.length;
       stamp.style.background = '#1a7f37';
+    }
+    var ban = document.getElementById('vm-build-banner');
+    if (ban) {
+      ban.style.background = '#1a7f37';
+      ban.textContent = 'BUILD m95✓ — pinlar 1…' + pins.length + ' (vaqt tartibi)';
     }
     return true;
   }
 
   function patchRefresh() {
-    if (typeof window.refreshMap !== 'function' || window.refreshMap._vmM94) return;
+    if (typeof window.refreshMap !== 'function' || window.refreshMap._vmM95) return;
     var orig = window.refreshMap;
     window.refreshMap = async function () {
       var ret = await orig.apply(this, arguments);
@@ -2476,7 +2487,7 @@ input, select, textarea { max-width: 100%; }
       setTimeout(vmForceSequentialPins, 1800);
       return ret;
     };
-    window.refreshMap._vmM94 = true;
+    window.refreshMap._vmM95 = true;
   }
 
   function boot() {

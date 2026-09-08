@@ -41,6 +41,8 @@ SESSION_TOMBS_KEY = "auth:session_tombs"
 
 PUBLIC_PATHS = {"/login.html", "/favicon.ico"}
 PUBLIC_PREFIX = ("/fonts/", "/logo/")
+# Frontend assetlar — cookie kutmasdan yuklansin (eski kesh / auth race yo'qoladi)
+PUBLIC_STATIC_EXT = {".js", ".css", ".map", ".woff", ".woff2", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".ico"}
 BLOCKED_EXT = {".py", ".bat", ".md", ".txt", ".env"}
 BLOCKED_NAMES = {
     "users.json",
@@ -2498,7 +2500,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
     def is_public(self, path):
         if path in PUBLIC_PATHS:
             return True
-        return any(path.startswith(p) for p in PUBLIC_PREFIX)
+        if any(path.startswith(p) for p in PUBLIC_PREFIX):
+            return True
+        ext = os.path.splitext(path)[1].lower()
+        if ext in PUBLIC_STATIC_EXT:
+            return True
+        return False
 
     def is_blocked(self, path):
         name = os.path.basename(path).lower()

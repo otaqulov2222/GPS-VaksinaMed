@@ -1349,7 +1349,7 @@ async function refreshMap(stops, points) {
         if (km > 0) bits.push(km.toFixed(2) + ' km');
         if (track.length) bits.push(track.length + ' GPS nuqta');
         bits.push(markerStops.length + ' to\'xtash');
-        bits.push('m91'); // kesh tekshiruv — yangi kod yuklanganini bilish
+        bits.push('m95');
         setMapOverlay(bits.join(' · '));
     }
 
