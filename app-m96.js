@@ -1,0 +1,3710 @@
+﻿'use strict';
+/* =========================================================
+   VaksinaMed GPS Monitor — app.js (To'liq versiya)
+   ========================================================= */
+
+// Haydovchilar: fleet-data.js (window.DRIVERS)
+const DRIVERS = window.DRIVERS || [];
+
+// ── 2. HOLAT VA SAQLASH ─────────────────────────────────────
+const STATE = {
+    currentCar:  null,
+    currentDate: null,
+    data:        {},   // { 'YYYY-MM-DD': { 'car_key': processedData } }
+    history:     [],   // tarix ['YYYY-MM-DD']
+    fuelNorms:   { gas: 14, benzin: 12, diesel: 10 },
+    gpsConfig:   null,
+    map:         null,
+    mapMarkers:  [],
+    mapLine:     null,
+    mapRouteMain: null,
+    mapRouteArrows: null,
+    mapRouteGen: 0,
+    pharmacies:  [],
+    reviews:     {}
+};
+
+const UZ_MONTHS = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
+const UZ_MONTHS_SHORT = ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','Okt','Noy','Dek'];
+
+function uiTxt(s) {
+    if (s == null || s === '') return s;
+    return typeof uzUi === 'function' ? uzUi(s) : s;
+}
+
+/** Boomerangdan kelgan buzilgan manzil (sasasas va h.k.) */
+function isJunkPlace(s) {
+    const t = String(s || '').trim();
+    if (!t) return true;
+    if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(t)) return false;
+    const compact = t.replace(/[\s\d.,\-_/]+/g, '');
+    if (compact.length >= 4 && /^(.)\1+$/i.test(compact)) return true;
+    if (/^(sa){2,}|(as){2,}|test+|asdf|qwerty|xxx+/i.test(compact)) return true;
+    if (compact.length >= 5 && new Set(compact.toLowerCase()).size <= 2) return true;
+    return false;
+}
+
+function cleanPlaceLabel(s) {
+    const t = String(s || '').trim();
+    if (!t || isJunkPlace(t)) return '';
+    return t;
+}
+
+function validUzCoord(lat, lng) {
+    const y = Number(lat);
+    const x = Number(lng);
+    return Number.isFinite(y) && Number.isFinite(x) && y >= 37 && y <= 46 && x >= 55 && x <= 74;
+}
+
+function normalizeTrackPoints(pts) {
+    if (!Array.isArray(pts)) return [];
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        let lat, lng;
+        if (Array.isArray(p) && p.length >= 2) {
+            lat = Number(p[0]); lng = Number(p[1]);
+        } else if (p && typeof p === 'object') {
+            lat = Number(p.lat != null ? p.lat : p.y);
+            lng = Number(p.lng != null ? p.lng : p.x);
+        } else continue;
+        if (!validUzCoord(lat, lng)) continue;
+        out.push([Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5]);
+    }
+    return out;
+}
+let CAL = { y: new Date().getFullYear(), m: new Date().getMonth() };
+
+// ── LocalStorage ─────────────────────────────────────────────
+function gpsConfigSafe(cfg) {
+    if (!cfg || typeof cfg !== 'object') return null;
+    return {
+        host: cfg.host || '',
+        user: cfg.user || '',
+        hasToken: !!(cfg.token || cfg.hasToken),
+        hasPassword: !!(cfg.password || cfg.hasPassword),
+        serverConfigured: !!(cfg.serverConfigured || cfg.configured || cfg.token || cfg.password || cfg.hasToken || cfg.hasPassword)
+    };
+}
+
+function saveAll() {
+    try {
+        localStorage.setItem('vm_gps_v3', JSON.stringify({
+            data: STATE.data,
+            history: STATE.history,
+            fuelNorms: STATE.fuelNorms,
+            gpsConfig: gpsConfigSafe(STATE.gpsConfig)
+        }));
+    } catch(e) {
+        // Kvota tugasa eski 30 kunni o'chirish
+        if (e.name === 'QuotaExceededError') {
+            const keep = [...STATE.history].sort((a,b)=>b.localeCompare(a)).slice(0,30);
+            STATE.history = keep;
+            const trimmed = {};
+            keep.forEach(d => { if (STATE.data[d]) trimmed[d] = STATE.data[d]; });
+            STATE.data = trimmed;
+            try {
+                localStorage.setItem('vm_gps_v3', JSON.stringify({
+                    data: trimmed,
+                    history: keep,
+                    fuelNorms: STATE.fuelNorms,
+                    gpsConfig: gpsConfigSafe(STATE.gpsConfig)
+                }));
+            } catch(_) {}
+        }
+    }
+}
+
+function loadAll() {
+    try {
+        const s = localStorage.getItem('vm_gps_v3');
+        if (!s) return;
+        const p = JSON.parse(s);
+        STATE.data      = p.data      || {};
+        STATE.history   = p.history   || [];
+        STATE.fuelNorms = p.fuelNorms || { gas:14, benzin:12, diesel:10 };
+        // Eski localStorage dagi GPS parol/token ni o'qib, xotiraga ham saqlamaymiz
+        if (p.gpsConfig) {
+            STATE.gpsConfig = gpsConfigSafe(p.gpsConfig);
+            if (p.gpsConfig.password || p.gpsConfig.token) saveAll();
+        }
+        if (STATE.history.length) {
+            const sorted = [...STATE.history].sort((a,b)=>b.localeCompare(a));
+            STATE.currentDate = sorted[0];
+            const d = new Date(STATE.currentDate);
+            CAL.y = d.getFullYear(); CAL.m = d.getMonth();
+        }
+    } catch(e) { console.error('loadAll:', e); }
+}
+
+// Yordamchi
+function dateStr(date) {
+    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+function parseTimeStr(s) {
+    if (!s) return 0;
+    const m = String(s).trim().match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return 0;
+    return (parseInt(m[1], 10) || 0) * 3600
+        + (parseInt(m[2], 10) || 0) * 60
+        + (parseInt(m[3], 10) || 0);
+}
+
+/** HH:MM:SS — bir xil format (Toshkent soati, GPS dan) */
+function normalizeClock(s) {
+    if (!s && s !== 0) return '';
+    const m = String(s).trim().match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return String(s).trim();
+    const h = String(Math.min(23, parseInt(m[1], 10) || 0)).padStart(2, '0');
+    const mi = String(Math.min(59, parseInt(m[2], 10) || 0)).padStart(2, '0');
+    const sec = String(Math.min(59, m[3] != null ? (parseInt(m[3], 10) || 0) : 0)).padStart(2, '0');
+    return h + ':' + mi + ':' + sec;
+}
+
+function durationSecFromInOut(inTime, outTime) {
+    if (!inTime || !outTime) return 0;
+    const a = parseTimeStr(inTime);
+    const b = parseTimeStr(outTime);
+    if (b >= a) return b - a;
+    return b + 86400 - a; // tun orqali (ofis 19:00 → 04:15)
+}
+
+function formatDurSec(sec) {
+    sec = Math.max(0, Math.round(Number(sec) || 0));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+/**
+ * GPS tartibini saqlaymiz (Wialon allaqachon chronologik, tunlik ofis ham).
+ * Soat bo'yicha qayta sort qilmaslik — kunduzgi 08→19 marshrutni buzmaslik uchun.
+ */
+function sortStopsChronological(stops) {
+    return (stops || []).slice();
+}
+
+function prepareStopsList(stops) {
+    return sortStopsChronological(stops || []).map((s, i) => {
+        const inTime = normalizeClock(s.inTime);
+        const outTime = normalizeClock(s.outTime);
+        let durSec = durationSecFromInOut(inTime, outTime);
+        if (!durSec) {
+            durSec = Number(s.durSec) || parseTimeStr(s.duration) || 0;
+        }
+        return Object.assign({}, s, {
+            num: i + 1,
+            inTime: inTime || String(s.inTime || '').trim(),
+            outTime: outTime || String(s.outTime || '').trim(),
+            durSec,
+            duration: durSec ? formatDurSec(durSec) : (s.duration || '')
+        });
+    });
+}
+
+function secsToHHMM(secs) {
+    const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60);
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+function roundKm(v) {
+    const x = Number(v);
+    if (!Number.isFinite(x) || x <= 0) return 0;
+    return x;
+}
+function roundSpd(v) {
+    const x = Number(v);
+    if (!Number.isFinite(x) || x <= 0) return 0;
+    return Math.round(x * 100) / 100;
+}
+function roundFuel(v) {
+    const x = Number(v);
+    if (!Number.isFinite(x) || x <= 0) return 0;
+    return x;
+}
+function fmtDec(v, maxDec) {
+    const x = Number(v);
+    if (!Number.isFinite(x)) return '';
+    if (x === 0) return '0';
+    let s = x.toFixed(maxDec);
+    if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, '');
+    return s;
+}
+function fmtKm(v, unit) {
+    const x = roundKm(v);
+    if (!x) return '—';
+    const s = x.toFixed(2);
+    return unit ? s + ' ' + unit : s;
+}
+function fmtSpd(v, unit) {
+    const x = roundSpd(v);
+    if (!x) return '—';
+    const s = x.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    return unit ? s + ' ' + unit : s;
+}
+function fmtFuel(v, unit) {
+    const x = roundFuel(v);
+    if (!x) return '—';
+    const s = fmtDec(x, 4);
+    return unit ? s + ' ' + unit : s;
+}
+
+// ── 3. DORIXONA TAHLILI ─────────────────────────────────────
+const PHARMACY_ALIASES = {
+    "корзинка":         ["korzinka","карзинка","karzinka"],
+    "гор больница-16":  ["16-гор больница","гкб 16","16-shifoxona","гор-больница"],
+    "юнусабад":         ["юнусобод","yunusobod","yunusabad"],
+    "алгоритм":         ["algoritm","алgoritm"],
+    "мирабад":          ["mirobod","мирабод"],
+    "яшнабад":          ["yashnobod","яшнобод"],
+    "фарм люкс":        ["farmlux","farm lux","farм люкс"],
+    "госпитальний":     ["gospitalny","gospitalь","госпиталь"],
+};
+
+function normPh(s) {
+    if (!s) return '';
+    return s.toLowerCase()
+        .replace(/ё/g,'е').replace(/қ/g,'к').replace(/ў/g,'у')
+        .replace(/ҳ/g,'х').replace(/ғ/g,'г').replace(/ң/g,'н')
+        .replace(/['`'']/g,'').replace(/\s+/g,' ').trim();
+}
+
+/** Server yoki eski yozuvlardan kelgan score/stops ni xavfsiz normalizatsiya */
+function normalizeScore(score) {
+    if (score == null) return null;
+    if (typeof score === 'number' && Number.isFinite(score)) {
+        const f = score;
+        const grade = f >= 9 ? 'A' : f >= 7 ? 'B' : f >= 5 ? 'C' : f >= 3 ? 'D' : 'F';
+        return { final: f, grade, breakdown: [], recommendations: [] };
+    }
+    if (typeof score === 'object') {
+        const f = Number(score.final);
+        if (!Number.isFinite(f)) return null;
+        return {
+            final: f,
+            grade: score.grade || '—',
+            breakdown: Array.isArray(score.breakdown) ? score.breakdown : [],
+            recommendations: Array.isArray(score.recommendations) ? score.recommendations : []
+        };
+    }
+    return null;
+}
+
+function normalizeDayRecord(data) {
+    if (!data || typeof data !== 'object') return null;
+    const stops = prepareStopsList(Array.isArray(data.stops) ? data.stops : []);
+    const points = normalizeTrackPoints(data.points);
+    const stats = data.stats && typeof data.stats === 'object' ? data.stats : {};
+    const rawAnalysis = data.analysis && typeof data.analysis === 'object' ? data.analysis : {};
+    const score = normalizeScore(rawAnalysis.score != null ? rawAnalysis.score : data.score);
+    const analysis = Object.assign({}, rawAnalysis, {
+        ownVisited: rawAnalysis.ownVisited || 0,
+        totalOwn: rawAnalysis.totalOwn || 0,
+        otherDirection: rawAnalysis.otherDirection || 0,
+        problemStops: rawAnalysis.problemStops || 0,
+        outsideCity: rawAnalysis.outsideCity || 0,
+        missedList: Array.isArray(rawAnalysis.missedList) ? rawAnalysis.missedList : [],
+        ownPharms: Array.isArray(rawAnalysis.ownPharms) ? rawAnalysis.ownPharms : [],
+        score: score || { final: 0, grade: '—', breakdown: [], recommendations: [] }
+    });
+    return Object.assign({}, data, { stops, points, stats, analysis });
+}
+
+let PHARM_INDEX = [];
+function uniquePhNames(list) {
+    const seen = new Set();
+    const out = [];
+    (list || []).forEach(ph => {
+        const k = normPh(ph);
+        if (!k || seen.has(k)) return;
+        seen.add(k);
+        out.push(ph);
+    });
+    return out;
+}
+
+function ownPharmacyList(carKey) {
+    if (window.VMOffice && typeof VMOffice.ownNames === 'function') {
+        return uniquePhNames(VMOffice.ownNames(carKey));
+    }
+    const driver = DRIVERS.find(d => d.car === carKey);
+    if (!driver || !driver.pharmacies) return [];
+    return uniquePhNames(driver.pharmacies.split(',').map(p => p.trim()).filter(Boolean));
+}
+
+function buildPharmIndex() {
+    PHARM_INDEX = [];
+    const pushEntry = (phName, car, shortName) => {
+        const n = normPh(phName);
+        if (!n) return;
+        PHARM_INDEX.push({ norm: n, name: phName, car, driver: uiTxt(shortName) });
+        Object.entries(PHARMACY_ALIASES).forEach(([canonical, aliases]) => {
+            if (n.includes(normPh(canonical)) || aliases.some(a => n.includes(normPh(a)))) {
+                aliases.forEach(al => PHARM_INDEX.push({ norm: normPh(al), name: phName, car, driver: shortName }));
+            }
+        });
+    };
+    const fromState = STATE.pharmacies || [];
+    if (fromState.length) {
+        fromState.forEach(ph => {
+            const drv = DRIVERS.find(d => d.car === ph.car);
+            pushEntry(ph.name, ph.car, drv ? drv.shortName : ph.car);
+            (ph.aliases || []).forEach(al => pushEntry(al, ph.car, drv ? drv.shortName : ph.car));
+        });
+        return;
+    }
+    DRIVERS.forEach(drv => {
+        if (!drv.pharmacies) return;
+        drv.pharmacies.split(',').forEach(ph => pushEntry(ph.trim(), drv.car, drv.shortName));
+    });
+}
+
+function matchPharmacy(place, currentCar, lat, lng) {
+    if (window.VMOffice && typeof VMOffice.matchGeo === 'function') {
+        const geo = VMOffice.matchGeo(currentCar, lat, lng);
+        if (geo) return geo;
+    }
+    const pn = normPh(place);
+    if (!pn || pn.length < 3) return { type: 'none', phName: null, owners: [] };
+
+    let bestScore = 0, bestMatch = null, owners = [];
+
+    PHARM_INDEX.forEach(entry => {
+        const en = entry.norm;
+        let score = 0;
+        if (pn === en) score = 100;
+        else if (pn.includes(en) || en.includes(pn)) {
+            score = Math.min(pn.length, en.length) / Math.max(pn.length, en.length) * 90;
+        } else {
+            // Token matching
+            const ptok = pn.split(' ');
+            const etok = en.split(' ');
+            let matches = 0;
+            ptok.forEach(pt => { if (etok.some(et => et === pt && pt.length > 2)) matches++; });
+            score = matches / Math.max(ptok.length, etok.length) * 70;
+        }
+        if (score > 40) {
+            owners.push({ car: entry.car, driver: entry.driver, phName: entry.name, score });
+            if (score > bestScore) { bestScore = score; bestMatch = entry; }
+        }
+    });
+
+    if (!bestMatch) return { type: 'none', phName: null, owners: [] };
+
+    const uniqueOwners = [...new Map(owners.map(o => [o.car, o])).values()];
+    const isOwn = uniqueOwners.some(o => o.car === currentCar);
+
+    return {
+        type:    isOwn ? 'own' : 'other',
+        phName:  bestMatch.name,
+        owners:  uniqueOwners.map(o => o.driver)
+    };
+}
+
+// Ofis/sklad joylari
+const OFFICE_KEYWORDS = ['sklad','склад','офис','omborxona','ombo','база','база','vaksina','vaksinamed',
+    'завод','fabrika','tashkent farma','korxona','baza','bosh ofis'];
+function isOffice(place) {
+    const p = normPh(place);
+    return OFFICE_KEYWORDS.some(k => p.includes(k));
+}
+
+// Shahar tashqarisi
+const OUTSIDE_MARKERS = ['kibray','кибрай','parkent','паркент','yangiyo','янгийўл',
+    'zangiota','зангиота','qibray','chirchiq','чирчиқ','bo\'ka','бўка','urtachirchiq'];
+function isOutsideCity(place) {
+    const p = normPh(place);
+    return OUTSIDE_MARKERS.some(k => p.includes(k));
+}
+
+// ── 4. EXCEL FAYLNI TAHLIL QILISH ──────────────────────────
+function normalizeCarNum(s) {
+    if (!s) return '';
+    return String(s).replace(/[^0-9A-Za-zА-Яа-яЎўҚқҲҳ]/g,' ').replace(/\s+/g,' ').trim().toUpperCase();
+}
+
+function findDriverByCar(carRaw) {
+    const compact = normalizeCarNum(carRaw).replace(/\s/g, '');
+    if (!compact) return null;
+    const wrap = d => (typeof resolveDriver === 'function' ? resolveDriver(d.car, d) : d);
+    const exact = DRIVERS.find(d => normalizeCarNum(d.car).replace(/\s/g, '') === compact);
+    if (exact) return wrap(exact);
+    const prefixed = DRIVERS.filter(d => {
+        const dn = normalizeCarNum(d.car).replace(/\s/g, '');
+        return dn.startsWith(compact) || compact.startsWith(dn);
+    });
+    if (prefixed.length === 1) return wrap(prefixed[0]);
+    const digits = compact.match(/^(\d{2}\d{3})/);
+    if (digits) {
+        const hit = DRIVERS.filter(d => normalizeCarNum(d.car).replace(/\s/g, '').startsWith(digits[1]));
+        if (hit.length === 1) return wrap(hit[0]);
+    }
+    return null;
+}
+
+function enrichStops(rawStops, carKey) {
+    return (rawStops || []).map((s, i) => {
+        const placeRaw = String(s.place || '').trim();
+        let place = cleanPlaceLabel(placeRaw);
+        let lat = s.lat || 0;
+        let lng = s.lng || 0;
+        if (!validUzCoord(lat, lng)) { lat = 0; lng = 0; }
+        const match = matchPharmacy(place || placeRaw, carKey, lat, lng);
+        const durSec = s.durSec || parseTimeStr(s.duration) || 0;
+        if (!place && lat && lng) place = Number(lat).toFixed(5) + ', ' + Number(lng).toFixed(5);
+        const stop = {
+            num: i + 1,
+            place: place || 'Noma\'lum manzil',
+            inTime: s.inTime || '',
+            outTime: s.outTime || '',
+            duration: s.duration || '',
+            durSec,
+            lat,
+            lng,
+            gas: s.gas || 0,
+            benzin: s.benzin || 0,
+            matchType: match.type,
+            phName: match.phName,
+            owners: match.owners,
+            isOffice: isOffice(place || placeRaw),
+            isOutside: isOutsideCity(place || placeRaw),
+            isProblem: false
+        };
+        if (!stop.isOffice && !stop.isOutside && stop.matchType === 'none' && stop.durSec > 600) {
+            stop.isProblem = true;
+        }
+        return stop;
+    });
+}
+
+async function handleFileDrop(files) {
+    const arr = Array.from(files).filter(f => /\.(xlsx|xls)$/i.test(f.name));
+    if (!arr.length) { showToast('⚠️ Faqat .xlsx yoki .xls fayllari qabul qilinadi', 'warn'); return; }
+    showToast(`📂 ${arr.length} ta fayl yuklanmoqda...`, 'info');
+    let loaded = 0;
+    for (const file of arr) {
+        try {
+            await processXLSX(file);
+            loaded++;
+        } catch(e) {
+            showToast(`❌ ${file.name}: ${e.message}`, 'error');
+        }
+    }
+    if (loaded > 0) {
+        saveAll();
+        renderCalendar();
+        renderDriverTabs();
+        refreshUI();
+        if (window.VMOffice && STATE.currentDate) {
+            VMOffice.renderFleetBoard();
+            VMOffice.saveReport(STATE.currentDate);
+        }
+        showToast(`✅ ${loaded} ta fayl muvaffaqiyatli yuklandi!`, 'success');
+    }
+}
+
+async function processXLSX(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Faylni o\'qib bo\'lmadi'));
+        reader.onload = async (e) => {
+            try {
+                const wb = XLSX.read(e.target.result, { type: 'binary', cellDates: true });
+
+                // Avval mashina raqamini aniqlaymiz
+                let carRaw = '', driver = null;
+
+                // 1. Fayl nomidan
+                const fnMatch = file.name.match(/(\d{2}\s*\d{3,4}\s*[A-Z]{2,3})/i);
+                if (fnMatch) { carRaw = fnMatch[1]; driver = findDriverByCar(carRaw); }
+
+                // 2. Barcha varaqlardan izlaymiz
+                for (const shName of wb.SheetNames) {
+                    if (driver) break;
+                    const ws  = wb.Sheets[shName];
+                    const csv = XLSX.utils.sheet_to_csv(ws);
+                    const m   = csv.match(/(\d{2}\s*\d{3,4}\s*[A-Z]{2,3})/i);
+                    if (m) { carRaw = m[1]; driver = findDriverByCar(carRaw); }
+                }
+
+                if (!driver) {
+                    console.warn('Haydovchi topilmadi:', carRaw, file.name);
+                }
+
+                let chronoSheet = null;
+                for (const sn of wb.SheetNames) {
+                    if (/хрон|chron|хронол/i.test(sn) || /маршрут/i.test(sn)) {
+                        chronoSheet = wb.Sheets[sn]; break;
+                    }
+                }
+                if (!chronoSheet) chronoSheet = wb.Sheets[wb.SheetNames[0]];
+
+                const rows = XLSX.utils.sheet_to_json(chronoSheet, { header:1, defval:'' });
+
+                let dateFound = null;
+                for (let i = 0; i < Math.min(20, rows.length); i++) {
+                    const row = rows[i];
+                    for (const cell of row) {
+                        if (cell instanceof Date) {
+                            dateFound = dateStr(cell); break;
+                        }
+                        const s = String(cell);
+                        const dm = s.match(/(\d{2})[.\-\/](\d{2})[.\-\/](\d{4})/);
+                        if (dm) { dateFound = `${dm[3]}-${dm[2]}-${dm[1]}`; break; }
+                        const dm2 = s.match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
+                        if (dm2) { dateFound = `${dm2[1]}-${dm2[2]}-${dm2[3]}`; break; }
+                    }
+                    if (dateFound) break;
+                }
+                if (!dateFound) dateFound = STATE.currentDate || dateStr(new Date());
+
+                const stops = parseChronoRows(rows, driver ? driver.car : carRaw);
+                const stats = parseStats(rows, stops);
+                const carKey = driver ? driver.car : carRaw;
+
+                const processedData = {
+                    car:      carKey,
+                    driver:   driver,
+                    date:     dateFound,
+                    stats:    stats,
+                    stops:    stops,
+                    analysis: analyzeDataLocal(stops, carKey, stats, dateFound)
+                };
+
+                if (!STATE.data[dateFound]) STATE.data[dateFound] = {};
+                STATE.data[dateFound][carKey] = processedData;
+                if (!STATE.history.includes(dateFound)) STATE.history.push(dateFound);
+                STATE.currentDate = dateFound;
+                if (!STATE.currentCar) STATE.currentCar = carKey;
+
+                const d = new Date(dateFound);
+                CAL.y = d.getFullYear(); CAL.m = d.getMonth();
+
+                // Ball — server yagona manba; saqlashdan OLDIN kutamiz
+                try {
+                    const r = await analyzeOnServer(stops, carKey, stats, dateFound, { reenrich: true });
+                    const rec = STATE.data[dateFound] && STATE.data[dateFound][carKey];
+                    if (rec && r) {
+                        rec.analysis = r.analysis;
+                        if (r.stops) rec.stops = r.stops;
+                    }
+                } catch (err) {
+                    console.warn('analyzeOnServer excel:', err);
+                }
+
+                resolve(processedData);
+            } catch(err) {
+                reject(err);
+            }
+        };
+        reader.readAsBinaryString(file);
+    });
+}
+
+function parseChronoRows(rows, carKey) {
+    const stops = [];
+    // Sarlavhani topamiz
+    let headerRow = -1;
+    for (let i = 0; i < Math.min(30, rows.length); i++) {
+        const r = rows[i].map(c => String(c).toLowerCase());
+        if (r.some(c => c.includes('место') || c.includes('joy') || c.includes('мест') || c.includes('адрес'))) {
+            headerRow = i; break;
+        }
+    }
+
+    for (let i = (headerRow >= 0 ? headerRow + 1 : 1); i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.every(c => !String(c).trim())) continue;
+
+        const place = String(row[1] || row[2] || row[3] || '').trim();
+        if (!place || place.length < 2) continue;
+
+        const inTimeRaw  = String(row[2] || row[3] || row[4] || '').trim();
+        const outTimeRaw = String(row[3] || row[4] || row[5] || '').trim();
+        const durRaw     = String(row[4] || row[5] || row[6] || '').trim();
+
+        // Koordinatlarni izlaymiz
+        let lat = 0, lng = 0;
+        row.forEach(cell => {
+            const s = String(cell);
+            const m = s.match(/(-?\d+\.?\d+)[,;\s]+(-?\d+\.?\d+)/);
+            if (m) {
+                const a = parseFloat(m[1]), b = parseFloat(m[2]);
+                if (a > 38 && a < 46 && b > 55 && b < 75) { lat = a; lng = b; }
+            }
+        });
+
+        // Yoqilg'i
+        let gas = 0, benzin = 0;
+        const allText = row.join(' ').toLowerCase();
+        const gasM = allText.match(/(\d+(?:[.,]\d+)?)\s*(м3|m3|куб|газ)/i);
+        const benM = allText.match(/(\d+(?:[.,]\d+)?)\s*(л|l|литр|бензин)/i);
+        if (gasM)  gas    = roundFuel(parseFloat(gasM[1].replace(',','.')));
+        if (benM)  benzin = roundFuel(parseFloat(benM[1].replace(',','.')));
+
+        const durSec = parseTimeStr(durRaw) || parseTimeStr(inTimeRaw);
+        const match = matchPharmacy(place, carKey, lat, lng);
+
+        stops.push({
+            num:         i - headerRow,
+            place:       place,
+            inTime:      inTimeRaw,
+            outTime:     outTimeRaw,
+            duration:    durRaw,
+            durSec:      durSec,
+            lat:         lat,
+            lng:         lng,
+            gas:         gas,
+            benzin:      benzin,
+            matchType:   match.type,   // 'own'|'other'|'none'
+            phName:      match.phName,
+            owners:      match.owners,
+            isOffice:    isOffice(place),
+            isOutside:   isOutsideCity(place),
+            isProblem:   false  // keyinroq belgilanadi
+        });
+    }
+
+    // Muammoli to'xtashlarni belgilash
+    stops.forEach(s => {
+        if (!s.isOffice && !s.isOutside && s.matchType === 'none' && s.durSec > 600) {
+            s.isProblem = true;
+        }
+    });
+
+    return stops;
+}
+
+function parseStats(rows, stops) {
+    const totalGas    = stops.reduce((s, r) => s + (r.gas || 0), 0);
+    const totalBenzin = stops.reduce((s, r) => s + (r.benzin || 0), 0);
+
+    let probeg = 0, maxSpeed = 0, avgSpeed = 0, poezdok = 0, stoyanok = 0;
+    let motoChasStr = '—', totalStopStr = '—';
+
+    for (let i = 0; i < Math.min(30, rows.length); i++) {
+        const row = rows[i];
+        row.forEach((cell, ci) => {
+            const s = String(cell).toLowerCase();
+            const next = String(row[ci+1] || '');
+            if (s.includes('пробег') || s.includes('masofa') || (s.includes('км') && !s.includes('км/ч') && !s.includes('km/h'))) {
+                const v = parseFloat(String(next).replace(',','.'));
+                if (v > 0 && v < 2000) probeg = roundKm(v);
+            }
+            if ((s.includes('средн') || s.includes('avg') || s.includes("o'rtacha")) && (s.includes('скорост') || s.includes('tezlik') || s.includes('speed') || s.includes('тезлик'))) {
+                const v = parseFloat(String(next).replace(',','.'));
+                if (v > 0 && v < 300) avgSpeed = roundSpd(v);
+            }
+            if ((s.includes('макс') || s.includes('max')) && (s.includes('скорост') || s.includes('tezlik') || s.includes('speed') || s.includes('тезлик'))) {
+                const v = parseFloat(String(next).replace(',','.'));
+                if (v > 0 && v < 300) maxSpeed = roundSpd(v);
+            }
+            if (s.includes('поезд') || s.includes('trip') || s.includes('рейс')) {
+                const v = parseInt(next, 10);
+                if (v > 0 && v < 200) poezdok = v;
+            }
+            if ((s.includes('стоянк') || s.includes('stop')) && !s.includes('общ')) {
+                const v = parseInt(next, 10);
+                if (v > 0 && v < 200) stoyanok = v;
+            }
+            if (s.includes('мото') || s.includes('motochas') || s.includes('движ')) {
+                if (next.match(/\d+:\d+/)) motoChasStr = next.trim();
+            }
+        });
+    }
+
+    if (!probeg) probeg = 0;
+    if (!poezdok) poezdok = stops.filter(s => !s.isOffice).length;
+    if (!stoyanok) stoyanok = stops.length;
+
+    return {
+        probeg, maxSpeed, avgSpeed, poezdok, stoyanok,
+        gas: roundFuel(totalGas), benzin: roundFuel(totalBenzin),
+        motoChas: motoChasStr, totalStop: totalStopStr
+    };
+}
+
+// ── 5. TAHLIL VA BALL HISOBLASH ─────────────────────────────
+function stopIsProblem(st, carKey, dateVal) {
+    const day = dateVal || STATE.currentDate;
+    const car = carKey || STATE.currentCar;
+    if (window.VMOffice && typeof VMOffice.isProblem === 'function') {
+        return VMOffice.isProblem(day, car, st);
+    }
+    return !!(st && st.isProblem);
+}
+
+/** Lokal fallback — asosiy manba server /api/office/analyze */
+function analyzeDataLocal(stops, carKey, stats, dateVal) {
+    const day = dateVal || STATE.currentDate;
+    const ownPharms = uniquePhNames(ownPharmacyList(carKey));
+    const problemOf = (s) => stopIsProblem(s, carKey, day);
+
+    const visitedNorms = new Set(
+        stops.filter(s => s.matchType === 'own').map(s => normPh(s.phName || s.place || '')).filter(Boolean)
+    );
+    const bag = (STATE.reviews && STATE.reviews[day]) || {};
+    const want = String(carKey || '').replace(/\s+/g, '').toUpperCase();
+    Object.keys(bag).forEach(key => {
+        const rv = bag[key];
+        if (!rv || rv.status !== 'allowed' || !rv.phName) return;
+        const parts = key.split('|');
+        const carK = rv.car || (parts[1] || '');
+        if (String(carK).replace(/\s+/g, '').toUpperCase() !== want) return;
+        const n = normPh(rv.phName);
+        if (n) visitedNorms.add(n);
+    });
+    const missedList = ownPharms.filter(ph => !visitedNorms.has(normPh(ph)));
+    const ownVisited = ownPharms.length ? (ownPharms.length - missedList.length) : visitedNorms.size;
+    const otherDir      = stops.filter(s => s.matchType === 'other').length;
+    const problemStops  = stops.filter(s => problemOf(s)).length;
+    const outsideCity   = stops.filter(s => s.isOutside).length;
+
+    let score = 10.0;
+    const breakdown = ['Boshlang\'ich ball: 10.0'];
+    const recs = [];
+
+    if (problemStops > 0) {
+        const deduct = Math.min(problemStops * 1.0, 3.0);
+        score -= deduct;
+        breakdown.push(`-${deduct.toFixed(1)}: ${problemStops} ta muammoli to'xtash`);
+        recs.push(`${problemStops} ta ruxsatsiz joyda to'xtash aniqlandi`);
+    }
+    if (missedList.length > 0) {
+        const deduct = Math.min(missedList.length * 0.5, 2.0);
+        score -= deduct;
+        breakdown.push(`-${deduct.toFixed(1)}: ${missedList.length} ta dorixona o'tkazib yuborilgan`);
+        recs.push(`O'tkazib yuborilgan: ${missedList.slice(0,3).join(', ')}${missedList.length > 3 ? '...' : ''}`);
+    }
+    if (otherDir > 0) {
+        const deduct = Math.min(otherDir * 0.3, 1.5);
+        score -= deduct;
+        breakdown.push(`-${deduct.toFixed(1)}: ${otherDir} ta boshqa yo'nalish to'xtashi`);
+    }
+    if (stats.maxSpeed > 90) {
+        score -= 0.5;
+        breakdown.push(`-0.5: Tezlik normasi oshirildi (${fmtSpd(stats.maxSpeed, 'km/s')})`);
+        recs.push('Tezlikni nazorat qiling');
+    }
+    if (missedList.length === 0 && ownPharms.length > 0) {
+        score += 0.5;
+        breakdown.push('+0.5: Barcha dorixonalarga borildi');
+    }
+
+    score = Math.max(0, Math.min(10, score));
+    const grade = score >= 9 ? 'A' : score >= 7 ? 'B' : score >= 5 ? 'C' : score >= 3 ? 'D' : 'F';
+    if (recs.length === 0) recs.push('Kun me\'yorida o\'tdi');
+
+    return {
+        ownVisited, otherDirection: otherDir, problemStops,
+        outsideCity, totalOwn: ownPharms.length,
+        missedList, ownPharms,
+        score: { final: parseFloat(score.toFixed(1)), grade, breakdown, recommendations: recs },
+        _source: 'local'
+    };
+}
+
+/** Orqaga moslik: sinxron joylar uchun lokal (fallback) */
+function analyzeData(stops, carKey, stats, dateVal) {
+    return analyzeDataLocal(stops, carKey, stats, dateVal);
+}
+
+async function analyzeOnServer(stops, carKey, stats, dateVal, opts) {
+    const o = opts || {};
+    if (typeof vmApi !== 'function') {
+        return { analysis: analyzeDataLocal(stops, carKey, stats, dateVal), stops, source: 'local' };
+    }
+    try {
+        const d = await vmApi('/api/office/analyze', {
+            method: 'POST',
+            body: JSON.stringify({
+                date: dateVal || STATE.currentDate || '',
+                car: carKey,
+                stops: stops || [],
+                stats: stats || {},
+                reenrich: !!o.reenrich
+            })
+        });
+        if (d && d.ok && d.analysis) {
+            d.analysis._source = 'server';
+            return { analysis: d.analysis, stops: d.stops || stops, source: 'server' };
+        }
+    } catch (e) {
+        console.warn('analyzeOnServer:', e);
+    }
+    return { analysis: analyzeDataLocal(stops, carKey, stats, dateVal), stops, source: 'local' };
+}
+
+async function recomputeCar(dateVal, car) {
+    const rec = STATE.data[dateVal] && STATE.data[dateVal][car];
+    if (!rec) return;
+    const r = await analyzeOnServer(rec.stops || [], car, rec.stats || {}, dateVal, { reenrich: false });
+    rec.analysis = r.analysis;
+    if (r.stops) rec.stops = r.stops;
+}
+
+async function recomputeDay(dateVal) {
+    const day = STATE.data[dateVal];
+    if (!day) return;
+    const cars = Object.keys(day);
+    if (!cars.length) return;
+    if (typeof vmApi === 'function') {
+        try {
+            const items = cars.map(car => {
+                const rec = day[car] || {};
+                return { car, stops: rec.stops || [], stats: rec.stats || {} };
+            });
+            const d = await vmApi('/api/office/analyze', {
+                method: 'POST',
+                body: JSON.stringify({ date: dateVal, items, reenrich: false })
+            });
+            if (d && d.ok && d.results) {
+                cars.forEach(car => {
+                    const hit = d.results[car];
+                    if (!hit || !day[car]) return;
+                    if (hit.analysis) {
+                        hit.analysis._source = 'server';
+                        day[car].analysis = hit.analysis;
+                    }
+                    if (hit.stops) day[car].stops = hit.stops;
+                });
+                return;
+            }
+        } catch (e) {
+            console.warn('recomputeDay server:', e);
+        }
+    }
+    for (const car of cars) {
+        await recomputeCar(dateVal, car);
+    }
+}
+
+// ── 6. XARITA ───────────────────────────────────────────────
+function mapInvalidate() {
+    if (!STATE.map) return;
+    if (STATE._mapInvBusy) return;
+    STATE._mapInvBusy = true;
+    requestAnimationFrame(() => {
+        STATE._mapInvBusy = false;
+        try { STATE.map.invalidateSize(); } catch (e) {}
+    });
+}
+let mapResizeTimer = 0;
+window.addEventListener('resize', () => {
+    clearTimeout(mapResizeTimer);
+    mapResizeTimer = setTimeout(mapInvalidate, 200);
+});
+
+function setMapLockState(active) {
+    const frame = document.getElementById('map-frame');
+    if (frame) frame.classList.toggle('is-active', !!active);
+}
+
+function lockMapInteraction() {
+    if (!STATE.map) return;
+    STATE.map.scrollWheelZoom.disable();
+    STATE.map.dragging.disable();
+    STATE.map.doubleClickZoom.disable();
+    STATE.map.boxZoom.disable();
+    try { if (STATE.map.touchZoom) STATE.map.touchZoom.disable(); } catch (e) {}
+    try { if (STATE.map.tap) STATE.map.tap.disable(); } catch (e) {}
+    STATE.mapLocked = true;
+    setMapLockState(false);
+}
+
+function unlockMapInteraction() {
+    if (!STATE.map) return;
+    STATE.map.scrollWheelZoom.enable();
+    STATE.map.dragging.enable();
+    STATE.map.doubleClickZoom.enable();
+    STATE.map.boxZoom.enable();
+    try { if (STATE.map.touchZoom) STATE.map.touchZoom.enable(); } catch (e) {}
+    try { if (STATE.map.tap) STATE.map.tap.enable(); } catch (e) {}
+    STATE.mapLocked = false;
+    setMapLockState(true);
+}
+
+function bindMapLock() {
+    const frame = document.getElementById('map-frame');
+    if (!frame || STATE._mapLockBound) return;
+    STATE._mapLockBound = true;
+    const unlock = () => unlockMapInteraction();
+    const lock = () => lockMapInteraction();
+    frame.addEventListener('click', unlock);
+    frame.addEventListener('mouseleave', lock);
+    frame.addEventListener('touchend', (e) => {
+        // Birinchi bosish — ochish; tashqariga tegish document listener da
+        if (e.target && frame.contains(e.target)) unlock();
+    }, { passive: true });
+    document.addEventListener('click', (e) => {
+        if (!frame.contains(e.target)) lock();
+    });
+    document.addEventListener('touchstart', (e) => {
+        if (!frame.contains(e.target)) lock();
+    }, { passive: true });
+}
+
+function addMapTiles(map) {
+    if (typeof vmAddMapTiles === 'function') {
+        STATE.mapTileLayer = vmAddMapTiles(map);
+        return;
+    }
+    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+        attribution: '', subdomains: 'abc', maxZoom: 18, maxNativeZoom: 18,
+        detectRetina: false, updateWhenIdle: true, updateWhenZooming: false
+    }).addTo(map);
+}
+
+function mapPinIcon(label, color, isEnd) {
+    return L.divIcon({
+        className: 'vm-pin',
+        html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color}">${label}</span>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -14]
+    });
+}
+
+function stopColor(st) {
+    const dateVal = STATE.currentDate;
+    const car = STATE.currentCar;
+    const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, st) : null;
+    if (rev && rev.status === 'allowed') return '#1a5fb4';
+    if (rev && rev.status === 'violation') return '#0b1f3a';
+    if (st.isOffice) return '#123050';
+    if (st.isOutside) return '#8eb6df';
+    if (stopIsProblem(st, car, dateVal)) return '#0b1f3a';
+    if (st.matchType === 'own') return '#1a5fb4';
+    if (st.matchType === 'other') return '#5b9fe0';
+    return '#8aa0b8';
+}
+
+function stopStatusLabel(st) {
+    const dateVal = STATE.currentDate;
+    const car = STATE.currentCar;
+    const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, st) : null;
+    if (rev && rev.status === 'allowed') return 'Ruxsat';
+    if (rev && rev.status === 'violation') return 'Qoidabuzarlik';
+    if (st.isOffice) return 'Ofis / sklad';
+    if (st.isOutside) return 'Shahardan tashqari';
+    if (stopIsProblem(st, car, dateVal)) return 'Muammo';
+    if (st.matchType === 'own') return "O'z dorixonasi";
+    if (st.matchType === 'other') return "Boshqa yo'nalish";
+    return 'To\'xtash';
+}
+
+function setMapStats(stops, pts) {
+    const n = stops ? stops.length : 0;
+    const car = STATE.currentCar;
+    const dateVal = STATE.currentDate;
+    const prob = stops ? stops.filter(s => stopIsProblem(s, car, dateVal)).length : 0;
+    const elS = document.getElementById('map-stat-stops');
+    const elP = document.getElementById('map-stat-pts');
+    const elM = document.getElementById('map-stat-prob');
+    if (elS) elS.textContent = n;
+    if (elP) elP.textContent = pts || 0;
+    if (elM) elM.textContent = prob;
+}
+
+function initMap() {
+    const el = document.getElementById('leaflet-map');
+    if (!el) return;
+    if (typeof L === 'undefined') {
+        el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#5c6573;font-size:13px;padding:20px;text-align:center;font-family:inherit;">Xarita moduli yuklanmadi. Internetni tekshiring, keyin Ctrl+F5 bosing.</div>';
+        return;
+    }
+    if (STATE.map) {
+        mapInvalidate();
+        return;
+    }
+    STATE.map = L.map(el, {
+        zoomControl: true,
+        attributionControl: false,
+        scrollWheelZoom: false,
+        dragging: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        maxZoom: 18,
+        minZoom: 3
+    }).setView([41.3111, 69.2797], 12);
+    addMapTiles(STATE.map);
+    bindMapLock();
+    lockMapInteraction();
+    mapInvalidate();
+}
+
+function removeMapRouteLayers() {
+    if (!STATE.map) return;
+    if (STATE.mapLine) {
+        STATE.map.removeLayer(STATE.mapLine);
+        STATE.mapLine = null;
+    }
+    if (STATE.mapRouteMain) {
+        STATE.map.removeLayer(STATE.mapRouteMain);
+        STATE.mapRouteMain = null;
+    }
+    if (STATE.mapRouteArrows) {
+        STATE.map.removeLayer(STATE.mapRouteArrows);
+        STATE.mapRouteArrows = null;
+    }
+}
+
+function drawMapRouteLayers(latlngs) {
+    removeMapRouteLayers();
+    if (!STATE.map || !latlngs || latlngs.length < 2) return;
+    STATE.mapLine = L.polyline(latlngs, {
+        color: '#0b1f3a', weight: 7, opacity: 0.18, lineJoin: 'round', lineCap: 'round',
+        interactive: false
+    }).addTo(STATE.map);
+    STATE.mapRouteMain = L.polyline(latlngs, {
+        color: '#1a5fb4', weight: 3.25, opacity: 0.95, lineJoin: 'round', lineCap: 'round',
+        interactive: false
+    }).addTo(STATE.map);
+    // Yo'nalish belgilar (siyrak)
+    const arrowLayers = [];
+    const step = Math.max(1, Math.floor(latlngs.length / 12));
+    for (let i = step; i < latlngs.length - 1; i += step) {
+        const p = latlngs[i];
+        const next = latlngs[Math.min(latlngs.length - 1, i + Math.max(1, Math.floor(step / 2)))];
+        const ang = Math.atan2(next[1] - p[1], next[0] - p[0]) * 180 / Math.PI;
+        arrowLayers.push(L.marker(p, {
+            interactive: false,
+            icon: L.divIcon({
+                className: 'vm-route-arrow',
+                html: `<span style="transform:rotate(${ang}deg)">›</span>`,
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            })
+        }));
+    }
+    if (arrowLayers.length) {
+        STATE.mapRouteArrows = L.layerGroup(arrowLayers).addTo(STATE.map);
+    }
+}
+
+function sortStopsForRoute(stops) {
+    return prepareStopsList(stops);
+}
+
+function parseCoordPair(text) {
+    const m = String(text || '').match(/(-?\d{1,2}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)/);
+    if (!m) return null;
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (validUzCoord(a, b)) return [a, b];
+    if (validUzCoord(b, a)) return [b, a];
+    return null;
+}
+
+/** Koordinatasi yo'q to'xtashlarni trek/qo'shni bo'yicha joylashtiramiz. */
+function hydrateStopCoords(stops, track) {
+    const list = prepareStopsList(stops).map(s => {
+        let lat = Number(s.lat);
+        let lng = Number(s.lng);
+        if (!Number.isFinite(lat)) lat = 0;
+        if (!Number.isFinite(lng)) lng = 0;
+        // Ba'zan lat/lng almashtirib keladi
+        if (!validUzCoord(lat, lng) && validUzCoord(lng, lat)) {
+            const t = lat;
+            lat = lng;
+            lng = t;
+        }
+        if (!validUzCoord(lat, lng)) {
+            const p = parseCoordPair(s.place);
+            if (p) {
+                lat = p[0];
+                lng = p[1];
+            }
+        }
+        return Object.assign({}, s, { lat, lng });
+    });
+    const pts = normalizeTrackPoints(track);
+
+    // 1) Qo'shnilar orasida interpolatsiya
+    for (let i = 0; i < list.length; i++) {
+        if (validUzCoord(list[i].lat, list[i].lng)) continue;
+        let prev = -1;
+        let next = -1;
+        for (let j = i - 1; j >= 0; j--) {
+            if (validUzCoord(list[j].lat, list[j].lng)) { prev = j; break; }
+        }
+        for (let j = i + 1; j < list.length; j++) {
+            if (validUzCoord(list[j].lat, list[j].lng)) { next = j; break; }
+        }
+        if (prev >= 0 && next >= 0) {
+            const t = (i - prev) / Math.max(next - prev, 1);
+            list[i] = Object.assign({}, list[i], {
+                lat: list[prev].lat + (list[next].lat - list[prev].lat) * t,
+                lng: list[prev].lng + (list[next].lng - list[prev].lng) * t,
+                _approx: true
+            });
+        } else if (prev >= 0) {
+            list[i] = Object.assign({}, list[i], {
+                lat: list[prev].lat, lng: list[prev].lng, _approx: true
+            });
+        } else if (next >= 0) {
+            list[i] = Object.assign({}, list[i], {
+                lat: list[next].lat, lng: list[next].lng, _approx: true
+            });
+        }
+    }
+
+    // 2) Hali ham yo'q — trek bo'yicha majburiy (A→7 sakrashni yo'qotadi)
+    for (let i = 0; i < list.length; i++) {
+        if (validUzCoord(list[i].lat, list[i].lng)) continue;
+        if (!pts.length) continue;
+        const idx = Math.min(
+            pts.length - 1,
+            Math.max(0, Math.round((i / Math.max(list.length - 1, 1)) * (pts.length - 1)))
+        );
+        list[i] = Object.assign({}, list[i], {
+            lat: pts[idx][0],
+            lng: pts[idx][1],
+            _approx: true
+        });
+    }
+
+    // 3) Bir nuqtada yopilgan raqamlar — aniqroq surish (A ostida qolmasin)
+    const seen = Object.create(null);
+    return list.map(s => {
+        if (!validUzCoord(s.lat, s.lng)) return s;
+        const key = Number(s.lat).toFixed(4) + ',' + Number(s.lng).toFixed(4);
+        const n = seen[key] || 0;
+        seen[key] = n + 1;
+        if (!n) return s;
+        const ang = n * 0.95;
+        const d = 0.00028 * n; // ~30m+
+        return Object.assign({}, s, {
+            lat: s.lat + d * Math.cos(ang),
+            lng: s.lng + d * Math.sin(ang),
+            _offset: true
+        });
+    });
+}
+
+/**
+ * Tungi/uzoq ofis — xarita 1,2,3… raqamiga aralashmasin (A ostida 1–6 yashirinardi).
+ */
+function isLongOfficeStop(st) {
+    if (!st) return false;
+    const dur = Number(st.durSec) || 0;
+    if (!st.isOffice) return false;
+    if (dur >= 90 * 60) return true;
+    const inSec = parseTimeStr(st.inTime);
+    const inH = inSec / 3600;
+    // Kechki/tungi ofis (≥1 soat)
+    if (dur >= 3600 && (inH >= 17 || inH < 7)) return true;
+    return false;
+}
+
+/** Ish kuni bo'yicha vaqt tartibi (1-chi tashrif = #1). */
+function orderStopsByVisitTime(stops) {
+    if (!stops || !stops.length) return [];
+    function adj(t) {
+        if (!t) return 1e12;
+        return t < 4 * 3600 ? t + 86400 : t;
+    }
+    return stops.slice().sort((a, b) => {
+        const aa = adj(parseTimeStr(a.inTime));
+        const bb = adj(parseTimeStr(b.inTime));
+        if (aa !== bb) return aa - bb;
+        return (Number(a.num) || 0) - (Number(b.num) || 0);
+    });
+}
+
+/**
+ * Xarita: ofis = O, qolganlari kirish vaqti bo'yicha 1,2,3…
+ */
+function buildMapStops(stops, track) {
+    const hydrated = hydrateStopCoords(stops, track).filter(st => validUzCoord(st.lat, st.lng));
+    const officeMarks = [];
+    const route = [];
+    hydrated.forEach(st => {
+        if (isLongOfficeStop(st)) officeMarks.push(Object.assign({}, st, { _mapRole: 'office' }));
+        else route.push(st);
+    });
+    const base = route.length ? route : hydrated;
+    const ordered = orderStopsByVisitTime(base);
+    const numbered = ordered.map((st, i) => {
+        const tableNum = st.tableNum != null ? st.tableNum : st.num;
+        return Object.assign({}, st, {
+            mapNum: i + 1,
+            num: i + 1,
+            tableNum: tableNum,
+            _mapRole: 'route'
+        });
+    });
+    return { numbered, officeMarks };
+}
+
+function mapWorthyStops(stops, track) {
+    return buildMapStops(stops, track).numbered;
+}
+
+function setMapOverlay(info) {
+    const el = document.getElementById('map-overlay-info');
+    if (!el) return;
+    if (!info) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = 'block';
+    el.textContent = info;
+}
+
+async function ensureTrackPoints(rec) {
+    if (!rec) return [];
+    const existing = normalizeTrackPoints(rec.points);
+    if (existing.length >= 2) return existing;
+    if (!window.wialonGPS || !wialonGPS.sessionId || !STATE.currentCar || !STATE.currentDate) {
+        return existing;
+    }
+    try {
+        let units = wialonGPS.units || [];
+        if (!units.length) units = await wialonGPS.getUnits();
+        const drv = findDriverByCar(STATE.currentCar);
+        const wantName = (drv && drv.car) || STATE.currentCar;
+        const unit = (units || []).find(u => {
+            return !!(findDriverByCar(u.carNumber) && findDriverByCar(u.carNumber).car === wantName)
+                || !!(findDriverByCar(u.name) && findDriverByCar(u.name).car === wantName);
+        });
+        if (!unit) return existing;
+        const { timeFrom, timeTo } = wialonGPS.dayBoundsTashkent(STATE.currentDate);
+        const pts = await wialonGPS.fetchTrackPoints(unit.id, timeFrom, timeTo);
+        const norm = normalizeTrackPoints(pts);
+        if (norm.length >= 2) {
+            rec.points = norm;
+            if (STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][STATE.currentCar]) {
+                STATE.data[STATE.currentDate][STATE.currentCar].points = norm;
+                saveAll();
+            }
+        }
+        return norm;
+    } catch (e) {
+        console.warn('ensureTrackPoints:', e);
+        return existing;
+    }
+}
+
+async function refreshMap(stops, points) {
+    initMap();
+    if (!STATE.map) return;
+    const gen = ++STATE.mapRouteGen;
+    STATE.mapMarkers.forEach(m => STATE.map.removeLayer(m));
+    STATE.mapMarkers = [];
+    removeMapRouteLayers();
+    setMapOverlay(null);
+    mapInvalidate();
+
+    const rawList = Array.isArray(stops) ? stops : [];
+    let track = normalizeTrackPoints(points);
+
+    // Trek yo'q bo'lsa — Boomerangdan yuklash (sessiya bor bo'lsa)
+    if (track.length < 2) {
+        const day = STATE.currentDate && STATE.data[STATE.currentDate]
+            ? STATE.data[STATE.currentDate][STATE.currentCar]
+            : null;
+        if (day) {
+            track = await ensureTrackPoints(day);
+            if (gen !== STATE.mapRouteGen) return;
+        }
+    }
+
+    const list = sortStopsForRoute(rawList);
+    const built = buildMapStops(rawList, track);
+    const markerStops = built.numbered;
+    const officeMarks = built.officeMarks || [];
+    setMapStats(list, track.length || (markerStops.length + officeMarks.length));
+
+    // Asosiy chiziq — haqiqiy GPS trek; bo'lmasa to'xtashlar orasidagi yo'l
+    let routeLatlngs = track.length >= 2
+        ? track.slice()
+        : markerStops.filter(st => validUzCoord(st.lat, st.lng)).map(st => [st.lat, st.lng]);
+
+    if (routeLatlngs.length > 1) {
+        drawMapRouteLayers(routeLatlngs);
+        // Faqat to'xtashlar (trek yo'q) va ular uzoq — OSRM yo'l bo'yicha
+        if (track.length < 2 && typeof vmFetchRoadRoute === 'function' && routeLatlngs.length >= 2) {
+            const span = L.latLngBounds(routeLatlngs);
+            if (span.isValid() && span.getNorthEast().distanceTo(span.getSouthWest()) > 120) {
+                const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => new Promise(r => setTimeout(() => r(fn()), ms || 320));
+                defer(() => vmFetchRoadRoute(routeLatlngs.slice(0, 25)), 400).then(road => {
+                    if (gen !== STATE.mapRouteGen) return;
+                    if (road && road.length > 1) {
+                        routeLatlngs = road;
+                        drawMapRouteLayers(road);
+                    }
+                }).catch(() => {});
+            }
+        }
+    }
+
+    const km = STATE.data[STATE.currentDate]
+        && STATE.data[STATE.currentDate][STATE.currentCar]
+        && STATE.data[STATE.currentDate][STATE.currentCar].stats
+        ? Number(STATE.data[STATE.currentDate][STATE.currentCar].stats.probeg) || 0
+        : 0;
+    if (routeLatlngs.length > 1 || markerStops.length) {
+        const bits = [];
+        if (km > 0) bits.push(km.toFixed(2) + ' km');
+        if (track.length) bits.push(track.length + ' GPS nuqta');
+        bits.push(markerStops.length + ' to\'xtash');
+        bits.push('m95');
+        setMapOverlay(bits.join(' · '));
+    }
+
+    // Start / finish — pastroq z-index
+    if (track.length >= 2) {
+        const aIcon = mapPinIcon('A', '#0b1f3a', true);
+        const bIcon = mapPinIcon('B', '#1a5fb4', true);
+        STATE.mapMarkers.push(L.marker(track[0], { icon: aIcon, zIndexOffset: 80 }).addTo(STATE.map)
+            .bindPopup('<b>Boshlanish</b><br>Kunlik marshrut A nuqtasi'));
+        STATE.mapMarkers.push(L.marker(track[track.length - 1], { icon: bIcon, zIndexOffset: 80 }).addTo(STATE.map)
+            .bindPopup('<b>Tugash</b><br>Kunlik marshrut B nuqtasi'));
+    }
+
+    // Tungi ofis — raqamsiz «O»
+    officeMarks.forEach((st) => {
+        const marker = L.marker([st.lat, st.lng], {
+            icon: mapPinIcon('O', '#123050', false),
+            zIndexOffset: 120
+        }).addTo(STATE.map);
+        marker.bindPopup(`
+            <div style="min-width:180px">
+              <b>Ofis / sklad</b><br>
+              ${uiTxt(st.place) || '—'}<br>
+              <span style="color:#c5d4e6;font-size:11px">Kirish: ${st.inTime || '—'} · Chiqish: ${st.outTime || '—'}</span>
+            </div>
+        `);
+        STATE.mapMarkers.push(marker);
+    });
+
+    // Majburiy: faqat massiv indeksi — hech qanday st.num / jadval #
+    markerStops.forEach((st, idx) => {
+        const num = idx + 1;
+        const tableNum = st.tableNum != null ? st.tableNum : '';
+        const color = stopColor(st);
+        const marker = L.marker([st.lat, st.lng], {
+            icon: mapPinIcon(String(num), color, false),
+            zIndexOffset: 1000 + num
+        }).addTo(STATE.map);
+
+        const approxNote = st._approx
+            ? '<br><span style="color:#f0c674">Joy taxminiy</span>'
+            : '';
+        const tableNote = (tableNum && Number(tableNum) !== num)
+            ? `<br><span style="color:#8eb6df">Jadval #${tableNum}</span>`
+            : '';
+        marker.bindPopup(`
+            <div style="min-width:190px">
+              <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#8eb6df;font-weight:700;margin-bottom:6px">${stopStatusLabel(st)}</div>
+              <b style="font-size:13px">#${num} — ${uiTxt(st.place) || '—'}</b>
+              <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12);color:#c5d4e6;font-size:11px;line-height:1.55">
+                Kirish: <span style="color:#fff">${st.inTime || '—'}</span><br>
+                Chiqish: <span style="color:#fff">${st.outTime || '—'}</span><br>
+                Turgani: <span style="color:#fff">${st.duration || '—'}</span>
+                ${st.phName ? '<br>Dorixona: <span style="color:#fff">' + uiTxt(st.phName) + '</span>' : ''}
+                ${tableNote}
+                ${approxNote}
+              </div>
+            </div>
+        `);
+        STATE.mapMarkers.push(marker);
+    });
+
+    const fitPts = [];
+    if (routeLatlngs.length > 1) {
+        for (let i = 0; i < routeLatlngs.length; i++) fitPts.push(routeLatlngs[i]);
+    }
+    markerStops.forEach(st => fitPts.push([st.lat, st.lng]));
+    officeMarks.forEach(st => fitPts.push([st.lat, st.lng]));
+    if (fitPts.length > 1) {
+        STATE.map.fitBounds(L.latLngBounds(fitPts), { padding: [48, 48], maxZoom: 15 });
+    } else if (fitPts.length === 1) {
+        STATE.map.setView(fitPts[0], 14);
+    } else {
+        STATE.map.setView([41.3111, 69.2797], 12);
+        setMapStats([], 0);
+    }
+    if (window.VMOffice) {
+        const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => { setTimeout(fn, ms || 200); };
+        defer(() => VMOffice.drawGeofences(STATE.map, STATE.currentCar), 220);
+    }
+}
+
+// ── 7. KALENDAR ─────────────────────────────────────────────
+function renderCalendar() {
+    const grid    = document.getElementById('cal-grid');
+    const lbl     = document.getElementById('cal-month-label');
+    const cntEl   = document.getElementById('calendar-count');
+    const selInfo = document.getElementById('cal-selected-info');
+    const selLbl  = document.getElementById('cal-selected-label');
+    const selSt   = document.getElementById('cal-day-status');
+    if (!grid) return;
+
+    const todayStr = dateStr(new Date());
+    const { y, m } = CAL;
+    if (lbl) lbl.textContent = `${UZ_MONTHS[m]} ${y}`;
+    if (cntEl) cntEl.textContent = STATE.history.length + ' kun';
+
+    const firstDow = new Date(y, m, 1).getDay(); // 0=Yak
+    const offset = firstDow === 0 ? 6 : firstDow - 1;
+    const days = new Date(y, m + 1, 0).getDate();
+
+    let html = '';
+    for (let i = 0; i < offset; i++) html += '<div class="cal-day cal-day-empty"></div>';
+    for (let d = 1; d <= days; d++) {
+        const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const fut = ds > todayStr;
+        const isToday = ds === todayStr;
+        const hasData = STATE.history.includes(ds);
+        const active  = ds === STATE.currentDate;
+
+        let cls = 'cal-day';
+        if (fut) cls += ' cal-day-future';
+        else if (isToday) cls += ' is-today';
+        if (hasData) cls += ' has-data';
+        if (active)  cls += ' active';
+
+        const fn = fut ? '' : `onclick="selectDate('${ds}')"`;
+        html += `<div class="${cls}" ${fn} title="${ds}">${d}</div>`;
+    }
+    grid.innerHTML = html;
+
+    // Tanlangan kun info
+    if (STATE.currentDate && selInfo) {
+        selInfo.style.display = 'block';
+        const dd = new Date(STATE.currentDate + 'T00:00:00');
+        if (selLbl) selLbl.textContent = `${dd.getDate()} ${UZ_MONTHS[dd.getMonth()]} ${dd.getFullYear()}`;
+        const hd = STATE.history.includes(STATE.currentDate);
+        if (selSt) {
+            selSt.textContent = hd ? "Ma'lumot bor" : "Ma'lumot yo'q";
+            selSt.className = hd ? 'chip chip-green' : 'chip chip-gray';
+        }
+    }
+}
+
+function selectDate(ds) {
+    STATE.currentDate = ds;
+    renderCalendar();
+    renderDriverTabs();
+    refreshUI();
+    if (window.VMOffice) {
+        // Server hisobot — yagona manba. Brauzer km yozmaydi.
+        VMOffice.loadReportIfNeeded(ds);
+    } else {
+        refreshDayKm(ds);
+    }
+}
+
+async function refreshDayKm(dateVal, opts) {
+    if (!dateVal || !hasGpsConfig() || !window.wialonGPS) return;
+    if (STATE.kmFixBusy) return;
+    const onlyEmpty = !!(opts && opts.onlyEmpty);
+    const day = STATE.data[dateVal];
+    if (!day || !Object.keys(day).length) return;
+    STATE.kmFixBusy = true;
+    try {
+        await wialonGPS.login(STATE.gpsConfig);
+        const units = await wialonGPS.getUnits();
+        const { timeFrom, timeTo } = wialonGPS.dayBoundsTashkent(dateVal);
+        let nFix = 0;
+        for (const unit of units) {
+            const drv = findDriverByCar(unit.name) || findDriverByCar(unit.carNumber);
+            if (!drv || !day[drv.car] || !day[drv.car].stats) continue;
+            const st = day[drv.car].stats;
+            const oldKm = Number(st.probeg) || 0;
+            if (onlyEmpty && oldKm > 0.05) continue;
+            let metrics = null;
+            try {
+                metrics = await wialonGPS.dayMetrics(unit.id, timeFrom, timeTo);
+            } catch (e) {}
+            if (!metrics || !(metrics.km || metrics.trips || metrics.maxSpeed)) continue;
+            if (metrics.km) {
+                // Faqat yaxshiroq/aniqroq (katta) trip km — pastroq chronologiya qiymatiga yozmaslik
+                if (!oldKm || metrics.km >= oldKm - 0.05) st.probeg = metrics.km;
+            }
+            if (metrics.maxSpeed) {
+                const oldSp = Number(st.maxSpeed) || 0;
+                if (metrics.maxSpeed >= oldSp) st.maxSpeed = metrics.maxSpeed;
+            }
+            if (metrics.avgSpeed) st.avgSpeed = metrics.avgSpeed;
+            if (metrics.trips) st.poezdok = metrics.trips;
+            if (metrics.stops && !st.stoyanok) st.stoyanok = metrics.stops;
+            if (metrics.totalStop && metrics.totalStop !== '—') st.totalStop = metrics.totalStop;
+            if (metrics.motoChas && metrics.motoChas !== '—') st.motoChas = metrics.motoChas;
+            if (metrics.gas && !st.gas) st.gas = metrics.gas;
+            if (metrics.benzin && !st.benzin) st.benzin = metrics.benzin;
+            if (Math.abs((st.probeg || 0) - oldKm) >= 0.01) nFix += 1;
+        }
+        if (nFix) {
+            saveAll();
+            if (window.VMOffice) VMOffice.saveReport(dateVal);
+            if (STATE.currentDate === dateVal) refreshUI();
+            showToast('GPS ko\'rsatkichlar yangilandi: ' + nFix + ' ta mashina', 'success');
+        }
+    } catch (e) {
+        console.warn('km refresh:', e);
+    } finally {
+        STATE.kmFixBusy = false;
+    }
+}
+
+// ── 8. HAYDOVCHI TABLARI ─────────────────────────────────────
+function renderDriverTabs() {
+    const strip = document.getElementById('drivers-strip');
+    if (!strip) return;
+    let html = '';
+    DRIVERS.forEach(d => {
+        const ui = typeof resolveDriver === 'function' ? resolveDriver(d.car, d) : d;
+        const active = d.car === STATE.currentCar ? 'active' : '';
+        const hasData = STATE.currentDate && STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][d.car];
+        const dotClr  = hasData ? d.color : '#c5d4e6';
+        html += `
+        <div class="dtab ${active}" onclick="selectDriver('${d.car}')">
+            <span class="dtab-dot" style="background:${dotClr}"></span>
+            ${ui.shortName}
+            <span class="dtab-car">${d.car}</span>
+        </div>`;
+    });
+    strip.innerHTML = html;
+}
+
+/** Sichqoncha gildiragi → gorizontal scroll (haydovchilar qatori) */
+function enableDriverStripWheelScroll() {
+    if (typeof vmEnableWheelXScroll === 'function') {
+        vmEnableWheelXScroll(document.querySelector('.driver-strip-wrap'));
+        return;
+    }
+    const wrap = document.querySelector('.driver-strip-wrap');
+    if (!wrap || wrap.dataset.wheelScroll === '1') return;
+    wrap.dataset.wheelScroll = '1';
+    wrap.addEventListener('wheel', (e) => {
+        const dx = e.deltaX;
+        const dy = e.deltaY;
+        const delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
+        if (!delta) return;
+        const max = wrap.scrollWidth - wrap.clientWidth;
+        if (max <= 0) return;
+        const next = Math.max(0, Math.min(max, wrap.scrollLeft + delta));
+        if (next !== wrap.scrollLeft) {
+            e.preventDefault();
+            wrap.scrollLeft = next;
+        }
+    }, { passive: false });
+}
+
+function selectDriver(carKey) {
+    STATE.currentCar = carKey;
+    renderDriverTabs();
+    refreshUI();
+}
+
+// ── 9. ASOSIY UI YANGILASH ──────────────────────────────────
+function refreshUI() {
+    const rawDrv = DRIVERS.find(d => d.car === STATE.currentCar);
+    const driver = rawDrv
+        ? (typeof resolveDriver === 'function' ? resolveDriver(rawDrv.car, rawDrv) : rawDrv)
+        : null;
+    const dayBag = STATE.currentDate && STATE.data[STATE.currentDate]
+        ? STATE.data[STATE.currentDate]
+        : null;
+    let dayData = null;
+    if (dayBag) {
+        dayData = dayBag[STATE.currentCar] || null;
+        if (!dayData && window.VMOffice && typeof VMOffice.recForPlate === 'function') {
+            dayData = VMOffice.recForPlate(dayBag, STATE.currentCar);
+        }
+    }
+
+    // Banner
+    renderBanner(driver, dayData);
+
+    if (window.VMOffice) VMOffice.renderFleetBoard();
+
+    if (dayData) {
+        const rec = normalizeDayRecord(dayData);
+        renderKPI(rec);
+        renderStats(rec);
+        renderPharmacy(rec);
+        renderStops(rec.stops);
+        renderEval(rec.analysis.score);
+        refreshMap(rec.stops, rec.points);
+    } else {
+        // Bo'sh holat
+        renderKPI(null);
+        const kpiEl = document.getElementById('kpi-container');
+        if (kpiEl) kpiEl.innerHTML = `
+        <div class="kpi-grid">
+            ${['c-blue','c-green','c-purple','c-red','c-orange','c-teal'].map(c => `
+            <div class="kpi-card ${c}">
+                <div class="kpi-title">&nbsp;</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-unit">—</div>
+            </div>`).join('')}
+        </div>`;
+
+        const pharmEl = document.getElementById('pharmacy-analysis');
+        if (pharmEl) pharmEl.innerHTML = `<div class="empty-state">
+            <div class="empty-title">Ma'lumot yuklanmagan</div>
+            <div class="empty-desc">Excel yoki GPS orqali kunlik ma'lumotni yuklang.</div></div>`;
+
+        const stbEl = document.getElementById('stops-table-body');
+        if (stbEl) stbEl.innerHTML = `<tr><td colspan="7">
+            <div class="empty-state">
+            <div class="empty-title">To'xtashlar yo'q</div>
+            <div class="empty-desc">Ma'lumot yuklangandan so'ng ro'yxat chiqadi.</div></div></td></tr>`;
+
+        const cntEl = document.getElementById('stops-count');
+        if (cntEl) cntEl.textContent = '0 ta';
+
+        const finEl = document.getElementById('eval-final-score');
+        if (finEl) finEl.textContent = '—';
+        const sumEl = document.getElementById('eval-summary');
+        if (sumEl) { sumEl.className = 'eval-summary-box ok'; sumEl.textContent = 'Ma\'lumot yuklanmagan.'; }
+
+        refreshMap(null);
+    }
+    renderSidebarStats();
+}
+
+function renderSidebarStats() {
+    const card = document.getElementById('sidebar-stats-card');
+    const el = document.getElementById('sidebar-stats');
+    if (!card || !el) return;
+    const dateVal = STATE.currentDate;
+    if (!dateVal || !DRIVERS.length) {
+        card.style.display = 'none';
+        return;
+    }
+    const day = STATE.data[dateVal] || {};
+    const loaded = Object.keys(day).length;
+    const totalKm = Object.values(day).reduce((s, r) => s + ((r.stats && r.stats.probeg) || 0), 0);
+    card.style.display = '';
+    el.innerHTML = `
+        <div><b>${loaded}</b> / ${DRIVERS.length} mashina yuklangan</div>
+        <div>Jami km: <b>${typeof fmtKm === 'function' ? fmtKm(totalKm, 'km') : totalKm.toFixed(2)}</b></div>
+        <div>Sana: ${dateVal}</div>
+        <div>Saqlangan kunlar: ${STATE.history.length}</div>`;
+}
+
+// ── 9.1. BANNER ─────────────────────────────────────────────
+function renderBanner(driver, data) {
+    const nameEl  = document.getElementById('db-name');
+    const carEl   = document.getElementById('db-car');
+    const metaEl  = document.getElementById('db-meta');
+    const scoreEl = document.getElementById('db-score-num');
+    const avaEl   = document.getElementById('db-avatar');
+
+    const driverName = driver ? driver.fullName : 'Haydovchi tanlanmagan';
+    const carNum     = driver ? driver.car : '— — —';
+    const routes     = driver ? (driver.routes || '—') : '—';
+    const dateFmt    = STATE.currentDate
+        ? (() => { const d = new Date(STATE.currentDate+'T00:00:00'); return `${d.getDate()} ${UZ_MONTHS[d.getMonth()]} ${d.getFullYear()}`; })()
+        : '—';
+
+    if (nameEl) {
+        // Faqat text node yangilaymiz
+        const firstText = nameEl.childNodes[0];
+        if (firstText && firstText.nodeType === 3) firstText.nodeValue = driverName + ' ';
+        else nameEl.insertBefore(document.createTextNode(driverName + ' '), nameEl.firstChild);
+    }
+    if (carEl)  carEl.textContent  = carNum;
+    if (metaEl) metaEl.innerHTML   = `<strong>Yo'nalish:</strong> ${routes} &nbsp;|&nbsp; <strong>Sana:</strong> ${dateFmt}`;
+    if (avaEl) {
+        const initials = driver ? String(driver.shortName).slice(0, 2).toUpperCase() : '—';
+        avaEl.textContent = initials;
+        avaEl.style.background = '';
+        const banner = document.getElementById('driver-banner');
+        if (banner) banner.style.borderLeftColor = driver ? driver.color : '#0b1f3a';
+    }
+
+    if (scoreEl) {
+        const box = document.getElementById('db-score-box') || document.querySelector('.db-score');
+        if (box) {
+            box.classList.remove('is-good', 'is-mid', 'is-bad');
+            box.style.background = '';
+        }
+        scoreEl.style.color = '';
+        if (data && data.analysis) {
+            const sc = normalizeScore(data.analysis.score);
+            if (sc) {
+                const s = sc.final;
+                scoreEl.textContent = s.toFixed(1);
+                if (box) {
+                    if (s >= 8) box.classList.add('is-good');
+                    else if (s >= 5) box.classList.add('is-mid');
+                    else box.classList.add('is-bad');
+                }
+            } else {
+                scoreEl.textContent = '—';
+            }
+        } else {
+            scoreEl.textContent = '—';
+        }
+    }
+}
+
+// ── 9.2. KPI KARTALAR ───────────────────────────────────────
+function renderKPI(data) {
+    const el = document.getElementById('kpi-container');
+    if (!el || !data) return;
+    const rec = normalizeDayRecord(data) || data;
+    const s = rec.stats || {};
+    const a = rec.analysis || {};
+    const fuelTxt = [
+        s.gas    > 0 ? fmtFuel(s.gas, 'm³') : '',
+        s.benzin > 0 ? fmtFuel(s.benzin, 'L')  : ''
+    ].filter(Boolean).join(' + ') || '—';
+
+    el.innerHTML = `
+    <div class="kpi-grid">
+        <div class="kpi-card c-blue">
+            <div class="kpi-title">Yurilgan masofa</div>
+            <div class="kpi-value">${fmtKm(s.probeg)}</div>
+            <div class="kpi-unit">км</div>
+        </div>
+        <div class="kpi-card c-green">
+            <div class="kpi-title">O'z dorixonalari</div>
+            <div class="kpi-value">${a.ownVisited || 0}<span style="font-size:13px;font-weight:500;color:#8aa0b8">/${a.totalOwn || 0}</span></div>
+            <div class="kpi-unit">Tashrif qilingan</div>
+        </div>
+        <div class="kpi-card c-purple">
+            <div class="kpi-title">Boshqa yo'nalish</div>
+            <div class="kpi-value">${a.otherDirection || 0}</div>
+            <div class="kpi-unit">To'xtash</div>
+        </div>
+        <div class="kpi-card c-red">
+            <div class="kpi-title">Muammoli</div>
+            <div class="kpi-value">${a.problemStops || 0}</div>
+            <div class="kpi-unit">To'xtash</div>
+        </div>
+        <div class="kpi-card c-orange">
+            <div class="kpi-title">Maks. tezlik</div>
+            <div class="kpi-value">${fmtSpd(s.maxSpeed)}</div>
+            <div class="kpi-unit">км/soat</div>
+        </div>
+        <div class="kpi-card c-teal">
+            <div class="kpi-title">Yoqilg'i</div>
+            <div class="kpi-value" style="font-size:${fuelTxt.length > 10 ? '14' : '20'}px">${fuelTxt}</div>
+            <div class="kpi-unit">Gaz + Benzin</div>
+        </div>
+    </div>`;
+}
+
+// ── 9.3. STATISTIKA ─────────────────────────────────────────
+function renderStats(data) {
+    const rec = normalizeDayRecord(data);
+    if (!rec) return;
+    const s = rec.stats || {}, a = rec.analysis || {};
+    const fuelTxt = [
+        s.gas    > 0 ? fmtFuel(s.gas, 'm³ gaz') : '',
+        s.benzin > 0 ? fmtFuel(s.benzin, 'L benzin') : ''
+    ].filter(Boolean).join(' + ') || '—';
+
+    const avgSpd = s.avgSpeed ? fmtSpd(s.avgSpeed, 'km/s') : '—';
+
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    set('stat-probeg',   s.probeg ? fmtKm(s.probeg, 'км') : '—');
+    set('stat-worktime', s.motoChas !== '—' ? s.motoChas : '—');
+    set('stat-avgspeed', avgSpd);
+    set('stat-motochas', s.motoChas !== '—' ? s.motoChas : '—');
+    set('stat-trips',    s.poezdok ? s.poezdok + ' ta' : '—');
+    set('stat-stops',    s.stoyanok ? s.stoyanok + ' ta' : '—');
+    set('stat-fuel',     fuelTxt);
+    set('stat-stoptime', s.totalStop !== '—' ? s.totalStop : '—');
+}
+
+function reviewBtnHtml(idx, rev) {
+    const cur = rev && rev.status;
+    return `<span class="rev-btns">
+        <button type="button" class="rev-btn${cur === 'allowed' ? ' on-ok' : ''}" data-rev="allowed" data-i="${idx}">Ruxsat</button>
+        <button type="button" class="rev-btn${cur === 'violation' ? ' on-bad' : ''}" data-rev="violation" data-i="${idx}">Qoidabuzarlik</button>
+        ${cur ? `<button type="button" class="rev-btn" data-rev="" data-i="${idx}">Bekor</button>` : ''}
+    </span>`;
+}
+
+function pickPharmacyDialog(names) {
+    return new Promise((resolve) => {
+        const old = document.getElementById('vm-ph-pick-modal');
+        if (old) old.remove();
+        const bg = document.createElement('div');
+        bg.id = 'vm-ph-pick-modal';
+        bg.className = 'modal-bg open';
+        bg.style.zIndex = '400';
+        const list = (names || []).map((n, i) =>
+            `<button type="button" class="btn btn-light" data-ph="${i}" style="width:100%;margin:4px 0;justify-content:flex-start;text-align:left">${i + 1}. ${String(n).replace(/</g, '&lt;')}</button>`
+        ).join('');
+        bg.innerHTML = `
+          <div class="modal-card" style="max-width:420px;width:min(94vw,420px);padding:18px" role="dialog" aria-modal="true">
+            <h3 style="margin:0 0 8px;font-size:16px">Dorixona tanlang</h3>
+            <p style="margin:0 0 12px;font-size:12px;color:var(--muted)">Ruxsat uchun qaysi dorixona ekanini belgilang.</p>
+            <div style="max-height:46vh;overflow:auto">${list || '<p class="muted">Ro‘yxat bo‘sh</p>'}</div>
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+              <button type="button" class="btn btn-ink" id="vm-ph-skip">Nomsiz ruxsat</button>
+              <button type="button" class="btn btn-light" id="vm-ph-cancel">Bekor</button>
+            </div>
+          </div>`;
+        document.body.appendChild(bg);
+        const done = (val) => { try { bg.remove(); } catch (e) {} resolve(val); };
+        bg.addEventListener('click', (e) => { if (e.target === bg) done(null); });
+        bg.querySelector('#vm-ph-cancel')?.addEventListener('click', () => done(null));
+        bg.querySelector('#vm-ph-skip')?.addEventListener('click', () => done(''));
+        bg.querySelectorAll('[data-ph]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const i = Number(btn.getAttribute('data-ph'));
+                done(names[i] || '');
+            });
+        });
+    });
+}
+
+function bindReviewClicks(root) {
+    if (!root || root.dataset.revBound === '1') return;
+    root.dataset.revBound = '1';
+    root.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-rev]');
+        if (!btn || !window.VMOffice) return;
+        if (btn.disabled) return;
+        const i = Number(btn.getAttribute('data-i'));
+        const status = btn.getAttribute('data-rev') || '';
+        const bag = STATE.data[STATE.currentDate];
+        let rec = bag && bag[STATE.currentCar];
+        if (!rec && bag && VMOffice.recForPlate) rec = VMOffice.recForPlate(bag, STATE.currentCar);
+        // Jadval prepareStopsList tartibida — indeksi shu ro'yxatdan
+        const st = rec && prepareStopsList(rec.stops || [])[i];
+        if (!st) return;
+        if (status === 'allowed') {
+            const names = VMOffice.ownNames(STATE.currentCar);
+            let phName = st.phName || '';
+            if (!phName && names.length) {
+                const pick = await pickPharmacyDialog(names);
+                if (pick == null) return;
+                phName = pick;
+            }
+            if (!phName) {
+                showToast('Dorixona tanlanmadi — geozona o\'rganilmaydi', 'warn');
+            }
+            btn.disabled = true;
+            try {
+                await VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status, phName);
+            } finally {
+                btn.disabled = false;
+            }
+            return;
+        }
+        btn.disabled = true;
+        try {
+            await VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+}
+
+// ── 9.4. DORIXONA TAHLILI ───────────────────────────────────
+function renderPharmacy(data) {
+    const el = document.getElementById('pharmacy-analysis');
+    if (!el) return;
+    const rec = normalizeDayRecord(data);
+    if (!rec) return;
+    const a = rec.analysis || {};
+    const dateVal = rec.date || STATE.currentDate;
+    const car = rec.car || STATE.currentCar;
+    const ownStops   = rec.stops.filter(s => s.matchType === 'own');
+    const otherStops = rec.stops.filter(s => s.matchType === 'other');
+    const pct = a.totalOwn > 0 ? Math.round((a.ownVisited / a.totalOwn) * 1000) / 10 : null;
+
+    let html = '<div class="analysis-body">';
+
+    html += `<div class="plan-box">
+        <div class="plan-k">Reja / fakt</div>
+        <div class="plan-v">${a.ownVisited} / ${a.totalOwn}${pct != null ? ' · ' + fmtDec(pct, 1) + '%' : ''}</div>
+        <div class="plan-s">${a.totalOwn
+            ? (a.missedList && a.missedList.length ? (a.missedList.length + ' ta o\'tkazib yuborilgan') : 'Reja bajarildi')
+            : 'Bu haydovchiga dorixona belgilanmagan. Boshqaruvda qo\'shing.'}</div>
+    </div>`;
+
+    if (a.missedList && a.missedList.length > 0) {
+        html += `<div class="ph-block">
+            <div class="ph-h warn">O'tkazib yuborilgan · ${a.missedList.length}</div>
+            <div class="ph-list">
+            ${a.missedList.map(ph => `<div class="ph-row"><span class="nm">${uiTxt(ph)}</span></div>`).join('')}
+            </div></div>`;
+    } else if (a.ownPharms && a.ownPharms.length > 0) {
+        html += `<div class="ph-note ok">Barcha ${a.ownPharms.length} ta belgilangan dorixonaga tashrif qilindi.</div>`;
+    }
+
+    if (ownStops.length > 0) {
+        html += `<div class="ph-block">
+            <div class="ph-h ok">Borilgan · ${ownStops.length}</div>
+            <div class="ph-list">
+            ${ownStops.map(s => `
+            <div class="ph-row">
+                <span class="nm">${uiTxt(s.phName || s.place)}</span>
+                <span class="tm">${s.inTime || ''}</span>
+                <span class="tm">${s.duration || ''}</span>
+            </div>`).join('')}
+            </div></div>`;
+    }
+
+    if (otherStops.length > 0) {
+        html += `<div class="ph-block">
+            <div class="ph-h warn">Boshqa yo'nalish · ${otherStops.length}</div>
+            <div class="ph-list">
+            ${otherStops.map(s => `
+            <div class="ph-row">
+                <span class="nm">${uiTxt(s.phName || s.place)}</span>
+                <span class="tm">Egasi: ${(s.owners || []).join(', ')}</span>
+            </div>`).join('')}
+            </div></div>`;
+    }
+
+    const problemIdx = [];
+    const allowedIdx = [];
+    data.stops.forEach((s, i) => {
+        const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
+        if (rev && rev.status === 'allowed') allowedIdx.push(i);
+        else if (stopIsProblem(s, car, dateVal)) problemIdx.push(i);
+    });
+
+    if (problemIdx.length > 0) {
+        html += `<div class="ph-block">
+            <div class="ph-h bad">Muammoli · ${problemIdx.length}</div>
+            <div class="ph-list">
+            ${problemIdx.map(i => {
+                const s = data.stops[i];
+                const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
+                return `<div class="ph-row ph-rev">
+                <span class="nm">${uiTxt(s.place)}</span>
+                <span class="tm">${s.duration || ''}</span>
+                ${reviewBtnHtml(i, rev)}
+            </div>`;
+            }).join('')}
+            </div></div>`;
+    }
+
+    if (allowedIdx.length > 0) {
+        html += `<div class="ph-block">
+            <div class="ph-h ok">Ruxsat etilgan · ${allowedIdx.length}</div>
+            <div class="ph-list">
+            ${allowedIdx.map(i => {
+                const s = data.stops[i];
+                const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
+                return `<div class="ph-row ph-rev">
+                <span class="nm">${uiTxt(s.place)}</span>
+                <span class="tm">${s.duration || ''}</span>
+                ${reviewBtnHtml(i, rev)}
+            </div>`;
+            }).join('')}
+            </div></div>`;
+    }
+
+    if (!a.missedList?.length && !ownStops.length && !otherStops.length && !problemIdx.length && !allowedIdx.length) {
+        html += '<div class="empty-state"><div class="empty-title">To\'xtash topilmadi</div></div>';
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+    bindReviewClicks(el);
+}
+
+// ── 9.5. TO'XTASHLAR JADVALI ────────────────────────────────
+function renderStops(stops) {
+    const tbody = document.getElementById('stops-table-body');
+    const cntEl = document.getElementById('stops-count');
+    if (!tbody) return;
+    stops = prepareStopsList(stops);
+    if (cntEl) cntEl.textContent = (stops ? stops.length : 0) + ' ta';
+    if (!stops || !stops.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#8aa0b8;">To\'xtashlar topilmadi</td></tr>';
+        return;
+    }
+
+    // Xarita raqamlari bilan moslash (ofis = O, marshrut = 1,2,3…)
+    const dayRec = STATE.currentDate && STATE.data[STATE.currentDate]
+        ? STATE.data[STATE.currentDate][STATE.currentCar]
+        : null;
+    const track = normalizeTrackPoints(dayRec && dayRec.points);
+    const built = typeof buildMapStops === 'function' ? buildMapStops(stops, track) : null;
+    const mapByTable = Object.create(null);
+    if (built && built.numbered) {
+        built.numbered.forEach(s => {
+            if (s.tableNum != null) mapByTable[s.tableNum] = s.mapNum;
+        });
+    }
+
+    const dateVal = STATE.currentDate;
+    const car = STATE.currentCar;
+    let html = '';
+    stops.forEach((st, i) => {
+        const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, st) : null;
+        let rowCls = '', badge = '';
+        if (rev && rev.status === 'allowed') {
+            rowCls = 'row-own';
+            badge = '<span class="badge b-own">Ruxsat</span>';
+        } else if (rev && rev.status === 'violation') {
+            rowCls = 'row-problem';
+            badge = '<span class="badge b-problem">Qoidabuzarlik</span>';
+        } else if (st.isOffice) {
+            rowCls = 'row-office';
+            badge = '<span class="badge b-office">Ofis</span>';
+        } else if (st.isOutside) {
+            rowCls = 'row-outside';
+            badge = '<span class="badge b-outside">Shahar tashqarisi</span>';
+        } else if (stopIsProblem(st, car, dateVal)) {
+            rowCls = 'row-problem';
+            badge = '<span class="badge b-problem">Muammo</span>';
+        } else if (st.matchType === 'own') {
+            rowCls = 'row-own';
+            badge = '<span class="badge b-own">Dorixona</span>';
+        } else if (st.matchType === 'other') {
+            rowCls = 'row-other';
+            badge = '<span class="badge b-other-dir">Boshqa</span>';
+        } else {
+            badge = '<span class="badge">—</span>';
+        }
+
+        const tableNum = st.num || (i + 1);
+        let showNum = tableNum;
+        if (isLongOfficeStop(st)) showNum = 'O';
+        else if (mapByTable[tableNum] != null) showNum = mapByTable[tableNum];
+
+        const canReview = true;
+        html += `
+        <tr class="${rowCls}">
+            <td class="font-mono text-muted">${showNum}</td>
+            <td><strong>${uiTxt(st.place)}</strong>
+                ${st.phName && st.phName !== st.place ? `<br><small class="text-muted">${uiTxt(st.phName)}</small>` : ''}
+                ${st.gas > 0 ? `<br><small class="text-muted">${fmtFuel(st.gas, 'm³ gaz')}</small>` : ''}
+                ${st.benzin > 0 ? `<br><small class="text-muted">${fmtFuel(st.benzin, 'L benzin')}</small>` : ''}
+            </td>
+            <td class="font-mono">${st.inTime || '—'}</td>
+            <td class="font-mono">${st.outTime || '—'}</td>
+            <td class="font-mono text-muted">${st.duration || '—'}</td>
+            <td>${badge}</td>
+            <td>${canReview ? reviewBtnHtml(i, rev) : '—'}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+    bindReviewClicks(tbody);
+}
+
+// ── 9.6. BAHOLASH ───────────────────────────────────────────
+function renderEval(score) {
+    const sc = normalizeScore(score);
+    if (!sc) return;
+    const f = sc.final;
+
+    const setEl = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    setEl('eval-final-score', f.toFixed(1));
+
+    // Eval blocks
+    const baseEl = document.getElementById('eval-base-score');
+    const dedEl  = document.getElementById('eval-deductions');
+    const bonEl  = document.getElementById('eval-bonuses');
+
+    if (baseEl) baseEl.innerHTML = `<div class="eval-block-title">Hisoblash</div>
+        <ul>${sc.breakdown.map(x => `<li>${x}</li>`).join('')}</ul>`;
+
+    const deducts = sc.breakdown.filter(x => x.startsWith('-'));
+    if (dedEl) dedEl.innerHTML = `<div class="eval-block-title">Jarima</div>
+        <ul>${deducts.length ? deducts.map(x => `<li>${x}</li>`).join('') : '<li>Jarima yo\'q</li>'}</ul>`;
+
+    const bonuses = sc.breakdown.filter(x => x.startsWith('+'));
+    if (bonEl) bonEl.innerHTML = `<div class="eval-block-title">Bonus</div>
+        <ul>${bonuses.length ? bonuses.map(x => `<li>${x}</li>`).join('') : '<li>Bonus yo\'q</li>'}</ul>`;
+
+    const scoreBox = document.querySelector('.eval-score-box');
+    if (scoreBox) {
+        scoreBox.classList.remove('is-good', 'is-mid', 'is-bad');
+        scoreBox.style.background = '';
+        const numEl = document.getElementById('eval-final-score');
+        if (numEl) {
+            numEl.style.color = '';
+            if (f >= 8) scoreBox.classList.add('is-good');
+            else if (f >= 5) scoreBox.classList.add('is-mid');
+            else scoreBox.classList.add('is-bad');
+        }
+    }
+
+    const recEl = document.getElementById('eval-recommendations');
+    if (recEl) recEl.innerHTML = sc.recommendations.map(r => `<li>${r.replace(/[✅🏆⚠️❌]/g,'').trim()}</li>`).join('');
+
+    const sumEl = document.getElementById('eval-summary');
+    if (sumEl) {
+        const cls = f >= 8 ? 'good' : f >= 5 ? 'ok' : 'bad';
+        sumEl.className = 'eval-summary-box ' + cls;
+        sumEl.innerHTML = `<strong>Kunlik ball ${f.toFixed(1)} / 10 · ${sc.grade}</strong>`;
+    }
+}
+
+// ── 10. TOAST XABARLARI ─────────────────────────────────────
+function showToast(msg, type = 'info') {
+    const accents = { info:'#1a5fb4', success:'#1a5fb4', warn:'#0b1f3a', error:'#0b1f3a' };
+    const t = document.createElement('div');
+    t.className = 'toast-msg';
+    t.style.borderLeftColor = accents[type] || accents.info;
+    t.textContent = String(msg).replace(/[📂📡✅❌⚠️🔄🖨️⚙️🔌🏆]/g, '').replace(/\s+/g, ' ').trim();
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .25s'; setTimeout(() => t.remove(), 250); }, 4000);
+}
+
+function setGpsUi(state, detail) {
+    const chip = document.getElementById('gps-status-chip');
+    const btn  = document.getElementById('btn-gps-sync-2');
+    if (chip) {
+        if (state === 'on') {
+            chip.textContent = detail || 'Ulangan';
+            chip.className = 'chip chip-green';
+        } else if (state === 'sync') {
+            chip.textContent = detail || 'Yuklanmoqda';
+            chip.className = 'chip chip-blue';
+        } else if (state === 'partial') {
+            chip.textContent = detail || 'Qisman';
+            chip.className = 'chip chip-orange';
+        } else {
+            chip.textContent = 'Ulanmagan';
+            chip.className = 'chip chip-gray';
+        }
+    }
+    if (btn) btn.textContent = state === 'off' ? 'Ulanish' : 'Yangilash';
+}
+
+function hasGpsConfig() {
+    const c = STATE.gpsConfig;
+    if (!c) return false;
+    if (c.serverConfigured || c.hasToken || c.hasPassword) return true;
+    return !!((c.token && String(c.token).trim()) || (c.password && String(c.password).trim()));
+}
+
+const GPS_POLL_MS = 45 * 1000;          // holat ~45 soniya
+const GPS_POLL_FAST_MS = 15 * 1000;     // qisman bo'lsa tezroq
+const GPS_NUDGE_MIN_MS = 120 * 1000;    // jim avto-tortish (~2 daqiqa)
+const GPS_STALE_FORCE_MS = 4 * 60 * 1000; // 4 daqiqadan eski — majburiy
+
+function stopGpsAutoSync() {
+    if (STATE.gpsAutoTimer) clearInterval(STATE.gpsAutoTimer);
+    STATE.gpsAutoTimer = null;
+}
+
+function gpsModalOpen() {
+    const m = document.getElementById('modal-gps');
+    return !!(m && m.classList.contains('open'));
+}
+
+async function nudgeServerGpsSync(status) {
+    const st = status || {};
+    if (st.running || STATE.gpsSyncBusy || STATE.gpsNudgeBusy) return;
+    if (gpsModalOpen() || document.hidden) return;
+    if (!(hasGpsConfig() || st.configured)) return;
+
+    const fetched = Number(st.fetched || st.cars || 0) || 0;
+    const total = Number(st.total || 0) || 0;
+    const incomplete = total > 0 && fetched < total;
+    const ts = st.lastSync ? (parseServerTime(st.lastSync)?.getTime() || 0) : 0;
+    const ageMs = ts ? (Date.now() - ts) : 1e12;
+    const stale = ageMs >= GPS_NUDGE_MIN_MS;
+    const veryStale = ageMs >= GPS_STALE_FORCE_MS;
+    if (!incomplete && !stale) return;
+
+    const now = Date.now();
+    const sinceNudge = STATE.gpsLastNudgeAt ? (now - STATE.gpsLastNudgeAt) : 1e12;
+    const cooldown = veryStale ? 45 * 1000 : GPS_NUDGE_MIN_MS;
+    if (sinceNudge < cooldown) return;
+    STATE.gpsLastNudgeAt = now;
+    STATE.gpsNudgeBusy = true;
+    try {
+        const today = dateStr(new Date());
+        const dateVal = st.lastDate || st.syncDate || STATE.currentDate || today;
+        const res = await vmApi('/api/office/gps/sync', {
+            method: 'POST',
+            body: JSON.stringify({
+                date: dateVal,
+                force: true,
+                habit: true,
+                auto: true
+            })
+        });
+        if (res && res.busy) {
+            STATE.gpsLastNudgeAt = now - cooldown + 30 * 1000;
+        }
+        await pollServerGpsStatus(true);
+    } catch (e) {
+        console.warn('gps nudge:', e);
+        STATE.gpsLastNudgeAt = now - cooldown + 30 * 1000;
+    } finally {
+        STATE.gpsNudgeBusy = false;
+    }
+}
+
+function startGpsAutoSync() {
+    stopGpsAutoSync();
+    const tick = async () => {
+        if (gpsModalOpen()) return;
+        if (document.hidden) return;
+        try {
+            const d = await vmApi('/api/office/gps/status');
+            updateGpsLastSyncUi(d.lastSync, d.running, d);
+            await pollServerGpsStatus(false);
+            await nudgeServerGpsSync(d);
+        } catch (e) {
+            console.warn('gps auto tick:', e);
+        }
+    };
+    STATE.gpsAutoTimer = setInterval(tick, GPS_POLL_MS);
+    tick();
+    if (!STATE._gpsVisBound) {
+        STATE._gpsVisBound = true;
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            vmApi('/api/office/gps/status').then(d => {
+                updateGpsLastSyncUi(d.lastSync, d.running, d);
+                return nudgeServerGpsSync(d);
+            }).catch(() => {});
+        });
+    }
+}
+
+function sleepMs(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Server vaqti. Yangi: ...+05:00 (Toshkent). Eski naive UTC (Vercel) → Z. */
+function parseServerTime(iso) {
+    if (!iso) return null;
+    const s = String(iso).trim();
+    if (!s) return null;
+    if (/Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) {
+        const d = new Date(s);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const norm = s.includes('T') ? s : s.replace(' ', 'T');
+    // Legacy: Vercel UTC strftime — offset yo'q edi
+    const d = new Date(norm + 'Z');
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatSyncClock(iso) {
+    const d = parseServerTime(iso);
+    if (!d) return '';
+    return d.toLocaleTimeString('uz-UZ', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Tashkent'
+    });
+}
+
+async function saveGpsConfigToServer(cfg) {
+    if (!cfg) return;
+    try {
+        const body = {
+            host: cfg.host || '',
+            user: cfg.user || ''
+        };
+        // Bo'sh qoldirilsa serverdagi eski token/parol saqlanadi
+        if (cfg.token) body.token = cfg.token;
+        if (cfg.password) body.password = cfg.password;
+        const pub = await vmApi('/api/office/gps/config', {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+        STATE.gpsConfig = Object.assign({}, gpsConfigSafe(STATE.gpsConfig), {
+            host: pub.host || cfg.host || '',
+            user: pub.user || cfg.user || '',
+            hasToken: !!pub.hasToken,
+            hasPassword: !!pub.hasPassword,
+            serverConfigured: !!pub.configured
+        });
+        // Xotiradagi maxfiy maydonlarni tozalash (faqat shu sessiyada kerak bo'lmaguncha)
+        if (STATE.gpsConfig) {
+            delete STATE.gpsConfig.password;
+            delete STATE.gpsConfig.token;
+        }
+        saveAll();
+        return pub;
+    } catch (e) {
+        console.warn('gps config server:', e);
+    }
+}
+
+function updateGpsLastSyncUi(iso, running, extra) {
+    const el = document.getElementById('gps-last-sync');
+    const habit = document.getElementById('gps-habit-line');
+    const ex = extra || {};
+    const fetched = Number(ex.fetched || ex.cars || 0) || 0;
+    const total = Number(ex.total || 0) || 0;
+    const msg = String(ex.message || '').trim();
+    const ratio = total > 0 ? (fetched + '/' + total) : (fetched ? String(fetched) : '');
+
+    if (habit) {
+        habit.textContent = total > 0
+            ? ('Kunlik odat: avto ' + fetched + '/' + total + ' mashina')
+            : 'Kunlik odat: server har ~2–5 daqiqada avto-yuklaydi';
+    }
+    if (!el) return;
+    if (running) {
+        el.textContent = ratio
+            ? ('Hozir yangilanmoqda… ' + ratio + (msg ? ' · ' + msg : ''))
+            : ('Hozir yangilanmoqda…' + (msg ? ' · ' + msg : ''));
+        return;
+    }
+    const parts = [];
+    if (ratio) parts.push(ratio + ' mashina');
+    if (iso) {
+        const clock = formatSyncClock(iso);
+        if (clock) parts.push('Oxirgi: ' + clock);
+    } else if (STATE.gpsLastSync) {
+        const clock = formatSyncClock(STATE.gpsLastSync);
+        if (clock) parts.push('Oxirgi: ' + clock);
+    }
+    // To'liq yuklangan bo'lsa eski «Xato» ni ko'rsatmaymiz
+    let showMsg = msg;
+    if (/^xato$/i.test(msg) && total > 0 && fetched >= total) showMsg = '';
+    else if (/^xato$/i.test(msg) && ex.error) showMsg = String(ex.error).slice(0, 60);
+    // «Tekshirildi» / «Km yangilandi» — ko'rsatamiz (Oxirgi bilan birga)
+    if (showMsg && !/tayyor/i.test(showMsg)) parts.push(showMsg);
+    el.textContent = parts.length ? parts.join(' · ') : 'Hali yangilanmagan';
+}
+
+async function pollServerGpsStatus(forceToday) {
+    try {
+        const d = await vmApi('/api/office/gps/status');
+        const fetched = Number(d.fetched || d.cars || 0) || 0;
+        const total = Number(d.total || 0) || 0;
+        updateGpsLastSyncUi(d.lastSync, d.running, d);
+        if (d.running) {
+            setGpsUi('sync', total ? ('Yuklanmoqda ' + fetched + '/' + total) : 'Yuklanmoqda');
+        } else if (total > 0 && fetched > 0 && fetched < total) {
+            setGpsUi('partial', fetched + '/' + total);
+        } else if (hasGpsConfig() || d.configured) {
+            setGpsUi('on', total ? ('Ulangan ' + fetched + '/' + total) : 'Ulangan');
+        }
+
+        // Qisman bo'lsa — tezroq poll
+        if (STATE.gpsAutoTimer && total > 0 && fetched < total && !d.running) {
+            stopGpsAutoSync();
+            STATE.gpsAutoTimer = setInterval(() => {
+                if (gpsModalOpen() || document.hidden) return;
+                pollServerGpsStatus(false);
+            }, GPS_POLL_FAST_MS);
+        }
+
+        const today = dateStr(new Date());
+        const dateToLoad = d.lastDate || d.syncDate || today;
+        const ts = d.lastSync ? (parseServerTime(d.lastSync)?.getTime() || 0) : 0;
+        const newer = ts > (STATE.serverGpsSyncTs || 0);
+        const incomplete = total > 0 && fetched < total;
+        if (!forceToday && !newer && !incomplete) return;
+        if (ts) STATE.serverGpsSyncTs = ts;
+        if (window.VMOffice) {
+            await VMOffice.loadReportIfNeeded(dateToLoad, true);
+            const viewDate = STATE.currentDate || today;
+            if (viewDate !== dateToLoad) await VMOffice.loadReportIfNeeded(viewDate, false);
+            renderCalendar();
+            renderDriverTabs();
+            refreshUI();
+        }
+    } catch (e) {
+        console.warn('gps status:', e);
+    }
+}
+
+async function syncFromGPS(dateVal, cfg, opts) {
+    opts = opts || {};
+    const silent = !!opts.silent;
+    const skipDigest = !!opts.skipDigest;
+    const force = !!opts.force || !silent;
+
+    if (STATE.gpsSyncBusy && !force) return;
+
+    STATE.gpsSyncGen = (STATE.gpsSyncGen || 0) + 1;
+    const myGen = STATE.gpsSyncGen;
+    const cancelled = () => STATE.gpsSyncGen !== myGen;
+    STATE.gpsSyncBusy = true;
+
+    const btn = document.getElementById('btn-gps-connect');
+    if (btn && !silent) {
+        btn.disabled = true;
+        btn.textContent = 'Yuklanmoqda...';
+    }
+
+    const progWrap = document.getElementById('sync-progress');
+    const progBar  = document.getElementById('sync-progress-bar');
+    const statEl   = document.getElementById('sync-status');
+    const detEl    = document.getElementById('sync-details');
+
+    if (!silent && progWrap) progWrap.style.display = 'block';
+    if (!silent && detEl) detEl.innerHTML = '';
+    if (!silent && statEl) statEl.textContent = 'GPS serveriga ulanilmoqda...';
+
+    const updateProg = (pct, msg, detail) => {
+        if (silent) return;
+        if (progBar) progBar.style.width = pct + '%';
+        if (statEl)  statEl.textContent  = msg;
+        if (detEl && detail) {
+            const li = document.createElement('li');
+            li.textContent = detail;
+            detEl.appendChild(li);
+            while (detEl.children.length > 40) detEl.removeChild(detEl.firstChild);
+        }
+    };
+
+    try {
+        setGpsUi('sync');
+        let done = 0;
+
+        // Forma maydonlaridan qayta o'qish (STATE da token o'chirilgan bo'lishi mumkin)
+        const formHost = document.getElementById('gps-host')?.value?.trim();
+        const formUser = document.getElementById('gps-user')?.value?.trim();
+        const formPass = document.getElementById('gps-password')?.value?.trim();
+        const formTok = (document.getElementById('gps-token')?.value || '').replace(/\s+/g, '').trim();
+        cfg = Object.assign({}, cfg || {}, {
+            host: formHost || cfg.host || 'http://bms1.gpsavto.uz',
+            user: formUser || cfg.user || '',
+            password: formPass || cfg.password || '',
+            token: formTok || cfg.token || ''
+        });
+
+        const canBrowser = !!(
+            window.wialonGPS &&
+            ((cfg.password && String(cfg.password).trim()) || (cfg.token && String(cfg.token).trim()))
+        );
+
+        // Saqlangan secret bor, forma bo'sh — server sync (parol qayta so'ralmasin)
+        if (!canBrowser) {
+            const savedOk = !!(STATE.gpsConfig && (
+                STATE.gpsConfig.hasPassword || STATE.gpsConfig.hasToken || STATE.gpsConfig.serverConfigured
+            ));
+            if (!savedOk) {
+                updateProg(0, 'Parol yoki token kiriting', '');
+                throw new Error('Brauzer GPS uchun parol yoki token kerak. Maydonlarni to‘ldirib qayta bosing.');
+            }
+            updateProg(15, 'Server orqali GPS sync…', '');
+            let rounds = 0;
+            let busy = true;
+            while (rounds < 40 && busy) {
+                if (cancelled()) return;
+                rounds += 1;
+                const res = await vmApi('/api/office/gps/sync', {
+                    method: 'POST',
+                    body: JSON.stringify({ date: dateVal, force: rounds === 1 })
+                });
+                busy = !!(res && res.busy);
+                const fetched = (res && (res.fetched != null ? res.fetched : res.cars)) || 0;
+                const total = (res && res.total) || Math.max(fetched, 1);
+                updateProg(
+                    Math.min(90, 15 + Math.round((fetched / total) * 70)),
+                    busy ? `Server sync… ${fetched}/${total}` : `Server: ${fetched} mashina`,
+                    ''
+                );
+                if (!busy) break;
+                await sleepMs(900);
+            }
+            if (cancelled()) return;
+            if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
+            if (cancelled()) return;
+            STATE.currentDate = dateVal;
+            const cars = STATE.data[dateVal] || {};
+            done = Object.keys(cars).length;
+            if (!STATE.currentCar && done) {
+                const first = Object.keys(cars)[0];
+                if (first) STATE.currentCar = first;
+            }
+            const d0 = new Date(dateVal); CAL.y = d0.getFullYear(); CAL.m = d0.getMonth();
+            saveAll();
+            renderCalendar(); renderDriverTabs(); refreshUI();
+            if (window.VMOffice) VMOffice.renderFleetBoard();
+            updateProg(100, done ? `Tayyor: ${done} mashina (server)` : 'Server sync tugadi', '');
+            setGpsUi(done ? 'on' : 'off');
+            if (!silent) showToast(done ? `GPS: ${done} mashina` : 'GPS sync tugadi — maʼlumot kam', done ? 'success' : 'warn');
+            return;
+        }
+
+        // To'g'ridan Boomerang — Vercel 504/busy yo'q
+        updateProg(8, 'Boomerangdan to‘liq yuklanmoqda…', '');
+        const loginOk = await wialonGPS.login(cfg);
+        if (cancelled()) return;
+        if (!loginOk) throw new Error('Login amalga oshmadi. Login/parol/tokenni tekshiring.');
+        setGpsUi('on');
+        updateProg(12, 'Mashinalar ro\'yxati...', '');
+        const units = await wialonGPS.getUnits();
+        if (cancelled()) return;
+        if (!units.length) throw new Error('GPS da mashinalar topilmadi.');
+
+        const fresh = {};
+        let matched = 0;
+        for (let ui = 0; ui < units.length; ui++) {
+            if (cancelled()) return;
+            const unit = units[ui];
+            const drv = findDriverByCar(unit.name) || findDriverByCar(unit.carNumber);
+            if (!drv) {
+                updateProg(0, '', `⏭ ${unit.name}: ro'yxatda yo'q`);
+                continue;
+            }
+            matched += 1;
+            try {
+                updateProg(
+                    12 + Math.round((ui / Math.max(units.length, 1)) * 80),
+                    `Boomerang: ${matched} — ${unit.name}`,
+                    ''
+                );
+                const chrono = await wialonGPS.getUnitChronology(unit.id, dateVal);
+                if (cancelled()) return;
+                const rawStops = (chrono && chrono.stops) ? chrono.stops : [];
+                const stops = enrichStops(rawStops, drv.car);
+                const points = normalizeTrackPoints(chrono && chrono.points);
+                const stats = Object.assign({
+                    probeg: 0, maxSpeed: 0, avgSpeed: 0, poezdok: 0, stoyanok: stops.length,
+                    gas: 0, benzin: 0, motoChas: '—', totalStop: '—'
+                }, (chrono && chrono.stats) || {});
+                if (!stats.stoyanok) stats.stoyanok = stops.length;
+                const scored = await analyzeOnServer(stops, drv.car, stats, dateVal, { reenrich: true });
+                fresh[drv.car] = {
+                    car: drv.car,
+                    driver: drv,
+                    date: dateVal,
+                    stats,
+                    stops: scored.stops || stops,
+                    points,
+                    analysis: scored.analysis,
+                    syncedAt: Date.now()
+                };
+                STATE.data[dateVal] = Object.assign({}, STATE.data[dateVal] || {}, fresh);
+                done = Object.keys(fresh).length;
+                updateProg(
+                    12 + Math.round((ui / Math.max(units.length, 1)) * 80),
+                    `Tayyor: ${done} / ${matched} mashina`,
+                    `✅ ${unit.name}: ${fmtKm(stats.probeg, 'km')} · ${fmtSpd(stats.maxSpeed || 0)}`
+                );
+                if (STATE.currentDate === dateVal) {
+                    renderDriverTabs();
+                    refreshUI();
+                }
+            } catch (e) {
+                if (cancelled()) return;
+                console.error('GPS unit:', e);
+                updateProg(0, '', `⚠️ ${unit.name}: ${e.message || e}`);
+            }
+            await sleepMs(0);
+        }
+        if (!matched) throw new Error('Hech qanday mashina haydovchi ro\'yxatiga mos kelmadi.');
+        // Faqat muvaffaqiyatli mashinalarni qo'shamiz — eski yaxshi yozuvlarni o'chirmaymiz
+        STATE.data[dateVal] = Object.assign({}, STATE.data[dateVal] || {}, fresh);
+        if (!STATE.history.includes(dateVal)) STATE.history.push(dateVal);
+        updateProg(95, `Boomerang: ${done} ta mashina yuklandi`, '');
+
+        if (cancelled()) return;
+        STATE.currentDate = dateVal;
+        if (!STATE.currentCar && done) {
+            const first = Object.keys(STATE.data[dateVal] || {})[0];
+            if (first) STATE.currentCar = first;
+        }
+        const d = new Date(dateVal); CAL.y = d.getFullYear(); CAL.m = d.getMonth();
+        saveAll();
+        renderCalendar(); renderDriverTabs(); refreshUI();
+        if (window.VMOffice) {
+            VMOffice.renderFleetBoard();
+            await VMOffice.saveReport(dateVal);
+            if (cancelled()) return;
+            if (!skipDigest) VMOffice.sendDigest(dateVal);
+        }
+
+        if (cancelled()) return;
+
+        if (done > 0) {
+            STATE.gpsLastSync = Date.now();
+            updateGpsLastSyncUi();
+            await saveGpsConfigToServer(cfg);
+            startGpsAutoSync();
+            if (!silent) {
+                showToast(`GPS dan ${dateVal} uchun ${done} ta mashina yuklandi`, 'success');
+                document.getElementById('modal-gps').classList.remove('open');
+            }
+        } else if (!silent) {
+            showToast('GPS ulandi, lekin saqlanadigan ma\'lumot chiqmadi. Tafsilotni modalda ko\'ring.', 'warn');
+            document.getElementById('modal-gps').classList.add('open');
+        }
+
+    } catch(e) {
+        if (cancelled()) return;
+        if (!silent) showToast('GPS xatosi: ' + e.message, 'error');
+        if (!silent && statEl) statEl.textContent = 'Xato: ' + e.message;
+        setGpsUi(hasGpsConfig() ? 'on' : 'off');
+    } finally {
+        if (STATE.gpsSyncGen === myGen) {
+            STATE.gpsSyncBusy = false;
+            if (btn && !silent) {
+                btn.disabled = false;
+                btn.textContent = 'Shu kunni yuklash';
+            }
+            if (!silent) setGpsUi(hasGpsConfig() ? 'on' : 'off');
+        }
+    }
+}
+
+function pdfDateLabel(ds) {
+    const d = new Date(ds + 'T00:00:00');
+    return `${d.getDate()} ${UZ_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function pdfStopStatus(st, carKey, dateVal) {
+    const day = dateVal || STATE.currentDate;
+    const car = carKey || STATE.currentCar;
+    const rev = window.VMOffice ? VMOffice.reviewOf(day, car, st) : null;
+    if (rev && rev.status === 'allowed') return 'Ruxsat';
+    if (rev && rev.status === 'violation') return 'Qoidabuzarlik';
+    if (st.isOffice) return 'Ofis';
+    if (st.isOutside) return 'Tashqari';
+    if (stopIsProblem(st, car, day)) return 'Muammo';
+    if (st.matchType === 'own') return 'Dorixona';
+    if (st.matchType === 'other') return 'Boshqa';
+    return '—';
+}
+
+function collectDayEntries(dayData) {
+    const used = new Set();
+    const list = [];
+    const keyOf = p => (typeof fleetPlateKey === 'function' ? fleetPlateKey(p) : String(p || '').replace(/\s+/g, '').toUpperCase());
+    DRIVERS.forEach(drv => {
+        let rec = null;
+        let hitKey = null;
+        if (dayData[drv.car]) {
+            rec = dayData[drv.car];
+            hitKey = drv.car;
+        } else {
+            const want = keyOf(drv.car);
+            hitKey = Object.keys(dayData).find(k => keyOf(k) === want) || null;
+            if (hitKey) rec = dayData[hitKey];
+        }
+        if (rec) {
+            if (rec.driver) rec.driver = (typeof resolveDriver === 'function') ? resolveDriver(drv.car, rec.driver) : rec.driver;
+            list.push({ drv: (typeof resolveDriver === 'function') ? resolveDriver(drv.car, drv) : drv, data: rec });
+            used.add(keyOf(drv.car));
+            if (hitKey) used.add(keyOf(hitKey));
+        }
+    });
+    Object.keys(dayData).forEach(car => {
+        if (used.has(keyOf(car))) return;
+        const d = dayData[car];
+        const drv = (typeof resolveDriver === 'function')
+          ? resolveDriver(car, (d && d.driver) || null)
+          : ((d && d.driver) || { fullName: car, shortName: car, car, routes: '—' });
+        list.push({ drv, data: d });
+        used.add(keyOf(car));
+    });
+    return list;
+}
+
+function abToB64(buf) {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const step = 0x8000;
+    for (let i = 0; i < bytes.length; i += step) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+    }
+    return btoa(binary);
+}
+
+let VM_PDF_FONTS = null;
+let VM_PDF_FONT = 'helvetica';
+
+async function fetchFontBuf(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('font ' + r.status);
+    return r.arrayBuffer();
+}
+
+async function loadPdfFonts() {
+    if (VM_PDF_FONTS) return VM_PDF_FONTS;
+    const pairs = [
+        ['fonts/NotoSans-Regular.ttf', 'fonts/NotoSans-Bold.ttf'],
+        [
+            'https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf',
+            'https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Bold.ttf'
+        ]
+    ];
+    for (const [regUrl, boldUrl] of pairs) {
+        try {
+            const [reg, bold] = await Promise.all([fetchFontBuf(regUrl), fetchFontBuf(boldUrl)]);
+            VM_PDF_FONTS = { regular: abToB64(reg), bold: abToB64(bold) };
+            return VM_PDF_FONTS;
+        } catch (e) {
+            console.warn('PDF shrift:', e);
+        }
+    }
+    return null;
+}
+
+function applyPdfFont(doc, fonts) {
+    if (!fonts) {
+        VM_PDF_FONT = 'helvetica';
+        doc.setFont('helvetica', 'normal');
+        return;
+    }
+    doc.addFileToVFS('NotoSans-Regular.ttf', fonts.regular);
+    doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+    doc.addFileToVFS('NotoSans-Bold.ttf', fonts.bold);
+    doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
+    doc.setFont('NotoSans', 'normal');
+    VM_PDF_FONT = 'NotoSans';
+}
+
+function pdfF(doc, style) {
+    doc.setFont(VM_PDF_FONT, style || 'normal');
+}
+
+function pdfAnalysis(d) {
+    const a = (d && d.analysis) || {};
+    const sc = a.score || {};
+    return {
+        ownVisited: a.ownVisited || 0,
+        totalOwn: a.totalOwn || 0,
+        otherDirection: a.otherDirection || 0,
+        problemStops: a.problemStops || 0,
+        outsideCity: a.outsideCity || 0,
+        missedList: Array.isArray(a.missedList) ? a.missedList : [],
+        score: {
+            final: (sc.final != null && !isNaN(Number(sc.final))) ? Number(sc.final) : 0,
+            grade: sc.grade || '—',
+            breakdown: Array.isArray(sc.breakdown) ? sc.breakdown : [],
+            recommendations: Array.isArray(sc.recommendations) ? sc.recommendations : []
+        }
+    };
+}
+
+function pdfDrawHeader(doc, line2) {
+    doc.setFillColor(12, 16, 22);
+    doc.rect(0, 0, 210, 26, 'F');
+    doc.setFillColor(201, 162, 39);
+    doc.rect(0, 26, 210, 1.6, 'F');
+    doc.setTextColor(244, 244, 242);
+    pdfF(doc, 'bold');
+    doc.setFontSize(9);
+    doc.text('VAKSINAMED FLEET CONTROL', 12, 10);
+    pdfF(doc, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(201, 162, 39);
+    doc.text('GPS MONITORING  ·  WIALON', 12, 16);
+    if (line2) {
+        doc.setTextColor(180, 186, 194);
+        doc.setFontSize(8);
+        doc.text(String(line2), 198, 16, { align: 'right' });
+    }
+}
+
+function pdfDrawFooter(doc, dateVal) {
+    const n = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+        doc.setPage(i);
+        doc.setFillColor(243, 244, 246);
+        doc.rect(0, 287, 210, 10, 'F');
+        pdfF(doc, 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(92, 101, 115);
+        doc.text('VaksinaMed  ·  ichki hisobot  ·  ' + dateVal, 12, 293);
+        doc.text(i + ' / ' + n, 198, 293, { align: 'right' });
+    }
+}
+
+function pdfSectionTitle(doc, y, title) {
+    pdfF(doc, 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(18, 21, 28);
+    doc.text(String(title).toUpperCase(), 12, y);
+    doc.setDrawColor(201, 162, 39);
+    doc.setLineWidth(0.45);
+    doc.line(12, y + 1.6, 198, y + 1.6);
+    return y + 7;
+}
+
+function pdfNeedPage(doc, y, need, dateLabel) {
+    if (y + need < 276) return y;
+    doc.addPage();
+    pdfDrawHeader(doc, dateLabel);
+    return 34;
+}
+
+function pdfTable(doc, dateLabel, opts) {
+    const merged = Object.assign({
+        theme: 'plain',
+        styles: {
+            font: VM_PDF_FONT,
+            fontSize: 8,
+            textColor: [18, 21, 28],
+            cellPadding: 2,
+            overflow: 'linebreak',
+            lineColor: [220, 224, 230],
+            lineWidth: 0.1
+        },
+        headStyles: {
+            fillColor: [12, 16, 22],
+            textColor: [244, 244, 242],
+            fontStyle: 'bold',
+            fontSize: 7.5,
+            font: VM_PDF_FONT,
+            cellPadding: 2.2
+        },
+        alternateRowStyles: { fillColor: [247, 248, 250] },
+        margin: { left: 12, right: 12, top: 32, bottom: 16 },
+        didDrawPage: function () { pdfDrawHeader(doc, dateLabel); }
+    }, opts);
+    if (typeof doc.autoTable === 'function') {
+        doc.autoTable(merged);
+        return doc.lastAutoTable.finalY;
+    }
+    let y = opts.startY || 40;
+    const all = [];
+    if (opts.head && opts.head[0]) all.push(opts.head[0]);
+    (opts.body || []).forEach(r => all.push(r));
+    pdfF(doc, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(18, 21, 28);
+    all.forEach(r => {
+        y = pdfNeedPage(doc, y, 6, dateLabel);
+        const line = (r || []).map(c => String(c == null || c === '' ? '—' : c)).join('   ·   ');
+        const wrapped = doc.splitTextToSize(line, 186);
+        doc.text(wrapped, 12, y);
+        y += wrapped.length * 4.2 + 1.5;
+    });
+    return y;
+}
+
+async function syncReportsToServer(dates) {
+    const list = dates || STATE.history || Object.keys(STATE.data);
+    let ok = 0, fail = 0;
+    for (const dateVal of list) {
+        const cars = STATE.data[dateVal];
+        if (!cars || !Object.keys(cars).length) continue;
+        try {
+            await vmApi('/api/office/report', {
+                method: 'POST',
+                body: JSON.stringify({ date: dateVal, cars })
+            });
+            ok++;
+        } catch (e) {
+            fail++;
+            console.warn('server sync', dateVal, e);
+        }
+    }
+    return { ok, fail };
+}
+
+function excelStopTypeLabel(st) {
+    if (!st) return '—';
+    if (st.isOffice) return 'Ofis';
+    if (st.isOutside) return 'Shahar tashqari';
+    if (st.matchType === 'own') return 'O\'z dorixonasi';
+    if (st.matchType === 'other') return 'Boshqa yo\'nalish';
+    return 'Noma\'lum';
+}
+
+function excelRoutePath(stops) {
+    const parts = [];
+    (stops || []).forEach(st => {
+        if (st.isOffice) return;
+        const name = String(st.phName || st.place || '').trim();
+        if (!name) return;
+        if (parts.length && parts[parts.length - 1] === name) return;
+        parts.push(name);
+    });
+    return parts.length ? parts.join(' → ') : '—';
+}
+
+function exportDayExcel() {
+    const dateVal = STATE.currentDate;
+    const dayData = dateVal && STATE.data[dateVal];
+    if (!dayData || !Object.keys(dayData).length) {
+        showToast('Avval GPS yoki Excel orqali kun ma\'lumotini yuklang', 'warn');
+        return;
+    }
+    if (typeof XLSX === 'undefined') {
+        showToast('Excel kutubxonasi yuklanmadi', 'error');
+        return;
+    }
+    const makeSheet = (typeof excelSheetFromAoa === 'function')
+        ? excelSheetFromAoa
+        : (aoa) => XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    const entries = collectDayEntries(dayData);
+
+    // 1) Jamlanma — saytdagi asosiy ko'rsatkichlar + yo'nalish
+    const summary = [
+        ['VHK kunlik jamlanma — ' + dateVal],
+        ['Haydovchi', 'Raqam', 'Yo\'nalish', 'Km', 'Max tezlik', 'Ball', 'Dorixona', 'Boshqa yo\'nalish', 'Muammo', 'Ish vaqti', 'Ball izohi']
+    ];
+    entries.forEach(({ drv, data }) => {
+        const a = data.analysis || {};
+        const sc = a.score || {};
+        const st = data.stats || {};
+        const breakdown = Array.isArray(sc.breakdown) ? sc.breakdown.join('; ') : '';
+        summary.push([
+            drv.fullName || drv.shortName || '',
+            drv.car || '',
+            drv.routes || '—',
+            st.probeg || 0,
+            st.maxSpeed || 0,
+            sc.final != null ? sc.final : '',
+            `${a.ownVisited || 0}/${a.totalOwn || 0}`,
+            a.otherDirection != null ? a.otherDirection : (a.otherDir || 0),
+            a.problemStops || 0,
+            st.motoChas || '',
+            breakdown
+        ]);
+    });
+    XLSX.utils.book_append_sheet(wb, makeSheet(summary, {
+        titleRow: 0,
+        headerRow: 1,
+        centerCols: [1, 5, 6, 7, 8],
+        numberCols: [3, 4],
+        minWidths: [24, 12, 22, 9, 11, 8, 10, 14, 9, 12, 28]
+    }), 'Jamlanma');
+
+    // 2) Marshrutlar — saytdagi chiziq o'rniga to'xtashlar ketma-ketligi
+    const routesSheet = [
+        ['Kunlik marshrutlar (to\'xtashlar ketma-ketligi) — ' + dateVal],
+        ['Haydovchi', 'Raqam', 'Yo\'nalish', 'To\'xtashlar soni', 'Marshrut (joylar ketma-ketligi)']
+    ];
+    entries.forEach(({ drv, data }) => {
+        const stops = data.stops || [];
+        routesSheet.push([
+            drv.fullName || drv.shortName || '',
+            drv.car || '',
+            drv.routes || '—',
+            stops.length,
+            excelRoutePath(stops)
+        ]);
+    });
+    XLSX.utils.book_append_sheet(wb, makeSheet(routesSheet, {
+        titleRow: 0,
+        headerRow: 1,
+        centerCols: [1, 3],
+        numberCols: [3],
+        minWidths: [24, 12, 22, 12, 60],
+        maxWidth: 80
+    }), 'Marshrutlar');
+
+    // 3) Har mashina — batafsil to'xtashlar (xarita o'rniga jadval)
+    entries.forEach(({ drv, data }, idx) => {
+        const name = drv.fullName || drv.shortName || '';
+        const route = drv.routes || '—';
+        const rows = [
+            [name + ' — ' + (drv.car || '') + ' | Yo\'nalish: ' + route],
+            ['№', 'Kirish', 'Chiqish', 'Joy / dorixona', 'Davomiylik', 'Turi', 'Muammo', 'Lat', 'Lng']
+        ];
+        (data.stops || []).forEach((st, i) => {
+            rows.push([
+                i + 1,
+                st.inTime || '',
+                st.outTime || '',
+                st.phName || st.place || '',
+                st.duration || '',
+                excelStopTypeLabel(st),
+                stopIsProblem(st, drv.car, dateVal) ? 'ha' : '',
+                st.lat != null && st.lat !== '' ? st.lat : '',
+                st.lng != null && st.lng !== '' ? st.lng : ''
+            ]);
+        });
+        let sheetName = String(drv.car || ('m' + idx)).replace(/\s+/g, '_').slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, makeSheet(rows, {
+            titleRow: 0,
+            headerRow: 1,
+            centerCols: [0, 1, 2, 4, 5, 6],
+            numberCols: [7, 8],
+            minWidths: [5, 10, 10, 28, 12, 16, 9, 11, 11]
+        }), sheetName);
+    });
+
+    XLSX.writeFile(wb, 'vhk_' + dateVal + '.xlsx');
+    showToast('Excel yuklab olindi (jamlanma + marshrutlar + to\'xtashlar)', 'success');
+}
+
+async function downloadPdfReport() {
+    const dateVal = STATE.currentDate;
+    const dayData = dateVal && STATE.data[dateVal];
+    if (!dayData || !Object.keys(dayData).length) {
+        showToast('Avval GPS yoki Excel orqali kun ma\'lumotini yuklang', 'warn');
+        return;
+    }
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!JsPDF) {
+        showToast('PDF moduli yuklanmadi. Sahifani yangilang (Ctrl+F5).', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('btn-print');
+    if (btn) btn.disabled = true;
+    showToast('PDF tayyorlanmoqda...', 'info');
+
+    try {
+        const fonts = await loadPdfFonts();
+        const entries = collectDayEntries(dayData);
+        if (!entries.length) {
+            showToast('Bu kunda chiqarish uchun ma\'lumot yo\'q', 'warn');
+            return;
+        }
+
+        const doc = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+        applyPdfFont(doc, fonts);
+
+        const dateLabel = pdfDateLabel(dateVal);
+        const totalKm = roundKm(entries.reduce((s, x) => s + ((x.data.stats && x.data.stats.probeg) || 0), 0));
+        const avgScore = entries.length
+            ? (entries.reduce((s, x) => s + pdfAnalysis(x.data).score.final, 0) / entries.length)
+            : 0;
+        const problems = entries.reduce((s, x) => s + pdfAnalysis(x.data).problemStops, 0);
+        const ownOk = entries.reduce((s, x) => {
+            const a = pdfAnalysis(x.data);
+            return s + a.ownVisited;
+        }, 0);
+
+        // ── COVER ──────────────────────────────────────────
+        pdfDrawHeader(doc, dateLabel);
+        pdfF(doc, 'bold');
+        doc.setFontSize(20);
+        doc.setTextColor(18, 21, 28);
+        doc.text('Kunlik GPS hisobot', 12, 42);
+        pdfF(doc, 'normal');
+        doc.setFontSize(11);
+        doc.setTextColor(42, 48, 58);
+        doc.text(dateLabel, 12, 50);
+        pdfF(doc, 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(201, 162, 39);
+        doc.text('KETMA-KET  ·  ' + entries.length + ' ta mashina', 198, 50, { align: 'right' });
+
+        const boxes = [
+            ['MASHINA', String(entries.length)],
+            ['JAMI MASOFA', fmtKm(totalKm, 'km')],
+            ["O'RTACHA BALL", avgScore.toFixed(1) + ' / 10'],
+            ['MUAMMO', String(problems)]
+        ];
+        boxes.forEach((b, i) => {
+            const x = 12 + i * 48;
+            doc.setFillColor(243, 244, 246);
+            doc.setDrawColor(183, 190, 200);
+            doc.rect(x, 56, 45, 20, 'FD');
+            doc.setFillColor(201, 162, 39);
+            doc.rect(x, 56, 45, 1.1, 'F');
+            pdfF(doc, 'bold');
+            doc.setFontSize(6.5);
+            doc.setTextColor(92, 101, 115);
+            doc.text(b[0], x + 3, 63);
+            doc.setFontSize(12);
+            doc.setTextColor(18, 21, 28);
+            doc.text(b[1], x + 3, 71);
+        });
+
+        pdfF(doc, 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(92, 101, 115);
+        doc.text('Jami o\'z dorixonalariga borish: ' + ownOk + ' ta to\'xtash', 12, 82);
+
+        pdfTable(doc, dateLabel, {
+            startY: 86,
+            head: [['#', 'Haydovchi', 'Mashina', 'Km', 'Dorixona', 'Muammo', 'Ball', 'Baho']],
+            body: entries.map((x, i) => {
+                const a = pdfAnalysis(x.data);
+                const st = x.data.stats || {};
+                return [
+                    String(i + 1),
+                    x.drv.fullName || x.drv.shortName || '—',
+                    x.drv.car || '—',
+                    fmtKm(st.probeg),
+                    a.ownVisited + '/' + a.totalOwn,
+                    String(a.problemStops),
+                    a.score.final.toFixed(1),
+                    a.score.grade
+                ];
+            }),
+            columnStyles: {
+                0: { cellWidth: 10, halign: 'center' },
+                3: { halign: 'right' },
+                4: { halign: 'center' },
+                5: { halign: 'center' },
+                6: { halign: 'right', fontStyle: 'bold' },
+                7: { halign: 'center' }
+            }
+        });
+
+        // ── EACH DRIVER ────────────────────────────────────
+        entries.forEach((x, idx) => {
+            const d = x.data || {};
+            const a = pdfAnalysis(d);
+            const s = d.stats || {};
+            const stops = Array.isArray(d.stops) ? d.stops : [];
+            const fuel = [
+                s.gas > 0 ? fmtFuel(s.gas, 'm3') : '',
+                s.benzin > 0 ? fmtFuel(s.benzin, 'L') : ''
+            ].filter(Boolean).join(' + ') || '—';
+
+            doc.addPage();
+            pdfDrawHeader(doc, (idx + 1) + ' / ' + entries.length + '   ·   ' + dateLabel);
+
+            doc.setFillColor(12, 16, 22);
+            doc.rect(12, 32, 186, 20, 'F');
+            doc.setFillColor(201, 162, 39);
+            doc.rect(12, 32, 2.2, 20, 'F');
+            pdfF(doc, 'bold');
+            doc.setFontSize(13);
+            doc.setTextColor(244, 244, 242);
+            doc.text(String(x.drv.fullName || x.drv.shortName || 'Haydovchi'), 18, 41);
+            pdfF(doc, 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(201, 162, 39);
+            doc.text((x.drv.car || '') + '   ·   ' + (x.drv.routes || '—'), 18, 48);
+
+            pdfF(doc, 'bold');
+            doc.setFontSize(18);
+            doc.setTextColor(244, 244, 242);
+            doc.text(a.score.final.toFixed(1), 190, 42, { align: 'right' });
+            pdfF(doc, 'normal');
+            doc.setFontSize(6.5);
+            doc.setTextColor(201, 162, 39);
+            doc.text('BALL / 10  ·  ' + a.score.grade, 190, 48, { align: 'right' });
+
+            const kpis = [
+                ['MASOFA', fmtKm(s.probeg, 'km')],
+                ['DORIXONA', a.ownVisited + '/' + a.totalOwn],
+                ['BOSHQA YONALISH', String(a.otherDirection)],
+                ['MUAMMO', String(a.problemStops)],
+                ['MAKS. TEZLIK', fmtSpd(s.maxSpeed, 'km/h')],
+                ["YOQILG'I", fuel]
+            ];
+            kpis.forEach((k, i) => {
+                const col = i % 3, row = Math.floor(i / 3);
+                const x0 = 12 + col * 62, y0 = 56 + row * 16;
+                doc.setDrawColor(183, 190, 200);
+                doc.setFillColor(255, 255, 255);
+                doc.rect(x0, y0, 60, 14, 'FD');
+                doc.setFillColor(26, 74, 120);
+                doc.rect(x0, y0, 1.6, 14, 'F');
+                pdfF(doc, 'bold');
+                doc.setFontSize(6);
+                doc.setTextColor(92, 101, 115);
+                doc.text(k[0], x0 + 4, y0 + 5);
+                doc.setFontSize(10);
+                doc.setTextColor(18, 21, 28);
+                doc.text(String(k[1]), x0 + 4, y0 + 11);
+            });
+
+            let y = pdfSectionTitle(doc, 92, '1. Harakat korsatkichlari');
+            y = pdfTable(doc, dateLabel, {
+                startY: y,
+                body: [
+                    ['Yurilgan masofa', fmtKm(s.probeg, 'km')],
+                    ['Ish vaqti / motochas', s.motoChas || '—'],
+                    ["O'rtacha tezlik", s.avgSpeed ? fmtSpd(s.avgSpeed, 'km/h') : (s.probeg && s.motoChas && s.motoChas !== '—' ? fmtSpd(s.probeg / Math.max(parseTimeStr(s.motoChas)/3600, 0.1), 'km/h') : '—')],
+                    ['Poezdka soni', String(s.poezdok || 0)],
+                    ["To'xtash soni", String(s.stoyanok || stops.length || 0)],
+                    ["To'xtab turgan vaqt", s.totalStop || '—'],
+                    ['Maksimal tezlik', fmtSpd(s.maxSpeed, 'km/h')],
+                    ["Yoqilg'i", fuel]
+                ],
+                head: [['Kursatkich', 'Qiymat']],
+                columnStyles: {
+                    0: { cellWidth: 80, textColor: [92, 101, 115] },
+                    1: { fontStyle: 'bold' }
+                },
+                alternateRowStyles: { fillColor: [247, 248, 250] }
+            });
+
+            y = pdfNeedPage(doc, y + 8, 20, dateLabel);
+            y = pdfSectionTitle(doc, y, "2. Dorixona tahlili");
+            const missed = a.missedList.length ? a.missedList : ["Yo'q — barcha o'z dorixonalariga borilgan yoki royxat yo'q"];
+            const visited = stops.filter(t => t.matchType === 'own')
+                .map(t => (t.phName || t.place || '—') + (t.inTime ? '  (' + t.inTime + (t.duration ? ', ' + t.duration : '') + ')' : ''));
+            const probs = stops.filter(t => stopIsProblem(t, x.drv.car, dateVal))
+                .map(t => (t.place || '—') + (t.duration ? '  (' + t.duration + ')' : ''));
+            const vis = visited.length ? visited : ["Yo'q"];
+            const pr = probs.length ? probs : ["Yo'q"];
+            const nPh = Math.max(missed.length, vis.length, pr.length, 1);
+            const phRows = [];
+            for (let i = 0; i < nPh; i++) phRows.push([missed[i] || '', vis[i] || '', pr[i] || '']);
+            y = pdfTable(doc, dateLabel, {
+                startY: y,
+                head: [["O'tkazib yuborilgan", 'Borilgan (vaqt)', 'Muammoli toxtash']],
+                body: phRows,
+                styles: { font: VM_PDF_FONT, fontSize: 7.5, cellPadding: 1.7, overflow: 'linebreak' }
+            });
+
+            if (a.score.breakdown.length) {
+                y = pdfNeedPage(doc, y + 8, 20, dateLabel);
+                y = pdfSectionTitle(doc, y, '3. Ball hisobi');
+                y = pdfTable(doc, dateLabel, {
+                    startY: y,
+                    head: [['Tafsilot']],
+                    body: a.score.breakdown.map(line => [String(line).replace(/[✅🏆⚠️❌]/g, '').trim()]),
+                    columnStyles: { 0: { cellWidth: 186 } }
+                });
+            }
+
+            y = pdfNeedPage(doc, y + 8, 24, dateLabel);
+            y = pdfSectionTitle(doc, y, "4. Barcha to'xtashlar — ketma-ket");
+            const stopBody = stops.map((t, i) => [
+                String(i + 1),
+                t.place || '—',
+                t.phName && t.phName !== t.place ? t.phName : (t.matchType === 'own' ? (t.phName || '') : ''),
+                t.inTime || '—',
+                t.outTime || '—',
+                t.duration || '—',
+                pdfStopStatus(t, x.drv.car, dateVal)
+            ]);
+            y = pdfTable(doc, dateLabel, {
+                startY: y,
+                head: [['№', 'Joy / manzil', 'Dorixona', 'Kirish', 'Chiqish', 'Turgani', 'Holat']],
+                body: stopBody.length ? stopBody : [['—', "To'xtash yo'q", '', '—', '—', '—', '—']],
+                styles: { font: VM_PDF_FONT, fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+                columnStyles: {
+                    0: { cellWidth: 10, halign: 'center' },
+                    1: { cellWidth: 58 },
+                    2: { cellWidth: 36 },
+                    3: { cellWidth: 20 },
+                    4: { cellWidth: 20 },
+                    5: { cellWidth: 22 },
+                    6: { cellWidth: 20 }
+                }
+            });
+
+            const recs = (a.score.recommendations || [])
+                .map(r => String(r).replace(/[✅🏆⚠️❌]/g, '').trim())
+                .filter(Boolean);
+            if (recs.length) {
+                y = pdfNeedPage(doc, y + 8, 18, dateLabel);
+                y = pdfSectionTitle(doc, y, '5. Xulosa va tavsiyalar');
+                pdfF(doc, 'normal');
+                doc.setFontSize(8.5);
+                doc.setTextColor(42, 48, 58);
+                recs.forEach((r, i) => {
+                    const lines = doc.splitTextToSize((i + 1) + '.  ' + r, 186);
+                    y = pdfNeedPage(doc, y, lines.length * 4.5 + 2, dateLabel);
+                    doc.text(lines, 12, y);
+                    y += lines.length * 4.5 + 1.5;
+                });
+            }
+        });
+
+        pdfDrawFooter(doc, dateVal);
+        const fname = 'VaksinaMed_' + dateVal + '.pdf';
+        const blob = doc.output('blob');
+        if (!blob || blob.size < 800) {
+            throw new Error('PDF fayl bo\'sh chiqdi. Ctrl+F5 qilib qayta urinib koring.');
+        }
+        doc.save(fname);
+        showToast('PDF saqlandi: ' + fname + '  (' + entries.length + ' mashina)', 'success');
+    } catch (err) {
+        console.error(err);
+        showToast('PDF xato: ' + (err.message || err), 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+// ── 12. BARCHA EVENT HANDLER'LAR ────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const user = await vmMe();
+        vmApplyChrome(user);
+        vmGatePage(user);
+        vmStartHeartbeat();
+        document.getElementById('btn-logout')?.addEventListener('click', () => vmLogout());
+    } catch (e) {
+        return;
+    }
+
+    // Dorixona indeksini qurish
+    buildPharmIndex();
+
+    // Saqlangan ma'lumotlarni yuklash
+    loadAll();
+
+    // Haydovchini tanlash
+    if (!STATE.currentCar) STATE.currentCar = DRIVERS[0].car;
+    if (!STATE.currentDate) {
+        STATE.currentDate = dateStr(new Date());
+    }
+    enableDriverStripWheelScroll();
+
+    // Xarita plitkalarini ertaroq yuklash (bootstrap kutmasdan)
+    initMap();
+
+    if (window.VMOffice) {
+        await VMOffice.bootstrap();
+        if (typeof listenFleetNameOverrides === 'function') {
+            listenFleetNameOverrides(() => {
+                if (typeof buildPharmIndex === 'function') buildPharmIndex();
+                if (typeof renderDriverTabs === 'function') renderDriverTabs();
+                if (window.VMOffice && typeof VMOffice.renderFleetBoard === 'function') VMOffice.renderFleetBoard();
+                if (typeof renderFuelNormsTable === 'function') renderFuelNormsTable();
+                if (typeof refreshUI === 'function') refreshUI();
+            });
+        }
+    }
+
+    // Kalendarni ko'rsatish — UI darhol, og'ir so'rovlar fon
+    renderCalendar();
+    renderDriverTabs();
+    refreshUI();
+    setGpsUi(hasGpsConfig() ? 'on' : 'off');
+    // Server sync bor — brauzer GPS raqamlarini qayta yozmasin
+    if (!window.VMOffice) refreshDayKm(STATE.currentDate);
+    
+    // ── Avtomatik GPS (bootstrap dan keyin, UI bloklamasdan) ───────────────
+    setTimeout(async () => {
+        const todayStr = dateStr(new Date());
+        const st = (window.VMOffice && VMOffice.gpsStatus) || {};
+        let serverGps = !!st.configured;
+        updateGpsLastSyncUi(st.lastSync, st.running);
+        if (serverGps || hasGpsConfig()) setGpsUi('on');
+        await pollServerGpsStatus(!STATE.history.length);
+        // Bugun bo'sh/qisman — server cron natijasini kutamiz (Vercel 1-mashina yo'li emas)
+        const todayCars = STATE.data[todayStr] ? Object.keys(STATE.data[todayStr]).length : 0;
+        const fleetN = (typeof DRIVERS !== 'undefined' && DRIVERS.length) ? DRIVERS.length : 23;
+        if ((serverGps || hasGpsConfig()) && todayCars < fleetN) {
+            setGpsUi(todayCars ? 'partial' : 'sync', todayCars ? (todayCars + '/' + fleetN) : 'Yuklanmoqda');
+            showToast(
+                todayCars
+                    ? ('Bugun ' + todayCars + '/' + fleetN + ' — avto-yuklash davom etadi')
+                    : 'Kunlik GPS avto-yuklanmoqda…',
+                'info'
+            );
+            await pollServerGpsStatus(true);
+            // Dashboard ochiq — jim rejimda serverni uyg'otamiz (GitHub kechiksa ham)
+            try {
+                await nudgeServerGpsSync({
+                    configured: serverGps || hasGpsConfig(),
+                    fetched: todayCars,
+                    total: fleetN,
+                    lastSync: st.lastSync || '',
+                    lastDate: todayStr,
+                    running: !!st.running
+                });
+            } catch (_) {}
+        }
+        startGpsAutoSync();
+        if (!hasGpsConfig() && serverGps) {
+            showToast('GPS avto: Vercel cron + Dashboard ochiq bo\'lsa jim yangilash', 'info');
+        }
+    }, 800);
+
+    // ── Kalendar navigatsiya ───────────────────────────────
+    document.getElementById('cal-prev')?.addEventListener('click', () => {
+        CAL.m--; if (CAL.m < 0) { CAL.m = 11; CAL.y--; }
+        renderCalendar();
+    });
+    document.getElementById('cal-next')?.addEventListener('click', () => {
+        CAL.m++; if (CAL.m > 11) { CAL.m = 0; CAL.y++; }
+        renderCalendar();
+    });
+
+    // ── Fayl yuklash ──────────────────────────────────────
+    const fileInput = document.getElementById('file-input');
+    fileInput?.addEventListener('change', e => {
+        if (e.target.files.length) handleFileDrop(e.target.files);
+        e.target.value = '';
+    });
+
+    // ── Excel tugmalari ───────────────────────────────────
+    document.getElementById('btn-excel-upload')?.addEventListener('click',   () => fileInput?.click());
+    document.getElementById('btn-excel-upload-2')?.addEventListener('click', () => fileInput?.click());
+    document.getElementById('btn-excel-export')?.addEventListener('click', () => exportDayExcel());
+
+    async function quickServerGpsRefresh() {
+        if (STATE.gpsSyncBusy || STATE.gpsNudgeBusy) {
+            showToast('GPS yangilanmoqda — biroz kuting', 'info');
+            return;
+        }
+        const today = dateStr(new Date());
+        const dateVal = STATE.currentDate || today;
+        STATE.gpsSyncBusy = true;
+        setGpsUi('sync', 'Yangilanmoqda…');
+        showToast('Boomerang km yangilanmoqda…', 'info');
+        try {
+            // Serverda GPS token/parol bor — modal shart emas
+            const res = await vmApi('/api/office/gps/sync', {
+                method: 'POST',
+                body: JSON.stringify({
+                    date: dateVal,
+                    force: true,
+                    habit: false
+                })
+            });
+            const kmN = Number((res && res.kmRefresh && res.kmRefresh.updated) || 0);
+            const samples = (res && res.kmRefresh && res.kmRefresh.samples) || [];
+            await pollServerGpsStatus(true);
+            if (window.VMOffice) {
+                await VMOffice.loadReportIfNeeded(dateVal, true);
+                refreshUI();
+                VMOffice.renderFleetBoard();
+            }
+            if (kmN > 0) {
+                const tip = samples[0]
+                    ? (` · ${samples[0].car}: ${samples[0].old}→${samples[0].new}`)
+                    : '';
+                showToast('Km yangilandi: ' + kmN + ' mashina' + tip, 'success');
+            } else {
+                showToast('Sync tugadi — km o‘zgarmadi (GPS bilan bir xil yoki xato)', 'warn');
+            }
+        } catch (e) {
+            console.warn('quick gps refresh:', e);
+            showToast(String((e && e.message) || e || 'GPS yangilash xato').slice(0, 120), 'error');
+            try { await openGpsModal(); } catch (_e) {}
+        } finally {
+            STATE.gpsSyncBusy = false;
+            try { await pollServerGpsStatus(false); } catch (_e) {}
+        }
+    }
+
+    // ── GPS modal ─────────────────────────────────────────
+    const openGpsModal = async () => {
+        const host = document.getElementById('gps-host');
+        const user = document.getElementById('gps-user');
+        const tok  = document.getElementById('gps-token');
+        const dt   = document.getElementById('gps-date');
+        const pass = document.getElementById('gps-password');
+        let cfg = STATE.gpsConfig || {};
+
+        try {
+            const pub = await vmApi('/api/office/gps/config');
+            cfg = Object.assign({}, gpsConfigSafe(cfg), {
+                host: pub.host || cfg.host || '',
+                user: pub.user || cfg.user || '',
+                hasToken: !!pub.hasToken,
+                hasPassword: !!pub.hasPassword,
+                serverConfigured: !!pub.configured
+            });
+            STATE.gpsConfig = cfg;
+            saveAll();
+        } catch (e) {}
+
+        if (host) host.value = cfg.host || 'http://bms1.gpsavto.uz';
+        if (user) user.value = cfg.user || '';
+        // Parol/token hech qachon forma maydoniga to'ldirilmaydi
+        if (tok) {
+            tok.value = '';
+            tok.placeholder = cfg.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : 'Wialon token';
+        }
+        if (pass) {
+            pass.value = '';
+            pass.placeholder = cfg.hasPassword ? 'Saqlangan — o‘zgartirmasangiz qoladi' : '••••••••';
+        }
+        
+        const todayStr = dateStr(new Date());
+        if (dt) dt.value = STATE.currentDate || todayStr;
+
+        document.getElementById('sync-progress').style.display = 'none';
+        document.getElementById('sync-details').innerHTML = '';
+        document.getElementById('sync-status').textContent = '';
+        document.getElementById('modal-gps').classList.add('open');
+        if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document.getElementById('modal-gps'));
+    };
+    document.getElementById('btn-gps-sync')?.addEventListener('click',   () => openGpsModal());
+    document.getElementById('btn-gps-sync-2')?.addEventListener('click', () => {
+        // YANGILASH: serverda GPS bor bo'lsa to'g'ridan sync (modal ochmasdan)
+        if (hasGpsConfig()) {
+            quickServerGpsRefresh();
+            return;
+        }
+        openGpsModal();
+    });
+
+    const yday = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return dateStr(d);
+    };
+    document.getElementById('gps-date-yesterday')?.addEventListener('click', () => {
+        const el = document.getElementById('gps-date');
+        if (el) el.value = yday();
+    });
+    document.getElementById('gps-date-today')?.addEventListener('click', () => {
+        const el = document.getElementById('gps-date');
+        if (el) el.value = dateStr(new Date());
+    });
+
+    // Modal ichida sozlamalarni ochish (majburiy ochish uchun headerdagi ikonka orqali yozsa bo'ladi, biz ulanish tugmasiga e'tibor qaratamiz)
+
+    // GPS ulanish tugmasi
+    document.getElementById('btn-gps-connect')?.addEventListener('click', async () => {
+        const host  = document.getElementById('gps-host')?.value.trim();
+        const user  = document.getElementById('gps-user')?.value.trim();
+        const pass  = document.getElementById('gps-password')?.value.trim();
+        const token = (document.getElementById('gps-token')?.value || '').replace(/\s+/g, '').trim();
+        const date  = document.getElementById('gps-date')?.value;
+        const prev = STATE.gpsConfig || {};
+        if (!date) { showToast('Sanani kiriting!', 'warn'); return; }
+        if (!user && !token && !prev.hasToken && !prev.hasPassword) {
+            showToast('Login yoki Token kiriting!', 'warn');
+            return;
+        }
+        if (user && !pass && !token && !prev.hasPassword && !prev.hasToken) {
+            showToast('Parol yoki token kiriting!', 'warn');
+            return;
+        }
+
+        // Maxfiy maydonlar faqat serverga yuboriladi, localStorage ga yozilmaydi
+        const forServer = { host, user, password: pass || '', token: token || '' };
+        try {
+            await saveGpsConfigToServer(forServer);
+        } catch (e) {}
+        // Brauzer fallback uchun shu sessiyadagi login ma'lumotini beramiz
+        await syncFromGPS(date, forServer, { force: true });
+    });
+
+    // ── Chop etish / PDF ──────────────────────────────────
+    document.getElementById('btn-print')?.addEventListener('click', () => {
+        downloadPdfReport();
+    });
+
+    // ── Sozlamalar modal ──────────────────────────────────
+    document.getElementById('btn-settings')?.addEventListener('click', () => {
+        renderFuelNormsTable();
+        document.getElementById('modal-settings').classList.add('open');
+    });
+
+    // Yoqilg'i normalarini saqlash
+    document.getElementById('btn-save-settings')?.addEventListener('click', () => {
+        document.querySelectorAll('[data-fuel-car]').forEach(row => {
+            const car   = row.dataset.fuelCar;
+            const gas   = parseFloat(row.querySelector('.fuel-gas')?.value) || 14;
+            const ben   = parseFloat(row.querySelector('.fuel-ben')?.value) || 12;
+            if (!STATE.fuelNorms[car]) STATE.fuelNorms[car] = {};
+            STATE.fuelNorms[car].gas    = gas;
+            STATE.fuelNorms[car].benzin = ben;
+        });
+        saveAll();
+        showToast('✅ Sozlamalar saqlandi!', 'success');
+        document.getElementById('modal-settings').classList.remove('open');
+    });
+
+    // ── Export JSON ───────────────────────────────────────
+    document.getElementById('btn-export-json')?.addEventListener('click', () => {
+        const payload = JSON.stringify({
+            data: STATE.data,
+            history: STATE.history,
+            fuelNorms: STATE.fuelNorms,
+            gpsConfig: gpsConfigSafe(STATE.gpsConfig)
+        }, null, 2);
+        const blob = new Blob([payload], { type: 'application/json' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url;
+        a.download = `vaksinamed_backup_${dateStr(new Date())}.json`;
+        a.click(); URL.revokeObjectURL(url);
+        showToast('📤 Zaxira fayl yuklab olindi!', 'success');
+    });
+
+    // ── Import JSON ───────────────────────────────────────
+    const importInput = document.getElementById('import-input');
+    document.getElementById('btn-import-json')?.addEventListener('click', () => importInput?.click());
+    importInput?.addEventListener('change', e => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async ev => {
+            try {
+                const p = JSON.parse(ev.target.result);
+                if (p.data || p.driverData) {
+                    const d = p.data || p.driverData || {};
+                    Object.assign(STATE.data, d);
+                    const dates = p.history || Object.keys(d);
+                    dates.forEach(dt => {
+                        if (!STATE.history.includes(dt)) STATE.history.push(dt);
+                    });
+                    if (p.fuelNorms) STATE.fuelNorms = p.fuelNorms;
+                    if (p.gpsConfig) STATE.gpsConfig = gpsConfigSafe(p.gpsConfig);
+                    saveAll();
+                    renderCalendar();
+                    renderDriverTabs();
+                    refreshUI();
+                    showToast('Zaxira yuklandi, serverga sinxronlanmoqda...', 'info');
+                    const sync = await syncReportsToServer(dates);
+                    showToast(`Zaxira: ${dates.length} kun · server ${sync.ok} ta`, sync.fail ? 'warn' : 'success');
+                } else { showToast('Fayl formati noto\'g\'ri!', 'error'); }
+            } catch(err) { showToast('JSON o\'qib bo\'lmadi: ' + err.message, 'error'); }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    });
+
+    // ── Ma'lumotlarni o'chirish ───────────────────────────
+    document.getElementById('btn-clear-data')?.addEventListener('click', () => {
+        if (confirm('⚠️ Barcha saqlangan ma\'lumotlar o\'chiriladi. Davom etasizmi?')) {
+            localStorage.removeItem('vm_gps_v3');
+            STATE.data = {}; STATE.history = [];
+            STATE.currentDate = dateStr(new Date());
+            const now = new Date(); CAL.y = now.getFullYear(); CAL.m = now.getMonth();
+            renderCalendar(); renderDriverTabs(); refreshUI();
+            showToast('🗑️ Barcha ma\'lumotlar tozalandi.', 'warn');
+            document.getElementById('modal-settings').classList.remove('open');
+        }
+    });
+
+    // ── Xaritani yangilash ────────────────────────────────
+    document.getElementById('btn-refresh-map')?.addEventListener('click', async () => {
+        initMap();
+        const dd = STATE.currentDate && STATE.data[STATE.currentDate]
+            ? STATE.data[STATE.currentDate][STATE.currentCar]
+            : null;
+        // Trek yo'q bo'lsa — GPS sessiyasi bilan qayta yuklash
+        if (dd && (!dd.points || dd.points.length < 2) && window.wialonGPS) {
+            showToast('Marshrut GPS dan yuklanmoqda…', 'info');
+            if (!wialonGPS.sessionId && STATE.gpsConfig) {
+                try { await wialonGPS.login(STATE.gpsConfig); } catch (e) {}
+            }
+            await ensureTrackPoints(dd);
+        }
+        await refreshMap(dd && dd.stops ? dd.stops : null, dd && dd.points ? dd.points : null);
+        if (dd && ((dd.points && dd.points.length) || (dd.stops && dd.stops.length))) {
+            showToast('Xarita yangilandi', 'info');
+        } else {
+            showToast('Xarita ochildi. Marshrut uchun GPS YUKLASH bosing.', 'info');
+        }
+    });
+
+    // ── Drag & Drop ───────────────────────────────────────
+    const overlay = document.getElementById('drop-overlay');
+    let dragN = 0;
+    document.addEventListener('dragenter', e => { e.preventDefault(); dragN++; if (overlay) overlay.style.display = 'flex'; });
+    document.addEventListener('dragleave', e => { dragN--; if (dragN <= 0) { dragN = 0; if (overlay) overlay.style.display = 'none'; }});
+    document.addEventListener('dragover',  e => e.preventDefault());
+    document.addEventListener('drop', e => {
+        e.preventDefault(); dragN = 0;
+        if (overlay) overlay.style.display = 'none';
+        if (e.dataTransfer.files.length) handleFileDrop(e.dataTransfer.files);
+    });
+
+    // ── Modal backdrop yopish ─────────────────────────────
+    document.querySelectorAll('.modal-bg').forEach(m => {
+        m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+    });
+
+    // ── Klaviatura (Escape) ───────────────────────────────
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
+        }
+    });
+});
+
+// ── Yoqilg'i norma jadvali ─────────────────────────────────
+function renderFuelNormsTable() {
+    const tbody = document.getElementById('fuel-norms-table');
+    if (!tbody) return;
+    tbody.innerHTML = DRIVERS.map(d => {
+        const ui = typeof resolveDriver === 'function' ? resolveDriver(d.car, d) : d;
+        const norm = STATE.fuelNorms[d.car] || STATE.fuelNorms;
+        const gas  = typeof norm === 'object' && norm.gas  !== undefined ? (norm[d.car]?.gas  ?? norm.gas)  : 14;
+        const ben  = typeof norm === 'object' && norm.benzin !== undefined ? (norm[d.car]?.benzin ?? norm.benzin) : 12;
+        return `<tr data-fuel-car="${d.car}">
+            <td style="font-size:13px;font-weight:600;">${ui.shortName}</td>
+            <td style="font-size:12px;color:#5a7190;font-family:monospace;">${d.car}</td>
+            <td><input class="fuel-gas" type="number" value="${gas}" min="5" max="30" step="0.5"
+                style="width:70px;padding:5px 8px;border:1.5px solid #c5d4e6;border-radius:7px;font-family:inherit;font-size:13px;"></td>
+            <td><input class="fuel-ben" type="number" value="${ben}" min="5" max="30" step="0.5"
+                style="width:70px;padding:5px 8px;border:1.5px solid #c5d4e6;border-radius:7px;font-family:inherit;font-size:13px;"></td>
+        </tr>`;
+    }).join('');
+}
+
+// Global funksiyalar (HTML onclick uchun)
+window.selectDate   = selectDate;
+window.selectDriver = selectDriver;
+window.calSelectDate = selectDate;

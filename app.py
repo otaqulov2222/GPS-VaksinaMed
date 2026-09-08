@@ -311,11 +311,21 @@ async def handle(request: Request, full_path: str = ""):
                 "ok": True,
                 "ts": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "lite": True,
+                "build": "m96",
             }
         ).encode("utf-8")
+        headers = {
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "X-VM-Build": "m96",
+        }
         if request.method == "HEAD":
-            return Response(status_code=200, media_type="application/json")
-        return Response(content=body, status_code=200, media_type="application/json")
+            return Response(status_code=200, headers=headers, media_type="application/json")
+        return Response(
+            content=body,
+            status_code=200,
+            headers=headers,
+            media_type="application/json",
+        )
 
     # Cron: 1) GitHub uyg'otish (ixtiyoriy)  2) Vercel o'zi sync (asosiy ishonch)
     if path == "/api/cron/gps-sync" and request.method in ("GET", "POST", "HEAD"):

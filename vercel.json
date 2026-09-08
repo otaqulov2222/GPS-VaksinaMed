@@ -1,12 +1,21 @@
-{
+﻿{
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "functions": {
     "app.py": {
       "maxDuration": 300,
-      "excludeFiles": "{data/**,scripts/**,.git/**,terminals/**,agent-transcripts/**,start.bat,Procfile,render.yaml,.vercelignore}"
+      "excludeFiles": "{data/**,scripts/**,.git/**,terminals/**,agent-transcripts/**,node_modules/**,kunlik*/**,yunalishlar*/**,start.bat,Procfile,render.yaml,.vercelignore,app-m92.js,app-m94.js,app-m95.js,**/*.xlsx,**/*.rtf}"
     }
   },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" },
+        { "key": "X-VM-Build", "value": "m96" }
+      ]
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/gps-sync",

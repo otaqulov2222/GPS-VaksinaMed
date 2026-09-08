@@ -63,6 +63,9 @@ BLOCKED_NAMES = {
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
+# Deploy/kesh tekshiruvi — /api/health da ko'rinadi
+VM_BUILD = "m96"
+
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
 _LOGIN_RL_LOCK = threading.Lock()
@@ -177,8 +180,9 @@ def find_by_plate(mapping, plate):
 
 def home_for(sess):
     if is_driver(sess):
-        return "/driver.html"
-    return "/"
+        return "/driver.html?vm=%s" % VM_BUILD
+    # Eski login.html ham shu URL ga o'tadi (d.redirect)
+    return "/?vm=%s&t=%d" % (VM_BUILD, int(time.time()))
 
 
 def as_num(v, default=0.0):
@@ -2310,19 +2314,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         path = (self.path or "").split("?", 1)[0].lower()
-        if is_production() and path.endswith(
-            (".js", ".css", ".svg", ".woff", ".woff2", ".png", ".jpg", ".webp", ".ico")
+        # Hech qachon JS/CSS/HTML/API ni immutable qilma — CDN 401 ni 24s zaharlardi
+        if (
+            path.startswith("/api/")
+            or path.endswith((".html", ".js", ".css", ".map"))
+            or path in ("/", "")
         ):
-            # JS/CSS: query ?v= bilan yangilanadi — immutable 24s keshlash eski xaritani qoldirardi
-            if path.endswith((".js", ".css")):
-                self.send_header("Cache-Control", "no-cache, must-revalidate")
-            else:
-                self.send_header("Cache-Control", "public, max-age=86400, immutable")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        elif is_production() and path.endswith(
+            (".svg", ".woff", ".woff2", ".png", ".jpg", ".webp", ".ico")
+        ):
+            self.send_header("Cache-Control", "public, max-age=3600")
         else:
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.send_header("X-VM-Build", VM_BUILD)
         super().end_headers()
 
     def client_ip(self):
@@ -2372,6 +2380,168 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             )
         self.end_headers()
         self.wfile.write(raw)
+
+    def send_vm_boot_js(self):
+        """Xarita raqamlarini 1,2,3… qilish — API orqali (HTML/JS keshidan mustaqil)."""
+        js = r"""
+(function(){
+  var BUILD=%BUILD%;
+  window.__VM_BUILD=BUILD;
+  function visitScore(inTime){
+    var t=0;
+    try{
+      if(typeof parseTimeStr==='function') t=parseTimeStr(inTime)||0;
+      else{
+        var m=String(inTime||'').match(/(\d{1,2}):(\d{2})/);
+        if(m) t=(+m[1])*3600+(+m[2])*60;
+      }
+    }catch(e){}
+    if(t&&t<4*3600) t+=86400;
+    return t||1e12;
+  }
+  function dayStops(){
+    try{
+      var day=STATE&&STATE.data&&STATE.currentDate&&STATE.data[STATE.currentDate]
+        ?STATE.data[STATE.currentDate][STATE.currentCar]:null;
+      var stops=(day&&day.stops)||[];
+      var track=(day&&day.points)||[];
+      if(typeof prepareStopsList==='function') stops=prepareStopsList(stops);
+      if(typeof hydrateStopCoords==='function') stops=hydrateStopCoords(stops,track);
+      return stops.filter(function(s){
+        if(typeof isLongOfficeStop==='function'&&isLongOfficeStop(s)) return false;
+        return s&&s.lat&&s.lng;
+      });
+    }catch(e){return [];}
+  }
+  function nearestStop(ll,stops){
+    var best=null,bestD=1e99,i,s,dlat,dlng,d;
+    for(i=0;i<stops.length;i++){
+      s=stops[i]; if(!s||!s.lat||!s.lng) continue;
+      dlat=Number(s.lat)-ll.lat; dlng=Number(s.lng)-ll.lng;
+      d=dlat*dlat+dlng*dlng;
+      if(d<bestD){bestD=d;best=s;}
+    }
+    return best;
+  }
+  function paintBanner(ok,n){
+    var ban=document.getElementById('vm-build-banner');
+    if(!ban){
+      ban=document.createElement('div');
+      ban.id='vm-build-banner';
+      ban.style.cssText='background:#c0392b;color:#fff;font:700 13px/1.2 monospace;padding:8px 12px;z-index:99999;position:relative';
+      var head=document.querySelector('.map-card .map-head')||document.querySelector('.map-card');
+      if(head&&head.parentNode) head.parentNode.insertBefore(ban, head.nextSibling);
+      else document.body.insertBefore(ban, document.body.firstChild);
+    }
+    ban.style.background=ok?'#1a7f37':'#c0392b';
+    ban.textContent=ok?('BUILD '+BUILD+' ✓ pinlar 1…'+n):('BUILD '+BUILD+' — xarita yuklanmoqda…');
+    var stamp=document.getElementById('vm-build');
+    if(stamp){ stamp.textContent=ok?(BUILD+'✓ '+n):BUILD; stamp.style.background=ok?'#1a7f37':'#c0392b'; }
+    var ov=document.getElementById('map-overlay-info');
+    if(ov&&ok){
+      var base=String(ov.textContent||'').replace(/\s*·\s*m\d+✓?/g,'').trim();
+      ov.textContent=(base?base+' · ':'')+BUILD;
+      ov.style.display='block';
+    }
+  }
+  function forcePins(){
+    if(!window.STATE||!STATE.map||typeof L==='undefined'){ paintBanner(false,0); return false; }
+    var pins=[], stops=dayStops();
+    function consider(layer){
+      if(!layer||typeof layer.getLatLng!=='function') return;
+      if(!(layer instanceof L.Marker)) return;
+      var el=null; try{ el=layer.getElement&&layer.getElement(); }catch(e1){}
+      if(!el) return;
+      var dot=el.querySelector('.vm-pin-dot');
+      if(!dot) return;
+      var t=String(dot.textContent||'').trim();
+      if(t==='A'||t==='B'||t==='O'||t==='R') return;
+      if(!/^\d+$/.test(t)) return;
+      var ll=layer.getLatLng();
+      var st=nearestStop(ll,stops);
+      pins.push({dot:dot,score:st?visitScore(st.inTime):1e12});
+    }
+    try{ STATE.map.eachLayer(consider); }catch(e2){}
+    if(STATE.mapMarkers&&STATE.mapMarkers.length) STATE.mapMarkers.forEach(consider);
+    var seen=new Set();
+    pins=pins.filter(function(p){ if(seen.has(p.dot)) return false; seen.add(p.dot); return true; });
+    if(pins.length<1){ paintBanner(false,0); return false; }
+    pins.sort(function(a,b){ return a.score-b.score; });
+    pins.forEach(function(p,i){ p.dot.textContent=String(i+1); });
+    paintBanner(true,pins.length);
+    return true;
+  }
+  function patchRefresh(){
+    if(typeof window.refreshMap!=='function'||window.refreshMap._vmBoot) return;
+    var orig=window.refreshMap;
+    window.refreshMap=async function(){
+      var ret=await orig.apply(this,arguments);
+      setTimeout(forcePins,50);
+      setTimeout(forcePins,400);
+      setTimeout(forcePins,1200);
+      return ret;
+    };
+    window.refreshMap._vmBoot=true;
+  }
+  function boot(){
+    paintBanner(false,0);
+    patchRefresh();
+    setTimeout(forcePins,500);
+    setTimeout(forcePins,1500);
+    setTimeout(forcePins,3000);
+    setInterval(forcePins,4000);
+    var btn=document.getElementById('btn-refresh-map');
+    if(btn) btn.addEventListener('click',function(){ setTimeout(forcePins,300); setTimeout(forcePins,1000); });
+  }
+  if(document.readyState==='complete') boot();
+  else window.addEventListener('load',boot);
+})();
+""".replace("%BUILD%", json.dumps(VM_BUILD))
+        raw = js.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/javascript; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def serve_patched_html(self, filename):
+        """index.html ni disktan o'qib, build banner + /api/vm-boot.js qo'shadi."""
+        fpath = os.path.join(DIRECTORY, filename)
+        with open(fpath, "r", encoding="utf-8") as f:
+            html = f.read()
+        if filename == "index.html":
+            boot = '<script src="/api/vm-boot.js?v=%s"></script>\n' % VM_BUILD
+            banner = (
+                '<div id="vm-build-banner" style="background:#c0392b;color:#fff;'
+                'font:700 13px/1.2 IBM Plex Mono,monospace;padding:8px 12px">'
+                "BUILD %s — agar qizil satr yo'q bo'lsa Ctrl+Shift+R</div>\n" % VM_BUILD
+            )
+            if "vm-build-banner" not in html:
+                if '<div class="map-legend">' in html:
+                    html = html.replace(
+                        '<div class="map-legend">',
+                        banner + '<div class="map-legend">',
+                        1,
+                    )
+                else:
+                    html = html.replace("<body>", "<body>\n" + banner, 1)
+            if "/api/vm-boot.js" not in html:
+                html = html.replace("</body>", boot + "</body>", 1)
+            if "VM_BUILD" not in html and "__VM_BUILD" not in html:
+                html = html.replace(
+                    "<head>",
+                    "<head>\n<script>window.__VM_BUILD=%s</script>" % json.dumps(VM_BUILD),
+                    1,
+                )
+            if ("[%s]" % VM_BUILD) not in html:
+                html = html.replace("<title>", "<title>[%s] " % VM_BUILD, 1)
+        raw = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(raw)
 
     def redirect(self, loc):
         self.send_response(302)
@@ -2568,9 +2738,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if is_driver(sess):
                 self.redirect("/driver.html")
                 return
-            if path == "/":
-                self.path = "/index.html"
-            return super().do_GET()
+            if path == "/fuel.html":
+                self.path = "/fuel.html"
+                return super().do_GET()
+            # index — disktan + majburiy boot inject (eski HTML kesh bo'lsa ham)
+            return self.serve_patched_html("index.html")
 
         if path == "/attendance.html":
             if not sess:
@@ -2626,12 +2798,30 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             payload = {
                 "ok": True,
                 "ts": iso_now(),
+                "build": VM_BUILD,
                 "production": is_production(),
                 "serverless": is_serverless(),
             }
             if STORE:
                 payload["persist"] = STORE.persist_info()
+            # Diskdagi login.html yangilanganmi — diagnostika
+            try:
+                login_p = os.path.join(DIRECTORY, "login.html")
+                with open(login_p, "r", encoding="utf-8") as f:
+                    login_txt = f.read()
+                payload["loginHasBuild"] = ("cb=m95" in login_txt) or ("cb=m96" in login_txt) or (VM_BUILD in login_txt)
+                payload["hasAppM96"] = os.path.isfile(os.path.join(DIRECTORY, "app-m96.js"))
+            except Exception as e:
+                payload["diskErr"] = str(e)[:80]
             self.send_json(payload)
+            return
+
+        if path == "/api/vm-build":
+            self.send_json({"ok": True, "build": VM_BUILD})
+            return
+
+        if path == "/api/vm-boot.js":
+            self.send_vm_boot_js()
             return
 
         if path == "/api/cron/gps-sync":
