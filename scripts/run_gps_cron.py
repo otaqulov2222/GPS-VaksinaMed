@@ -57,6 +57,24 @@ def _newest_synced_at(cars):
     return best
 
 
+def _oldest_synced_at(cars):
+    if not isinstance(cars, dict) or not cars:
+        return 0
+    oldest = None
+    for r in cars.values():
+        if not isinstance(r, dict):
+            return 0
+        try:
+            t = int(r.get("syncedAt") or 0)
+        except Exception:
+            t = 0
+        if not t:
+            return 0
+        if oldest is None or t < oldest:
+            oldest = t
+    return int(oldest or 0)
+
+
 def _should_force_refresh(cars, total_fleet, now_ts, hour):
     if total_fleet <= 0:
         return False
@@ -65,10 +83,10 @@ def _should_force_refresh(cars, total_fleet, now_ts, hour):
         return False
     if hour < 6 or hour > 22:
         return False
-    newest = _newest_synced_at(cars)
-    if not newest:
+    oldest = _oldest_synced_at(cars)
+    if not oldest:
         return True
-    return (now_ts - newest) >= REFRESH_EVERY_SEC
+    return (now_ts - oldest) >= REFRESH_EVERY_SEC
 
 
 def run_once():
@@ -171,9 +189,10 @@ def run_once():
                 cars=len(cars),
                 error="",
                 date=d,
-                message="Tayyor %d/%d" % (synced, target),
+                message="Tekshirildi — ma'lumot yangi",
                 fetched=synced,
                 total=target,
+                touch_last_sync=False,
             )
             result = {
                 "ok": True,

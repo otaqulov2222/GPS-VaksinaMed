@@ -1424,7 +1424,8 @@ def sync_today(
 ):
     """
     GPS sync. time_budget_sec / max_cars — Vercel 504 oldini olish (qisqa bo'laklar).
-    force=True — kunni yangidan; force=False — faqat syncedAt yo'q mashinalar.
+    force=True — eng eski mashinalardan qayta tortish (hammasini birdan o'chirmaydi).
+    force=False — faqat syncedAt yo'q mashinalar.
     only_plates — faqat shu raqam(lar); haydovchi kabineti uchun bitta mashina.
     """
     import time
@@ -1504,10 +1505,9 @@ def sync_today(
         if isinstance(prev, dict) and isinstance(prev.get("cars"), dict):
             prev_cars = dict(prev.get("cars") or {})
 
-        # Chunked sync: ESKI mashinalarni O'CHIRMAYMIZ (aks holda 1/23 → 12/23 bo'lib qoladi).
-        # force=True: syncedAt tozalanadi — barcha mashina qayta tortiladi, lekin ekranda eski ma'lumot turadi.
-        # only_plates + force: faqat shu mashina(lar) — qolganlariga tegilmaydi.
-        # budget=None (GitHub cron): ham merge — hech qachon cars={} bilan o'chirmaymiz.
+        # force=True: eng ESKI syncedAt birinchi (hammasini birdan tozalamaymiz —
+        # aks holda 90s budgetda faqat bir nechtasi yangilanib, Oxirgi chalkashardi).
+        # force=False: faqat syncedAt yo'q mashinalar.
         cars = dict(prev_cars)
 
         def _car_in_only(car_key, row=None):
@@ -1520,16 +1520,14 @@ def sync_today(
             return False
 
         if force:
-            for _car, row in list(cars.items()):
-                if not isinstance(row, dict):
-                    continue
-                if only_set and not _car_in_only(_car, row):
-                    continue
-                row = dict(row)
-                row.pop("syncedAt", None)
-                row["stale"] = True
-                cars[_car] = row
-            jobs = list(all_jobs)
+            jobs = sorted(
+                list(all_jobs),
+                key=lambda ud: int(
+                    (cars.get(ud[1]["car"]) or {}).get("syncedAt") or 0
+                ),
+            )
+            if only_set:
+                jobs = [ud for ud in jobs if compact_car(ud[1].get("car")) in only_set]
         else:
             jobs = [
                 (u, d)
@@ -1547,9 +1545,10 @@ def sync_today(
                 cars=len(cars),
                 error="",
                 date=date_str,
-                message="Tayyor %d/%d" % (synced_n, total_fleet),
+                message="Tekshirildi — ma'lumot yangi",
                 fetched=synced_n,
                 total=total_fleet,
+                touch_last_sync=False,
             )
             return {
                 "ok": True,
@@ -1646,7 +1645,11 @@ def sync_today(
         err_txt = ("; ".join(errors[:5]) + ("…" if len(errors) > 5 else "")) if errors else ""
         if partial and not err_txt:
             err_txt = "Qisman: %d/%d mashina" % (synced_n, total_fleet)
-        msg = ("Qisman %d/%d — davom etadi" % (synced_n, total_fleet)) if partial else ("Tayyor %d/%d" % (synced_n, total_fleet))
+        msg = (
+            ("Qisman yangilandi %d/%d — davom etadi" % (synced_n, total_fleet))
+            if partial
+            else ("Yangilandi %d/%d" % (done, total_fleet) if done else ("Tayyor %d/%d" % (synced_n, total_fleet)))
+        )
         _status(
             running=False,
             cars=len(cars),
@@ -1655,6 +1658,7 @@ def sync_today(
             message=msg,
             fetched=synced_n,
             total=total_fleet,
+            touch_last_sync=bool(done > 0),
         )
         return {
             "ok": done > 0 or synced_n > 0,

@@ -1194,7 +1194,7 @@ async function refreshMap(stops, points) {
         const bits = [];
         if (km > 0) bits.push(km.toFixed(2) + ' km');
         if (track.length) bits.push(track.length + ' GPS nuqta');
-        bits.push(markerStops.length + ' to\'xtash');
+        bits.push(list.length + ' to\'xtash');
         setMapOverlay(bits.join(' · '));
     }
 
@@ -2146,6 +2146,7 @@ function updateGpsLastSyncUi(iso, running, extra) {
     let showMsg = msg;
     if (/^xato$/i.test(msg) && total > 0 && fetched >= total) showMsg = '';
     else if (/^xato$/i.test(msg) && ex.error) showMsg = String(ex.error).slice(0, 60);
+    else if (/tekshirildi/i.test(msg)) showMsg = ''; // Oxirgi o'zgarmagan — alohida chalkashtirmaymiz
     if (showMsg && !/tayyor/i.test(showMsg)) parts.push(showMsg);
     el.textContent = parts.length ? parts.join(' · ') : 'Hali yangilanmagan';
 }

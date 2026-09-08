@@ -1297,7 +1297,18 @@ class OfficeStore:
             "habit": "daily-full",
         }
 
-    def set_gps_status(self, running=False, cars=0, error="", date="", message="", job_id=None, fetched=None, total=None):
+    def set_gps_status(
+        self,
+        running=False,
+        cars=0,
+        error="",
+        date="",
+        message="",
+        job_id=None,
+        fetched=None,
+        total=None,
+        touch_last_sync=True,
+    ):
         with self.lock:
             st = self._load("office:gps:status", {})
             if not isinstance(st, dict):
@@ -1331,8 +1342,12 @@ class OfficeStore:
             else:
                 st["error"] = ""
             st["cars"] = int(cars or st.get("cars") or 0)
-            st["lastSync"] = iso_now()
-            st["lastDate"] = str(date or st.get("syncDate") or "")[:12]
+            # SKIP/tekshiruv — Oxirgi vaqtni yangilamaslik (faqat haqiqiy tortishda)
+            if touch_last_sync:
+                st["lastSync"] = iso_now()
+                st["lastDate"] = str(date or st.get("syncDate") or "")[:12]
+            elif date:
+                st["lastDate"] = str(date)[:12]
             if job_id is not None:
                 st["lastJobId"] = int(job_id)
                 st["currentJobId"] = int(job_id)

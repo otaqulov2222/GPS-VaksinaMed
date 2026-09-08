@@ -117,6 +117,25 @@ def _newest_synced_at(cars) -> int:
     return best
 
 
+def _oldest_synced_at(cars) -> int:
+    """0 = hech bo'lmagan / yetishmagan — darhol yangilash kerak."""
+    if not isinstance(cars, dict) or not cars:
+        return 0
+    oldest = None
+    for r in cars.values():
+        if not isinstance(r, dict):
+            return 0
+        try:
+            t = int(r.get("syncedAt") or 0)
+        except Exception:
+            t = 0
+        if not t:
+            return 0
+        if oldest is None or t < oldest:
+            oldest = t
+    return int(oldest or 0)
+
+
 def _vercel_gps_sync_backup() -> dict:
     """
     Asosiy ishonch: Vercel cron o'zi ma'lumot tortadi (GitHub schedule kechiksa ham).
@@ -152,8 +171,10 @@ def _vercel_gps_sync_backup() -> dict:
             cars = {}
         synced = _count_synced(cars)
         newest = _newest_synced_at(cars)
+        oldest = _oldest_synced_at(cars)
         now_ts = int(time.time())
-        stale = (not newest) or ((now_ts - newest) >= 180)
+        # Eng ESKI mashina 3 daqiqadan eski bo'lsa — yangilash (bitta yangi bo'lsa yetmaydi)
+        stale = (not oldest) or ((now_ts - oldest) >= 180)
         new_day = fleet_n > 0 and synced == 0
         incomplete = fleet_n > 0 and synced < fleet_n
 
@@ -163,9 +184,10 @@ def _vercel_gps_sync_backup() -> dict:
                 cars=len(cars),
                 error="",
                 date=d,
-                message="Tayyor %d/%d" % (synced, max(fleet_n, synced, 1)),
+                message="Tekshirildi — ma'lumot yangi",
                 fetched=synced,
                 total=max(fleet_n, synced, 1),
+                touch_last_sync=False,
             )
             return {
                 "ok": True,
@@ -173,6 +195,8 @@ def _vercel_gps_sync_backup() -> dict:
                 "date": d,
                 "fetched": synced,
                 "total": fleet_n or synced,
+                "newest": newest,
+                "oldest": oldest,
                 "elapsed": round(time.time() - t0, 2),
             }
 
