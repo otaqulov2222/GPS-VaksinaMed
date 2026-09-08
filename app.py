@@ -201,13 +201,14 @@ def _vercel_gps_sync_backup() -> dict:
             }
 
         force = bool(new_day or stale)
+        # maxDuration=300 — to'liqroq park yangilash (23 mashina)
         result = (
             gps_sync.sync_today(
                 office,
                 directory,
                 d,
                 saved_by="vercel-cron",
-                time_budget_sec=90,
+                time_budget_sec=200,
                 parallel=True,
                 force=force,
             )
