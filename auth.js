@@ -124,22 +124,28 @@ function vmEnsureLiveNav() {
         if (!link) {
             link = document.createElement('a');
             link.href = '/live.html';
-            link.className = 'nav-link';
+            link.className = 'nav-link staff-only';
             link.id = 'nav-live';
             link.textContent = 'Live';
-            const fuel = nav.querySelector('#nav-fuel, a[href="/fuel.html"], a[href="fuel.html"]');
-            const dav = nav.querySelector('#nav-davomat, a[href="/attendance.html"]');
+            const fuel = nav.querySelector('#nav-fuel, a[href="/fuel.html"], a[href="fuel.html"], a[href*="fuel"]');
+            const dav = nav.querySelector('#nav-davomat, a[href="/attendance.html"], a[href*="attendance"]');
             if (fuel) fuel.insertAdjacentElement('afterend', link);
             else if (dav) dav.insertAdjacentElement('beforebegin', link);
             else nav.appendChild(link);
         } else {
             link.textContent = 'Live';
             link.href = '/live.html';
+            link.id = link.id || 'nav-live';
+            link.classList.add('staff-only');
         }
+        // Staff (yoki Live sahifasida) har doim ko‘rinsin
         if (staff || onLive) {
             link.removeAttribute('hidden');
             link.style.display = '';
-            link.classList.add('staff-only');
+            link.style.visibility = 'visible';
+        } else if (!staff) {
+            link.setAttribute('hidden', 'hidden');
+            link.style.display = 'none';
         }
         link.classList.toggle('on', onLive);
         if (onLive) link.setAttribute('aria-current', 'page');
