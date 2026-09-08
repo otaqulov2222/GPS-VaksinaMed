@@ -352,9 +352,16 @@ class WialonClient:
         k = str(label or "").lower()
         if "время" in k or "duration" in k or "скорост" in k or "speed" in k:
             return -1
-        if "пробег" not in k and "mileage" not in k and "masofa" not in k:
+        if "пробег" not in k and "mileage" not in k and "masofa" not in k and "км" not in k and "km" not in k:
             return -1
-        if "поездк" in k or "in trips" in k or "в поезд" in k:
+        # Boomerang: «Mileage in trips» / «Пробег в поездках»
+        if (
+            "поездк" in k
+            or "in trips" in k
+            or "в поезд" in k
+            or "по поезд" in k
+            or ("mileage" in k and "trip" in k)
+        ):
             return 3
         if "всег" in k or "total" in k or "счетчик" in k or "counter" in k:
             return 1
@@ -433,8 +440,8 @@ class WialonClient:
         if trip_live:
             live_km = float(trip_live.get("probeg") or 0)
             cur_km = float(stats.get("probeg") or 0)
-            # Boomerang «Mileage in trips» / get_trips — kattaroq (yangi) qiymat
-            if live_km > 0 and (not cur_km or live_km > cur_km + 0.05):
+            # Kattaroq (yangi) qiymat — Boomerang bilan moslash
+            if live_km > 0 and live_km > cur_km + 0.01:
                 stats["probeg"] = live_km
                 stats["_kmSrc"] = "get_trips"
             if trip_live.get("maxSpeed") and float(trip_live["maxSpeed"]) > float(stats.get("maxSpeed") or 0):
@@ -766,12 +773,14 @@ class WialonClient:
             if rows_n and not stats.get("poezdok"):
                 stats["poezdok"] = rows_n
         if best > 0:
-            # Boomerang UI «Пробег в поездках» (stats) — asosiy haqiqat.
-            # Qatorlar yig'indisi ba'zan farq qiladi (134.89 vs 138.05).
-            if stats.get("_kmSrc") == "trip_stats" and float(stats.get("probeg") or 0) > 0:
-                return
-            stats["probeg"] = best
-            stats["_kmSrc"] = "trips"
+            # Stats vs jadval — kattaroqni olamiz (Muxriddin 27.73 vs 28.29 kabi farq).
+            cur = float(stats.get("probeg") or 0)
+            if best > cur + 0.01:
+                stats["probeg"] = best
+                stats["_kmSrc"] = "trips"
+            elif not cur:
+                stats["probeg"] = best
+                stats["_kmSrc"] = "trips"
 
     def apply_report_stats(self, pairs, stats):
         best_pref, best_km = -1, 0.0
@@ -932,6 +941,7 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
         units = client.get_units()
         drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
         updated = 0
+        samples = []
         cars_out = dict(cars)
         # Eng eski km birinchi
         jobs = []
@@ -960,14 +970,15 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
                 live = None
             new_km = 0.0
             src = ""
+            candidates = []
             if trip and trip.get("probeg"):
-                new_km = float(trip["probeg"])
-                src = str(trip.get("_kmSrc") or "trip_report")
+                candidates.append((float(trip["probeg"]), str(trip.get("_kmSrc") or "trip_report")))
             if live and live.get("probeg"):
-                live_km = float(live["probeg"])
-                if live_km > new_km + 0.05:
-                    new_km = live_km
-                    src = "get_trips"
+                candidates.append((float(live["probeg"]), "get_trips"))
+            for ck, cs in candidates:
+                if ck > new_km + 0.01:
+                    new_km = ck
+                    src = cs
             if new_km <= 0:
                 continue
             row = dict(cars_out[drv["car"]])
@@ -977,6 +988,12 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
             if changed or new_km > old_km:
                 st["probeg"] = round(new_km + 1e-12, 2)
                 st["metricsSource"] = src or st.get("metricsSource") or ""
+                samples.append({
+                    "car": drv["car"],
+                    "old": round(old_km, 2),
+                    "new": round(new_km, 2),
+                    "src": src,
+                })
             if trip:
                 if trip.get("maxSpeed"):
                     st["maxSpeed"] = float(trip["maxSpeed"])
@@ -1011,6 +1028,7 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
             "ok": True,
             "updated": updated,
             "elapsed": round(time.time() - t0, 2),
+            "samples": samples[:12],
         }
     except Exception as e:
         return {"ok": False, "error": str(e)[:160], "updated": 0}

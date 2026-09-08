@@ -611,12 +611,14 @@ class WialonGPSClient {
             }
         }
         if (best > 0) {
-            // Boomerang «Пробег в поездках» (stats) ustuvor — jadval yig'indisi farq qilishi mumkin
-            if (chronology.stats._kmSrc === 'trip_stats' && Number(chronology.stats.probeg) > 0) {
-                return;
+            const cur = Number(chronology.stats.probeg) || 0;
+            if (best > cur + 0.01) {
+                chronology.stats.probeg = best;
+                chronology.stats._kmSrc = 'trips';
+            } else if (!cur) {
+                chronology.stats.probeg = best;
+                chronology.stats._kmSrc = 'trips';
             }
-            chronology.stats.probeg = best;
-            chronology.stats._kmSrc = 'trips';
         }
     }
 
@@ -637,22 +639,23 @@ class WialonGPSClient {
         if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) {
             const repKm = Number(fromReport.km) || 0;
             const liveKm = Number(fromTrips && fromTrips.km) || 0;
-            // Hisobot (Boomerang) — asosiy; get_trips faqat bo'sh
-            const km = repKm > 0 ? repKm : liveKm;
-            const maxSpeed = fromReport.maxSpeed
-                ? fromReport.maxSpeed
-                : ((fromTrips && fromTrips.maxSpeed) || 0);
+            // Kattaroq qiymat — Boomerang bilan mos
+            const km = Math.max(repKm, liveKm);
+            const maxSpeed = Math.max(
+                Number(fromReport.maxSpeed) || 0,
+                Number(fromTrips && fromTrips.maxSpeed) || 0
+            );
             return {
                 km: this.roundKm(km),
                 maxSpeed,
                 avgSpeed: fromReport.avgSpeed || (fromTrips && fromTrips.avgSpeed) || 0,
-                trips: fromReport.trips || (fromTrips && fromTrips.trips) || 0,
+                trips: Math.max(Number(fromReport.trips) || 0, Number(fromTrips && fromTrips.trips) || 0),
                 stops: fromReport.stops || 0,
                 totalStop: fromReport.totalStop || '—',
                 motoChas: fromReport.motoChas || '—',
                 gas: fromReport.gas || 0,
                 benzin: fromReport.benzin || 0,
-                _kmSrc: fromReport._kmSrc || (repKm ? 'trip_report' : 'get_trips')
+                _kmSrc: (liveKm > repKm + 0.01) ? 'get_trips' : (fromReport._kmSrc || (repKm ? 'trip_report' : 'get_trips'))
             };
         }
         if (fromTrips && (fromTrips.km || fromTrips.trips || fromTrips.maxSpeed)) return fromTrips;

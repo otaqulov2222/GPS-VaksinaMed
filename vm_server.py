@@ -3379,14 +3379,20 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     d = date_val or gps_sync.today_tashkent()
                     force = bool(body.get("force", True))
                     habit = bool(body.get("habit") or body.get("auto"))
+                    only_plates = body.get("onlyPlates") or body.get("only_plates")
+                    if isinstance(only_plates, str) and only_plates.strip():
+                        only_plates = [only_plates.strip()]
+                    elif not isinstance(only_plates, (list, tuple)):
+                        only_plates = None
                     # habit=True: Dashboard jim avto — ko'proq mashina / uzoqroq budget
-                    budget_sec = 55 if habit else 14
-                    max_cars = None if habit else 1
-                    use_parallel = bool(habit)
+                    # Qo'lda YANGILASH: avval BARCHA mashina km (Boomerang), keyin to'xtashlar
+                    budget_sec = 55 if habit else 50
+                    max_cars = None if habit else (3 if not only_plates else None)
+                    use_parallel = bool(habit) or bool(only_plates)
                     global _gps_sync_lock_until
                     now = _time.time()
                     # TTL: eski qulf budget+10s dan oshsa — e'tiborsiz (504 zombie)
-                    lock_ttl = float(budget_sec + 10)
+                    lock_ttl = float(budget_sec + 25)
                     if _gps_sync_lock_until and now > _gps_sync_lock_until:
                         try:
                             _gps_sync_lock.release()
@@ -3419,29 +3425,52 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     _gps_sync_lock_until = now + lock_ttl
                     try:
                         OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
+                        km_refresh = {"updated": 0}
+                        # Har YANGILASH: Boomerang trip km — barcha (yoki tanlangan) mashinalar
+                        if not habit or force:
+                            try:
+                                km_budget = 35 if not habit else 18
+                                km_refresh = gps_sync.refresh_day_trip_km(
+                                    OFFICE,
+                                    DIRECTORY,
+                                    d,
+                                    time_budget_sec=km_budget,
+                                    saved_by=sess.get("username") or "user-km",
+                                ) or {}
+                            except Exception as _km_e:
+                                km_refresh = {"ok": False, "updated": 0, "error": str(_km_e)[:120]}
+                        remain = max(8, budget_sec - (_time.time() - now))
                         result = gps_sync.sync_today(
                             OFFICE,
                             DIRECTORY,
                             d,
                             saved_by=sess.get("username") or "user",
-                            time_budget_sec=budget_sec,
+                            time_budget_sec=remain,
                             max_cars=max_cars,
                             force=force,
                             parallel=use_parallel,
+                            only_plates=only_plates,
                         ) or {}
+                        km_n = int(km_refresh.get("updated") or 0)
+                        msg = "Tayyor"
+                        if result.get("partial"):
+                            msg = "Davom"
+                        if km_n:
+                            msg = ("Km+%d" % km_n) + (" · " + msg if msg else "")
+                        if not result.get("ok"):
+                            msg = "Xato"
                         OFFICE.set_gps_status(
                             running=False,
                             cars=int(result.get("cars") or 0),
                             error=str(result.get("error") or "")[:200],
                             date=d,
-                            message=("Davom" if result.get("partial") else "Tayyor")
-                            if result.get("ok")
-                            else "Xato",
+                            message=msg,
                             fetched=int(result.get("fetched") or 0),
                             total=int(result.get("total") or 0),
+                            touch_last_sync=bool(result.get("ok") or km_n),
                         )
                         self.send_json({
-                            "ok": bool(result.get("ok")),
+                            "ok": bool(result.get("ok") or km_n),
                             "queued": False,
                             "date": d,
                             "cars": int(result.get("cars") or 0),
@@ -3451,6 +3480,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             "partial": bool(result.get("partial")),
                             "errors": result.get("errors") or [],
                             "error": str(result.get("error") or "")[:200],
+                            "kmRefresh": km_refresh,
                             **OFFICE.gps_status_public(),
                         })
                     finally:
