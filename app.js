@@ -1931,6 +1931,7 @@ function hasGpsConfig() {
 
 const GPS_POLL_MS = 60 * 1000;          // har daqiqa holat
 const GPS_POLL_FAST_MS = 20 * 1000;     // qisman bo'lsa tezroq
+const GPS_NUDGE_MIN_MS = 170 * 1000;    // jim avto-tortish (kamida ~3 daqiqa)
 
 function stopGpsAutoSync() {
     if (STATE.gpsAutoTimer) clearInterval(STATE.gpsAutoTimer);
@@ -1942,12 +1943,59 @@ function gpsModalOpen() {
     return !!(m && m.classList.contains('open'));
 }
 
+async function nudgeServerGpsSync(status) {
+    const st = status || {};
+    if (st.running || STATE.gpsSyncBusy || STATE.gpsNudgeBusy) return;
+    if (gpsModalOpen() || document.hidden) return;
+    if (!(hasGpsConfig() || st.configured)) return;
+
+    const fetched = Number(st.fetched || st.cars || 0) || 0;
+    const total = Number(st.total || 0) || 0;
+    const incomplete = total > 0 && fetched < total;
+    const ts = st.lastSync ? new Date(st.lastSync).getTime() : 0;
+    const ageMs = ts ? (Date.now() - ts) : 1e12;
+    const stale = ageMs >= GPS_NUDGE_MIN_MS;
+    // To'liq va yangi — faqat holat poll
+    if (!incomplete && !stale) return;
+
+    const now = Date.now();
+    if (STATE.gpsLastNudgeAt && (now - STATE.gpsLastNudgeAt) < GPS_NUDGE_MIN_MS) return;
+    STATE.gpsLastNudgeAt = now;
+    STATE.gpsNudgeBusy = true;
+    try {
+        const today = dateStr(new Date());
+        const dateVal = st.lastDate || st.syncDate || STATE.currentDate || today;
+        // force: yangi kun / eskirgan; qisman bo'lsa yetishmaganlarni to'ldirish
+        await vmApi('/api/office/gps/sync', {
+            method: 'POST',
+            body: JSON.stringify({
+                date: dateVal,
+                force: !incomplete || fetched === 0,
+                habit: true,
+                auto: true
+            })
+        });
+        await pollServerGpsStatus(true);
+    } catch (e) {
+        console.warn('gps nudge:', e);
+    } finally {
+        STATE.gpsNudgeBusy = false;
+    }
+}
+
 function startGpsAutoSync() {
     stopGpsAutoSync();
-    const tick = () => {
+    const tick = async () => {
         if (gpsModalOpen()) return;
         if (document.hidden) return;
-        pollServerGpsStatus(false);
+        try {
+            const d = await vmApi('/api/office/gps/status');
+            updateGpsLastSyncUi(d.lastSync, d.running, d);
+            await pollServerGpsStatus(false);
+            await nudgeServerGpsSync(d);
+        } catch (e) {
+            console.warn('gps auto tick:', e);
+        }
     };
     STATE.gpsAutoTimer = setInterval(tick, GPS_POLL_MS);
     // Sahifa ochilganda darhol
@@ -2020,7 +2068,11 @@ function updateGpsLastSyncUi(iso, running, extra) {
     } else if (STATE.gpsLastSync) {
         parts.push('Oxirgi: ' + new Date(STATE.gpsLastSync).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }));
     }
-    if (msg && !/tayyor/i.test(msg)) parts.push(msg);
+    // To'liq yuklangan bo'lsa eski «Xato» ni ko'rsatmaymiz
+    let showMsg = msg;
+    if (/^xato$/i.test(msg) && total > 0 && fetched >= total) showMsg = '';
+    else if (/^xato$/i.test(msg) && ex.error) showMsg = String(ex.error).slice(0, 60);
+    if (showMsg && !/tayyor/i.test(showMsg)) parts.push(showMsg);
     el.textContent = parts.length ? parts.join(' · ') : 'Hali yangilanmagan';
 }
 
@@ -3022,15 +3074,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             showToast(
                 todayCars
                     ? ('Bugun ' + todayCars + '/' + fleetN + ' — avto-yuklash davom etadi')
-                    : 'Kunlik GPS avto-yuklanmoqda (har ~3 daqiqa)…',
+                    : 'Kunlik GPS avto-yuklanmoqda…',
                 'info'
             );
-            // Faqat holatni poll qilish — to'liq yuklash GitHub cron
             await pollServerGpsStatus(true);
+            // Dashboard ochiq — jim rejimda serverni uyg'otamiz (GitHub kechiksa ham)
+            try {
+                await nudgeServerGpsSync({
+                    configured: serverGps || hasGpsConfig(),
+                    fetched: todayCars,
+                    total: fleetN,
+                    lastSync: st.lastSync || '',
+                    lastDate: todayStr,
+                    running: !!st.running
+                });
+            } catch (_) {}
         }
         startGpsAutoSync();
         if (!hasGpsConfig() && serverGps) {
-            showToast('Server GPS kunlik odatda avtomatik yuklaydi — brauzer yopiq bo\'lsa ham', 'info');
+            showToast('GPS avto: Vercel cron + Dashboard ochiq bo\'lsa jim yangilash', 'info');
         }
     }, 800);
 

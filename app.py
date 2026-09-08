@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -28,8 +29,8 @@ def _cron_authorized(request: Request) -> bool:
 
 def _github_dispatch_gps_sync() -> dict:
     """
-    Og'ir sync Vercelda emas — faqat GitHub Actions ni uyg'otadi (<2s).
-    GH_PAT bo'lmasa: accepted, lekin dispatched=false (asosiy sync hali Actions schedule).
+    Og'ir uzun loop — GitHub Actions (ixtiyoriy zaxira).
+    GH_PAT bo'lmasa: dispatched=false (Vercel o'zi sync qiladi).
     """
     pat = (os.environ.get("GH_PAT") or os.environ.get("GITHUB_PAT") or "").strip()
     repo = (os.environ.get("GITHUB_REPOSITORY") or os.environ.get("GH_REPO") or "").strip()
@@ -45,7 +46,7 @@ def _github_dispatch_gps_sync() -> dict:
             "ok": True,
             "accepted": True,
             "dispatched": False,
-            "message": "GH_PAT yo'q — GitHub schedule ishlaydi. Zaxira uchun Vercelga GH_PAT qo'shing.",
+            "message": "GH_PAT yo'q — Vercel sync ishlaydi. Ixtiyoriy: GH_PAT (repo+workflow).",
         }
 
     url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
@@ -82,7 +83,7 @@ def _github_dispatch_gps_sync() -> dict:
             "dispatched": False,
             "http": int(e.code),
             "error": err or str(e.reason),
-            "message": "GitHub dispatch xato — schedule hali ishlashi mumkin.",
+            "message": "GitHub dispatch xato — Vercel sync davom etadi.",
         }
     except Exception as e:
         return {
@@ -90,7 +91,140 @@ def _github_dispatch_gps_sync() -> dict:
             "accepted": True,
             "dispatched": False,
             "error": str(e)[:160],
-            "message": "GitHub dispatch ulanmadi — schedule hali ishlashi mumkin.",
+            "message": "GitHub dispatch ulanmadi — Vercel sync davom etadi.",
+        }
+
+
+def _count_synced(cars) -> int:
+    if not isinstance(cars, dict):
+        return 0
+    return sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt"))
+
+
+def _newest_synced_at(cars) -> int:
+    best = 0
+    if not isinstance(cars, dict):
+        return 0
+    for r in cars.values():
+        if not isinstance(r, dict):
+            continue
+        try:
+            t = int(r.get("syncedAt") or 0)
+        except Exception:
+            t = 0
+        if t > best:
+            best = t
+    return best
+
+
+def _vercel_gps_sync_backup() -> dict:
+    """
+    Asosiy ishonch: Vercel cron o'zi ma'lumot tortadi (GitHub schedule kechiksa ham).
+    maxDuration=300 — ~90s budget yetarli.
+    """
+    t0 = time.time()
+    try:
+        import gps_sync
+        import vm_server
+
+        vm_server.init_app()
+        office = vm_server.OFFICE
+        directory = vm_server.DIRECTORY
+        if office is None:
+            return {"ok": False, "error": "OFFICE yo'q"}
+
+        cfg = office.gps_config_public()
+        if not cfg.get("configured"):
+            return {
+                "ok": False,
+                "error": "GPS sozlamasi yo'q",
+                "configured": False,
+            }
+
+        d = gps_sync.today_tashkent()
+        drivers = gps_sync.overlay_fuel_driver_names(
+            office, gps_sync.load_fleet_drivers(directory)
+        )
+        fleet_n = len(drivers) if drivers else 0
+        prev = office.get_report(d) or {}
+        cars = prev.get("cars") if isinstance(prev, dict) else {}
+        if not isinstance(cars, dict):
+            cars = {}
+        synced = _count_synced(cars)
+        newest = _newest_synced_at(cars)
+        now_ts = int(time.time())
+        stale = (not newest) or ((now_ts - newest) >= 180)
+        new_day = fleet_n > 0 and synced == 0
+        incomplete = fleet_n > 0 and synced < fleet_n
+
+        if not new_day and not incomplete and not stale:
+            office.set_gps_status(
+                running=False,
+                cars=len(cars),
+                error="",
+                date=d,
+                message="Tayyor %d/%d" % (synced, max(fleet_n, synced, 1)),
+                fetched=synced,
+                total=max(fleet_n, synced, 1),
+            )
+            return {
+                "ok": True,
+                "skipped": True,
+                "date": d,
+                "fetched": synced,
+                "total": fleet_n or synced,
+                "elapsed": round(time.time() - t0, 2),
+            }
+
+        force = bool(new_day or stale)
+        result = (
+            gps_sync.sync_today(
+                office,
+                directory,
+                d,
+                saved_by="vercel-cron",
+                time_budget_sec=90,
+                parallel=True,
+                force=force,
+            )
+            or {}
+        )
+
+        # Kecha bo'sh bo'lsa — qisqa to'ldirish
+        if result.get("ok") and time.time() - t0 < 100:
+            yday = gps_sync.yesterday_tashkent()
+            yrec = office.get_report(yday) or {}
+            ycars = yrec.get("cars") if isinstance(yrec, dict) else {}
+            if not isinstance(ycars, dict):
+                ycars = {}
+            ysynced = _count_synced(ycars)
+            if fleet_n and ysynced < fleet_n:
+                gps_sync.sync_today(
+                    office,
+                    directory,
+                    yday,
+                    saved_by="vercel-cron-yday",
+                    time_budget_sec=max(15, 110 - int(time.time() - t0)),
+                    parallel=True,
+                    force=False,
+                )
+
+        return {
+            "ok": bool(result.get("ok")),
+            "skipped": False,
+            "force": force,
+            "date": d,
+            "fetched": int(result.get("fetched") or 0),
+            "total": int(result.get("total") or fleet_n or 0),
+            "partial": bool(result.get("partial")),
+            "error": str(result.get("error") or "")[:160],
+            "elapsed": round(time.time() - t0, 2),
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)[:200],
+            "elapsed": round(time.time() - t0, 2),
         }
 
 
@@ -114,7 +248,7 @@ async def handle(request: Request, full_path: str = ""):
             return Response(status_code=200, media_type="application/json")
         return Response(content=body, status_code=200, media_type="application/json")
 
-    # Cron zaxira: og'ir sync YO'Q — faqat GitHub workflow_dispatch (tez 202).
+    # Cron: 1) GitHub uyg'otish (ixtiyoriy)  2) Vercel o'zi sync (asosiy ishonch)
     if path == "/api/cron/gps-sync" and request.method in ("GET", "POST", "HEAD"):
         if not _cron_authorized(request):
             return Response(
@@ -124,7 +258,19 @@ async def handle(request: Request, full_path: str = ""):
             )
         if request.method == "HEAD":
             return Response(status_code=202, media_type="application/json")
-        payload = _github_dispatch_gps_sync()
+        dispatch = _github_dispatch_gps_sync()
+        sync = _vercel_gps_sync_backup()
+        payload = {
+            "ok": bool(sync.get("ok") or dispatch.get("dispatched")),
+            "accepted": True,
+            "github": dispatch,
+            "sync": sync,
+            "message": (
+                "GPS cron: Vercel sync + GitHub zaxira"
+                if dispatch.get("dispatched")
+                else "GPS cron: Vercel sync (GitHub PAT ixtiyoriy)"
+            ),
+        }
         return Response(
             content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             status_code=202,
@@ -149,4 +295,6 @@ async def handle(request: Request, full_path: str = ""):
     media_type = headers.pop("Content-Type", None) or headers.pop("content-type", None)
     if request.method == "HEAD":
         return Response(status_code=status, headers=headers, media_type=media_type)
-    return Response(content=out_body, status_code=status, headers=headers, media_type=media_type)
+    return Response(
+        content=out_body, status_code=status, headers=headers, media_type=media_type
+    )

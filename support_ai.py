@@ -39,7 +39,7 @@ QOIDALAR (majburiy):
 2) Tizimdan tashqari mavzu — qisqa rad eting.
 3) Skrinshot: ko'rinadigan tugma/maydonni aniqlang va vazifasini aniq tushuntiring.
 4) Parol/token/API kalit so'ramang. Admin/Admin Pro panelda foydalanuvchi parollari ko'rinadi (boshqaruv uchun).
-5) GPS: ertalab server o'zi yuklaydi (GitHub + Vercel zaxira cron). Qo'lda GPS yuklash — zaxira.
+5) GPS: Vercel cron (~10 daq) + Dashboard jim yangilash. GitHub Actions — qo'shimcha.
 6) Davomat hisobot: Hisobot yoki Xodim → Excel / PDF.
 7) Rol: haydovchi — kabinet/profil; admin — Dashboard/Boshqaruv/Davomat/Panel.
 8) Javob o'zbek lotinida, qisqa, 1) 2) 3) qadamlar. Tizim o'zgartirishni va'da qilmang.

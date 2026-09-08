@@ -1,10 +1,10 @@
-# Kunlik to'liq GPS odat — GitHub Actions (Vercel Fluid 25s limitsiz).
+# Kunlik to'liq GPS odat — GitHub Actions (uzun loop).
 #
 # MUAMMO: GitHub schedule kechikadi/yutiladi.
 # YECHIM:
-#   - soatlik + yarim soatlik heartbeat (Toshkent 05–22)
-#   - job ICHIDA ~50 daqiqa loop (har ~3 daqiqa sync)
-#   - yangi kun boshida (synced=0) birinchi bo'lib to'ldirish
+#   - soat ichida 4 marta heartbeat (Toshkent 05–22)
+#   - job ICHIDA ~35 daqiqa loop (har ~3 daqiqa sync)
+#   - Vercel cron har 10–15 daqiqada O'ZI ham sync qiladi (asosiy ishonch)
 #
 # Toshkent 05–22 ≈ UTC 00–17
 #
@@ -14,11 +14,10 @@ name: GPS sync
 
 on:
   schedule:
-    # Har soat :07 — asosiy (Toshkent 05–22)
     - cron: '7 0-17 * * *'
-    # :22 va :37 — GitHub yutib yuborsa zaxira
     - cron: '22 0-17 * * *'
     - cron: '37 0-17 * * *'
+    - cron: '52 0-17 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -28,7 +27,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +56,6 @@ jobs:
           VM_PRODUCTION: '1'
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           GPS_REFRESH_EVERY_SEC: '180'
-          GPS_CRON_LOOP_MIN: '50'
+          GPS_CRON_LOOP_MIN: '32'
           GPS_CRON_LOOP_SLEEP: '180'
         run: python scripts/run_gps_cron.py

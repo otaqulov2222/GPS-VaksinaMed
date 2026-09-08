@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/cron/gps-sync",
-      "schedule": "*/15 0-17 * * *"
+      "schedule": "*/10 0-17 * * *"
     }
   ]
 }

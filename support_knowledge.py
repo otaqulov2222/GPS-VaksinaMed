@@ -392,10 +392,10 @@ FAQ_OFFLINE = [
         "keys": ["avto sync", "avtomatik gps", "ertalab yuklash", "kunlik odat", "gps ozi", "oxirgi"],
         "a": (
             "GPS kunlik odat — server o'zi yuklaydi (brauzer ochiq bo'lishi shart emas).\n"
-            "• Ertalab yangi kun bo'sh bo'lsa — birinchi bo'lib to'ldiriladi\n"
-            "• Kun davomida ~3 daqiqada yangilanadi (GitHub Actions)\n"
-            "• Zaxira: Vercel cron (15 daqiqa) GitHubni uyg'otadi — CRON_SECRET + GH_PAT kerak\n"
-            "Agar 0 mashina: Dashboard → GPS yuklash yoki GitHub Actions → GPS sync → Run workflow."
+            "• Vercel cron har ~10 daqiqada o'zi tortadi (CRON_SECRET kerak)\n"
+            "• Dashboard ochiq bo'lsa — jim avto-yangilash (~3 daqiqa)\n"
+            "• GitHub Actions — qo'shimcha uzun loop (ixtiyoriy GH_PAT)\n"
+            "Agar 0 mashina: Dashboard → GPS yuklash yoki GitHub Actions → Run workflow."
         ),
     },
     {

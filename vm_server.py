@@ -3354,9 +3354,15 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
                     d = date_val or gps_sync.today_tashkent()
                     force = bool(body.get("force", True))
+                    habit = bool(body.get("habit") or body.get("auto"))
+                    # habit=True: Dashboard jim avto — ko'proq mashina / uzoqroq budget
+                    budget_sec = 55 if habit else 14
+                    max_cars = None if habit else 1
+                    use_parallel = bool(habit)
                     global _gps_sync_lock_until
                     now = _time.time()
-                    # TTL: eski qulf 20s dan oshsa — e'tiborsiz (504 zombie)
+                    # TTL: eski qulf budget+10s dan oshsa — e'tiborsiz (504 zombie)
+                    lock_ttl = float(budget_sec + 10)
                     if _gps_sync_lock_until and now > _gps_sync_lock_until:
                         try:
                             _gps_sync_lock.release()
@@ -3386,7 +3392,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             **OFFICE.gps_status_public(),
                         })
                         return
-                    _gps_sync_lock_until = now + 20.0
+                    _gps_sync_lock_until = now + lock_ttl
                     try:
                         OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
                         result = gps_sync.sync_today(
@@ -3394,10 +3400,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             DIRECTORY,
                             d,
                             saved_by=sess.get("username") or "user",
-                            time_budget_sec=14,
-                            max_cars=1,
+                            time_budget_sec=budget_sec,
+                            max_cars=max_cars,
                             force=force,
-                            parallel=False,
+                            parallel=use_parallel,
                         ) or {}
                         OFFICE.set_gps_status(
                             running=False,
@@ -3407,6 +3413,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             message=("Davom" if result.get("partial") else "Tayyor")
                             if result.get("ok")
                             else "Xato",
+                            fetched=int(result.get("fetched") or 0),
+                            total=int(result.get("total") or 0),
                         )
                         self.send_json({
                             "ok": bool(result.get("ok")),
