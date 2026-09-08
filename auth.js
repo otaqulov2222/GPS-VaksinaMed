@@ -124,7 +124,7 @@ function vmEnsureLiveNav() {
         if (!link) {
             link = document.createElement('a');
             link.href = '/live.html';
-            link.className = 'nav-link staff-only';
+            link.className = 'nav-link';
             link.id = 'nav-live';
             link.textContent = 'Live';
             const fuel = nav.querySelector('#nav-fuel, a[href="/fuel.html"], a[href="fuel.html"], a[href*="fuel"]');
@@ -136,13 +136,15 @@ function vmEnsureLiveNav() {
             link.textContent = 'Live';
             link.href = '/live.html';
             link.id = link.id || 'nav-live';
-            link.classList.add('staff-only');
+            link.classList.remove('staff-only');
         }
-        // Staff (yoki Live sahifasida) har doim ko‘rinsin
+        // Live — staff uchun doim ko‘rinsin (staff-only class bo‘lsa ham)
         if (staff || onLive) {
+            link.classList.remove('staff-only');
             link.removeAttribute('hidden');
             link.style.display = '';
             link.style.visibility = 'visible';
+            link.style.opacity = '1';
         } else if (!staff) {
             link.setAttribute('hidden', 'hidden');
             link.style.display = 'none';

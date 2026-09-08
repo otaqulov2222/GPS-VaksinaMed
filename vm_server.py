@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m98"
+VM_BUILD = "m99"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -2540,59 +2540,72 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
     def serve_patched_html(self, filename):
-        """index.html ni disktan o'qib, build banner + /api/vm-boot.js qo'shadi."""
+        """HTML ni disktan o'qib: Live menyu + build banner + boot script."""
         fpath = os.path.join(DIRECTORY, filename)
         with open(fpath, "r", encoding="utf-8") as f:
             html = f.read()
-        if filename == "index.html":
-            # Live menyu — HTML keshidan mustaqil majburiy inject
-            if 'href="/live.html"' not in html and "href='/live.html'" not in html:
+
+        # Live menyu — HTML keshidan mustaqil majburiy inject
+        if 'href="/live.html"' not in html and "href='/live.html'" not in html:
+            for fuel_pat in (
+                '<a class="nav-link" href="/fuel.html">Boshqaruv</a>',
+                '<a class="nav-link on" href="/fuel.html" aria-current="page">Boshqaruv</a>',
+            ):
+                if fuel_pat in html:
+                    html = html.replace(
+                        fuel_pat,
+                        fuel_pat
+                        + '\n      <a class="nav-link" href="/live.html" id="nav-live">Live</a>',
+                        1,
+                    )
+                    break
+
+        boot = (
+            '<script src="/api/live-nav.js?v=%s"></script>\n'
+            '<script src="/api/vm-boot.js?v=%s"></script>\n'
+        ) % (VM_BUILD, VM_BUILD)
+        banner = (
+            '<div id="vm-build-banner" style="background:#c0392b;color:#fff;'
+            'font:700 13px/1.2 IBM Plex Mono,monospace;padding:8px 12px">'
+            "BUILD %s — agar qizil satr yo'q bo'lsa Ctrl+Shift+R</div>\n" % VM_BUILD
+        )
+        if "vm-build-banner" not in html:
+            if '<div class="map-legend">' in html:
                 html = html.replace(
-                    '<a class="nav-link" href="/fuel.html">Boshqaruv</a>',
-                    '<a class="nav-link" href="/fuel.html">Boshqaruv</a>\n'
-                    '      <a class="nav-link staff-only" href="/live.html" id="nav-live">Live</a>',
+                    '<div class="map-legend">',
+                    banner + '<div class="map-legend">',
                     1,
                 )
-            boot = (
-                '<script src="/api/live-nav.js?v=%s"></script>\n'
-                '<script src="/api/vm-boot.js?v=%s"></script>\n'
-            ) % (VM_BUILD, VM_BUILD)
-            banner = (
-                '<div id="vm-build-banner" style="background:#c0392b;color:#fff;'
-                'font:700 13px/1.2 IBM Plex Mono,monospace;padding:8px 12px">'
-                "BUILD %s — agar qizil satr yo'q bo'lsa Ctrl+Shift+R</div>\n" % VM_BUILD
+            elif "<body>" in html:
+                html = html.replace("<body>", "<body>\n" + banner, 1)
+            elif "<body " in html:
+                html = re.sub(r"<body([^>]*)>", r"<body\1>\n" + banner, html, count=1)
+
+        if "/api/live-nav.js" not in html or "/api/vm-boot.js" not in html:
+            if "/api/live-nav.js" not in html and "/api/vm-boot.js" in html:
+                html = html.replace(
+                    '<script src="/api/vm-boot.js',
+                    '<script src="/api/live-nav.js?v=%s"></script>\n'
+                    '<script src="/api/vm-boot.js' % VM_BUILD,
+                    1,
+                )
+            elif "/api/vm-boot.js" not in html and "</body>" in html:
+                html = html.replace("</body>", boot + "</body>", 1)
+
+        if "VM_BUILD" not in html and "__VM_BUILD" not in html and "<head>" in html:
+            html = html.replace(
+                "<head>",
+                "<head>\n<script>window.__VM_BUILD=%s</script>" % json.dumps(VM_BUILD),
+                1,
             )
-            if "vm-build-banner" not in html:
-                if '<div class="map-legend">' in html:
-                    html = html.replace(
-                        '<div class="map-legend">',
-                        banner + '<div class="map-legend">',
-                        1,
-                    )
-                else:
-                    html = html.replace("<body>", "<body>\n" + banner, 1)
-            if "/api/live-nav.js" not in html or "/api/vm-boot.js" not in html:
-                # Eski kesh faqat vm-boot bo'lsa ham live-nav qo'shilsin
-                if "/api/live-nav.js" not in html and "/api/vm-boot.js" in html:
-                    html = html.replace(
-                        '<script src="/api/vm-boot.js',
-                        '<script src="/api/live-nav.js?v=%s"></script>\n'
-                        '<script src="/api/vm-boot.js' % VM_BUILD,
-                        1,
-                    )
-                elif "/api/vm-boot.js" not in html:
-                    html = html.replace("</body>", boot + "</body>", 1)
-            if "VM_BUILD" not in html and "__VM_BUILD" not in html:
-                html = html.replace(
-                    "<head>",
-                    "<head>\n<script>window.__VM_BUILD=%s</script>" % json.dumps(VM_BUILD),
-                    1,
-                )
-            if ("[%s]" % VM_BUILD) not in html:
-                html = html.replace("<title>", "<title>[%s] " % VM_BUILD, 1)
+        if ("[%s]" % VM_BUILD) not in html and "<title>" in html:
+            html = html.replace("<title>", "<title>[%s] " % VM_BUILD, 1)
+
         raw = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("X-VM-Build", VM_BUILD)
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         if self.command != "HEAD":
@@ -2794,11 +2807,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.redirect("/driver.html")
                 return
             if path == "/fuel.html":
-                self.path = "/fuel.html"
-                return super().do_GET()
+                return self.serve_patched_html("fuel.html")
             if path == "/live.html":
-                self.path = "/live.html"
-                return super().do_GET()
+                return self.serve_patched_html("live.html")
             return self.serve_patched_html("index.html")
 
         if path == "/attendance.html":
