@@ -781,8 +781,12 @@ class WialonGPSClient {
 
     formatClock(s) {
         if (!s) return '';
-        const m = String(s).match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-        return m ? m[1] : String(s).trim();
+        const m = String(s).match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        if (!m) return String(s).trim();
+        const h = String(Math.min(23, parseInt(m[1], 10) || 0)).padStart(2, '0');
+        const mi = String(Math.min(59, parseInt(m[2], 10) || 0)).padStart(2, '0');
+        const sec = String(Math.min(59, m[3] != null ? (parseInt(m[3], 10) || 0) : 0)).padStart(2, '0');
+        return h + ':' + mi + ':' + sec;
     }
 
     /**
@@ -992,11 +996,18 @@ class WialonGPSClient {
     }
 
     formatTime(timestampSec) {
-        if (!timestampSec) return "00:00";
+        if (!timestampSec) return '00:00:00';
         const d = new Date(timestampSec * 1000);
-        const h = String(d.getHours()).padStart(2, '0');
-        const m = String(d.getMinutes()).padStart(2, '0');
-        return `${h}:${m}`;
+        // Toshkent UTC+5 — brauzer zonasiga bog'lanmasin
+        const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Asia/Tashkent',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).formatToParts(d);
+        const get = (t) => (parts.find(p => p.type === t) || {}).value || '00';
+        return get('hour') + ':' + get('minute') + ':' + get('second');
     }
 
     formatDuration(seconds) {

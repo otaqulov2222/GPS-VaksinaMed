@@ -162,6 +162,61 @@ def parse_dur_sec(s):
     return 0
 
 
+def normalize_clock(s):
+    """HH:MM:SS — bir xil format."""
+    m = re.search(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", str(s or "").strip())
+    if not m:
+        return str(s or "").strip()
+    h = min(23, int(m.group(1)))
+    mi = min(59, int(m.group(2)))
+    sec = min(59, int(m.group(3) or 0))
+    return "%02d:%02d:%02d" % (h, mi, sec)
+
+
+def duration_sec_from_inout(in_t, out_t):
+    if not in_t or not out_t:
+        return 0
+    a, b = parse_dur_sec(in_t), parse_dur_sec(out_t)
+    if b >= a:
+        return b - a
+    return b + 86400 - a
+
+
+def format_dur_sec(sec):
+    sec = max(0, int(round(sec or 0)))
+    h = sec // 3600
+    m = (sec % 3600) // 60
+    s = sec % 60
+    return "%d:%02d:%02d" % (h, m, s)
+
+
+def sort_stops_chronological(stops):
+    """
+    GPS kun hisoboti tartibi.
+    Agar kechqurun (18+) va ertalab (<12) aralashsa — ertalab keyingi kun (+24h).
+    """
+    arr = list(stops or [])
+    if len(arr) < 2:
+        return arr
+    meta = []
+    for i, st in enumerate(arr):
+        raw = str((st or {}).get("inTime") or "").strip()
+        t = parse_dur_sec(raw) if raw else 0
+        meta.append((st, t, i, raw))
+    has_evening = any(m[1] >= 18 * 3600 for m in meta if m[3])
+    has_morning = any(m[1] < 12 * 3600 for m in meta if m[3])
+
+    def sort_key(m):
+        _st, t, i, raw = m
+        if not raw:
+            return (1, i, 0)
+        if has_evening and has_morning and t < 12 * 3600:
+            return (0, t + 86400, i)
+        return (0, t, i)
+
+    meta.sort(key=sort_key)
+    return [m[0] for m in meta]
+
 def haversine_m(lat1, lng1, lat2, lng2):
     r = 6371000
     to_r = math.pi / 180
@@ -463,8 +518,8 @@ class WialonClient:
             return {
                 "is_stop": is_stop,
                 "place": place,
-                "inTime": (in_t.group(0)[:5] if in_t else ""),
-                "outTime": (out_t.group(0)[:5] if out_t else ""),
+                "inTime": (normalize_clock(in_t.group(0)) if in_t else ""),
+                "outTime": (normalize_clock(out_t.group(0)) if out_t else ""),
                 "duration": dur,
                 "lat": lat,
                 "lng": lng,
@@ -504,12 +559,12 @@ class WialonClient:
                 place = self.cell_text(loc) or "Noma'lum manzil"
                 if is_coord_place(place) and (lat or lng):
                     place = "%.5f, %.5f" % (lat, lng)
-                in_t = re.search(r"\d{1,2}:\d{2}", self.cell_text(begin))
-                out_t = re.search(r"\d{1,2}:\d{2}", self.cell_text(end))
+                in_t = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", self.cell_text(begin))
+                out_t = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", self.cell_text(end))
                 out.append({
                     "place": place,
-                    "inTime": in_t.group(0) if in_t else "",
-                    "outTime": out_t.group(0) if out_t else "",
+                    "inTime": normalize_clock(in_t.group(0)) if in_t else "",
+                    "outTime": normalize_clock(out_t.group(0)) if out_t else "",
                     "duration": self.cell_text(dur_c),
                     "lat": lat,
                     "lng": lng,
@@ -948,23 +1003,27 @@ def is_outside(place):
 
 
 def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
-    out = []
-    for i, s in enumerate(raw_stops or []):
+    built = []
+    for s in raw_stops or []:
         place_raw = str(s.get("place") or "").strip()
         place = clean_place_label(place_raw)
         lat, lng = s.get("lat") or 0, s.get("lng") or 0
         if not valid_uz_coord(lat, lng):
             lat, lng = 0, 0
         match = match_pharmacy(place or place_raw, car_key, lat, lng, pharm_index, pharmacies)
-        dur_sec = parse_dur_sec(s.get("duration"))
+        in_time = normalize_clock(s.get("inTime") or "")
+        out_time = normalize_clock(s.get("outTime") or "")
+        dur_sec = duration_sec_from_inout(in_time, out_time)
+        if not dur_sec:
+            dur_sec = parse_dur_sec(s.get("duration"))
         if not place and lat and lng:
             place = "%.5f, %.5f" % (float(lat), float(lng))
         stop = {
-            "num": i + 1,
+            "num": 0,
             "place": place or "Noma'lum manzil",
-            "inTime": s.get("inTime") or "",
-            "outTime": s.get("outTime") or "",
-            "duration": s.get("duration") or "",
+            "inTime": in_time or str(s.get("inTime") or ""),
+            "outTime": out_time or str(s.get("outTime") or ""),
+            "duration": format_dur_sec(dur_sec) if dur_sec else (s.get("duration") or ""),
             "durSec": dur_sec,
             "lat": lat,
             "lng": lng,
@@ -979,7 +1038,10 @@ def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
         }
         if not stop["isOffice"] and not stop["isOutside"] and stop["matchType"] == "none" and dur_sec > 600:
             stop["isProblem"] = True
-        out.append(stop)
+        built.append(stop)
+    out = sort_stops_chronological(built)
+    for i, stop in enumerate(out):
+        stop["num"] = i + 1
     return out
 
 

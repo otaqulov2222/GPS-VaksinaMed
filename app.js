@@ -143,9 +143,83 @@ function dateStr(date) {
 }
 function parseTimeStr(s) {
     if (!s) return 0;
-    const p = String(s).split(':').map(Number);
-    return (p[0]||0)*3600 + (p[1]||0)*60 + (p[2]||0);
+    const m = String(s).trim().match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return 0;
+    return (parseInt(m[1], 10) || 0) * 3600
+        + (parseInt(m[2], 10) || 0) * 60
+        + (parseInt(m[3], 10) || 0);
 }
+
+/** HH:MM:SS — bir xil format (Toshkent soati, GPS dan) */
+function normalizeClock(s) {
+    if (!s && s !== 0) return '';
+    const m = String(s).trim().match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return String(s).trim();
+    const h = String(Math.min(23, parseInt(m[1], 10) || 0)).padStart(2, '0');
+    const mi = String(Math.min(59, parseInt(m[2], 10) || 0)).padStart(2, '0');
+    const sec = String(Math.min(59, m[3] != null ? (parseInt(m[3], 10) || 0) : 0)).padStart(2, '0');
+    return h + ':' + mi + ':' + sec;
+}
+
+function durationSecFromInOut(inTime, outTime) {
+    if (!inTime || !outTime) return 0;
+    const a = parseTimeStr(inTime);
+    const b = parseTimeStr(outTime);
+    if (b >= a) return b - a;
+    return b + 86400 - a; // tun orqali (ofis 19:00 → 04:15)
+}
+
+function formatDurSec(sec) {
+    sec = Math.max(0, Math.round(Number(sec) || 0));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+/**
+ * Vaqt bo'yicha. Kechqurun (18+) + ertalab (<12) aralashsa — ertalab keyingi kun.
+ * Keyin 1..N raqam + Turgani = Kirish/Chiqish.
+ */
+function sortStopsChronological(stops) {
+    const arr = (stops || []).slice();
+    if (arr.length < 2) return arr;
+    const meta = arr.map((st, i) => {
+        const raw = String((st && st.inTime) || '').trim();
+        const t = raw ? parseTimeStr(raw) : 0;
+        return { st, t, i, raw };
+    });
+    const hasEvening = meta.some(m => m.raw && m.t >= 18 * 3600);
+    const hasMorning = meta.some(m => m.raw && m.t < 12 * 3600);
+    meta.sort((a, b) => {
+        if (!a.raw && !b.raw) return a.i - b.i;
+        if (!a.raw) return 1;
+        if (!b.raw) return -1;
+        const ka = (hasEvening && hasMorning && a.t < 12 * 3600) ? a.t + 86400 : a.t;
+        const kb = (hasEvening && hasMorning && b.t < 12 * 3600) ? b.t + 86400 : b.t;
+        return ka - kb || a.i - b.i;
+    });
+    return meta.map(x => x.st);
+}
+
+function prepareStopsList(stops) {
+    return sortStopsChronological(stops || []).map((s, i) => {
+        const inTime = normalizeClock(s.inTime);
+        const outTime = normalizeClock(s.outTime);
+        let durSec = durationSecFromInOut(inTime, outTime);
+        if (!durSec) {
+            durSec = Number(s.durSec) || parseTimeStr(s.duration) || 0;
+        }
+        return Object.assign({}, s, {
+            num: i + 1,
+            inTime: inTime || String(s.inTime || '').trim(),
+            outTime: outTime || String(s.outTime || '').trim(),
+            durSec,
+            duration: durSec ? formatDurSec(durSec) : (s.duration || '')
+        });
+    });
+}
+
 function secsToHHMM(secs) {
     const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60);
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
@@ -235,7 +309,7 @@ function normalizeScore(score) {
 
 function normalizeDayRecord(data) {
     if (!data || typeof data !== 'object') return null;
-    const stops = Array.isArray(data.stops) ? data.stops : [];
+    const stops = prepareStopsList(Array.isArray(data.stops) ? data.stops : []);
     const points = normalizeTrackPoints(data.points);
     const stats = data.stats && typeof data.stats === 'object' ? data.stats : {};
     const rawAnalysis = data.analysis && typeof data.analysis === 'object' ? data.analysis : {};
@@ -1027,17 +1101,12 @@ function drawMapRouteLayers(latlngs) {
 }
 
 function sortStopsForRoute(stops) {
-    return (stops || []).slice().sort((a, b) => {
-        const ta = parseTimeStr(a && a.inTime) || 0;
-        const tb = parseTimeStr(b && b.inTime) || 0;
-        if (ta !== tb) return ta - tb;
-        return (a && a.num || 0) - (b && b.num || 0);
-    });
+    return prepareStopsList(stops);
 }
 
-/** Xarita markerlari — mikro-to'xtashlarni (2 sek) yashirish */
+/** Xarita markerlari — mikro-to'xtashlarni (2 sek) yashirish; raqam jadvaldagi # bilan bir xil */
 function mapWorthyStops(stops) {
-    return sortStopsForRoute(stops).filter(st => {
+    return prepareStopsList(stops).filter(st => {
         if (!validUzCoord(st.lat, st.lng)) return false;
         const dur = Number(st.durSec) || parseTimeStr(st.duration) || 0;
         if (st.matchType === 'own' || st.matchType === 'other' || st.isOffice) return true;
@@ -1162,8 +1231,8 @@ async function refreshMap(stops, points) {
             .bindPopup('<b>Tugash</b><br>Kunlik marshrut B nuqtasi'));
     }
 
-    markerStops.forEach((st, i) => {
-        const num = st.num || (i + 1);
+    markerStops.forEach((st) => {
+        const num = st.num || 0;
         const color = stopColor(st);
         const label = String(num);
         const marker = L.marker([st.lat, st.lng], {
@@ -1784,6 +1853,7 @@ function renderStops(stops) {
     const tbody = document.getElementById('stops-table-body');
     const cntEl = document.getElementById('stops-count');
     if (!tbody) return;
+    stops = prepareStopsList(stops);
     if (cntEl) cntEl.textContent = (stops ? stops.length : 0) + ' ta';
     if (!stops || !stops.length) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#8aa0b8;">To\'xtashlar topilmadi</td></tr>';
@@ -1824,7 +1894,7 @@ function renderStops(stops) {
         const canReview = true;
         html += `
         <tr class="${rowCls}">
-            <td class="font-mono text-muted">${i+1}</td>
+            <td class="font-mono text-muted">${st.num || (i + 1)}</td>
             <td><strong>${uiTxt(st.place)}</strong>
                 ${st.phName && st.phName !== st.place ? `<br><small class="text-muted">${uiTxt(st.phName)}</small>` : ''}
                 ${st.gas > 0 ? `<br><small class="text-muted">${fmtFuel(st.gas, 'm³ gaz')}</small>` : ''}
