@@ -1087,9 +1087,68 @@ function sortStopsForRoute(stops) {
     return prepareStopsList(stops);
 }
 
-/** Xarita — jadvaldagi barcha raqamli to'xtashlar (koordinatasi bor). Raqam sakramasligi uchun. */
-function mapWorthyStops(stops) {
-    return prepareStopsList(stops).filter(st => validUzCoord(st.lat, st.lng));
+/** Koordinatasi yo'q to'xtashlarni qo'shnilar / trek bo'yicha taxminiy joyga qo'yamiz — raqam sakramasligi uchun. */
+function hydrateStopCoords(stops, track) {
+    const list = prepareStopsList(stops).map(s => Object.assign({}, s, {
+        lat: Number(s.lat) || 0,
+        lng: Number(s.lng) || 0
+    }));
+    const pts = normalizeTrackPoints(track);
+
+    for (let i = 0; i < list.length; i++) {
+        if (validUzCoord(list[i].lat, list[i].lng)) continue;
+        let prev = -1;
+        let next = -1;
+        for (let j = i - 1; j >= 0; j--) {
+            if (validUzCoord(list[j].lat, list[j].lng)) { prev = j; break; }
+        }
+        for (let j = i + 1; j < list.length; j++) {
+            if (validUzCoord(list[j].lat, list[j].lng)) { next = j; break; }
+        }
+        let lat = 0;
+        let lng = 0;
+        let approx = true;
+        if (prev >= 0 && next >= 0) {
+            const t = (i - prev) / Math.max(next - prev, 1);
+            lat = list[prev].lat + (list[next].lat - list[prev].lat) * t;
+            lng = list[prev].lng + (list[next].lng - list[prev].lng) * t;
+        } else if (prev >= 0) {
+            lat = list[prev].lat;
+            lng = list[prev].lng;
+        } else if (next >= 0) {
+            lat = list[next].lat;
+            lng = list[next].lng;
+        } else if (pts.length) {
+            const idx = Math.round((i / Math.max(list.length - 1, 1)) * (pts.length - 1));
+            lat = pts[idx][0];
+            lng = pts[idx][1];
+        } else {
+            continue;
+        }
+        list[i] = Object.assign({}, list[i], { lat, lng, _approx: approx });
+    }
+
+    // Bir xil nuqtada yopilib qolgan raqamlar — biroz surib ko'rsatish
+    const seen = Object.create(null);
+    return list.map(s => {
+        if (!validUzCoord(s.lat, s.lng)) return s;
+        const key = Number(s.lat).toFixed(5) + ',' + Number(s.lng).toFixed(5);
+        const n = seen[key] || 0;
+        seen[key] = n + 1;
+        if (!n) return s;
+        const ang = n * 1.35;
+        const d = 0.00014 * n;
+        return Object.assign({}, s, {
+            lat: s.lat + d * Math.cos(ang),
+            lng: s.lng + d * Math.sin(ang),
+            _offset: true
+        });
+    });
+}
+
+/** Xarita — jadvaldagi BARCHA raqamlar (1,2,3…), koordinata to'ldirilgan. */
+function mapWorthyStops(stops, track) {
+    return hydrateStopCoords(stops, track).filter(st => validUzCoord(st.lat, st.lng));
 }
 
 function setMapOverlay(info) {
@@ -1158,8 +1217,8 @@ async function refreshMap(stops, points) {
         }
     }
 
-    const markerStops = mapWorthyStops(rawList);
     const list = sortStopsForRoute(rawList);
+    const markerStops = mapWorthyStops(rawList, track);
     setMapStats(list, track.length || markerStops.length);
 
     // Asosiy chiziq — haqiqiy GPS trek; bo'lmasa to'xtashlar orasidagi yo'l
@@ -1194,7 +1253,7 @@ async function refreshMap(stops, points) {
         const bits = [];
         if (km > 0) bits.push(km.toFixed(2) + ' km');
         if (track.length) bits.push(track.length + ' GPS nuqta');
-        bits.push(list.length + ' to\'xtash');
+        bits.push(markerStops.length + ' to\'xtash');
         setMapOverlay(bits.join(' · '));
     }
 
@@ -1214,9 +1273,12 @@ async function refreshMap(stops, points) {
         const label = String(num);
         const marker = L.marker([st.lat, st.lng], {
             icon: mapPinIcon(label, color, false),
-            zIndexOffset: 200
+            zIndexOffset: 200 + num
         }).addTo(STATE.map);
 
+        const approxNote = st._approx
+            ? '<br><span style="color:#f0c674">Joy taxminiy (GPS nuqta yo\'q edi)</span>'
+            : '';
         marker.bindPopup(`
             <div style="min-width:190px">
               <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#8eb6df;font-weight:700;margin-bottom:6px">${stopStatusLabel(st)}</div>
@@ -1226,6 +1288,7 @@ async function refreshMap(stops, points) {
                 Chiqish: <span style="color:#fff">${st.outTime || '—'}</span><br>
                 Turgani: <span style="color:#fff">${st.duration || '—'}</span>
                 ${st.phName ? '<br>Dorixona: <span style="color:#fff">' + uiTxt(st.phName) + '</span>' : ''}
+                ${approxNote}
               </div>
             </div>
         `);
