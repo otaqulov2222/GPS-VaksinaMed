@@ -179,15 +179,26 @@ def _vercel_gps_sync_backup() -> dict:
         incomplete = fleet_n > 0 and synced < fleet_n
 
         if not new_day and not incomplete and not stale:
+            km_refresh = gps_sync.refresh_day_trip_km(
+                office,
+                directory,
+                d,
+                time_budget_sec=120,
+                saved_by="vercel-km",
+            )
             office.set_gps_status(
                 running=False,
                 cars=len(cars),
                 error="",
                 date=d,
-                message="Tekshirildi — ma'lumot yangi",
+                message=(
+                    "Km yangilandi (%d)" % int(km_refresh.get("updated") or 0)
+                    if km_refresh.get("updated")
+                    else "Tekshirildi — ma'lumot yangi"
+                ),
                 fetched=synced,
                 total=max(fleet_n, synced, 1),
-                touch_last_sync=False,
+                touch_last_sync=bool(km_refresh.get("updated")),
             )
             return {
                 "ok": True,
@@ -197,6 +208,7 @@ def _vercel_gps_sync_backup() -> dict:
                 "total": fleet_n or synced,
                 "newest": newest,
                 "oldest": oldest,
+                "kmRefresh": km_refresh,
                 "elapsed": round(time.time() - t0, 2),
             }
 
@@ -208,15 +220,25 @@ def _vercel_gps_sync_backup() -> dict:
                 directory,
                 d,
                 saved_by="vercel-cron",
-                time_budget_sec=200,
+                time_budget_sec=160,
                 parallel=True,
                 force=force,
             )
             or {}
         )
 
+        # Har doim: Boomerang km ni yengil yangilash (27.73 vs 28.29 kechikishini kamaytiradi)
+        remain = max(20, 250 - int(time.time() - t0))
+        km_refresh = gps_sync.refresh_day_trip_km(
+            office,
+            directory,
+            d,
+            time_budget_sec=min(120, remain),
+            saved_by="vercel-km",
+        )
+
         # Kecha bo'sh bo'lsa — qisqa to'ldirish
-        if result.get("ok") and time.time() - t0 < 100:
+        if result.get("ok") and time.time() - t0 < 200:
             yday = gps_sync.yesterday_tashkent()
             yrec = office.get_report(yday) or {}
             ycars = yrec.get("cars") if isinstance(yrec, dict) else {}
@@ -229,7 +251,7 @@ def _vercel_gps_sync_backup() -> dict:
                     directory,
                     yday,
                     saved_by="vercel-cron-yday",
-                    time_budget_sec=max(15, 110 - int(time.time() - t0)),
+                    time_budget_sec=max(15, 280 - int(time.time() - t0)),
                     parallel=True,
                     force=False,
                 )
@@ -242,6 +264,7 @@ def _vercel_gps_sync_backup() -> dict:
             "fetched": int(result.get("fetched") or 0),
             "total": int(result.get("total") or fleet_n or 0),
             "partial": bool(result.get("partial")),
+            "kmRefresh": km_refresh,
             "error": str(result.get("error") or "")[:160],
             "elapsed": round(time.time() - t0, 2),
         }

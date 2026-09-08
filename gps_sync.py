@@ -429,18 +429,20 @@ class WialonClient:
             if stats.get("probeg"):
                 stats["_kmSrc"] = trip_stats.get("_kmSrc") or "trip_report"
 
-        if not stats.get("probeg") or not stats.get("maxSpeed") or not stats.get("poezdok"):
-            trip_live = self.fetch_unit_trips_stats(unit_id, date_str)
-            if trip_live:
-                if not stats.get("probeg") and trip_live.get("probeg"):
-                    stats["probeg"] = float(trip_live["probeg"])
-                    stats["_kmSrc"] = "get_trips"
-                if not stats.get("maxSpeed") and trip_live.get("maxSpeed"):
-                    stats["maxSpeed"] = float(trip_live["maxSpeed"])
-                if not stats.get("avgSpeed") and trip_live.get("avgSpeed"):
-                    stats["avgSpeed"] = trip_live["avgSpeed"]
-                if not stats.get("poezdok") and trip_live.get("poezdok"):
-                    stats["poezdok"] = trip_live["poezdok"]
+        trip_live = self.fetch_unit_trips_stats(unit_id, date_str)
+        if trip_live:
+            live_km = float(trip_live.get("probeg") or 0)
+            cur_km = float(stats.get("probeg") or 0)
+            # Boomerang «Mileage in trips» / get_trips — kattaroq (yangi) qiymat
+            if live_km > 0 and (not cur_km or live_km > cur_km + 0.05):
+                stats["probeg"] = live_km
+                stats["_kmSrc"] = "get_trips"
+            if trip_live.get("maxSpeed") and float(trip_live["maxSpeed"]) > float(stats.get("maxSpeed") or 0):
+                stats["maxSpeed"] = float(trip_live["maxSpeed"])
+            if trip_live.get("avgSpeed") and not stats.get("avgSpeed"):
+                stats["avgSpeed"] = trip_live["avgSpeed"]
+            if trip_live.get("poezdok") and int(trip_live["poezdok"]) > int(stats.get("poezdok") or 0):
+                stats["poezdok"] = int(trip_live["poezdok"])
 
         # === 2) CHRONOLOGIYA — faqat to'xtashlar ===
         resource_id, template_id = self.resolve_template()
@@ -887,6 +889,137 @@ class WialonClient:
             return stats if stats.get("probeg") or stats.get("poezdok") or stats.get("maxSpeed") else None
         except Exception:
             return None
+
+
+def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, saved_by="km-refresh"):
+    """
+    Faqat km / tezlik / poezdka — Boomerang «Отчёт по поездкам» bilan.
+    To'xtashlarni qayta tortmaydi (tez). Har cron da chaqiriladi.
+    """
+    import time
+
+    date_str = date_str or today_tashkent()
+    t0 = time.time()
+    budget = float(time_budget_sec) if time_budget_sec else None
+
+    def left():
+        if budget is None:
+            return 999.0
+        return budget - (time.time() - t0)
+
+    cfg = office.gps_config_internal()
+    if not cfg.get("configured"):
+        return {"ok": False, "error": "GPS sozlamasi yo'q", "updated": 0}
+    prev = office.get_report(date_str) or {}
+    cars = prev.get("cars") if isinstance(prev, dict) else {}
+    if not isinstance(cars, dict) or not cars:
+        return {"ok": True, "updated": 0, "skipped": True}
+
+    host = cfg.get("host") or "http://bms1.gpsavto.uz"
+    client = WialonClient(
+        host,
+        token=cfg.get("token") or "",
+        user=cfg.get("user") or "",
+        password=cfg.get("password") or "",
+        timeout=20,
+    )
+    try:
+        client.login()
+        try:
+            client.resolve_templates()
+        except Exception:
+            pass
+        units = client.get_units()
+        drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
+        updated = 0
+        cars_out = dict(cars)
+        # Eng eski km birinchi
+        jobs = []
+        for unit in units:
+            name = str(unit.get("nm") or unit.get("name") or "")
+            drv = find_driver_by_car(drivers, name)
+            if not drv:
+                continue
+            row = cars_out.get(drv["car"])
+            if not isinstance(row, dict):
+                continue
+            km_at = int(row.get("kmSyncedAt") or row.get("syncedAt") or 0)
+            jobs.append((km_at, unit, drv))
+        jobs.sort(key=lambda x: x[0])
+
+        for _km_at, unit, drv in jobs:
+            if left() < 10:
+                break
+            try:
+                trip = client.fetch_trip_report_stats(unit["id"], date_str)
+            except Exception:
+                trip = None
+            try:
+                live = client.fetch_unit_trips_stats(unit["id"], date_str)
+            except Exception:
+                live = None
+            new_km = 0.0
+            src = ""
+            if trip and trip.get("probeg"):
+                new_km = float(trip["probeg"])
+                src = str(trip.get("_kmSrc") or "trip_report")
+            if live and live.get("probeg"):
+                live_km = float(live["probeg"])
+                if live_km > new_km + 0.05:
+                    new_km = live_km
+                    src = "get_trips"
+            if new_km <= 0:
+                continue
+            row = dict(cars_out[drv["car"]])
+            st = dict(row.get("stats") or {})
+            old_km = float(st.get("probeg") or 0)
+            changed = abs(new_km - old_km) >= 0.05
+            if changed or new_km > old_km:
+                st["probeg"] = round(new_km + 1e-12, 2)
+                st["metricsSource"] = src or st.get("metricsSource") or ""
+            if trip:
+                if trip.get("maxSpeed"):
+                    st["maxSpeed"] = float(trip["maxSpeed"])
+                if trip.get("avgSpeed"):
+                    st["avgSpeed"] = trip["avgSpeed"]
+                if trip.get("poezdok"):
+                    st["poezdok"] = int(trip["poezdok"])
+            elif live:
+                if live.get("maxSpeed") and float(live["maxSpeed"]) > float(st.get("maxSpeed") or 0):
+                    st["maxSpeed"] = float(live["maxSpeed"])
+                if live.get("poezdok") and int(live["poezdok"]) > int(st.get("poezdok") or 0):
+                    st["poezdok"] = int(live["poezdok"])
+            row["stats"] = st
+            row["kmSyncedAt"] = int(time.time())
+            cars_out[drv["car"]] = row
+            if changed or new_km > old_km:
+                updated += 1
+
+        if updated:
+            office.save_report(date_str, cars_out, saved_by=saved_by)
+            office.set_gps_status(
+                running=False,
+                cars=len(cars_out),
+                error="",
+                date=date_str,
+                message="Km yangilandi (%d mashina)" % updated,
+                fetched=_count_synced_local(cars_out),
+                total=max(len(cars_out), 1),
+                touch_last_sync=True,
+            )
+        return {
+            "ok": True,
+            "updated": updated,
+            "elapsed": round(time.time() - t0, 2),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160], "updated": 0}
+
+
+def _count_synced_local(cars):
+    if not isinstance(cars, dict):
+        return 0
+    return sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt"))
 
 
 def build_pharm_index(drivers, pharmacies):
