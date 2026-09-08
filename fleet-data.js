@@ -1,46 +1,47 @@
 'use strict';
+/* kind: truck | damas | labo — Live xarita ikonkasi */
 /* Bitta manba: barcha mashina va haydovchilar (VHK, Boshqaruv, Admin) */
 
 const FLEET_DRIVERS = [
-  { car: '01 269 KMA', fullName: 'Хўжамов Хасан', shortName: 'Хасан', color: '#3498db',
+  { car: '01 269 KMA', kind: 'truck', fullName: 'Хўжамов Хасан', shortName: 'Хасан', color: '#3498db',
     routes: 'Шайхантахур, Учтепа',
     pharmacies: 'Гор-1,Гор-2,Фарм люкс,Олмазор боурум,Летературний,Тош-1,Тош-2,Белтепа,Ибнсино,Назарбек,Тарнов,Урикзор,Беш қайроғоч' },
-  { car: '01 949 AKA', fullName: 'Ибрагимов Дилшод', shortName: 'Дилшод', color: '#e67e22',
+  { car: '01 949 AKA', kind: 'truck', fullName: 'Ибрагимов Дилшод', shortName: 'Дилшод', color: '#e67e22',
     routes: 'Мирабад, Юнусобод',
     pharmacies: 'Саракулка,Алфраганус,Баку,Узбум,Фуркат боги,Госпитальний,Ц 1,Полевой,Кумарик,Аския,Бобур,Кушбеги' },
-  { car: '01 302 DNA', fullName: 'Абдумаликов Йигитали', shortName: 'Йигитали', color: '#34495e',
+  { car: '01 302 DNA', kind: 'truck', fullName: 'Абдумаликов Йигитали', shortName: 'Йигитали', color: '#34495e',
     routes: 'Юнусобод, Алмазар',
     pharmacies: 'Қоракамиш,Хуросан,Тансиқбоев,Ю-4,Ю-18,Ю-15,Ахмад дониш,Мега планет,Чинобод Ю,Шахристаниский,Ю-7,Петушок,16-Йиллик' },
-  { car: '01 255 HMA', fullName: 'Мустафақулов Мухриддин', shortName: 'Мухриддин', color: '#e74c3c',
+  { car: '01 255 HMA', kind: 'truck', fullName: 'Мустафақулов Мухриддин', shortName: 'Мухриддин', color: '#e74c3c',
     routes: 'Сергели, Янгихаёт',
     pharmacies: 'Серили-1,Дўстлик-1,Спутник-5,9-худуд,Янги дархон,Сергили-7,Элет маркет,Сергили-7 бозорчаси,Сергели-8,Спутник-7,Сергели-8 корзинка,Серили-4' },
-  { car: '01 205 HMA', fullName: 'Туробов Аваз', shortName: 'Аваз', color: '#27ae60',
+  { car: '01 205 HMA', kind: 'truck', fullName: 'Туробов Аваз', shortName: 'Аваз', color: '#27ae60',
     routes: 'Қорасув, ТТЗ',
     pharmacies: 'Қора-сув Садаф,Қора-сув-5,Куйлик 5,Қора-сув-3,Қора-сув дунё,ТТЗ школа-2,ТТЗ-2,Гнекалогия-1,Гнекалогия-2,Гнекалогия-3,Тараканчик,Олмос' },
-  { car: '01 043 KMA', fullName: 'Саидов Жавохир', shortName: 'Жавохир', color: '#9b59b6',
+  { car: '01 043 KMA', kind: 'truck', fullName: 'Саидов Жавохир', shortName: 'Жавохир', color: '#9b59b6',
     routes: 'Яшнабад, Янгихаёт',
     pharmacies: 'Панелний,Авиясозлар-2,Кадешева бозори,Тапович,Антей,Тузел,Лисинова,Дубовий,Циалковиский,Таш селмаш,Карзинка лисунова,Янгиобод,40-Лет' },
-  { car: '01 931 PJA', fullName: 'Нуралиев Тимур', shortName: 'Тимур', color: '#16a085',
+  { car: '01 931 PJA', kind: 'truck', fullName: 'Нуралиев Тимур', shortName: 'Тимур', color: '#16a085',
     routes: 'Чиланзор, Учтепа',
     pharmacies: 'Ширин,Алгаритм,Алгаритм-Гулистон,Катта-қани,Микрохирургия,Чилонзор-19,Оқтепа,Новза,Чилонзор Торговий,16-гор Больница,Ал-Хоразмий,Парламент,Андалус,Алгаритм корзинка' },
-  { car: '01 083 XJA', fullName: 'Қозоқов Зухриддин', shortName: 'Зухриддин', color: '#e67e22', routes: '—', pharmacies: '' },
-  { car: '01 382 NMA', fullName: 'Наханбоев Умид', shortName: 'Умид', color: '#1abc9c', routes: '—', pharmacies: '' },
-  { car: '01 282 BMA', fullName: 'Ахтамов Боймурод', shortName: 'Боймурод', color: '#d35400', routes: '—', pharmacies: '' },
-  { car: '01 870 SEA', fullName: 'Хомидов Сардор', shortName: 'Сардор Х.', color: '#8e44ad', routes: '—', pharmacies: '' },
-  { car: '01 668 UKA', fullName: 'Маматқулов Жасур', shortName: 'Жасур', color: '#2980b9', routes: '—', pharmacies: '' },
-  { car: '01 887 UKA', fullName: 'Ахмадов Комил', shortName: 'Комил', color: '#c0392b', routes: '—', pharmacies: '' },
-  { car: '01 449 UKA', fullName: 'Абдурахмонов Санжарбек', shortName: 'Санжарбек', color: '#7f8c8d', routes: '—', pharmacies: '' },
-  { car: '01 646 UKA', fullName: 'Абдусаломов Хасан', shortName: 'Хасан А.', color: '#95a5a6', routes: '—', pharmacies: '' },
-  { car: '01 844 FKA', fullName: 'Норқулов Гулом', shortName: 'Гулом', color: '#16a085', routes: '—', fuelType: 'dizel', pharmacies: '' },
-  { car: '01 699 UKA', fullName: 'Турдиев Сардор', shortName: 'Сардор Т.', color: '#f39c12', routes: '—', pharmacies: '' },
-  { car: '01 592 YNA', fullName: 'Турсунқулов Нурбек', shortName: 'Нурбек', color: '#2c3e50', routes: '—', pharmacies: '' },
-  { car: '01 849 SNA', fullName: 'Абдурахимов Козим', shortName: 'Козим', color: '#27ae60', routes: '—', pharmacies: '' },
-  { car: '01 309 YNA', fullName: 'Абдусатторов Акмал', shortName: 'Акмал', color: '#e84393',
+  { car: '01 083 XJA', kind: 'damas', fullName: 'Қозоқов Зухриддин', shortName: 'Зухриддин', color: '#e67e22', routes: '—', pharmacies: '' },
+  { car: '01 382 NMA', kind: 'damas', fullName: 'Наханбоев Умид', shortName: 'Умид', color: '#1abc9c', routes: '—', pharmacies: '' },
+  { car: '01 282 BMA', kind: 'labo', fullName: 'Ахтамов Боймурод', shortName: 'Боймурод', color: '#d35400', routes: '—', pharmacies: '' },
+  { car: '01 870 SEA', kind: 'truck', fullName: 'Хомидов Сардор', shortName: 'Сардор Х.', color: '#8e44ad', routes: '—', pharmacies: '' },
+  { car: '01 668 UKA', kind: 'damas', fullName: 'Маматқулов Жасур', shortName: 'Жасур', color: '#2980b9', routes: '—', pharmacies: '' },
+  { car: '01 887 UKA', kind: 'damas', fullName: 'Ахмадов Комил', shortName: 'Комил', color: '#c0392b', routes: '—', pharmacies: '' },
+  { car: '01 449 UKA', kind: 'labo', fullName: 'Абдурахмонов Санжарбек', shortName: 'Санжарбек', color: '#7f8c8d', routes: '—', pharmacies: '' },
+  { car: '01 646 UKA', kind: 'labo', fullName: 'Абдусаломов Хасан', shortName: 'Хасан А.', color: '#95a5a6', routes: '—', pharmacies: '' },
+  { car: '01 844 FKA', kind: 'truck', fullName: 'Норқулов Гулом', shortName: 'Гулом', color: '#16a085', routes: '—', fuelType: 'dizel', pharmacies: '' },
+  { car: '01 699 UKA', kind: 'damas', fullName: 'Турдиев Сардор', shortName: 'Сардор Т.', color: '#f39c12', routes: '—', pharmacies: '' },
+  { car: '01 592 YNA', kind: 'truck', fullName: 'Турсунқулов Нурбек', shortName: 'Нурбек', color: '#2c3e50', routes: '—', pharmacies: '' },
+  { car: '01 849 SNA', kind: 'labo', fullName: 'Абдурахимов Козим', shortName: 'Козим', color: '#27ae60', routes: '—', pharmacies: '' },
+  { car: '01 309 YNA', kind: 'truck', fullName: 'Абдусатторов Акмал', shortName: 'Акмал', color: '#e84393',
     routes: 'М.Улугбек, Қибрай',
     pharmacies: 'Учхоз,Учхоз макро,Кибрай фарход мадад,Поселка,Салар,МУ Налоговый,Ит Парк,Дархон,Кардиалогия,Алайский Ардус,Паркент,Ганга' },
-  { car: '01 331 MLA', fullName: 'Ахтамов', shortName: 'Ахтамов', color: '#7f8c8d', routes: '—', pharmacies: '' },
-  { car: '01 406 GNA', fullName: '01 406 GNA', shortName: '406 GNA', color: '#95a5a6', routes: '—', pharmacies: '' },
-  { car: '01 567 SGA', fullName: '01 567 SGA', shortName: '567 SGA', color: '#bdc3c7', routes: '—', pharmacies: '' }
+  { car: '01 331 MLA', kind: 'damas', fullName: 'Ахтамов', shortName: 'Ахтамов', color: '#7f8c8d', routes: '—', pharmacies: '' },
+  { car: '01 406 GNA', kind: 'labo', fullName: '01 406 GNA', shortName: '406 GNA', color: '#95a5a6', routes: '—', pharmacies: '' },
+  { car: '01 567 SGA', kind: 'damas', fullName: '01 567 SGA', shortName: '567 SGA', color: '#bdc3c7', routes: '—', pharmacies: '' }
 ];
 
 const FLEET_BASE = FLEET_DRIVERS.map(d => ({
@@ -48,6 +49,7 @@ const FLEET_BASE = FLEET_DRIVERS.map(d => ({
   name: d.fullName,
   short: d.shortName,
   brand: d.brand || '',
+  kind: d.kind || 'truck',
   fuelType: d.fuelType || 'mixed'
 }));
 

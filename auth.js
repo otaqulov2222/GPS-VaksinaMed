@@ -114,6 +114,39 @@ function vmApplyRoleNav(user) {
     }
 }
 
+function vmEnsureLiveNav() {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    const onLive = path.endsWith('/live.html');
+    const staff = vmIsStaff(window.VM_USER);
+
+    document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {
+        let link = nav.querySelector('a[href="/live.html"], a[href="live.html"], #nav-live');
+        if (!link) {
+            link = document.createElement('a');
+            link.href = '/live.html';
+            link.className = 'nav-link';
+            link.id = 'nav-live';
+            link.textContent = 'Live';
+            const fuel = nav.querySelector('#nav-fuel, a[href="/fuel.html"], a[href="fuel.html"]');
+            const dav = nav.querySelector('#nav-davomat, a[href="/attendance.html"]');
+            if (fuel) fuel.insertAdjacentElement('afterend', link);
+            else if (dav) dav.insertAdjacentElement('beforebegin', link);
+            else nav.appendChild(link);
+        } else {
+            link.textContent = 'Live';
+            link.href = '/live.html';
+        }
+        if (staff || onLive) {
+            link.removeAttribute('hidden');
+            link.style.display = '';
+            link.classList.add('staff-only');
+        }
+        link.classList.toggle('on', onLive);
+        if (onLive) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    });
+}
+
 function vmEnsureDavomatNav() {
     const path = (location.pathname || '').replace(/\\/g, '/');
     const onAtt = path.endsWith('/attendance.html');
@@ -185,6 +218,7 @@ function vmEnsureDavomatNav() {
 function vmApplyChrome(user) {
     if (!user) return;
     vmApplyRoleNav(user);
+    vmEnsureLiveNav();
     vmEnsureDavomatNav();
     const name = document.getElementById('tb-user-name');
     const role = document.getElementById('tb-user-role');

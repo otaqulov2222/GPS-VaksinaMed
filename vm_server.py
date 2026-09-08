@@ -40,7 +40,7 @@ SESSIONS_KEY = "auth:sessions"
 SESSION_TOMBS_KEY = "auth:session_tombs"
 
 PUBLIC_PATHS = {"/login.html", "/favicon.ico"}
-PUBLIC_PREFIX = ("/fonts/", "/logo/")
+PUBLIC_PREFIX = ("/fonts/", "/logo/", "/assets/")
 # Frontend assetlar — cookie kutmasdan yuklansin (eski kesh / auth race yo'qoladi)
 PUBLIC_STATIC_EXT = {".js", ".css", ".map", ".woff", ".woff2", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".ico"}
 BLOCKED_EXT = {".py", ".bat", ".md", ".txt", ".env"}
@@ -2731,7 +2731,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             return super().do_GET()
 
-        if path in ("/", "/index.html", "/fuel.html"):
+        if path in ("/", "/index.html", "/fuel.html", "/live.html"):
             if not sess:
                 self.redirect("/login.html")
                 return
@@ -2741,7 +2741,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if path == "/fuel.html":
                 self.path = "/fuel.html"
                 return super().do_GET()
-            # index — disktan + majburiy boot inject (eski HTML kesh bo'lsa ham)
+            if path == "/live.html":
+                self.path = "/live.html"
+                return super().do_GET()
             return self.serve_patched_html("index.html")
 
         if path == "/attendance.html":
@@ -3088,6 +3090,18 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 return
             self.send_json({"ok": True, **OFFICE.gps_config_public()})
+            return
+
+        if path == "/api/office/gps/live":
+            sess = self.require_staff()
+            if not sess:
+                return
+            try:
+                import gps_sync
+                payload = gps_sync.fetch_live_fleet(OFFICE, DIRECTORY)
+                self.send_json(payload)
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:200], "units": []}, 500)
             return
 
         if path == "/api/office/report":

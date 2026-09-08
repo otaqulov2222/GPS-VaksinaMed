@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Live — VaksinaMed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="shell.css?v=22"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body.app-body {
+  background:
+    radial-gradient(900px 420px at 12% -10%, rgba(26,95,180,.12), transparent 55%),
+    radial-gradient(700px 380px at 100% 0%, rgba(26,127,55,.08), transparent 50%),
+    #e8eef6;
+  color: #0b1f3a;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+.live-main {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) 1fr;
+  gap: 14px;
+  padding: 14px;
+  height: calc(100vh - 64px);
+  min-height: 440px;
+}
+.live-side, .live-map-card {
+  background: rgba(255,255,255,.92);
+  border: 1px solid rgba(197,212,230,.9);
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-shadow: 0 10px 30px rgba(11,31,58,.06);
+  backdrop-filter: blur(8px);
+}
+.live-side-head {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #e4edf6;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: linear-gradient(180deg, #f8fbfe 0%, #fff 100%);
+}
+.live-side-head h2 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #5a7190;
+}
+.live-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.live-stat {
+  border-radius: 12px;
+  padding: 10px 8px;
+  text-align: center;
+  border: 1px solid transparent;
+}
+.live-stat.is-move {
+  background: linear-gradient(160deg, #e8f7ee, #f4fbf6);
+  border-color: #c6e8d2;
+}
+.live-stat.is-stop {
+  background: linear-gradient(160deg, #e8f0fa, #f5f8fc);
+  border-color: #c5d8ee;
+}
+.live-stat.is-off {
+  background: #f3f6f9;
+  border-color: #e0e7ef;
+}
+.live-stat i {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  color: #5a7190;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.live-stat b { font-size: 18px; font-family: 'IBM Plex Mono', monospace; }
+.live-stat.is-move b { color: #147a32; }
+.live-stat.is-stop b { color: #1a5fb4; }
+.live-stat.is-off b { color: #7a8fa8; }
+.live-list {
+  overflow: auto;
+  flex: 1;
+  padding: 8px;
+}
+.live-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.live-row:hover { background: #f3f7fb; }
+.live-row.on {
+  background: linear-gradient(120deg, #eaf2fb, #f7faff);
+  border-color: #b7cce4;
+  box-shadow: inset 0 0 0 1px rgba(26,95,180,.06);
+}
+.live-row.is-moving {
+  background: linear-gradient(120deg, #eefaf2, #f8fcf9);
+}
+.live-row.is-moving.on {
+  border-color: #9fd4b0;
+}
+.live-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+.live-avatar svg { width: 22px; height: 34px; display: block; }
+.live-avatar .live-car-img.list {
+  width: 24px;
+  height: 36px;
+  object-fit: contain;
+}
+.live-avatar.move {
+  background: linear-gradient(160deg, #e8f9ee, #f4fdf7);
+  box-shadow: 0 0 0 1px #b6e5c4, 0 4px 12px rgba(20,122,50,.12);
+}
+.live-avatar.stop {
+  background: linear-gradient(160deg, #eaf2fb, #f6f9fc);
+  box-shadow: 0 0 0 1px #c5d8ee, 0 4px 12px rgba(26,95,180,.1);
+}
+.live-avatar.off {
+  background: #f1f4f8;
+  box-shadow: 0 0 0 1px #e0e7ef;
+}
+.live-avatar.move::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 14px;
+  border: 2px solid rgba(34,160,74,.35);
+  animation: livePulseRing 1.6s ease-out infinite;
+}
+.live-car {
+  font-weight: 700;
+  font-size: 13px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.live-drv {
+  font-size: 12px;
+  color: #5a7190;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.live-badge.move { background: #dff3e6; color: #147a32; }
+.live-badge.stop { background: #e3eef9; color: #1a5fb4; }
+.live-badge.off { background: #eef2f6; color: #6b7f96; }
+.live-badge.move .pulse {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #22a04a;
+  animation: liveBlink 1s ease-in-out infinite;
+}
+.live-meta {
+  text-align: right;
+  font-size: 11px;
+  color: #5a7190;
+  line-height: 1.4;
+}
+.live-meta .spd {
+  font-weight: 700;
+  color: #0b1f3a;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+}
+.live-meta .spd.hot { color: #147a32; }
+.live-map-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4edf6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: linear-gradient(180deg, #f7fafd 0%, #ffffff 100%);
+}
+.live-map-head-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.live-map-head h2 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #5a7190;
+  white-space: nowrap;
+}
+.live-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.live-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  background: #f0f5fa;
+  border: 1px solid #d7e3ef;
+  color: #3d5674;
+  font: 500 12px/1 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+  max-width: min(420px, 52vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-status-pill .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22a04a;
+  box-shadow: 0 0 0 3px rgba(34,160,74,.2);
+  flex-shrink: 0;
+  animation: liveBlink 1.4s ease-in-out infinite;
+}
+.live-legend {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.live-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #e0eaf3;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a627e;
+}
+.live-legend i {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+.live-legend .lg-move { background: #22a04a; box-shadow: 0 0 0 3px rgba(34,160,74,.2); }
+.live-legend .lg-stop { background: #1a5fb4; }
+.live-legend .lg-off { background: #a8bdd4; }
+
+/* Live toolbar buttons — professional, not bare outline */
+.live-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  font: 600 12.5px/1 'IBM Plex Sans', sans-serif;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s, transform .12s, color .15s;
+  white-space: nowrap;
+  user-select: none;
+}
+.live-btn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.live-btn:active { transform: translateY(1px); }
+.live-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(26,95,180,.22);
+}
+.live-btn-ghost {
+  background: #fff;
+  border-color: #c9d8e8;
+  color: #1a3a5c;
+  box-shadow: 0 1px 2px rgba(11,31,58,.04);
+}
+.live-btn-ghost:hover {
+  background: #f4f8fc;
+  border-color: #9eb6d0;
+  color: #0b1f3a;
+}
+.live-btn-primary {
+  background: linear-gradient(180deg, #2b74cf 0%, #1a5fb4 100%);
+  border-color: #15539e;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(26,95,180,.28);
+}
+.live-btn-primary:hover {
+  background: linear-gradient(180deg, #3480db 0%, #1f6ac4 100%);
+  box-shadow: 0 6px 16px rgba(26,95,180,.34);
+}
+.live-btn-primary:active {
+  background: linear-gradient(180deg, #1a5fb4 0%, #154f96 100%);
+}
+.live-btn.is-busy {
+  pointer-events: none;
+  opacity: .72;
+}
+.live-btn.is-busy svg {
+  animation: liveSpin .8s linear infinite;
+}
+@keyframes liveSpin {
+  to { transform: rotate(360deg); }
+}
+
+.live-search-wrap {
+  position: relative;
+}
+.live-search-wrap svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: #7a92ad;
+  pointer-events: none;
+}
+.live-search {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #c5d4e6;
+  border-radius: 12px;
+  padding: 0 14px 0 36px;
+  font: 14px/1 'IBM Plex Sans', sans-serif;
+  background: #fff;
+  color: #0b1f3a;
+}
+.live-search::placeholder { color: #8aa0b8; }
+.live-search:focus {
+  outline: none;
+  border-color: #1a5fb4;
+  box-shadow: 0 0 0 3px rgba(26,95,180,.14);
+}
+
+#live-map {
+  flex: 1;
+  min-height: 280px;
+  background: #d5e0ec;
+}
+#live-map .leaflet-control-zoom {
+  border: none !important;
+  box-shadow: 0 8px 22px rgba(11,31,58,.14) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+#live-map .leaflet-control-zoom a {
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  color: #1a3a5c !important;
+  border-bottom-color: #e4edf6 !important;
+  font-size: 16px !important;
+}
+#live-map .leaflet-control-zoom a:hover {
+  background: #f3f7fb !important;
+  color: #1a5fb4 !important;
+}
+.live-pin,
+.live-arrow-pin,
+.leaflet-div-icon.live-pin,
+.leaflet-div-icon.live-arrow-pin,
+.leaflet-marker-icon.live-pin,
+.leaflet-marker-icon.live-arrow-pin {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.live-marker,
+.live-unit,
+.live-unit-img {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+.live-marker {
+  position: relative;
+  width: 72px;
+  height: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.live-unit {
+  position: relative;
+  width: 44px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  transform-origin: 50% 50%;
+  transition: transform .35s linear;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
+}
+.live-unit-img {
+  width: 40px;
+  height: 56px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.live-unit-img.offline { filter: grayscale(.85) brightness(1.05); opacity: .88; }
+.live-unit-img.moving { filter: saturate(1.08) contrast(1.02); }
+.live-unit-img.stopped { filter: none; }
+.live-head {
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  z-index: 3;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.35));
+  animation: liveHeadPulse 1.1s ease-in-out infinite;
+}
+.live-head-svg { width: 16px; height: 16px; display: block; }
+.live-plate-txt {
+  margin-top: 1px;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #d4182a;
+  font: 800 11px/1.1 'IBM Plex Mono', monospace;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  -webkit-text-stroke: 3px #fff;
+  paint-order: stroke fill;
+  text-shadow: 0 1px 2px rgba(0,0,0,.25);
+  z-index: 4;
+}
+.live-marker.moving .live-plate-txt { color: #c41224; }
+.live-marker.offline .live-plate-txt { color: #6b7280; -webkit-text-stroke: 2.5px #fff; }
+.live-marker .live-ring,
+.live-marker .live-ring2,
+.live-car-icon,
+.live-car-img,
+.live-marker .live-plate { display: none !important; }
+@keyframes liveHeadPulse {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(-2px); opacity: .85; }
+}
+.live-avatar .live-unit-img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+.live-avatar {
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+.live-avatar.move,
+.live-avatar.stop,
+.live-avatar.off {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.live-spd-chip {
+  margin-top: 2px;
+  font: 800 10px/1 'IBM Plex Mono', monospace;
+  color: #0f8a38;
+  background: rgba(255,255,255,.92);
+  border: 1px solid #9fd4b0;
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(11,31,58,.12);
+  z-index: 5;
+}
+.live-marker.moving .live-unit {
+  filter: drop-shadow(0 0 6px rgba(34,197,94,.55)) drop-shadow(0 2px 3px rgba(0,0,0,.35));
+}
+.live-marker {
+  width: 78px;
+  height: 92px;
+}
+.live-dir-arrow {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 1px 2px rgba(0,80,20,.4));
+}
+.live-dir-arrow svg { width: 14px; height: 14px; display: block; }
+.live-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: #5a7190;
+  font-size: 13px;
+}
+@keyframes livePulseRing {
+  0% { transform: scale(.55); opacity: .95; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+@keyframes livePlateGlow {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(34,200,90,.3), 0 2px 8px rgba(11,31,58,.3); }
+  50% { box-shadow: 0 0 0 4px rgba(34,200,90,.55), 0 2px 10px rgba(20,150,60,.4); }
+}
+@keyframes liveBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+@media (max-width: 900px) {
+  .live-main {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .live-side { max-height: 42vh; }
+  #live-map { min-height: 48vh; }
+  .live-legend { display: none; }
+  .live-status-pill { max-width: 46vw; font-size: 11px; }
+  .live-btn span, .live-btn { font-size: 12px; }
+  .live-map-actions .live-btn-ghost { padding: 0 10px; }
+}
+</style>
+</head>
+<body class="app-body">
+<input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
+<label for="nav-open" class="nav-scrim" aria-hidden="true"></label>
+
+<div class="app-shell">
+  <aside class="nav-rail">
+    <div class="nav-brand">
+      <img src="/logo/mark.svg?v=3" alt="">
+      <div>
+        <div class="tb-name">VAKSINA <span>MED</span></div>
+        <div class="tb-line">MACHINE CONTROL</div>
+      </div>
+    </div>
+    <nav class="nav-links">
+      <a class="nav-link" href="/">Dashboard</a>
+      <a class="nav-link" href="/fuel.html">Boshqaruv</a>
+      <a class="nav-link on" href="/live.html" aria-current="page">Live</a>
+      <a class="nav-link" href="/attendance.html" id="nav-davomat">Davomat</a>
+    </nav>
+    <div class="nav-foot">
+      <a class="nav-link" href="/profile.html">Profil</a>
+    </div>
+  </aside>
+
+  <div class="app-main">
+    <header class="topbar">
+      <label for="nav-open" class="nav-burger">Menyu</label>
+      <div>
+        <div class="top-title">Live</div>
+        <div class="top-sub">Park holati — harakat / to‘xtash / offline</div>
+      </div>
+      <div class="acts">
+        <span id="tb-user-name" class="tb-user-name">—</span>
+      </div>
+    </header>
+
+    <div class="live-main">
+      <aside class="live-side">
+        <div class="live-side-head">
+          <h2>Mashinalar</h2>
+          <div class="live-stats">
+            <div class="live-stat is-move"><i>Harakat</i><b id="live-n-move">0</b></div>
+            <div class="live-stat is-stop"><i>Turgan</i><b id="live-n-stop">0</b></div>
+            <div class="live-stat is-off"><i>Offline</i><b id="live-n-off">0</b></div>
+          </div>
+          <div class="live-search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <input class="live-search" id="live-q" type="search" placeholder="Qidiruv: raqam yoki haydovchi" autocomplete="off">
+          </div>
+        </div>
+        <div class="live-list" id="live-list">
+          <div class="live-empty">Yuklanmoqda…</div>
+        </div>
+      </aside>
+
+      <section class="live-map-card">
+        <div class="live-map-head">
+          <div class="live-map-head-left">
+            <h2>Xarita</h2>
+            <div class="live-legend">
+              <span><i class="lg-move"></i> Harakatda</span>
+              <span><i class="lg-stop"></i> Turgan</span>
+              <span><i class="lg-off"></i> Offline</span>
+            </div>
+          </div>
+          <div class="live-map-actions">
+            <span class="live-status-pill" id="live-clock" title="Oxirgi yangilanish"><span class="dot" aria-hidden="true"></span><span class="live-clock-txt">—</span></span>
+            <button type="button" class="live-btn live-btn-ghost" id="live-fit" title="Barcha mashinalarni ko‘rish">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Hammasini ko‘rish
+            </button>
+            <button type="button" class="live-btn live-btn-primary" id="live-refresh" title="GPS ni yangilash">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Yangilash
+            </button>
+          </div>
+        </div>
+        <div id="live-map"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="uz-latin.js?v=1"></script>
+<script src="fleet-data.js?v=6"></script>
+<script src="auth.js?v=29"></script>
+<script src="map-tiles.js?v=3"></script>
+<script src="live.js?v=12"></script>
+</body>
+</html>

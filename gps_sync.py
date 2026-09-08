@@ -56,6 +56,8 @@ def load_fleet_drivers(base_dir):
             "routes": pick("routes") or "—",
             "pharmacies": pick("pharmacies") or "",
             "color": pick("color") or "#3498db",
+            "fuelType": pick("fuelType") or "mixed",
+            "kind": (pick("kind") or "truck").lower(),
         })
     return drivers
 
@@ -278,6 +280,59 @@ class WialonClient:
             },
         )
         return r.get("items") or []
+
+    def get_units_live(self):
+        """Monitoring: unit + oxirgi pozitsiya."""
+        r = self._call(
+            "core/search_items",
+            {
+                "spec": {
+                    "itemsType": "avl_unit",
+                    "propName": "sys_name",
+                    "propValueMask": "*",
+                    "sortType": "sys_name",
+                },
+                "force": 1,
+                "flags": 1 | 1024 | 4096,
+                "from": 0,
+                "to": 0,
+            },
+        )
+        out = []
+        for item in r.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            pos_raw = item.get("pos") if isinstance(item.get("pos"), dict) else None
+            pos = None
+            if pos_raw:
+                try:
+                    lat = float(pos_raw.get("y") or 0)
+                    lng = float(pos_raw.get("x") or 0)
+                    speed = float(pos_raw.get("s") or 0)
+                    ts = int(pos_raw.get("t") or 0)
+                except (TypeError, ValueError):
+                    lat = lng = speed = 0.0
+                    ts = 0
+                if lat or lng:
+                    try:
+                        course = float(pos_raw.get("c") or 0)
+                    except (TypeError, ValueError):
+                        course = 0.0
+                    pos = {
+                        "lat": lat,
+                        "lng": lng,
+                        "speed": speed,
+                        "time": ts,
+                        "course": course,
+                    }
+            name = str(item.get("nm") or "")
+            out.append({
+                "id": item.get("id"),
+                "name": name,
+                "carNumber": compact_car(name),
+                "pos": pos,
+            })
+        return out
 
     def resolve_templates(self):
         if self._tpl:
@@ -898,6 +953,100 @@ class WialonClient:
             return stats if stats.get("probeg") or stats.get("poezdok") or stats.get("maxSpeed") else None
         except Exception:
             return None
+
+
+def fetch_live_fleet(office, base_dir):
+    """Park live holati — Live sahifa uchun."""
+    cfg = office.gps_config_internal() if office else {}
+    if not cfg.get("configured"):
+        return {"ok": False, "error": "GPS sozlanmagan", "units": [], "configured": False}
+
+    client = WialonClient(
+        host=cfg.get("host") or "http://bms1.gpsavto.uz",
+        user=cfg.get("user") or "",
+        password=cfg.get("password") or "",
+        token=cfg.get("token") or "",
+    )
+    client.login()
+    raw = client.get_units_live()
+    drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
+    by_plate = {compact_car(d.get("car")): d for d in drivers if isinstance(d, dict)}
+
+    now = int(datetime.now(tz=TZ5).timestamp())
+    units = []
+    for u in raw:
+        plate_key = compact_car(u.get("carNumber") or u.get("name"))
+        drv = by_plate.get(plate_key)
+        if not drv:
+            for k, d in by_plate.items():
+                if k and plate_key and (plate_key.startswith(k) or k.startswith(plate_key)):
+                    drv = d
+                    break
+        pos = u.get("pos")
+        age = None
+        status = "offline"
+        if pos and pos.get("time"):
+            age = max(0, now - int(pos["time"]))
+            if age <= 15 * 60:
+                spd = float(pos.get("speed") or 0)
+                status = "moving" if spd > 4 else "stopped"
+            else:
+                status = "offline"
+        elif pos:
+            status = "stopped"
+        units.append({
+            "id": u.get("id"),
+            "name": u.get("name") or "",
+            "car": (drv or {}).get("car") or u.get("name") or "",
+            "driver": (drv or {}).get("fullName") or (drv or {}).get("shortName") or "—",
+            "short": (drv or {}).get("shortName") or "",
+            "color": (drv or {}).get("color") or "#1a5fb4",
+            "kind": (drv or {}).get("kind") or "truck",
+            "inFleet": bool(drv),
+            "pos": pos,
+            "status": status,
+            "ageSec": age,
+        })
+
+    seen = {compact_car(x.get("car")) for x in units}
+    for d in drivers:
+        if not isinstance(d, dict):
+            continue
+        k = compact_car(d.get("car"))
+        if not k or k in seen:
+            continue
+        units.append({
+            "id": None,
+            "name": d.get("car") or "",
+            "car": d.get("car") or "",
+            "driver": d.get("fullName") or d.get("shortName") or "—",
+            "short": d.get("shortName") or "",
+            "color": d.get("color") or "#1a5fb4",
+            "kind": d.get("kind") or "truck",
+            "inFleet": True,
+            "pos": None,
+            "status": "offline",
+            "ageSec": None,
+        })
+
+    units.sort(
+        key=lambda x: (
+            0 if x.get("status") == "moving" else 1 if x.get("status") == "stopped" else 2,
+            str(x.get("car") or ""),
+        )
+    )
+    return {
+        "ok": True,
+        "configured": True,
+        "ts": now,
+        "units": units,
+        "counts": {
+            "total": len(units),
+            "moving": sum(1 for x in units if x.get("status") == "moving"),
+            "stopped": sum(1 for x in units if x.get("status") == "stopped"),
+            "offline": sum(1 for x in units if x.get("status") == "offline"),
+        },
+    }
 
 
 def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, saved_by="km-refresh"):
