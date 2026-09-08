@@ -306,17 +306,23 @@ async def handle(request: Request, full_path: str = ""):
     if path == "/api/health" and request.method in ("GET", "HEAD", "OPTIONS"):
         if request.method == "OPTIONS":
             return Response(status_code=204)
+        # Import qilmasdan ham build ko'rinsin — domain eski deploydami tekshirish uchun
+        try:
+            from vm_server import VM_BUILD as _build
+        except Exception:
+            _build = "m98"
         body = json.dumps(
             {
                 "ok": True,
                 "ts": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "lite": True,
-                "build": "m96",
+                "build": str(_build),
+                "live": True,
             }
         ).encode("utf-8")
         headers = {
             "Cache-Control": "no-store, no-cache, must-revalidate",
-            "X-VM-Build": "m96",
+            "X-VM-Build": str(_build),
         }
         if request.method == "HEAD":
             return Response(status_code=200, headers=headers, media_type="application/json")
@@ -326,6 +332,23 @@ async def handle(request: Request, full_path: str = ""):
             headers=headers,
             media_type="application/json",
         )
+
+    # Live menyu inject — HTML/JS keshidan mustaqil (domain eski bo'lsa ham API yangi bo'lsa ishlaydi)
+    if path == "/api/live-nav.js" and request.method in ("GET", "HEAD"):
+        js = (
+            "(function(){function go(){try{var ns=document.querySelectorAll('.nav-rail .nav-links');"
+            "ns.forEach(function(nav){var a=nav.querySelector('a[href=\"/live.html\"],#nav-live');"
+            "if(!a){a=document.createElement('a');a.href='/live.html';a.id='nav-live';"
+            "a.className='nav-link staff-only';a.textContent='Live';"
+            "var f=nav.querySelector('a[href=\"/fuel.html\"]');var d=nav.querySelector('a[href=\"/attendance.html\"],#nav-davomat');"
+            "if(f)f.insertAdjacentElement('afterend',a);else if(d)d.insertAdjacentElement('beforebegin',a);else nav.appendChild(a);}"
+            "a.href='/live.html';a.textContent='Live';a.removeAttribute('hidden');a.style.display='';a.style.visibility='visible';});"
+            "}catch(e){}}go();document.addEventListener('DOMContentLoaded',go);setInterval(go,4000);})();"
+        )
+        headers = {"Cache-Control": "no-store, no-cache, must-revalidate"}
+        if request.method == "HEAD":
+            return Response(status_code=200, headers=headers, media_type="application/javascript")
+        return Response(content=js.encode("utf-8"), status_code=200, headers=headers, media_type="application/javascript")
 
     # Cron: 1) GitHub uyg'otish (ixtiyoriy)  2) Vercel o'zi sync (asosiy ishonch)
     if path == "/api/cron/gps-sync" and request.method in ("GET", "POST", "HEAD"):

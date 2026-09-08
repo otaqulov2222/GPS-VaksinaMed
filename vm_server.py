@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m97"
+VM_BUILD = "m98"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -2483,9 +2483,42 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
     };
     window.refreshMap._vmBoot=true;
   }
+  function ensureLiveNav(){
+    try{
+      var links=document.querySelectorAll('.nav-rail .nav-links');
+      if(!links||!links.length) return;
+      links.forEach(function(nav){
+        var link=nav.querySelector('a[href="/live.html"], a[href="live.html"], #nav-live');
+        if(!link){
+          link=document.createElement('a');
+          link.href='/live.html';
+          link.className='nav-link staff-only';
+          link.id='nav-live';
+          link.textContent='Live';
+          var fuel=nav.querySelector('a[href="/fuel.html"], a[href="fuel.html"]');
+          var dav=nav.querySelector('a[href="/attendance.html"], #nav-davomat');
+          if(fuel) fuel.insertAdjacentElement('afterend', link);
+          else if(dav) dav.insertAdjacentElement('beforebegin', link);
+          else nav.appendChild(link);
+        } else {
+          link.href='/live.html';
+          link.textContent='Live';
+          link.removeAttribute('hidden');
+          link.style.display='';
+          link.style.visibility='visible';
+        }
+        var onLive=(location.pathname||'').indexOf('live.html')>=0;
+        link.classList.toggle('on', onLive);
+      });
+    }catch(e){}
+  }
   function boot(){
     paintBanner(false,0);
     patchRefresh();
+    ensureLiveNav();
+    setTimeout(ensureLiveNav,800);
+    setTimeout(ensureLiveNav,2500);
+    setInterval(ensureLiveNav,5000);
     setTimeout(forcePins,500);
     setTimeout(forcePins,1500);
     setTimeout(forcePins,3000);
@@ -2495,6 +2528,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
   }
   if(document.readyState==='complete') boot();
   else window.addEventListener('load',boot);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', ensureLiveNav);
+  else ensureLiveNav();
 })();
 """.replace("%BUILD%", json.dumps(VM_BUILD))
         raw = js.encode("utf-8")
@@ -2510,7 +2545,18 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         with open(fpath, "r", encoding="utf-8") as f:
             html = f.read()
         if filename == "index.html":
-            boot = '<script src="/api/vm-boot.js?v=%s"></script>\n' % VM_BUILD
+            # Live menyu — HTML keshidan mustaqil majburiy inject
+            if 'href="/live.html"' not in html and "href='/live.html'" not in html:
+                html = html.replace(
+                    '<a class="nav-link" href="/fuel.html">Boshqaruv</a>',
+                    '<a class="nav-link" href="/fuel.html">Boshqaruv</a>\n'
+                    '      <a class="nav-link staff-only" href="/live.html" id="nav-live">Live</a>',
+                    1,
+                )
+            boot = (
+                '<script src="/api/live-nav.js?v=%s"></script>\n'
+                '<script src="/api/vm-boot.js?v=%s"></script>\n'
+            ) % (VM_BUILD, VM_BUILD)
             banner = (
                 '<div id="vm-build-banner" style="background:#c0392b;color:#fff;'
                 'font:700 13px/1.2 IBM Plex Mono,monospace;padding:8px 12px">'
@@ -2525,8 +2571,17 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     )
                 else:
                     html = html.replace("<body>", "<body>\n" + banner, 1)
-            if "/api/vm-boot.js" not in html:
-                html = html.replace("</body>", boot + "</body>", 1)
+            if "/api/live-nav.js" not in html or "/api/vm-boot.js" not in html:
+                # Eski kesh faqat vm-boot bo'lsa ham live-nav qo'shilsin
+                if "/api/live-nav.js" not in html and "/api/vm-boot.js" in html:
+                    html = html.replace(
+                        '<script src="/api/vm-boot.js',
+                        '<script src="/api/live-nav.js?v=%s"></script>\n'
+                        '<script src="/api/vm-boot.js' % VM_BUILD,
+                        1,
+                    )
+                elif "/api/vm-boot.js" not in html:
+                    html = html.replace("</body>", boot + "</body>", 1)
             if "VM_BUILD" not in html and "__VM_BUILD" not in html:
                 html = html.replace(
                     "<head>",
@@ -2820,6 +2875,32 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/vm-build":
             self.send_json({"ok": True, "build": VM_BUILD})
+            return
+
+        if path == "/api/live-nav.js":
+            js = (
+                "(function(){function go(){try{var ns=document.querySelectorAll('.nav-rail .nav-links');"
+                "ns.forEach(function(nav){var a=nav.querySelector('a[href=\"/live.html\"],#nav-live');"
+                "if(!a){a=document.createElement('a');a.href='/live.html';a.id='nav-live';"
+                "a.className='nav-link staff-only';a.textContent='Live';"
+                "var f=nav.querySelector('a[href=\"/fuel.html\"]');"
+                "var d=nav.querySelector('a[href=\"/attendance.html\"],#nav-davomat');"
+                "if(f)f.insertAdjacentElement('afterend',a);"
+                "else if(d)d.insertAdjacentElement('beforebegin',a);else nav.appendChild(a);}"
+                "a.href='/live.html';a.textContent='Live';a.removeAttribute('hidden');"
+                "a.style.display='';a.style.visibility='visible';});"
+                "}catch(e){}}go();"
+                "document.addEventListener('DOMContentLoaded',go);setInterval(go,4000);})();"
+            )
+            raw = js.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("X-VM-Build", VM_BUILD)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(raw)
             return
 
         if path == "/api/vm-boot.js":
