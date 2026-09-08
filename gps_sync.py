@@ -1699,7 +1699,7 @@ def sync_today(
                 message="Tekshirildi — ma'lumot yangi",
                 fetched=synced_n,
                 total=total_fleet,
-                touch_last_sync=False,
+                touch_last_sync=True,
             )
             return {
                 "ok": True,
@@ -1809,7 +1809,8 @@ def sync_today(
             message=msg,
             fetched=synced_n,
             total=total_fleet,
-            touch_last_sync=bool(done > 0),
+            # Oxirgi har urinishda yangilansin (bo'sh chunk bo'lsa ham)
+            touch_last_sync=True,
         )
         return {
             "ok": done > 0 or synced_n > 0,

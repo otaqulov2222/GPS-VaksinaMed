@@ -258,13 +258,32 @@ def _vercel_gps_sync_backup() -> dict:
                     force=False,
                 )
 
+        fetched = int(result.get("fetched") or 0)
+        total = int(result.get("total") or fleet_n or 0)
+        km_n = int((km_refresh or {}).get("updated") or 0)
+        msg = "Yangilandi"
+        if result.get("partial"):
+            msg = "Qisman — davom"
+        if km_n:
+            msg = "Km+%d · %s" % (km_n, msg)
+        office.set_gps_status(
+            running=False,
+            cars=len(cars),
+            error=str(result.get("error") or "")[:200],
+            date=d,
+            message=msg,
+            fetched=fetched,
+            total=max(total, fleet_n, 1),
+            touch_last_sync=True,
+        )
+
         return {
             "ok": bool(result.get("ok")),
             "skipped": False,
             "force": force,
             "date": d,
-            "fetched": int(result.get("fetched") or 0),
-            "total": int(result.get("total") or fleet_n or 0),
+            "fetched": fetched,
+            "total": total,
             "partial": bool(result.get("partial")),
             "kmRefresh": km_refresh,
             "error": str(result.get("error") or "")[:160],

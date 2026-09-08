@@ -2040,9 +2040,10 @@ function hasGpsConfig() {
     return !!((c.token && String(c.token).trim()) || (c.password && String(c.password).trim()));
 }
 
-const GPS_POLL_MS = 60 * 1000;          // har daqiqa holat
-const GPS_POLL_FAST_MS = 20 * 1000;     // qisman bo'lsa tezroq
-const GPS_NUDGE_MIN_MS = 170 * 1000;    // jim avto-tortish (kamida ~3 daqiqa)
+const GPS_POLL_MS = 45 * 1000;          // holat ~45 soniya
+const GPS_POLL_FAST_MS = 15 * 1000;     // qisman bo'lsa tezroq
+const GPS_NUDGE_MIN_MS = 120 * 1000;    // jim avto-tortish (~2 daqiqa)
+const GPS_STALE_FORCE_MS = 4 * 60 * 1000; // 4 daqiqadan eski — majburiy
 
 function stopGpsAutoSync() {
     if (STATE.gpsAutoTimer) clearInterval(STATE.gpsAutoTimer);
@@ -2066,29 +2067,34 @@ async function nudgeServerGpsSync(status) {
     const ts = st.lastSync ? (parseServerTime(st.lastSync)?.getTime() || 0) : 0;
     const ageMs = ts ? (Date.now() - ts) : 1e12;
     const stale = ageMs >= GPS_NUDGE_MIN_MS;
-    // To'liq va yangi — faqat holat poll
+    const veryStale = ageMs >= GPS_STALE_FORCE_MS;
     if (!incomplete && !stale) return;
 
     const now = Date.now();
-    if (STATE.gpsLastNudgeAt && (now - STATE.gpsLastNudgeAt) < GPS_NUDGE_MIN_MS) return;
+    const sinceNudge = STATE.gpsLastNudgeAt ? (now - STATE.gpsLastNudgeAt) : 1e12;
+    const cooldown = veryStale ? 45 * 1000 : GPS_NUDGE_MIN_MS;
+    if (sinceNudge < cooldown) return;
     STATE.gpsLastNudgeAt = now;
     STATE.gpsNudgeBusy = true;
     try {
         const today = dateStr(new Date());
         const dateVal = st.lastDate || st.syncDate || STATE.currentDate || today;
-        // force: yangi kun / eskirgan; qisman bo'lsa yetishmaganlarni to'ldirish
-        await vmApi('/api/office/gps/sync', {
+        const res = await vmApi('/api/office/gps/sync', {
             method: 'POST',
             body: JSON.stringify({
                 date: dateVal,
-                force: !incomplete || fetched === 0,
+                force: true,
                 habit: true,
                 auto: true
             })
         });
+        if (res && res.busy) {
+            STATE.gpsLastNudgeAt = now - cooldown + 30 * 1000;
+        }
         await pollServerGpsStatus(true);
     } catch (e) {
         console.warn('gps nudge:', e);
+        STATE.gpsLastNudgeAt = now - cooldown + 30 * 1000;
     } finally {
         STATE.gpsNudgeBusy = false;
     }
@@ -2109,8 +2115,17 @@ function startGpsAutoSync() {
         }
     };
     STATE.gpsAutoTimer = setInterval(tick, GPS_POLL_MS);
-    // Sahifa ochilganda darhol
     tick();
+    if (!STATE._gpsVisBound) {
+        STATE._gpsVisBound = true;
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            vmApi('/api/office/gps/status').then(d => {
+                updateGpsLastSyncUi(d.lastSync, d.running, d);
+                return nudgeServerGpsSync(d);
+            }).catch(() => {});
+        });
+    }
 }
 
 function sleepMs(ms) {
@@ -2187,7 +2202,7 @@ function updateGpsLastSyncUi(iso, running, extra) {
     if (habit) {
         habit.textContent = total > 0
             ? ('Kunlik odat: avto ' + fetched + '/' + total + ' mashina')
-            : 'Kunlik odat: server har ~3 daqiqada avto-yuklaydi';
+            : 'Kunlik odat: server har ~2–5 daqiqada avto-yuklaydi';
     }
     if (!el) return;
     if (running) {
