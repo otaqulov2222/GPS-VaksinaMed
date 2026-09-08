@@ -1952,7 +1952,7 @@ async function nudgeServerGpsSync(status) {
     const fetched = Number(st.fetched || st.cars || 0) || 0;
     const total = Number(st.total || 0) || 0;
     const incomplete = total > 0 && fetched < total;
-    const ts = st.lastSync ? new Date(st.lastSync).getTime() : 0;
+    const ts = st.lastSync ? (parseServerTime(st.lastSync)?.getTime() || 0) : 0;
     const ageMs = ts ? (Date.now() - ts) : 1e12;
     const stale = ageMs >= GPS_NUDGE_MIN_MS;
     // To'liq va yangi — faqat holat poll
@@ -2004,6 +2004,31 @@ function startGpsAutoSync() {
 
 function sleepMs(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Server vaqti. Yangi: ...+05:00 (Toshkent). Eski naive UTC (Vercel) → Z. */
+function parseServerTime(iso) {
+    if (!iso) return null;
+    const s = String(iso).trim();
+    if (!s) return null;
+    if (/Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) {
+        const d = new Date(s);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const norm = s.includes('T') ? s : s.replace(' ', 'T');
+    // Legacy: Vercel UTC strftime — offset yo'q edi
+    const d = new Date(norm + 'Z');
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatSyncClock(iso) {
+    const d = parseServerTime(iso);
+    if (!d) return '';
+    return d.toLocaleTimeString('uz-UZ', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Tashkent'
+    });
 }
 
 async function saveGpsConfigToServer(cfg) {
@@ -2063,10 +2088,11 @@ function updateGpsLastSyncUi(iso, running, extra) {
     const parts = [];
     if (ratio) parts.push(ratio + ' mashina');
     if (iso) {
-        const d = new Date(iso);
-        parts.push('Oxirgi: ' + d.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }));
+        const clock = formatSyncClock(iso);
+        if (clock) parts.push('Oxirgi: ' + clock);
     } else if (STATE.gpsLastSync) {
-        parts.push('Oxirgi: ' + new Date(STATE.gpsLastSync).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }));
+        const clock = formatSyncClock(STATE.gpsLastSync);
+        if (clock) parts.push('Oxirgi: ' + clock);
     }
     // To'liq yuklangan bo'lsa eski «Xato» ni ko'rsatmaymiz
     let showMsg = msg;
@@ -2101,7 +2127,7 @@ async function pollServerGpsStatus(forceToday) {
 
         const today = dateStr(new Date());
         const dateToLoad = d.lastDate || d.syncDate || today;
-        const ts = d.lastSync ? new Date(d.lastSync).getTime() : 0;
+        const ts = d.lastSync ? (parseServerTime(d.lastSync)?.getTime() || 0) : 0;
         const newer = ts > (STATE.serverGpsSyncTs || 0);
         const incomplete = total > 0 && fetched < total;
         if (!forceToday && !newer && !incomplete) return;

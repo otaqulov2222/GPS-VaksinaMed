@@ -18,7 +18,15 @@ import argparse
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+try:
+    from zoneinfo import ZoneInfo
+
+    TZ_TASHKENT = ZoneInfo("Asia/Tashkent")
+except Exception:
+    TZ_TASHKENT = timezone(timedelta(hours=5))
 
 PORT = int(os.environ.get("PORT", "8080"))
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
@@ -212,7 +220,8 @@ def now_ts():
 
 
 def iso_now():
-    return time.strftime("%Y-%m-%d %H:%M:%S")
+    """Toshkent (UTC+5), offset bilan — brauzer chalkashmasin."""
+    return datetime.now(TZ_TASHKENT).strftime("%Y-%m-%dT%H:%M:%S+05:00")
 
 
 def hash_pw(password, salt=None):
