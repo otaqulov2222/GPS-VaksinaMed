@@ -129,7 +129,20 @@ def run_once():
         )
 
         result = None
-        if fleet_n and synced < fleet_n:
+        # Yangi kun / bo'sh kun — soatdan qat'i nazar BIRINCHI bo'lib to'ldirish
+        new_day = fleet_n > 0 and synced == 0
+        if new_day:
+            print("Rejim: YANGI KUN — birinchi to'liq yuklash")
+            result = gps_sync.sync_today(
+                office,
+                directory,
+                d,
+                saved_by="github-cron-morning",
+                time_budget_sec=None,
+                parallel=True,
+                force=True,
+            )
+        elif fleet_n and synced < fleet_n:
             print("Rejim: TO'LDIRISH (yetishmagan mashinalar)")
             result = gps_sync.sync_today(
                 office,
@@ -221,8 +234,8 @@ def main():
         round_n += 1
         now = datetime.now(TZ5)
         print("=== LOOP #%d | %s Toshkent ===" % (round_n, now.strftime("%Y-%m-%d %H:%M")))
-        # Tungi soatda uzoq loop kerak emas
-        if now.hour < 6 or now.hour > 22:
+        # Ertalab yangi kun (05 dan) — loop ishlasin; tunda faqat bitta urinish
+        if now.hour < 5 or now.hour > 22:
             print("Ish vaqtidan tashqari — bitta urinish va chiqish")
             return run_once()
 
