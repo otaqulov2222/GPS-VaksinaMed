@@ -16,7 +16,8 @@ on:
   schedule:
     # Har soat :07 — asosiy (Toshkent 05–22)
     - cron: '7 0-17 * * *'
-    # Yarim soat :37 — ertalab/kun davomida zaxira (GitHub yutib yuborsa)
+    # :22 va :37 — GitHub yutib yuborsa zaxira
+    - cron: '22 0-17 * * *'
     - cron: '37 0-17 * * *'
   workflow_dispatch:
 

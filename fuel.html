@@ -1002,11 +1002,33 @@ table.dtable td.day {
   }
   table.dtable th, table.dtable td { padding: 5px 4px; }
   table.dtable input, table.dtable select {
-    min-height: 40px;
-    height: 40px;
+    min-height: 44px;
+    height: 44px;
     font-size: 16px;
+    border-radius: 8px;
   }
-  table.dtable .out { min-height: 40px; line-height: 40px; }
+  table.dtable .out { min-height: 44px; line-height: 44px; font-size: 13px; }
+  /* Mobil: birinchi ustun yopishqoq + scroll yo‘riqnoma */
+  .daily-table-card .table-wrap::after {
+    content: '← chap-o‘ng suring →';
+    display: block;
+    text-align: center;
+    font-size: 11px;
+    color: #5a7190;
+    padding: 6px 0 2px;
+    position: sticky;
+    left: 0;
+  }
+  table.dtable thead th:first-child,
+  table.dtable tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: #f0f5fa;
+    box-shadow: 2px 0 6px rgba(11, 31, 58, 0.08);
+    min-width: 88px;
+  }
+  table.dtable thead th:first-child { z-index: 5; background: #123050; color: #fff; }
 
   .row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
   .row-btns .btn {
@@ -1585,7 +1607,7 @@ table.dtable td.day {
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 <script src="auth.js?v=28"></script>
-<script src="fuel.js?v=53"></script>
+<script src="fuel.js?v=54"></script>
 <script src="journal.js?v=11"></script>
 </body>
 </html>

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
@@ -22,6 +24,74 @@ def _cron_authorized(request: Request) -> bool:
     secret = (os.environ.get("CRON_SECRET") or "").strip()
     auth = (request.headers.get("authorization") or "").strip()
     return bool(secret) and auth == f"Bearer {secret}"
+
+
+def _github_dispatch_gps_sync() -> dict:
+    """
+    Og'ir sync Vercelda emas — faqat GitHub Actions ni uyg'otadi (<2s).
+    GH_PAT bo'lmasa: accepted, lekin dispatched=false (asosiy sync hali Actions schedule).
+    """
+    pat = (os.environ.get("GH_PAT") or os.environ.get("GITHUB_PAT") or "").strip()
+    repo = (os.environ.get("GITHUB_REPOSITORY") or os.environ.get("GH_REPO") or "").strip()
+    if not repo:
+        owner = (os.environ.get("GH_OWNER") or "otaqulov2222").strip()
+        name = (os.environ.get("GH_REPO_NAME") or "GPS-VaksinaMed").strip()
+        repo = f"{owner}/{name}"
+    ref = (os.environ.get("GH_REF") or "main").strip() or "main"
+    workflow = (os.environ.get("GH_GPS_WORKFLOW") or "gps-sync.yml").strip() or "gps-sync.yml"
+
+    if not pat:
+        return {
+            "ok": True,
+            "accepted": True,
+            "dispatched": False,
+            "message": "GH_PAT yo'q — GitHub schedule ishlaydi. Zaxira uchun Vercelga GH_PAT qo'shing.",
+        }
+
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
+    body = json.dumps({"ref": ref}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {pat}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+            "User-Agent": "VaksinaMed-GPS-Cron",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            code = getattr(resp, "status", 204) or 204
+        return {
+            "ok": True,
+            "accepted": True,
+            "dispatched": True,
+            "http": int(code),
+            "repo": repo,
+            "ref": ref,
+            "message": "GitHub Actions GPS sync ishga tushirildi.",
+        }
+    except urllib.error.HTTPError as e:
+        err = e.read().decode("utf-8", "ignore")[:180]
+        return {
+            "ok": False,
+            "accepted": True,
+            "dispatched": False,
+            "http": int(e.code),
+            "error": err or str(e.reason),
+            "message": "GitHub dispatch xato — schedule hali ishlashi mumkin.",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "accepted": True,
+            "dispatched": False,
+            "error": str(e)[:160],
+            "message": "GitHub dispatch ulanmadi — schedule hali ishlashi mumkin.",
+        }
 
 
 @app.api_route("/", methods=["GET", "POST", "OPTIONS", "HEAD"], include_in_schema=False)
@@ -44,8 +114,7 @@ async def handle(request: Request, full_path: str = ""):
             return Response(status_code=200, media_type="application/json")
         return Response(content=body, status_code=200, media_type="application/json")
 
-    # Cron: darhol 202 — og'ir sync Vercel Fluid 25s da sig'maydi.
-    # Haqiqiy sync: GitHub Actions (scripts/run_gps_cron.py).
+    # Cron zaxira: og'ir sync YO'Q — faqat GitHub workflow_dispatch (tez 202).
     if path == "/api/cron/gps-sync" and request.method in ("GET", "POST", "HEAD"):
         if not _cron_authorized(request):
             return Response(
@@ -55,11 +124,7 @@ async def handle(request: Request, full_path: str = ""):
             )
         if request.method == "HEAD":
             return Response(status_code=202, media_type="application/json")
-        payload = {
-            "ok": True,
-            "accepted": True,
-            "message": "GPS sync GitHub Actions orqali bajariladi (Vercel 25s limiti).",
-        }
+        payload = _github_dispatch_gps_sync()
         return Response(
             content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             status_code=202,

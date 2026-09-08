@@ -370,14 +370,40 @@ FAQ_OFFLINE = [
     },
     # ── Umumiy / profil / login ──
     {
-        "keys": ["davomat", "face id", "face ulash", "kirish chiqish", "ertalab davomat"],
+        "keys": ["davomat", "face id", "face ulash", "kirish chiqish", "ertalab davomat", "keldim", "ketdim"],
         "a": (
-            "Davomat — Face ulash + kunlik stamp.\n"
-            "1) Login/parol bilan kiring\n"
-            "2) Profil yoki Davomat → birinchi marta yuz (kamera) + Face ID ulang\n"
-            "3) Har kuni Davomat → Kirish (ertalab) / Chiqish (kechqurun)\n"
-            "Tekshiruv: biometriya + ofis GPS zonasi + vaqt oynasi.\n"
-            "Admin: bugungi taxta va sozlamalar (lat/lng, radius, soatlar)."
+            "Davomat — Face ID + GPS + vaqt.\n"
+            "1) Davomat → birinchi marta Face ID ulang\n"
+            "2) Har kuni: Keldim (ertalab) / Ketdim (kechqurun)\n"
+            "Admin: Dashboard (bugun), Hisobot (oylik), Xodim (bitta odam).\n"
+            "Hisobot/Xodimda Excel va PDF yuklab olish mumkin."
+        ),
+    },
+    {
+        "keys": ["davomat excel", "davomat pdf", "davomat hisobot", "attendance export", "hisobot excel"],
+        "a": (
+            "Davomat hisobot export:\n"
+            "1) Davomat → Hisobot — oy tanlang → Excel yoki PDF\n"
+            "2) Yoki Xodim — odamni tanlang → Excel / PDF\n"
+            "Excel: jamoa jamlanma + kunlik varaq. PDF: qisqa jadval."
+        ),
+    },
+    {
+        "keys": ["avto sync", "avtomatik gps", "ertalab yuklash", "kunlik odat", "gps ozi", "oxirgi"],
+        "a": (
+            "GPS kunlik odat — server o'zi yuklaydi (brauzer ochiq bo'lishi shart emas).\n"
+            "• Ertalab yangi kun bo'sh bo'lsa — birinchi bo'lib to'ldiriladi\n"
+            "• Kun davomida ~3 daqiqada yangilanadi (GitHub Actions)\n"
+            "• Zaxira: Vercel cron (15 daqiqa) GitHubni uyg'otadi — CRON_SECRET + GH_PAT kerak\n"
+            "Agar 0 mashina: Dashboard → GPS yuklash yoki GitHub Actions → GPS sync → Run workflow."
+        ),
+    },
+    {
+        "keys": ["parol hash", "ochiq parol", "password plain", "parol ko'rinmaydi", "noma'lum parol"],
+        "a": (
+            "Xavfsizlik: parollar ochiq matnda saqlanmaydi (faqat hash).\n"
+            "Admin panelda «••••••••» ko'rinadi.\n"
+            "Yangi parol: «Parol» yoki «Parol yaratish» → bir marta nusxa oling (keyin qayta ko'rinmaydi)."
         ),
     },
     {

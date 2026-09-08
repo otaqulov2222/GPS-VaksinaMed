@@ -951,6 +951,8 @@
             <div class="att-toolbar">
               <input type="month" id="report-month" value="${esc(monthInputValue(reportMonth))}">
               <button type="button" class="att-btn att-btn-face" id="btn-report" style="padding:8px 12px;min-width:0;font-size:12px">Yangilash</button>
+              <button type="button" class="att-btn att-btn-in" id="btn-export-xlsx" style="padding:8px 12px;min-width:0;font-size:12px">Excel</button>
+              <button type="button" class="att-btn att-btn-out" id="btn-export-pdf" style="padding:8px 12px;min-width:0;font-size:12px">PDF</button>
             </div>
           </div>
           <div class="att-card-b" id="att-report"><p class="att-hint">Yuklanmoqda…</p></div>
@@ -965,6 +967,8 @@
               <select id="person-select"><option value="">— tanlang —</option></select>
               <input type="month" id="person-month" value="${esc(monthInputValue(personMonth))}">
               <button type="button" class="att-btn att-btn-face" id="btn-person" style="padding:8px 12px;min-width:0;font-size:12px">Ko‘rish</button>
+              <button type="button" class="att-btn att-btn-in" id="btn-person-xlsx" style="padding:8px 12px;min-width:0;font-size:12px">Excel</button>
+              <button type="button" class="att-btn att-btn-out" id="btn-person-pdf" style="padding:8px 12px;min-width:0;font-size:12px">PDF</button>
             </div>
           </div>
           <div class="att-card-b" id="att-person"><p class="att-hint">Xodimni tanlang — kunlik kelish/ketish va oylik statistika.</p></div>
@@ -1035,6 +1039,14 @@
       if (reportMonthEl) reportMonth = reportMonthEl.value || reportMonth;
       loadReport(true);
     });
+    const xlsxBtn = document.getElementById('btn-export-xlsx');
+    const pdfBtn = document.getElementById('btn-export-pdf');
+    if (xlsxBtn) bindTap(xlsxBtn, () => exportReportXlsx());
+    if (pdfBtn) bindTap(pdfBtn, () => exportReportPdf());
+    const px = document.getElementById('btn-person-xlsx');
+    const pp = document.getElementById('btn-person-pdf');
+    if (px) bindTap(px, () => exportPersonXlsx());
+    if (pp) bindTap(pp, () => exportPersonPdf());
     if (reportMonthEl) {
       reportMonthEl.addEventListener('change', () => {
         reportMonth = reportMonthEl.value || reportMonth;
@@ -1254,6 +1266,166 @@
     } finally {
       busy = false;
     }
+  }
+
+  function exportReportXlsx() {
+    if (typeof XLSX === 'undefined') {
+      msg('Excel kutubxonasi yuklanmadi', 'err');
+      return;
+    }
+    if (!REPORT || !REPORT.people) {
+      msg('Avval hisobotni yuklang', 'err');
+      return;
+    }
+    const month = REPORT.month || reportMonth;
+    const rows = [['Ism', 'Login', 'Rol', 'Mashina', 'Kelgan', 'Kechikish', 'Yo\'qlik', 'O\'rt. kelish', 'Ish (soat)']];
+    (REPORT.people || []).forEach((p) => {
+      rows.push([
+        p.name || '',
+        p.username || '',
+        roleLabel(p.role),
+        p.car || '',
+        p.presentDays || 0,
+        p.lateDays || 0,
+        p.absentDays || 0,
+        p.avgIn || '',
+        p.worked_sec ? (p.worked_sec / 3600).toFixed(2) : ''
+      ]);
+    });
+    const dayRows = [['Ism', 'Sana', 'Keldim', 'Ketdim', 'Kechikdi', 'Ish (daq)', 'Holat']];
+    (REPORT.people || []).forEach((p) => {
+      (p.days || []).forEach((d) => {
+        dayRows.push([
+          p.name || p.username,
+          d.date,
+          d.inAt || '',
+          d.outAt || '',
+          d.late ? 'ha' : '',
+          d.worked_sec != null ? Math.round(d.worked_sec / 60) : '',
+          statusLabel(d.status)
+        ]);
+      });
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Jamoa');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dayRows), 'Kunlik');
+    XLSX.writeFile(wb, 'davomat-' + month + '.xlsx');
+    msg('Excel yuklandi', 'ok');
+  }
+
+  function exportReportPdf() {
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!JsPDF) {
+      msg('PDF kutubxonasi yuklanmadi', 'err');
+      return;
+    }
+    if (!REPORT || !REPORT.people) {
+      msg('Avval hisobotni yuklang', 'err');
+      return;
+    }
+    const doc = new JsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const month = REPORT.month || reportMonth;
+    doc.setFontSize(14);
+    doc.text('Davomat hisobot — ' + month, 40, 36);
+    const body = (REPORT.people || []).map((p) => [
+      p.name || p.username || '',
+      roleLabel(p.role),
+      String(p.presentDays || 0),
+      String(p.lateDays || 0),
+      String(p.absentDays || 0),
+      p.avgIn || '—',
+      p.worked_sec ? fmtDur(p.worked_sec) : '—'
+    ]);
+    if (doc.autoTable) {
+      doc.autoTable({
+        startY: 48,
+        head: [['Ism', 'Rol', 'Kun', 'Kech', 'Yo\'q', 'O\'rt.', 'Ish']],
+        body,
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [11, 31, 58] }
+      });
+    } else {
+      doc.setFontSize(10);
+      body.forEach((r, i) => doc.text(r.join(' | '), 40, 56 + i * 14));
+    }
+    doc.save('davomat-' + month + '.pdf');
+    msg('PDF yuklandi', 'ok');
+  }
+
+  function exportPersonXlsx() {
+    if (typeof XLSX === 'undefined') {
+      msg('Excel kutubxonasi yuklanmadi', 'err');
+      return;
+    }
+    if (!PERSON || !PERSON.days) {
+      msg('Avval xodimni tanlang', 'err');
+      return;
+    }
+    const u = PERSON.user || {};
+    const rows = [['Sana', 'Keldim', 'Ketdim', 'Kechikdi', 'Ish', 'Masofa', 'Holat']];
+    (PERSON.days || []).forEach((d) => {
+      if (d.status === 'future') return;
+      rows.push([
+        d.date,
+        d.inAt || '',
+        d.outAt || '',
+        d.late ? 'ha' : '',
+        d.worked_sec != null ? fmtDur(d.worked_sec) : '',
+        d.distance_m != null ? Math.round(d.distance_m) + ' m' : '',
+        statusLabel(d.status)
+      ]);
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Oy');
+    XLSX.writeFile(wb, 'davomat-' + (u.username || 'user') + '-' + (PERSON.month || '') + '.xlsx');
+    msg('Excel yuklandi', 'ok');
+  }
+
+  function exportPersonPdf() {
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!JsPDF) {
+      msg('PDF kutubxonasi yuklanmadi', 'err');
+      return;
+    }
+    if (!PERSON || !PERSON.days) {
+      msg('Avval xodimni tanlang', 'err');
+      return;
+    }
+    const u = PERSON.user || {};
+    const st = PERSON.stats || {};
+    const doc = new JsPDF({ unit: 'pt', format: 'a4' });
+    doc.setFontSize(14);
+    doc.text((u.name || u.username || 'Xodim') + ' — ' + (PERSON.month || ''), 40, 40);
+    doc.setFontSize(10);
+    doc.text(
+      'Kelgan: ' + (st.presentDays || 0) +
+      ' | Kechikish: ' + (st.lateDays || 0) +
+      ' | Yo\'qlik: ' + (st.absentDays || 0) +
+      ' | O\'rt: ' + (st.avgIn || '—'),
+      40,
+      58
+    );
+    const body = (PERSON.days || [])
+      .filter((d) => d.status !== 'future')
+      .map((d) => [
+        d.date,
+        d.inAt || '—',
+        d.outAt || '—',
+        d.late ? '!' : '',
+        d.worked_sec != null ? fmtDur(d.worked_sec) : '—',
+        statusLabel(d.status)
+      ]);
+    if (doc.autoTable) {
+      doc.autoTable({
+        startY: 72,
+        head: [['Sana', 'Keldim', 'Ketdim', 'Kech', 'Ish', 'Holat']],
+        body,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [26, 95, 180] }
+      });
+    }
+    doc.save('davomat-' + (u.username || 'user') + '-' + (PERSON.month || '') + '.pdf');
+    msg('PDF yuklandi', 'ok');
   }
 
   async function loadBoard() {

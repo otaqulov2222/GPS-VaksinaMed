@@ -1475,15 +1475,9 @@ async function loadAll() {
 
     }
 
-    const pwCell = u.password
-
-      ? `<span class="cred" title="Kirish paroli (ochiq)">${esc(u.password)}</span>`
-
-      : (u.hasPassword
-
-        ? `<span class="cred empty" title="Eski parol hash — «Parol» bosib yangilang, keyin koʻrinadi">Nomaʼlum*</span>`
-
-        : `<button class="pw-make" type="button" data-act="genpw" data-id="${u.id}" data-name="${esc(u.username)}">Parol yaratish</button>`);
+    const pwCell = u.hasPassword
+      ? `<span class="cred empty" title="Parol faqat hash — ochiq ko‘rinmaydi. «Parol» bilan yangilang">••••••••</span>`
+      : `<button class="pw-make" type="button" data-act="genpw" data-id="${u.id}" data-name="${esc(u.username)}">Parol yaratish</button>`;
 
     return `<tr>
 
@@ -1705,11 +1699,8 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
 
       const hit = (window._VM_USERS || []).find(x => x.id === id);
 
-      const known = hit && hit.password ? String(hit.password) : '';
-
-      document.getElementById('reset-pass').value = known || '';
-
-      document.getElementById('reset-pass').placeholder = known ? 'Joriy parol — o‘zgartirish mumkin' : 'Joriy nomaʼlum — yangi parol yozing';
+      document.getElementById('reset-pass').value = '';
+      document.getElementById('reset-pass').placeholder = 'Yangi parol (kamida 6 belgi) — bir marta ko‘rsatiladi';
 
       document.getElementById('modal-reset').classList.add('open');
 
@@ -1773,8 +1764,9 @@ document.getElementById('reset-ok').addEventListener('click', async () => {
 
     const pw = document.getElementById('reset-pass').value;
 
-    await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: resetId, password: pw }) });
-
+    const r = await vmApi('/api/users/reset', { method: 'POST', body: JSON.stringify({ id: resetId, password: pw }) });
+    const shown = (r && r.tempPassword) || pw;
+    window.prompt('Parol saqlandi (bir marta — nusxa oling):', shown);
     document.getElementById('modal-reset').classList.remove('open');
 
     show('msg-users', 'Parol yangilandi (faqat hozir koʻrinadi — yozib oling): ' + pw, true);
