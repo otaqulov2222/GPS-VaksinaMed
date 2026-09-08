@@ -1237,11 +1237,16 @@ function buildMapStops(stops, track) {
     });
     const base = route.length ? route : hydrated;
     const ordered = orderStopsAlongTrack(base, track);
-    const numbered = ordered.map((st, i) => Object.assign({}, st, {
-        mapNum: i + 1,
-        tableNum: st.num,
-        _mapRole: 'route'
-    }));
+    const numbered = ordered.map((st, i) => {
+        const tableNum = st.num;
+        return Object.assign({}, st, {
+            mapNum: i + 1,
+            // Pin hech qachon eski jadval # ni ko'rsatmasin
+            num: i + 1,
+            tableNum: tableNum,
+            _mapRole: 'route'
+        });
+    });
     return { numbered, officeMarks };
 }
 
@@ -1354,6 +1359,7 @@ async function refreshMap(stops, points) {
         if (km > 0) bits.push(km.toFixed(2) + ' km');
         if (track.length) bits.push(track.length + ' GPS nuqta');
         bits.push(markerStops.length + ' to\'xtash');
+        bits.push('m91'); // kesh tekshiruv — yangi kod yuklanganini bilish
         setMapOverlay(bits.join(' · '));
     }
 
@@ -1367,7 +1373,7 @@ async function refreshMap(stops, points) {
             .bindPopup('<b>Tugash</b><br>Kunlik marshrut B nuqtasi'));
     }
 
-    // Tungi ofis — raqamsiz «O» (1–6 ni yeb qo'ymasin)
+    // Tungi ofis — raqamsiz «O»
     officeMarks.forEach((st) => {
         const marker = L.marker([st.lat, st.lng], {
             icon: mapPinIcon('O', '#123050', false),
@@ -1383,11 +1389,10 @@ async function refreshMap(stops, points) {
         STATE.mapMarkers.push(marker);
     });
 
-    markerStops.forEach((st) => {
-        // Faqat mapNum — jadval # ga qaytmaslik (A→7 xatosi)
-        const num = Number(st.mapNum) || 0;
-        if (!num) return;
-        const tableNum = st.tableNum || st.num || num;
+    // Majburiy: faqat massiv indeksi — hech qanday st.num / jadval #
+    markerStops.forEach((st, idx) => {
+        const num = idx + 1;
+        const tableNum = st.tableNum != null ? st.tableNum : '';
         const color = stopColor(st);
         const marker = L.marker([st.lat, st.lng], {
             icon: mapPinIcon(String(num), color, false),
@@ -1397,7 +1402,7 @@ async function refreshMap(stops, points) {
         const approxNote = st._approx
             ? '<br><span style="color:#f0c674">Joy taxminiy</span>'
             : '';
-        const tableNote = (tableNum && tableNum !== num)
+        const tableNote = (tableNum && Number(tableNum) !== num)
             ? `<br><span style="color:#8eb6df">Jadval #${tableNum}</span>`
             : '';
         marker.bindPopup(`

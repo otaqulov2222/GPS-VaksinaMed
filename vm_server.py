@@ -2311,7 +2311,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if is_production() and path.endswith(
             (".js", ".css", ".svg", ".woff", ".woff2", ".png", ".jpg", ".webp", ".ico")
         ):
-            self.send_header("Cache-Control", "public, max-age=86400, immutable")
+            # JS/CSS: query ?v= bilan yangilanadi — immutable 24s keshlash eski xaritani qoldirardi
+            if path.endswith((".js", ".css")):
+                self.send_header("Cache-Control", "no-cache, must-revalidate")
+            else:
+                self.send_header("Cache-Control", "public, max-age=86400, immutable")
         else:
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.send_header("X-Content-Type-Options", "nosniff")
