@@ -1184,16 +1184,69 @@ function hydrateStopCoords(stops, track) {
 }
 
 /**
- * Xarita pinlari — doim 1,2,3… ketma-ket (jadval # saqlanadi).
- * A dan keyin 7 chiqmasligi uchun.
+ * Tungi/uzoq ofis — xarita 1,2,3… raqamiga aralashmasin (A ostida 1–6 yashirinardi).
  */
+function isLongOfficeStop(st) {
+    if (!st) return false;
+    const dur = Number(st.durSec) || 0;
+    if (!st.isOffice) return false;
+    if (dur >= 90 * 60) return true;
+    const inSec = parseTimeStr(st.inTime);
+    const inH = inSec / 3600;
+    // Kechki/tungi ofis (≥1 soat)
+    if (dur >= 3600 && (inH >= 17 || inH < 7)) return true;
+    return false;
+}
+
+/** To'xtashlarni GPS trek bo'yicha tartibla (yo'l ketma-ketligi). */
+function orderStopsAlongTrack(stops, track) {
+    const pts = normalizeTrackPoints(track);
+    if (!stops || !stops.length) return [];
+    if (pts.length < 2) return stops.slice();
+    const scored = stops.map((st, idx) => {
+        let bestI = 0;
+        let bestD = Infinity;
+        const la = Number(st.lat);
+        const ln = Number(st.lng);
+        for (let i = 0; i < pts.length; i++) {
+            const dlat = pts[i][0] - la;
+            const dlng = pts[i][1] - ln;
+            const d = dlat * dlat + dlng * dlng;
+            if (d < bestD) {
+                bestD = d;
+                bestI = i;
+            }
+        }
+        return { st, bestI, idx };
+    });
+    scored.sort((a, b) => (a.bestI - b.bestI) || (a.idx - b.idx));
+    return scored.map(x => x.st);
+}
+
+/**
+ * Xarita: ofis alohida (O), marshrut 1,2,3… trek tartibida.
+ * A dan keyin 7 chiqmasligi shu yerda hal.
+ */
+function buildMapStops(stops, track) {
+    const hydrated = hydrateStopCoords(stops, track).filter(st => validUzCoord(st.lat, st.lng));
+    const officeMarks = [];
+    const route = [];
+    hydrated.forEach(st => {
+        if (isLongOfficeStop(st)) officeMarks.push(Object.assign({}, st, { _mapRole: 'office' }));
+        else route.push(st);
+    });
+    const base = route.length ? route : hydrated;
+    const ordered = orderStopsAlongTrack(base, track);
+    const numbered = ordered.map((st, i) => Object.assign({}, st, {
+        mapNum: i + 1,
+        tableNum: st.num,
+        _mapRole: 'route'
+    }));
+    return { numbered, officeMarks };
+}
+
 function mapWorthyStops(stops, track) {
-    return hydrateStopCoords(stops, track)
-        .filter(st => validUzCoord(st.lat, st.lng))
-        .map((st, i) => Object.assign({}, st, {
-            mapNum: i + 1,
-            tableNum: st.num
-        }));
+    return buildMapStops(stops, track).numbered;
 }
 
 function setMapOverlay(info) {
@@ -1263,8 +1316,10 @@ async function refreshMap(stops, points) {
     }
 
     const list = sortStopsForRoute(rawList);
-    const markerStops = mapWorthyStops(rawList, track);
-    setMapStats(list, track.length || markerStops.length);
+    const built = buildMapStops(rawList, track);
+    const markerStops = built.numbered;
+    const officeMarks = built.officeMarks || [];
+    setMapStats(list, track.length || (markerStops.length + officeMarks.length));
 
     // Asosiy chiziq — haqiqiy GPS trek; bo'lmasa to'xtashlar orasidagi yo'l
     let routeLatlngs = track.length >= 2
@@ -1302,29 +1357,45 @@ async function refreshMap(stops, points) {
         setMapOverlay(bits.join(' · '));
     }
 
-    // Start / finish — pastroq z-index; to'xtash raqamlari ustida
+    // Start / finish — pastroq z-index
     if (track.length >= 2) {
         const aIcon = mapPinIcon('A', '#0b1f3a', true);
         const bIcon = mapPinIcon('B', '#1a5fb4', true);
-        STATE.mapMarkers.push(L.marker(track[0], { icon: aIcon, zIndexOffset: 100 }).addTo(STATE.map)
+        STATE.mapMarkers.push(L.marker(track[0], { icon: aIcon, zIndexOffset: 80 }).addTo(STATE.map)
             .bindPopup('<b>Boshlanish</b><br>Kunlik marshrut A nuqtasi'));
-        STATE.mapMarkers.push(L.marker(track[track.length - 1], { icon: bIcon, zIndexOffset: 100 }).addTo(STATE.map)
+        STATE.mapMarkers.push(L.marker(track[track.length - 1], { icon: bIcon, zIndexOffset: 80 }).addTo(STATE.map)
             .bindPopup('<b>Tugash</b><br>Kunlik marshrut B nuqtasi'));
     }
 
+    // Tungi ofis — raqamsiz «O» (1–6 ni yeb qo'ymasin)
+    officeMarks.forEach((st) => {
+        const marker = L.marker([st.lat, st.lng], {
+            icon: mapPinIcon('O', '#123050', false),
+            zIndexOffset: 120
+        }).addTo(STATE.map);
+        marker.bindPopup(`
+            <div style="min-width:180px">
+              <b>Ofis / sklad</b><br>
+              ${uiTxt(st.place) || '—'}<br>
+              <span style="color:#c5d4e6;font-size:11px">Kirish: ${st.inTime || '—'} · Chiqish: ${st.outTime || '—'}</span>
+            </div>
+        `);
+        STATE.mapMarkers.push(marker);
+    });
+
     markerStops.forEach((st) => {
-        // Xaritada doim 1,2,3… (A dan keyin 7 chiqmasin)
-        const num = st.mapNum || st.num || 0;
+        // Faqat mapNum — jadval # ga qaytmaslik (A→7 xatosi)
+        const num = Number(st.mapNum) || 0;
+        if (!num) return;
         const tableNum = st.tableNum || st.num || num;
         const color = stopColor(st);
-        const label = String(num);
         const marker = L.marker([st.lat, st.lng], {
-            icon: mapPinIcon(label, color, false),
+            icon: mapPinIcon(String(num), color, false),
             zIndexOffset: 1000 + num
         }).addTo(STATE.map);
 
         const approxNote = st._approx
-            ? '<br><span style="color:#f0c674">Joy taxminiy (GPS nuqta yo\'q edi)</span>'
+            ? '<br><span style="color:#f0c674">Joy taxminiy</span>'
             : '';
         const tableNote = (tableNum && tableNum !== num)
             ? `<br><span style="color:#8eb6df">Jadval #${tableNum}</span>`
@@ -1351,6 +1422,7 @@ async function refreshMap(stops, points) {
         for (let i = 0; i < routeLatlngs.length; i++) fitPts.push(routeLatlngs[i]);
     }
     markerStops.forEach(st => fitPts.push([st.lat, st.lng]));
+    officeMarks.forEach(st => fitPts.push([st.lat, st.lng]));
     if (fitPts.length > 1) {
         STATE.map.fitBounds(L.latLngBounds(fitPts), { padding: [48, 48], maxZoom: 15 });
     } else if (fitPts.length === 1) {
@@ -1954,6 +2026,19 @@ function renderStops(stops) {
         return;
     }
 
+    // Xarita raqamlari bilan moslash (ofis = O, marshrut = 1,2,3…)
+    const dayRec = STATE.currentDate && STATE.data[STATE.currentDate]
+        ? STATE.data[STATE.currentDate][STATE.currentCar]
+        : null;
+    const track = normalizeTrackPoints(dayRec && dayRec.points);
+    const built = typeof buildMapStops === 'function' ? buildMapStops(stops, track) : null;
+    const mapByTable = Object.create(null);
+    if (built && built.numbered) {
+        built.numbered.forEach(s => {
+            if (s.tableNum != null) mapByTable[s.tableNum] = s.mapNum;
+        });
+    }
+
     const dateVal = STATE.currentDate;
     const car = STATE.currentCar;
     let html = '';
@@ -1985,10 +2070,15 @@ function renderStops(stops) {
             badge = '<span class="badge">—</span>';
         }
 
+        const tableNum = st.num || (i + 1);
+        let showNum = tableNum;
+        if (isLongOfficeStop(st)) showNum = 'O';
+        else if (mapByTable[tableNum] != null) showNum = mapByTable[tableNum];
+
         const canReview = true;
         html += `
         <tr class="${rowCls}">
-            <td class="font-mono text-muted">${st.num || (i + 1)}</td>
+            <td class="font-mono text-muted">${showNum}</td>
             <td><strong>${uiTxt(st.place)}</strong>
                 ${st.phName && st.phName !== st.place ? `<br><small class="text-muted">${uiTxt(st.phName)}</small>` : ''}
                 ${st.gas > 0 ? `<br><small class="text-muted">${fmtFuel(st.gas, 'm³ gaz')}</small>` : ''}
