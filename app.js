@@ -2146,7 +2146,7 @@ function updateGpsLastSyncUi(iso, running, extra) {
     let showMsg = msg;
     if (/^xato$/i.test(msg) && total > 0 && fetched >= total) showMsg = '';
     else if (/^xato$/i.test(msg) && ex.error) showMsg = String(ex.error).slice(0, 60);
-    else if (/tekshirildi/i.test(msg)) showMsg = ''; // Oxirgi o'zgarmagan — alohida chalkashtirmaymiz
+    // «Tekshirildi» / «Km yangilandi» — ko'rsatamiz (Oxirgi bilan birga)
     if (showMsg && !/tayyor/i.test(showMsg)) parts.push(showMsg);
     el.textContent = parts.length ? parts.join(' · ') : 'Hali yangilanmagan';
 }
@@ -3193,6 +3193,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-excel-upload-2')?.addEventListener('click', () => fileInput?.click());
     document.getElementById('btn-excel-export')?.addEventListener('click', () => exportDayExcel());
 
+    async function quickServerGpsRefresh() {
+        if (STATE.gpsSyncBusy || STATE.gpsNudgeBusy) {
+            showToast('GPS yangilanmoqda — biroz kuting', 'info');
+            return;
+        }
+        const today = dateStr(new Date());
+        const dateVal = STATE.currentDate || today;
+        STATE.gpsSyncBusy = true;
+        setGpsUi('sync', 'Yangilanmoqda…');
+        showToast('Boomerang km yangilanmoqda…', 'info');
+        try {
+            // Serverda GPS token/parol bor — modal shart emas
+            const res = await vmApi('/api/office/gps/sync', {
+                method: 'POST',
+                body: JSON.stringify({
+                    date: dateVal,
+                    force: true,
+                    habit: false
+                })
+            });
+            const kmN = Number((res && res.kmRefresh && res.kmRefresh.updated) || 0);
+            const samples = (res && res.kmRefresh && res.kmRefresh.samples) || [];
+            await pollServerGpsStatus(true);
+            if (window.VMOffice) {
+                await VMOffice.loadReportIfNeeded(dateVal, true);
+                refreshUI();
+                VMOffice.renderFleetBoard();
+            }
+            if (kmN > 0) {
+                const tip = samples[0]
+                    ? (` · ${samples[0].car}: ${samples[0].old}→${samples[0].new}`)
+                    : '';
+                showToast('Km yangilandi: ' + kmN + ' mashina' + tip, 'success');
+            } else {
+                showToast('Sync tugadi — km o‘zgarmadi (GPS bilan bir xil yoki xato)', 'warn');
+            }
+        } catch (e) {
+            console.warn('quick gps refresh:', e);
+            showToast(String((e && e.message) || e || 'GPS yangilash xato').slice(0, 120), 'error');
+            try { await openGpsModal(); } catch (_e) {}
+        } finally {
+            STATE.gpsSyncBusy = false;
+            try { await pollServerGpsStatus(false); } catch (_e) {}
+        }
+    }
+
     // ── GPS modal ─────────────────────────────────────────
     const openGpsModal = async () => {
         const host = document.getElementById('gps-host');
@@ -3238,7 +3284,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     document.getElementById('btn-gps-sync')?.addEventListener('click',   () => openGpsModal());
     document.getElementById('btn-gps-sync-2')?.addEventListener('click', () => {
-        // YANGILASH ham modal orqali — parol/token kerak (Server band yo'li yo'q)
+        // YANGILASH: serverda GPS bor bo'lsa to'g'ridan sync (modal ochmasdan)
+        if (hasGpsConfig()) {
+            quickServerGpsRefresh();
+            return;
+        }
         openGpsModal();
     });
 

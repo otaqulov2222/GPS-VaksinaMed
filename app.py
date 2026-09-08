@@ -186,19 +186,21 @@ def _vercel_gps_sync_backup() -> dict:
                 time_budget_sec=120,
                 saved_by="vercel-km",
             )
+            km_n = int(km_refresh.get("updated") or 0)
             office.set_gps_status(
                 running=False,
                 cars=len(cars),
                 error="",
                 date=d,
                 message=(
-                    "Km yangilandi (%d)" % int(km_refresh.get("updated") or 0)
-                    if km_refresh.get("updated")
+                    "Km yangilandi (%d)" % km_n
+                    if km_n
                     else "Tekshirildi — ma'lumot yangi"
                 ),
                 fetched=synced,
                 total=max(fleet_n, synced, 1),
-                touch_last_sync=bool(km_refresh.get("updated")),
+                # Oxirgi vaqt har tekshiruvda yangilansin (06:48 da qotib qolmasin)
+                touch_last_sync=True,
             )
             return {
                 "ok": True,
