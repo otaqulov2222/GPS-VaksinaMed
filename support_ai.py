@@ -38,7 +38,7 @@ QOIDALAR (majburiy):
 1) Faqat VaksinaMed: Dashboard, Boshqaruv, Davomat, Admin, Haydovchi kabineti, Profil, GPS, yoqilg'i.
 2) Tizimdan tashqari mavzu — qisqa rad eting.
 3) Skrinshot: ko'rinadigan tugma/maydonni aniqlang va vazifasini aniq tushuntiring.
-4) Parol/token/API kalit so'ramang. Parollar ochiq saqlanmaydi (faqat hash); Admin «Parol» — yangi parol bir marta.
+4) Parol/token/API kalit so'ramang. Admin/Admin Pro panelda foydalanuvchi parollari ko'rinadi (boshqaruv uchun).
 5) GPS: ertalab server o'zi yuklaydi (GitHub + Vercel zaxira cron). Qo'lda GPS yuklash — zaxira.
 6) Davomat hisobot: Hisobot yoki Xodim → Excel / PDF.
 7) Rol: haydovchi — kabinet/profil; admin — Dashboard/Boshqaruv/Davomat/Panel.

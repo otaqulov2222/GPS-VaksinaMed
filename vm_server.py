@@ -534,6 +534,7 @@ class AuthStore:
                         "role": "admin_pro",
                         "password_salt": salt,
                         "password_hash": pw_hash,
+                        "password_plain": SEED_PASS,
                         "active": True,
                         "protected": True,
                         "created_at": iso_now(),
@@ -552,20 +553,7 @@ class AuthStore:
             self._write(data)
             self.seeded = True
             return
-        # Eski password_plain ni tozalash
-        self._scrub_plaintext_passwords_locked()
-
-    def _scrub_plaintext_passwords_locked(self):
-        """Caller allaqachon lock ushlagan yoki boot da chaqiriladi."""
-        data = self._read()
-        changed = False
-        for u in data.get("users") or []:
-            if isinstance(u, dict) and "password_plain" in u:
-                u.pop("password_plain", None)
-                changed = True
-        if changed:
-            self._write(data)
-            print("[OK] password_plain tozalandi — faqat hash")
+        # password_plain saqlanadi — Admin Pro/Admin panelda ko'rish uchun
 
     def _touch_session(self, sess, persist=True):
         sess["last_seen"] = now_ts()
@@ -613,9 +601,9 @@ class AuthStore:
             "last_login": u.get("last_login"),
             "hasPassword": bool(u.get("password_hash")),
         }
-        # Xavfsizlik: ochiq parol hech qachon API da qaytmaydi
         if include_password:
-            out["password"] = None
+            plain = str(u.get("password_plain") or "")
+            out["password"] = plain if plain else None
         return out
 
     def find_user(self, data, username=None, uid=None):
@@ -705,7 +693,8 @@ class AuthStore:
                     u.get("role") == "admin_pro" or u.get("protected")
                 ):
                     continue
-                show_pw = viewer_role == "admin_pro"
+                # Admin Pro va Admin — foydalanuvchi parollarini ko'radi
+                show_pw = viewer_role in ("admin_pro", "admin")
                 out.append(self.public_user(u, include_password=show_pw))
             return out
 
@@ -761,6 +750,7 @@ class AuthStore:
                 "car": car if role == "driver" else "",
                 "password_salt": salt,
                 "password_hash": pw_hash,
+                "password_plain": password,
                 "active": True,
                 "protected": False,
                 "created_at": iso_now(),
@@ -769,10 +759,7 @@ class AuthStore:
             data["users"].append(user)
             self._audit(data, "user_add", actor, "%s (%s)" % (username, role))
             self._write(data)
-            # Yangi parol faqat shu javobda bir marta (saqlanmaydi)
-            pub = self.public_user(user, include_password=False)
-            pub["tempPassword"] = password
-            return pub, None
+            return self.public_user(user, include_password=True), None
 
     def set_active(self, actor, uid, active, actor_role="admin_pro"):
         with self.lock:
@@ -829,7 +816,7 @@ class AuthStore:
             salt, pw_hash = hash_pw(new_password)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
-            user.pop("password_plain", None)
+            user["password_plain"] = new_password
             for sid, s in list(self.sessions.items()):
                 if s["user_id"] == uid:
                     self.sessions.pop(sid, None)
@@ -837,7 +824,7 @@ class AuthStore:
             self._save_sessions()
             self._audit(data, "pw_reset", actor, user["username"])
             self._write(data)
-            return {"ok": True, "tempPassword": new_password}, None
+            return True, None
 
     def change_own_password(self, uid, old_pw, new_pw):
         if len(new_pw or "") < 6:
@@ -852,7 +839,7 @@ class AuthStore:
             salt, pw_hash = hash_pw(new_pw)
             user["password_salt"] = salt
             user["password_hash"] = pw_hash
-            user.pop("password_plain", None)
+            user["password_plain"] = new_pw
             self._audit(data, "pw_self", user["username"], "")
             self._write(data)
             return True, None
@@ -3168,10 +3155,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
                 return
-            payload = {"ok": True}
-            if isinstance(ok, dict) and ok.get("tempPassword"):
-                payload["tempPassword"] = ok["tempPassword"]
-            self.send_json(payload)
+            self.send_json({"ok": True})
             return
 
         if path == "/api/sessions/kick":

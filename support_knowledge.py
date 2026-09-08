@@ -401,9 +401,9 @@ FAQ_OFFLINE = [
     {
         "keys": ["parol hash", "ochiq parol", "password plain", "parol ko'rinmaydi", "noma'lum parol"],
         "a": (
-            "Xavfsizlik: parollar ochiq matnda saqlanmaydi (faqat hash).\n"
-            "Admin panelda «••••••••» ko'rinadi.\n"
-            "Yangi parol: «Parol» yoki «Parol yaratish» → bir marta nusxa oling (keyin qayta ko'rinmaydi)."
+            "Admin va Admin Pro panelda foydalanuvchi login/parollari ko'rinadi (boshqaruv uchun).\n"
+            "Kirish tekshiruvi uchun hash ham saqlanadi.\n"
+            "Agar «Nomaʼlum*» bo'lsa — avval «Parol» bilan yangilang, keyin jadvalda qoladi."
         ),
     },
     {
