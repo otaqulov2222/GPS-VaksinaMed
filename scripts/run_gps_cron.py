@@ -183,16 +183,28 @@ def run_once():
                 force=True,
             )
         else:
-            print("Rejim: SKIP — bugun to'liq va yangi")
+            print("Rejim: SKIP — to'liq sync o'rniga faqat km yangilanadi")
+            km_refresh = gps_sync.refresh_day_trip_km(
+                office,
+                directory,
+                d,
+                time_budget_sec=None,
+                saved_by="github-km",
+            )
+            print("Km refresh:", km_refresh)
             office.set_gps_status(
                 running=False,
                 cars=len(cars),
                 error="",
                 date=d,
-                message="Tekshirildi — ma'lumot yangi",
+                message=(
+                    "Km yangilandi (%d)" % int(km_refresh.get("updated") or 0)
+                    if km_refresh.get("updated")
+                    else "Tekshirildi — ma'lumot yangi"
+                ),
                 fetched=synced,
                 total=target,
-                touch_last_sync=False,
+                touch_last_sync=bool(km_refresh.get("updated")),
             )
             result = {
                 "ok": True,
@@ -201,6 +213,7 @@ def run_once():
                 "total": target,
                 "partial": synced < fleet_n if fleet_n else False,
                 "skipped": True,
+                "kmRefresh": km_refresh,
             }
 
         print("Natija bugun:", result)
