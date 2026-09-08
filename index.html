@@ -2078,7 +2078,7 @@ input, select, textarea { max-width: 100%; }
           <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
           <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
           <button class="btn btn-light btn-sm" id="btn-refresh-map">Yangilash</button>
-          <span id="vm-build" title="Xarita build" style="font:700 11px/1 IBM Plex Mono,monospace;color:#1a5fb4;padding:6px 8px;background:#eef3f9;border-radius:6px">m93</span>
+          <span id="vm-build" title="Xarita build" style="font:700 12px/1 IBM Plex Mono,monospace;color:#fff;padding:8px 10px;background:#c0392b;border-radius:6px">m93</span>
         </div>
       </div>
       <div class="map-legend">
@@ -2400,35 +2400,44 @@ input, select, textarea { max-width: 100%; }
   }
 
   function vmForceSequentialPins() {
-    if (!window.STATE || !STATE.mapMarkers || !STATE.mapMarkers.length) return false;
+    if (!window.STATE || !STATE.map || typeof L === 'undefined') return false;
     var pins = [];
-    STATE.mapMarkers.forEach(function (m) {
-      if (!m || typeof m.getLatLng !== 'function') return;
-      var el = m.getElement && m.getElement();
+    var track = trackPts();
+    function consider(layer) {
+      if (!layer || typeof layer.getLatLng !== 'function') return;
+      if (!(layer instanceof L.Marker)) return;
+      var el = null;
+      try { el = layer.getElement && layer.getElement(); } catch (e1) {}
       if (!el) return;
       var dot = el.querySelector('.vm-pin-dot');
       if (!dot) return;
       var t = String(dot.textContent || '').trim();
-      if (t === 'A' || t === 'B' || t === 'O') return;
+      if (t === 'A' || t === 'B' || t === 'O' || t === 'R') return;
       if (!/^\d+$/.test(t)) return;
-      pins.push({ dot: dot, ll: m.getLatLng(), old: t });
+      pins.push({ dot: dot, ll: layer.getLatLng() });
+    }
+    try { STATE.map.eachLayer(consider); } catch (e2) {}
+    if (STATE.mapMarkers && STATE.mapMarkers.length) STATE.mapMarkers.forEach(consider);
+    var seen = new Set();
+    pins = pins.filter(function (p) {
+      if (seen.has(p.dot)) return false;
+      seen.add(p.dot);
+      return true;
     });
     if (pins.length < 1) return false;
-    var track = trackPts();
-    pins.sort(function (a, b) {
-      return trackIdx(a.ll, track) - trackIdx(b.ll, track);
-    });
-    pins.forEach(function (p, i) {
-      p.dot.textContent = String(i + 1);
-    });
+    pins.sort(function (a, b) { return trackIdx(a.ll, track) - trackIdx(b.ll, track); });
+    pins.forEach(function (p, i) { p.dot.textContent = String(i + 1); });
     var ov = document.getElementById('map-overlay-info');
     if (ov) {
-      var base = String(ov.textContent || '').replace(/\s*·\s*m\d+/g, '').trim();
+      var base = String(ov.textContent || '').replace(/\s*·\s*m\d+✓?/g, '').trim();
       ov.textContent = (base ? base + ' · ' : '') + 'm93';
       ov.style.display = 'block';
     }
     var stamp = document.getElementById('vm-build');
-    if (stamp) stamp.textContent = 'm93✓';
+    if (stamp) {
+      stamp.textContent = 'm93✓ ' + pins.length;
+      stamp.style.background = '#1a7f37';
+    }
     return true;
   }
 
@@ -2437,9 +2446,10 @@ input, select, textarea { max-width: 100%; }
     var orig = window.refreshMap;
     window.refreshMap = async function () {
       var ret = await orig.apply(this, arguments);
-      setTimeout(vmForceSequentialPins, 80);
-      setTimeout(vmForceSequentialPins, 400);
-      setTimeout(vmForceSequentialPins, 1200);
+      setTimeout(vmForceSequentialPins, 50);
+      setTimeout(vmForceSequentialPins, 300);
+      setTimeout(vmForceSequentialPins, 800);
+      setTimeout(vmForceSequentialPins, 1600);
       return ret;
     };
     window.refreshMap._vmM93 = true;
@@ -2447,9 +2457,10 @@ input, select, textarea { max-width: 100%; }
 
   function boot() {
     patchRefresh();
-    setTimeout(vmForceSequentialPins, 500);
-    setTimeout(vmForceSequentialPins, 1500);
-    setTimeout(vmForceSequentialPins, 3000);
+    setTimeout(vmForceSequentialPins, 400);
+    setTimeout(vmForceSequentialPins, 1200);
+    setTimeout(vmForceSequentialPins, 2500);
+    setInterval(vmForceSequentialPins, 4000);
   }
 
   if (document.readyState === 'complete') boot();

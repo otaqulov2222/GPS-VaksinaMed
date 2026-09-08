@@ -226,7 +226,12 @@ document.getElementById('f').addEventListener('submit', async (e) => {
     }, 45000);
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) throw new Error(d.error || 'Kirish muvaffaqiyatsiz');
-    location.replace(d.redirect || '/');
+    // Majburiy yangi dashboard (brauzer keshini yorib o'tish)
+    var dest = d.redirect || '/';
+    if (dest === '/' || dest.indexOf('/index') === 0) dest = '/?cb=m93';
+    else if (dest.indexOf('?') < 0) dest = dest + '?cb=m93';
+    else dest = dest + '&cb=m93';
+    location.replace(dest);
   } catch (ex) {
     const msg = String(ex.message || '');
     if (ex.name === 'AbortError' || msg === 'Failed to fetch' || msg.includes('NetworkError')) {
