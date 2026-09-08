@@ -2078,6 +2078,7 @@ input, select, textarea { max-width: 100%; }
           <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
           <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
           <button class="btn btn-light btn-sm" id="btn-refresh-map">Yangilash</button>
+          <span id="vm-build" title="Xarita build" style="font:700 11px/1 IBM Plex Mono,monospace;color:#1a5fb4;padding:6px 8px;background:#eef3f9;border-radius:6px">m93</span>
         </div>
       </div>
       <div class="map-legend">
@@ -2372,6 +2373,93 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m92.js"></script>
 
 <script src="office.js?v=16"></script>
+
+<script>
+/* m93: xarita pinlarini majburiy 1,2,3… qilish (eski app.js kesh bo'lsa ham) */
+(function () {
+  function trackPts() {
+    try {
+      var day = STATE && STATE.data && STATE.currentDate && STATE.data[STATE.currentDate]
+        ? STATE.data[STATE.currentDate][STATE.currentCar]
+        : null;
+      if (typeof normalizeTrackPoints === 'function') return normalizeTrackPoints(day && day.points) || [];
+    } catch (e) {}
+    return [];
+  }
+
+  function trackIdx(ll, track) {
+    if (!track || track.length < 2 || !ll) return 0;
+    var best = 0, bestD = 1e99, i, dlat, dlng, d;
+    for (i = 0; i < track.length; i++) {
+      dlat = track[i][0] - ll.lat;
+      dlng = track[i][1] - ll.lng;
+      d = dlat * dlat + dlng * dlng;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  function vmForceSequentialPins() {
+    if (!window.STATE || !STATE.mapMarkers || !STATE.mapMarkers.length) return false;
+    var pins = [];
+    STATE.mapMarkers.forEach(function (m) {
+      if (!m || typeof m.getLatLng !== 'function') return;
+      var el = m.getElement && m.getElement();
+      if (!el) return;
+      var dot = el.querySelector('.vm-pin-dot');
+      if (!dot) return;
+      var t = String(dot.textContent || '').trim();
+      if (t === 'A' || t === 'B' || t === 'O') return;
+      if (!/^\d+$/.test(t)) return;
+      pins.push({ dot: dot, ll: m.getLatLng(), old: t });
+    });
+    if (pins.length < 1) return false;
+    var track = trackPts();
+    pins.sort(function (a, b) {
+      return trackIdx(a.ll, track) - trackIdx(b.ll, track);
+    });
+    pins.forEach(function (p, i) {
+      p.dot.textContent = String(i + 1);
+    });
+    var ov = document.getElementById('map-overlay-info');
+    if (ov) {
+      var base = String(ov.textContent || '').replace(/\s*·\s*m\d+/g, '').trim();
+      ov.textContent = (base ? base + ' · ' : '') + 'm93';
+      ov.style.display = 'block';
+    }
+    var stamp = document.getElementById('vm-build');
+    if (stamp) stamp.textContent = 'm93✓';
+    return true;
+  }
+
+  function patchRefresh() {
+    if (typeof window.refreshMap !== 'function' || window.refreshMap._vmM93) return;
+    var orig = window.refreshMap;
+    window.refreshMap = async function () {
+      var ret = await orig.apply(this, arguments);
+      setTimeout(vmForceSequentialPins, 80);
+      setTimeout(vmForceSequentialPins, 400);
+      setTimeout(vmForceSequentialPins, 1200);
+      return ret;
+    };
+    window.refreshMap._vmM93 = true;
+  }
+
+  function boot() {
+    patchRefresh();
+    setTimeout(vmForceSequentialPins, 500);
+    setTimeout(vmForceSequentialPins, 1500);
+    setTimeout(vmForceSequentialPins, 3000);
+  }
+
+  if (document.readyState === 'complete') boot();
+  else window.addEventListener('load', boot);
+  document.getElementById('btn-refresh-map')?.addEventListener('click', function () {
+    setTimeout(vmForceSequentialPins, 300);
+    setTimeout(vmForceSequentialPins, 900);
+  });
+})();
+</script>
 
 <script>
 
