@@ -2286,6 +2286,60 @@ function gpsModalOpen() {
     return !!(m && m.classList.contains('open'));
 }
 
+/** Modalni DARHOL ochadi — API kutmasdan (tugma sekinligi shundan edi). */
+function openGpsModal() {
+    const modal = document.getElementById('modal-gps');
+    if (!modal) return;
+
+    const host = document.getElementById('gps-host');
+    const user = document.getElementById('gps-user');
+    const tok  = document.getElementById('gps-token');
+    const dt   = document.getElementById('gps-date');
+    const pass = document.getElementById('gps-password');
+    const cfg0 = STATE.gpsConfig || {};
+
+    if (host) host.value = cfg0.host || 'http://bms1.gpsavto.uz';
+    if (user) user.value = cfg0.user || '';
+    if (tok) {
+        tok.value = '';
+        tok.placeholder = cfg0.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : 'Wialon token';
+    }
+    if (pass) {
+        pass.value = '';
+        pass.placeholder = cfg0.hasPassword ? 'Saqlangan — o‘zgartirmasangiz qoladi' : '••••••••';
+    }
+    if (dt) dt.value = STATE.currentDate || dateStr(new Date());
+
+    const prog = document.getElementById('sync-progress');
+    if (prog) prog.style.display = 'none';
+    const det = document.getElementById('sync-details');
+    if (det) det.innerHTML = '';
+    const st = document.getElementById('sync-status');
+    if (st) st.textContent = '';
+
+    modal.classList.add('open');
+    if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(modal);
+
+    // Sozlamani fonda yangilash — modal allaqachon ochiq
+    vmApi('/api/office/gps/config').then((pub) => {
+        if (!pub || !modal.classList.contains('open')) return;
+        const cfg = Object.assign({}, gpsConfigSafe(STATE.gpsConfig || {}), {
+            host: pub.host || cfg0.host || '',
+            user: pub.user || cfg0.user || '',
+            hasToken: !!pub.hasToken,
+            hasPassword: !!pub.hasPassword,
+            serverConfigured: !!pub.configured
+        });
+        STATE.gpsConfig = cfg;
+        try { saveAll(); } catch (_e) {}
+        if (host) host.value = cfg.host || 'http://bms1.gpsavto.uz';
+        if (user) user.value = cfg.user || '';
+        if (tok) tok.placeholder = cfg.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : 'Wialon token';
+        if (pass) pass.placeholder = cfg.hasPassword ? 'Saqlangan — o‘zgartirmasangiz qoladi' : '••••••••';
+    }).catch(() => {});
+}
+window.openGpsModal = openGpsModal;
+
 async function nudgeServerGpsSync(status) {
     const st = status || {};
     if (st.running || STATE.gpsSyncBusy || STATE.gpsNudgeBusy) return;
@@ -3394,6 +3448,16 @@ async function downloadPdfReport() {
 }
 
 // ── 12. BARCHA EVENT HANDLER'LAR ────────────────────────────
+// GPS tugmasi — auth kutmasdan darhol bog'lanadi (birinchi bosish ishlasin)
+document.addEventListener('click', (e) => {
+    const gpsBtn = e.target && e.target.closest && e.target.closest('#btn-gps-sync');
+    if (gpsBtn) {
+        e.preventDefault();
+        openGpsModal();
+        return;
+    }
+}, true);
+
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const user = await vmMe();
@@ -3541,57 +3605,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.warn('quick gps refresh:', e);
             showToast(String((e && e.message) || e || 'GPS yangilash xato').slice(0, 120), 'error');
-            try { await openGpsModal(); } catch (_e) {}
+            try { openGpsModal(); } catch (_e) {}
         } finally {
             STATE.gpsSyncBusy = false;
             try { await pollServerGpsStatus(false); } catch (_e) {}
         }
     }
 
-    // ── GPS modal ─────────────────────────────────────────
-    const openGpsModal = async () => {
-        const host = document.getElementById('gps-host');
-        const user = document.getElementById('gps-user');
-        const tok  = document.getElementById('gps-token');
-        const dt   = document.getElementById('gps-date');
-        const pass = document.getElementById('gps-password');
-        let cfg = STATE.gpsConfig || {};
-
-        try {
-            const pub = await vmApi('/api/office/gps/config');
-            cfg = Object.assign({}, gpsConfigSafe(cfg), {
-                host: pub.host || cfg.host || '',
-                user: pub.user || cfg.user || '',
-                hasToken: !!pub.hasToken,
-                hasPassword: !!pub.hasPassword,
-                serverConfigured: !!pub.configured
-            });
-            STATE.gpsConfig = cfg;
-            saveAll();
-        } catch (e) {}
-
-        if (host) host.value = cfg.host || 'http://bms1.gpsavto.uz';
-        if (user) user.value = cfg.user || '';
-        // Parol/token hech qachon forma maydoniga to'ldirilmaydi
-        if (tok) {
-            tok.value = '';
-            tok.placeholder = cfg.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : 'Wialon token';
-        }
-        if (pass) {
-            pass.value = '';
-            pass.placeholder = cfg.hasPassword ? 'Saqlangan — o‘zgartirmasangiz qoladi' : '••••••••';
-        }
-        
-        const todayStr = dateStr(new Date());
-        if (dt) dt.value = STATE.currentDate || todayStr;
-
-        document.getElementById('sync-progress').style.display = 'none';
-        document.getElementById('sync-details').innerHTML = '';
-        document.getElementById('sync-status').textContent = '';
-        document.getElementById('modal-gps').classList.add('open');
-        if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document.getElementById('modal-gps'));
-    };
-    document.getElementById('btn-gps-sync')?.addEventListener('click',   () => openGpsModal());
+    // ── GPS modal (openGpsModal yuqorida — darhol ochiladi) ─────────
     document.getElementById('btn-gps-sync-2')?.addEventListener('click', () => {
         // YANGILASH: serverda GPS bor bo'lsa to'g'ridan sync (modal ochmasdan)
         if (hasGpsConfig()) {
