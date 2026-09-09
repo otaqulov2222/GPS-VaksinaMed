@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m101"
+VM_BUILD = "m102"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -2448,18 +2448,21 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
       var dot=el.querySelector('.vm-pin-dot');
       if(!dot) return;
       var t=String(dot.textContent||'').trim();
-      if(t==='A'||t==='B'||t==='O'||t==='R') return;
-      // 0 ni ham keyin qayta raqamlaymiz
-      if(t!=='0' && !/^\d+$/.test(t)) return;
+      if(t==='A'||t==='B'||t==='Of'||t==='R') return;
+      // 0 / O — ofis
+      if(t==='0'||t==='O'||t==='o'){
+        dot.textContent='Of';
+        return;
+      }
+      if(!/^\d+$/.test(t)) return;
       var ll=layer.getLatLng();
       var st=nearestStop(ll,stops);
-      // Ofis yonidagi pinlar O bo'lsin
       if(st && typeof isMapOfficeStop==='function' && isMapOfficeStop(st)){
-        dot.textContent='O';
+        dot.textContent='Of';
         return;
       }
       if(st && typeof isOffice==='function' && isOffice(st.place)){
-        dot.textContent='O';
+        dot.textContent='Of';
         return;
       }
       pins.push({dot:dot,score:st?visitScore(st.inTime):1e12});

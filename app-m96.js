@@ -961,15 +961,16 @@ function addMapTiles(map) {
 
 function mapPinIcon(label, color, isEnd) {
     let text = String(label == null ? '' : label).trim();
-    // 0 raqami chalkashtiradi — hech qachon ko'rsatilmasin
-    if (text === '0') text = 'O';
+    // 0 va yolg'iz O — ofis deb Of
+    if (text === '0' || text === 'O' || text === 'o') text = (typeof OFFICE_PIN !== 'undefined' ? OFFICE_PIN : 'Of');
     const n = Number(text);
-    if (text !== 'A' && text !== 'B' && text !== 'O' && text !== 'R' && Number.isFinite(n) && n <= 0) {
-        text = 'O';
+    if (text !== 'A' && text !== 'B' && text !== 'Of' && text !== 'R' && Number.isFinite(n) && n <= 0) {
+        text = (typeof OFFICE_PIN !== 'undefined' ? OFFICE_PIN : 'Of');
     }
+    const fontSize = text.length > 1 ? '8px' : '10px';
     return L.divIcon({
         className: 'vm-pin',
-        html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color}">${text}</span>`,
+        html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color};font-size:${fontSize}">${text}</span>`,
         iconSize: [24, 24],
         iconAnchor: [12, 12],
         popupAnchor: [0, -14]
@@ -1195,9 +1196,11 @@ function hydrateStopCoords(stops, track) {
 }
 
 /**
- * Ofis/sklad — xarita 1,2,3… raqamiga ARALASHMASIN (O belgisi).
- * Barcha ofis to'xtashlari (qisqa ham) O; 0 raqami umuman ishlatilmaydi.
+ * Ofis/sklad — xarita 1,2,3… raqamiga ARALASHMASIN.
+ * Belgi: "Of" (harf O emas — 0 bilan chalkashmasin).
  */
+const OFFICE_PIN = 'Of';
+
 function isMapOfficeStop(st) {
     if (!st) return false;
     if (st.isOffice || isOffice(st.place)) return true;
@@ -1235,7 +1238,7 @@ function stopIdentityKey(st) {
 }
 
 /**
- * Xarita: ofis = O, qolganlari kirish vaqti bo'yicha 1,2,3… (hech qachon 0).
+ * Xarita: ofis = Of, qolganlari kirish vaqti bo'yicha 1,2,3… (hech qachon 0).
  */
 function buildMapStops(stops, track) {
     const hydrated = hydrateStopCoords(stops, track).filter(st => validUzCoord(st.lat, st.lng));
@@ -1245,7 +1248,6 @@ function buildMapStops(stops, track) {
         if (isMapOfficeStop(st)) officeMarks.push(Object.assign({}, st, { _mapRole: 'office' }));
         else route.push(st);
     });
-    // Ofis bo'lmasa ham 0 chiqmasin — faqat marshrut to'xtashlari
     const ordered = orderStopsByVisitTime(route);
     const numbered = ordered.map((st, i) => {
         const tableNum = Number(st.num);
@@ -1259,30 +1261,30 @@ function buildMapStops(stops, track) {
     return { numbered, officeMarks };
 }
 
-/** Jadval/xarita uchun ko'rsatiladigan belgi: O yoki 1..n */
+/** Jadval/xarita: Of yoki 1..n — hech qachon 0 yoki yolg'iz O */
 function stopDisplayNum(st, numbering) {
     if (!st) return '—';
-    if (isMapOfficeStop(st)) return 'O';
+    if (isMapOfficeStop(st)) return OFFICE_PIN;
     if (numbering && numbering.byKey) {
         const v = numbering.byKey[stopIdentityKey(st)];
-        if (v === 'O') return 'O';
+        if (v === OFFICE_PIN || v === 'O' || v === 'Of') return OFFICE_PIN;
         const n = Number(v);
         if (n > 0) return n;
     }
     const n = Number(st.mapNum || st.num);
-    return n > 0 ? n : '—';
+    if (n > 0) return n;
+    return '—';
 }
 
 function buildStopNumbering(stops, track) {
     const prepared = prepareStopsList(stops || []);
     const built = buildMapStops(prepared, track || []);
     const byKey = Object.create(null);
-    (built.officeMarks || []).forEach(s => { byKey[stopIdentityKey(s)] = 'O'; });
+    (built.officeMarks || []).forEach(s => { byKey[stopIdentityKey(s)] = OFFICE_PIN; });
     (built.numbered || []).forEach(s => { byKey[stopIdentityKey(s)] = s.mapNum; });
-    // Koordinatasi yo'q ofislar ham O
     prepared.forEach(s => {
         if (isMapOfficeStop(s) && byKey[stopIdentityKey(s)] == null) {
-            byKey[stopIdentityKey(s)] = 'O';
+            byKey[stopIdentityKey(s)] = OFFICE_PIN;
         }
     });
     return { prepared, built, byKey };
@@ -1419,7 +1421,7 @@ async function refreshMap(stops, points) {
     // Tungi ofis — raqamsiz «O»
     officeMarks.forEach((st) => {
         const marker = L.marker([st.lat, st.lng], {
-            icon: mapPinIcon('O', '#123050', false),
+            icon: mapPinIcon(typeof OFFICE_PIN !== 'undefined' ? OFFICE_PIN : 'Of', '#123050', false),
             zIndexOffset: 120
         }).addTo(STATE.map);
         marker.bindPopup(`
@@ -2120,7 +2122,10 @@ function renderStops(stops) {
         let showNum = typeof stopDisplayNum === 'function'
             ? stopDisplayNum(st, numbering)
             : (Number(st.num) > 0 ? st.num : (i + 1));
-        if (showNum === 0 || showNum === '0') showNum = 'O';
+        // Qat'iy: ofis qatorida hech qachon 0/O
+        if (st.isOffice || isOffice(st.place) || showNum === 0 || showNum === '0' || showNum === 'O') {
+            showNum = typeof OFFICE_PIN !== 'undefined' ? OFFICE_PIN : 'Of';
+        }
 
         const canReview = true;
         html += `
