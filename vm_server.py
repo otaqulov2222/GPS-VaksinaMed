@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m102"
+VM_BUILD = "m103"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -2520,17 +2520,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
   }
   function boot(){
     paintBanner(false,0);
-    patchRefresh();
     ensureLiveNav();
-    setTimeout(ensureLiveNav,800);
-    setTimeout(ensureLiveNav,2500);
-    setInterval(ensureLiveNav,5000);
-    setTimeout(forcePins,500);
-    setTimeout(forcePins,1500);
-    setTimeout(forcePins,3000);
-    setInterval(forcePins,4000);
-    var btn=document.getElementById('btn-refresh-map');
-    if(btn) btn.addEventListener('click',function(){ setTimeout(forcePins,300); setTimeout(forcePins,1000); });
+    setTimeout(ensureLiveNav,1200);
+    // Pin timer / refresh wrap olib tashlandi — refreshMap o'zi 1,2,3 qiladi
   }
   if(document.readyState==='complete') boot();
   else window.addEventListener('load',boot);
@@ -2801,6 +2793,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_error(403, "Ruxsat yo'q")
             return
 
+        sess = None
+        # Statik JS/CSS/PNG — session OLMASDAN (tezlik)
+        if self.is_public(path) and path not in ("/login.html",):
+            # login.html alohida (sessiya bo'lsa redirect)
+            if path != "/login.html":
+                return super().do_GET()
+
         sess = self.current_session()
 
         if path == "/login.html":
@@ -2911,7 +2910,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 "a.href='/live.html';a.textContent='Live';a.removeAttribute('hidden');"
                 "a.style.display='';a.style.visibility='visible';});"
                 "}catch(e){}}go();"
-                "document.addEventListener('DOMContentLoaded',go);setInterval(go,4000);})();"
+                "document.addEventListener('DOMContentLoaded',go);setInterval(go,30000);})();"
             )
             raw = js.encode("utf-8")
             self.send_response(200)

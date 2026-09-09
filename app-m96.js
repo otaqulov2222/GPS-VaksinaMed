@@ -89,28 +89,39 @@ function gpsConfigSafe(cfg) {
 
 function saveAll() {
     try {
+        // Trek nuqtalari localStorage ga yozilmasin — stringify sekin + kvota
+        const slim = {};
+        Object.keys(STATE.data || {}).forEach((d) => {
+            const day = STATE.data[d];
+            if (!day || typeof day !== 'object') return;
+            slim[d] = {};
+            Object.keys(day).forEach((car) => {
+                const rec = day[car];
+                if (!rec || typeof rec !== 'object') return;
+                slim[d][car] = {
+                    stops: rec.stops,
+                    stats: rec.stats,
+                    analysis: rec.analysis,
+                    score: rec.score,
+                    syncedAt: rec.syncedAt
+                    // points — faqat xotirada
+                };
+            });
+        });
         localStorage.setItem('vm_gps_v3', JSON.stringify({
-            data: STATE.data,
+            data: slim,
             history: STATE.history,
             fuelNorms: STATE.fuelNorms,
             gpsConfig: gpsConfigSafe(STATE.gpsConfig)
         }));
     } catch(e) {
-        // Kvota tugasa eski 30 kunni o'chirish
         if (e.name === 'QuotaExceededError') {
-            const keep = [...STATE.history].sort((a,b)=>b.localeCompare(a)).slice(0,30);
+            const keep = [...STATE.history].sort((a,b)=>b.localeCompare(a)).slice(0,20);
             STATE.history = keep;
             const trimmed = {};
             keep.forEach(d => { if (STATE.data[d]) trimmed[d] = STATE.data[d]; });
             STATE.data = trimmed;
-            try {
-                localStorage.setItem('vm_gps_v3', JSON.stringify({
-                    data: trimmed,
-                    history: keep,
-                    fuelNorms: STATE.fuelNorms,
-                    gpsConfig: gpsConfigSafe(STATE.gpsConfig)
-                }));
-            } catch(_) {}
+            try { saveAll(); } catch(_) {}
         }
     }
 }
@@ -1339,15 +1350,31 @@ async function ensureTrackPoints(rec) {
 async function refreshMap(stops, points) {
     initMap();
     if (!STATE.map) return;
+
+    const rawList = Array.isArray(stops) ? stops : [];
+    let track = normalizeTrackPoints(points);
+    const sig = [
+        STATE.currentDate || '',
+        STATE.currentCar || '',
+        rawList.length,
+        track.length,
+        rawList[0] && rawList[0].inTime,
+        rawList[rawList.length - 1] && rawList[rawList.length - 1].inTime,
+        track[0] && track[0][0],
+        track.length && track[track.length - 1] && track[track.length - 1][0]
+    ].join('|');
+    if (STATE._mapSig === sig && STATE.mapMarkers && STATE.mapMarkers.length) {
+        mapInvalidate();
+        return;
+    }
+    STATE._mapSig = sig;
+
     const gen = ++STATE.mapRouteGen;
     STATE.mapMarkers.forEach(m => STATE.map.removeLayer(m));
     STATE.mapMarkers = [];
     removeMapRouteLayers();
     setMapOverlay(null);
     mapInvalidate();
-
-    const rawList = Array.isArray(stops) ? stops : [];
-    let track = normalizeTrackPoints(points);
 
     // Trek yo'q bo'lsa — Boomerangdan yuklash (sessiya bor bo'lsa)
     if (track.length < 2) {
@@ -1543,9 +1570,9 @@ function selectDate(ds) {
     STATE.currentDate = ds;
     renderCalendar();
     renderDriverTabs();
-    refreshUI();
+    // Avval engil UI, xarita keyin (tugma sekinligini kamaytiradi)
+    refreshUI({ deferMap: true });
     if (window.VMOffice) {
-        // Server hisobot — yagona manba. Brauzer km yozmaydi.
         VMOffice.loadReportIfNeeded(ds);
     } else {
         refreshDayKm(ds);
@@ -1652,11 +1679,12 @@ function enableDriverStripWheelScroll() {
 function selectDriver(carKey) {
     STATE.currentCar = carKey;
     renderDriverTabs();
-    refreshUI();
+    refreshUI({ deferMap: true });
 }
 
 // ── 9. ASOSIY UI YANGILASH ──────────────────────────────────
-function refreshUI() {
+function refreshUI(opts) {
+    const deferMap = !!(opts && opts.deferMap);
     const rawDrv = DRIVERS.find(d => d.car === STATE.currentCar);
     const driver = rawDrv
         ? (typeof resolveDriver === 'function' ? resolveDriver(rawDrv.car, rawDrv) : rawDrv)
@@ -1672,10 +1700,19 @@ function refreshUI() {
         }
     }
 
-    // Banner
     renderBanner(driver, dayData);
 
     if (window.VMOffice) VMOffice.renderFleetBoard();
+
+    const runMap = (stops, points) => {
+        if (deferMap) {
+            requestAnimationFrame(() => {
+                setTimeout(() => { refreshMap(stops, points); }, 0);
+            });
+        } else {
+            refreshMap(stops, points);
+        }
+    };
 
     if (dayData) {
         const rec = normalizeDayRecord(dayData);
@@ -1684,9 +1721,8 @@ function refreshUI() {
         renderPharmacy(rec);
         renderStops(rec.stops);
         renderEval(rec.analysis.score);
-        refreshMap(rec.stops, rec.points);
+        runMap(rec.stops, rec.points);
     } else {
-        // Bo'sh holat
         renderKPI(null);
         const kpiEl = document.getElementById('kpi-container');
         if (kpiEl) kpiEl.innerHTML = `
@@ -1718,7 +1754,7 @@ function refreshUI() {
         const sumEl = document.getElementById('eval-summary');
         if (sumEl) { sumEl.className = 'eval-summary-box ok'; sumEl.textContent = 'Ma\'lumot yuklanmagan.'; }
 
-        refreshMap(null);
+        runMap(null);
     }
     renderSidebarStats();
 }
@@ -3699,6 +3735,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Xaritani yangilash ────────────────────────────────
     document.getElementById('btn-refresh-map')?.addEventListener('click', async () => {
         initMap();
+        STATE._mapSig = null; // majburiy qayta chizish
         const dd = STATE.currentDate && STATE.data[STATE.currentDate]
             ? STATE.data[STATE.currentDate][STATE.currentCar]
             : null;

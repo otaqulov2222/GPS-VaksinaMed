@@ -11,7 +11,7 @@
 <title>Dashboard — VaksinaMed</title>
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
-<script>window.__VM_BUILD = 'm102';</script>
+<script>window.__VM_BUILD = 'm103';</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 
@@ -2368,149 +2368,27 @@ input, select, textarea { max-width: 100%; }
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 
-<script src="/api/live-nav.js?v=m102"></script>
+<script src="/api/live-nav.js?v=m103"></script>
 <script src="auth.js?v=31"></script>
 
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app-m96.js?v=m102"></script>
+<script src="app-m96.js?v=m103"></script>
 
 <script src="office.js?v=16"></script>
 
 <script>
-/* m95: pinlar — kirish VAQTI bo'yicha 1,2,3… (trek aralashmasin) */
+/* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */
 (function () {
-  function visitScore(inTime) {
-    var t = 0;
-    try {
-      if (typeof parseTimeStr === 'function') t = parseTimeStr(inTime) || 0;
-      else {
-        var m = String(inTime || '').match(/(\d{1,2}):(\d{2})/);
-        if (m) t = (+m[1]) * 3600 + (+m[2]) * 60;
-      }
-    } catch (e) {}
-    if (t && t < 4 * 3600) t += 86400;
-    return t || 1e12;
-  }
-
-  function dayStops() {
-    try {
-      var day = STATE && STATE.data && STATE.currentDate && STATE.data[STATE.currentDate]
-        ? STATE.data[STATE.currentDate][STATE.currentCar]
-        : null;
-      var stops = (day && day.stops) || [];
-      var track = (day && day.points) || [];
-      if (typeof prepareStopsList === 'function') stops = prepareStopsList(stops);
-      if (typeof hydrateStopCoords === 'function') stops = hydrateStopCoords(stops, track);
-      return stops.filter(function (s) {
-        if (typeof isMapOfficeStop === 'function' && isMapOfficeStop(s)) return false;
-        if (typeof isLongOfficeStop === 'function' && isLongOfficeStop(s)) return false;
-        if (typeof isOffice === 'function' && isOffice(s.place)) return false;
-        return s && s.lat && s.lng;
-      });
-    } catch (e) { return []; }
-  }
-
-  function nearestStop(ll, stops) {
-    var best = null, bestD = 1e99, i, s, dlat, dlng, d;
-    for (i = 0; i < stops.length; i++) {
-      s = stops[i];
-      if (!s || !s.lat || !s.lng) continue;
-      dlat = Number(s.lat) - ll.lat;
-      dlng = Number(s.lng) - ll.lng;
-      d = dlat * dlat + dlng * dlng;
-      if (d < bestD) { bestD = d; best = s; }
-    }
-    return best;
-  }
-
-  function vmForceSequentialPins() {
-    if (!window.STATE || !STATE.map || typeof L === 'undefined') return false;
-    var pins = [];
-    var stops = dayStops();
-    function consider(layer) {
-      if (!layer || typeof layer.getLatLng !== 'function') return;
-      if (!(layer instanceof L.Marker)) return;
-      var el = null;
-      try { el = layer.getElement && layer.getElement(); } catch (e1) {}
-      if (!el) return;
-      var dot = el.querySelector('.vm-pin-dot');
-      if (!dot) return;
-      var t = String(dot.textContent || '').trim();
-      if (t === 'A' || t === 'B' || t === 'Of' || t === 'R') return;
-      if (t === '0' || t === 'O' || t === 'o') {
-        dot.textContent = 'Of';
-        return;
-      }
-      if (!/^\d+$/.test(t)) return;
-      var ll = layer.getLatLng();
-      var st = nearestStop(ll, stops);
-      if (st && typeof isMapOfficeStop === 'function' && isMapOfficeStop(st)) {
-        dot.textContent = 'Of';
-        return;
-      }
-      if (st && typeof isOffice === 'function' && isOffice(st.place)) {
-        dot.textContent = 'Of';
-        return;
-      }
-      pins.push({
-        dot: dot,
-        ll: ll,
-        score: st ? visitScore(st.inTime) : 1e12
-      });
-    }
-    try { STATE.map.eachLayer(consider); } catch (e2) {}
-    if (STATE.mapMarkers && STATE.mapMarkers.length) STATE.mapMarkers.forEach(consider);
-    var seen = new Set();
-    pins = pins.filter(function (p) {
-      if (seen.has(p.dot)) return false;
-      seen.add(p.dot);
-      return true;
-    });
-    if (pins.length < 1) return false;
-    pins.sort(function (a, b) { return a.score - b.score; });
-    pins.forEach(function (p, i) { p.dot.textContent = String(i + 1); });
-    var ov = document.getElementById('map-overlay-info');
-    if (ov) {
-      var base = String(ov.textContent || '').replace(/\s*[·•]\s*m\d+✓?/gi, '').trim();
-      ov.textContent = base;
-    }
+  function scrub() {
     var stamp = document.getElementById('vm-build');
     if (stamp) stamp.remove();
     var ban = document.getElementById('vm-build-banner');
     if (ban) ban.remove();
-    return true;
   }
-
-  function patchRefresh() {
-    if (typeof window.refreshMap !== 'function' || window.refreshMap._vmM95) return;
-    var orig = window.refreshMap;
-    window.refreshMap = async function () {
-      var ret = await orig.apply(this, arguments);
-      setTimeout(vmForceSequentialPins, 50);
-      setTimeout(vmForceSequentialPins, 300);
-      setTimeout(vmForceSequentialPins, 900);
-      setTimeout(vmForceSequentialPins, 1800);
-      return ret;
-    };
-    window.refreshMap._vmM95 = true;
-  }
-
-  function boot() {
-    patchRefresh();
-    setTimeout(vmForceSequentialPins, 400);
-    setTimeout(vmForceSequentialPins, 1200);
-    setTimeout(vmForceSequentialPins, 2500);
-    setInterval(vmForceSequentialPins, 5000);
-  }
-
-  if (document.readyState === 'complete') boot();
-  else window.addEventListener('load', boot);
-  document.getElementById('btn-refresh-map')?.addEventListener('click', function () {
-    setTimeout(vmForceSequentialPins, 200);
-    setTimeout(vmForceSequentialPins, 800);
-  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scrub);
+  else scrub();
 })();
 </script>
 

@@ -310,7 +310,7 @@ async def handle(request: Request, full_path: str = ""):
         try:
             from vm_server import VM_BUILD as _build
         except Exception:
-            _build = "m102"
+            _build = "m103"
         body = json.dumps(
             {
                 "ok": True,
@@ -343,7 +343,7 @@ async def handle(request: Request, full_path: str = ""):
             "var f=nav.querySelector('a[href=\"/fuel.html\"]');var d=nav.querySelector('a[href=\"/attendance.html\"],#nav-davomat');"
             "if(f)f.insertAdjacentElement('afterend',a);else if(d)d.insertAdjacentElement('beforebegin',a);else nav.appendChild(a);}"
             "a.href='/live.html';a.textContent='Live';a.removeAttribute('hidden');a.style.display='';a.style.visibility='visible';});"
-            "}catch(e){}}go();document.addEventListener('DOMContentLoaded',go);setInterval(go,4000);})();"
+            "}catch(e){}}go();document.addEventListener('DOMContentLoaded',go);setInterval(go,30000);})();"
         )
         headers = {"Cache-Control": "no-store, no-cache, must-revalidate"}
         if request.method == "HEAD":

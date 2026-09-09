@@ -9,7 +9,7 @@ const LIVE = {
   units: [],
   selected: null,
   timer: null,
-  pollMs: 3000,
+  pollMs: 5000,
   fetching: false,
   lastPos: {},
   lastCourse: {},
@@ -200,7 +200,7 @@ function liveMotionTick() {
 
 function liveStartMotion() {
   if (LIVE.motionTimer) return;
-  LIVE.motionTimer = setInterval(liveMotionTick, 200);
+  LIVE.motionTimer = setInterval(liveMotionTick, 400);
 }
 
 function liveAnimateMarker(marker, toLatLng, ms) {
