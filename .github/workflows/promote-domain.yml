@@ -1,0 +1,60 @@
+# Asosiy domen (gps-vaksina-med.vercel.app) ba'zan eski deployda qoladi.
+# Sabab: u loyiha Production URL emas — faqat alias. Har main pushdan keyin
+# eng yangi Ready Production deployga ulang.
+#
+# Secret: VERCEL_TOKEN (Vercel → Settings → Tokens)
+# Ixtiyoriy: VERCEL_ORG_ID / VERCEL_PROJECT_ID
+
+name: Promote production domain
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: promote-gps-domain
+  cancel-in-progress: true
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for Vercel build
+        run: sleep 75
+
+      - name: Alias latest Production → gps-vaksina-med.vercel.app
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::warning::VERCEL_TOKEN yo'q — alias o'tkazib yuborildi. GitHub → Settings → Secrets ga qo'shing."
+            exit 0
+          fi
+          ORG="${VERCEL_ORG_ID:-team_2IRxjpUztzaqm4ZjtHsrr2aK}"
+          PROJ="${VERCEL_PROJECT_ID:-prj_3pWtjXo8K8oUkDY0Aq9sTRdjfw3K}"
+          DOMAIN="gps-vaksina-med.vercel.app"
+
+          RAW=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?projectId=${PROJ}&target=production&state=READY&limit=5&teamId=${ORG}")
+          URL=$(printf '%s' "$RAW" | python3 -c '
+          import json,sys
+          data=json.load(sys.stdin)
+          deps=data.get("deployments") or []
+          if not deps:
+              raise SystemExit("READY production deploy topilmadi")
+          u=deps[0].get("url") or ""
+          print(u if u.startswith("http") else ("https://" + u))
+          ')
+          echo "Latest production: $URL"
+          HOST="${URL#https://}"
+          ASSIGN=$(curl -sS -X POST -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.vercel.com/v2/aliases?teamId=${ORG}" \
+            -d "{\"alias\":\"${DOMAIN}\",\"deploymentUrl\":\"${HOST}\"}")
+          printf '%s' "$ASSIGN" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("alias") or d.get("error") or d)'
+          curl -sS "https://${DOMAIN}/api/health"; echo

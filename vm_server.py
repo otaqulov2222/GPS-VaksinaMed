@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m104"
+VM_BUILD = "m105"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -3700,22 +3700,15 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         only_plates = [only_plates.strip()]
                     elif not isinstance(only_plates, (list, tuple)):
                         only_plates = None
-                    # habit=True: Dashboard jim avto — ko'proq mashina / uzoqroq budget
-                    # Qo'lda YANGILASH: avval BARCHA mashina km (Boomerang), keyin to'xtashlar
-                    budget_sec = 55 if habit else 50
-                    max_cars = None if habit else (3 if not only_plates else None)
-                    use_parallel = bool(habit) or bool(only_plates)
+                    # habit=True: yengil bo'lak (cron/GitHub to'ldiradi)
+                    # Qo'lda YANGILASH: qisqa km + 4 mashina — 504/sekinlik kamayadi
+                    budget_sec = 40 if habit else 45
+                    max_cars = 4 if not only_plates else None
+                    use_parallel = True
                     global _gps_sync_lock_until
                     now = _time.time()
-                    # TTL: eski qulf budget+10s dan oshsa — e'tiborsiz (504 zombie)
-                    lock_ttl = float(budget_sec + 25)
-                    if _gps_sync_lock_until and now > _gps_sync_lock_until:
-                        try:
-                            _gps_sync_lock.release()
-                        except Exception:
-                            pass
-                        _gps_sync_lock_until = 0.0
-                    if not _gps_sync_lock.acquire(blocking=False):
+
+                    def _busy_payload():
                         prev = OFFICE.get_report(d) or {}
                         pcars = prev.get("cars") if isinstance(prev, dict) else {}
                         if not isinstance(pcars, dict):
@@ -3725,7 +3718,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             for r in pcars.values()
                             if isinstance(r, dict) and r.get("syncedAt")
                         )
-                        self.send_json({
+                        return {
                             "ok": True,
                             "busy": True,
                             "queued": False,
@@ -3736,21 +3729,38 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             "chunk": 0,
                             "total": max(len(pcars), synced, 1),
                             **OFFICE.gps_status_public(),
-                        })
+                        }
+
+                    # Neon status — boshqa serverless instance ham bandligini ko'rsatadi
+                    pub_st = OFFICE.gps_status_public()
+                    if pub_st.get("running"):
+                        self.send_json(_busy_payload())
+                        return
+
+                    # TTL: eski qulf budget+10s dan oshsa — e'tiborsiz (504 zombie)
+                    lock_ttl = float(budget_sec + 25)
+                    if _gps_sync_lock_until and now > _gps_sync_lock_until:
+                        try:
+                            _gps_sync_lock.release()
+                        except Exception:
+                            pass
+                        _gps_sync_lock_until = 0.0
+                    if not _gps_sync_lock.acquire(blocking=False):
+                        self.send_json(_busy_payload())
                         return
                     _gps_sync_lock_until = now + lock_ttl
                     try:
                         OFFICE.set_gps_status(running=True, date=d, message="Sync boshlandi")
                         km_refresh = {"updated": 0}
-                        # Har YANGILASH: Boomerang trip km — barcha (yoki tanlangan) mashinalar
-                        if not habit or force:
+                        # Faqat qo'lda force — qisqa km (habit/cron og'ir km qilmasin)
+                        do_km = (not habit) and force and not only_plates
+                        if do_km:
                             try:
-                                km_budget = 35 if not habit else 18
                                 km_refresh = gps_sync.refresh_day_trip_km(
                                     OFFICE,
                                     DIRECTORY,
                                     d,
-                                    time_budget_sec=km_budget,
+                                    time_budget_sec=18,
                                     saved_by=sess.get("username") or "user-km",
                                 ) or {}
                             except Exception as _km_e:

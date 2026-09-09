@@ -16,3 +16,12 @@ _test_*.xlsx
 *.pem
 *.key
 secrets/
+
+# Kunlik Excel / marshrut xom fayllar (repoga kerak emas)
+kunlik kiritish uchun malumotlar/
+yunalishlar dorixona mashina/
+*.xlsx
+
+# Bir martalik patch/skript chiqindilari
+scripts/_*
+

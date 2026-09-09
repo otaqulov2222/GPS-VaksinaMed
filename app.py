@@ -179,11 +179,12 @@ def _vercel_gps_sync_backup() -> dict:
         incomplete = fleet_n > 0 and synced < fleet_n
 
         if not new_day and not incomplete and not stale:
+            # Yengil km (og'ir 120s o'rniga) — asosiy to'ldirish GitHub Actions
             km_refresh = gps_sync.refresh_day_trip_km(
                 office,
                 directory,
                 d,
-                time_budget_sec=120,
+                time_budget_sec=45,
                 saved_by="vercel-km",
             )
             km_n = int(km_refresh.get("updated") or 0)
@@ -215,32 +216,32 @@ def _vercel_gps_sync_backup() -> dict:
             }
 
         force = bool(new_day or stale)
-        # maxDuration=300 — to'liqroq park yangilash (23 mashina)
+        # Qisqa budget — timeout/504 kamayadi; qisman bo'lsa keyingi cron davom etadi
         result = (
             gps_sync.sync_today(
                 office,
                 directory,
                 d,
                 saved_by="vercel-cron",
-                time_budget_sec=160,
+                time_budget_sec=90,
                 parallel=True,
                 force=force,
+                max_cars=8,
             )
             or {}
         )
 
-        # Har doim: Boomerang km ni yengil yangilash (27.73 vs 28.29 kechikishini kamaytiradi)
-        remain = max(20, 250 - int(time.time() - t0))
+        remain = max(15, 140 - int(time.time() - t0))
         km_refresh = gps_sync.refresh_day_trip_km(
             office,
             directory,
             d,
-            time_budget_sec=min(120, remain),
+            time_budget_sec=min(50, remain),
             saved_by="vercel-km",
         )
 
-        # Kecha bo'sh bo'lsa — qisqa to'ldirish
-        if result.get("ok") and time.time() - t0 < 200:
+        # Kecha — faqat vaqt qolsa (og'ir double-sync yo'q)
+        if result.get("ok") and time.time() - t0 < 110:
             yday = gps_sync.yesterday_tashkent()
             yrec = office.get_report(yday) or {}
             ycars = yrec.get("cars") if isinstance(yrec, dict) else {}
@@ -253,9 +254,10 @@ def _vercel_gps_sync_backup() -> dict:
                     directory,
                     yday,
                     saved_by="vercel-cron-yday",
-                    time_budget_sec=max(15, 280 - int(time.time() - t0)),
+                    time_budget_sec=max(12, 150 - int(time.time() - t0)),
                     parallel=True,
                     force=False,
+                    max_cars=6,
                 )
 
         fetched = int(result.get("fetched") or 0)
@@ -310,7 +312,7 @@ async def handle(request: Request, full_path: str = ""):
         try:
             from vm_server import VM_BUILD as _build
         except Exception:
-            _build = "m104"
+            _build = "m105"
         body = json.dumps(
             {
                 "ok": True,

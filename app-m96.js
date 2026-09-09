@@ -90,8 +90,13 @@ function gpsConfigSafe(cfg) {
 function saveAll() {
     try {
         // Trek nuqtalari localStorage ga yozilmasin — stringify sekin + kvota
+        // Faqat oxirgi 40 kun — katta tarix UI ni sekinlatmasin
+        const hist = [...(STATE.history || [])].sort((a, b) => b.localeCompare(a)).slice(0, 40);
+        if (hist.length < (STATE.history || []).length) STATE.history = hist;
+        const keep = new Set(hist);
         const slim = {};
         Object.keys(STATE.data || {}).forEach((d) => {
+            if (keep.size && !keep.has(d)) return;
             const day = STATE.data[d];
             if (!day || typeof day !== 'object') return;
             slim[d] = {};
@@ -110,7 +115,7 @@ function saveAll() {
         });
         localStorage.setItem('vm_gps_v3', JSON.stringify({
             data: slim,
-            history: STATE.history,
+            history: hist,
             fuelNorms: STATE.fuelNorms,
             gpsConfig: gpsConfigSafe(STATE.gpsConfig)
         }));
@@ -2331,7 +2336,7 @@ function openGpsModal() {
             serverConfigured: !!pub.configured
         });
         STATE.gpsConfig = cfg;
-        try { saveAll(); } catch (_e) {}
+        // saveAll yo'q — modal ochilganda localStorage bloklamaslik
         if (host) host.value = cfg.host || 'http://bms1.gpsavto.uz';
         if (user) user.value = cfg.user || '';
         if (tok) tok.placeholder = cfg.hasToken ? 'Saqlangan — o‘zgartirmasangiz qoladi' : 'Wialon token';
@@ -2550,7 +2555,7 @@ async function pollServerGpsStatus(forceToday) {
             if (viewDate !== dateToLoad) await VMOffice.loadReportIfNeeded(viewDate, false);
             renderCalendar();
             renderDriverTabs();
-            refreshUI();
+            refreshUI({ deferMap: true });
         }
     } catch (e) {
         console.warn('gps status:', e);
@@ -2630,7 +2635,8 @@ async function syncFromGPS(dateVal, cfg, opts) {
             updateProg(15, 'Server orqali GPS sync…', '');
             let rounds = 0;
             let busy = true;
-            while (rounds < 40 && busy) {
+            let partial = true;
+            while (rounds < 50 && (busy || partial)) {
                 if (cancelled()) return;
                 rounds += 1;
                 const res = await vmApi('/api/office/gps/sync', {
@@ -2640,13 +2646,15 @@ async function syncFromGPS(dateVal, cfg, opts) {
                 busy = !!(res && res.busy);
                 const fetched = (res && (res.fetched != null ? res.fetched : res.cars)) || 0;
                 const total = (res && res.total) || Math.max(fetched, 1);
+                partial = !!(res && res.partial) || (total > 0 && fetched < total);
+                if (busy) partial = true;
                 updateProg(
-                    Math.min(90, 15 + Math.round((fetched / total) * 70)),
-                    busy ? `Server sync… ${fetched}/${total}` : `Server: ${fetched} mashina`,
+                    Math.min(90, 15 + Math.round((fetched / Math.max(total, 1)) * 70)),
+                    busy ? `Server sync… ${fetched}/${total}` : `Server: ${fetched}/${total}`,
                     ''
                 );
-                if (!busy) break;
-                await sleepMs(900);
+                if (!busy && !partial) break;
+                await sleepMs(busy ? 900 : 350);
             }
             if (cancelled()) return;
             if (window.VMOffice) await VMOffice.loadReportIfNeeded(dateVal, true);
@@ -3575,23 +3583,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         const dateVal = STATE.currentDate || today;
         STATE.gpsSyncBusy = true;
         setGpsUi('sync', 'Yangilanmoqda…');
-        showToast('Boomerang km yangilanmoqda…', 'info');
+        showToast('GPS yangilanmoqda…', 'info');
         try {
-            // Serverda GPS token/parol bor — modal shart emas
-            const res = await vmApi('/api/office/gps/sync', {
-                method: 'POST',
-                body: JSON.stringify({
-                    date: dateVal,
-                    force: true,
-                    habit: false
-                })
-            });
+            let rounds = 0;
+            let partial = true;
+            let lastRes = null;
+            while (rounds < 40 && partial) {
+                rounds += 1;
+                lastRes = await vmApi('/api/office/gps/sync', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        date: dateVal,
+                        force: rounds === 1,
+                        habit: false
+                    })
+                });
+                if (lastRes && lastRes.busy) {
+                    await sleepMs(800);
+                    continue;
+                }
+                const fetched = Number((lastRes && (lastRes.fetched != null ? lastRes.fetched : lastRes.cars)) || 0);
+                const total = Number((lastRes && lastRes.total) || 0) || Math.max(fetched, 1);
+                partial = !!(lastRes && lastRes.partial) || (total > 0 && fetched < total);
+                if (partial) await sleepMs(300);
+            }
+            const res = lastRes || {};
             const kmN = Number((res && res.kmRefresh && res.kmRefresh.updated) || 0);
             const samples = (res && res.kmRefresh && res.kmRefresh.samples) || [];
             await pollServerGpsStatus(true);
             if (window.VMOffice) {
                 await VMOffice.loadReportIfNeeded(dateVal, true);
-                refreshUI();
+                refreshUI({ deferMap: true });
                 VMOffice.renderFleetBoard();
             }
             if (kmN > 0) {
@@ -3600,7 +3622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     : '';
                 showToast('Km yangilandi: ' + kmN + ' mashina' + tip, 'success');
             } else {
-                showToast('Sync tugadi — km o‘zgarmadi (GPS bilan bir xil yoki xato)', 'warn');
+                showToast('Sync tugadi', 'success');
             }
         } catch (e) {
             console.warn('quick gps refresh:', e);
