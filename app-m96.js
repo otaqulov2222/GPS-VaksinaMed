@@ -402,11 +402,15 @@ function matchPharmacy(place, currentCar, lat, lng) {
 }
 
 // Ofis/sklad joylari
-const OFFICE_KEYWORDS = ['sklad','склад','офис','omborxona','ombo','база','база','vaksina','vaksinamed',
-    'завод','fabrika','tashkent farma','korxona','baza','bosh ofis'];
+const OFFICE_KEYWORDS = [
+    'sklad', 'склад', 'офис', 'ofis', 'office', 'omborxona', 'ombo', 'ombor',
+    'база', 'baza', 'vaksina', 'vaksinamed', 'завод', 'fabrika',
+    'tashkent farma', 'korxona', 'bosh ofis', 'yangi-sklad', 'yangisklad'
+];
 function isOffice(place) {
     const p = normPh(place);
-    return OFFICE_KEYWORDS.some(k => p.includes(k));
+    if (!p) return false;
+    return OFFICE_KEYWORDS.some(k => p.includes(normPh(k)));
 }
 
 // Shahar tashqarisi
@@ -646,7 +650,7 @@ function parseChronoRows(rows, carKey) {
         const match = matchPharmacy(place, carKey, lat, lng);
 
         stops.push({
-            num:         i - headerRow,
+            num:         Math.max(1, i - headerRow),
             place:       place,
             inTime:      inTimeRaw,
             outTime:     outTimeRaw,
@@ -956,9 +960,16 @@ function addMapTiles(map) {
 }
 
 function mapPinIcon(label, color, isEnd) {
+    let text = String(label == null ? '' : label).trim();
+    // 0 raqami chalkashtiradi — hech qachon ko'rsatilmasin
+    if (text === '0') text = 'O';
+    const n = Number(text);
+    if (text !== 'A' && text !== 'B' && text !== 'O' && text !== 'R' && Number.isFinite(n) && n <= 0) {
+        text = 'O';
+    }
     return L.divIcon({
         className: 'vm-pin',
-        html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color}">${label}</span>`,
+        html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color}">${text}</span>`,
         iconSize: [24, 24],
         iconAnchor: [12, 12],
         popupAnchor: [0, -14]
@@ -1184,18 +1195,17 @@ function hydrateStopCoords(stops, track) {
 }
 
 /**
- * Tungi/uzoq ofis — xarita 1,2,3… raqamiga aralashmasin (A ostida 1–6 yashirinardi).
+ * Ofis/sklad — xarita 1,2,3… raqamiga ARALASHMASIN (O belgisi).
+ * Barcha ofis to'xtashlari (qisqa ham) O; 0 raqami umuman ishlatilmaydi.
  */
-function isLongOfficeStop(st) {
+function isMapOfficeStop(st) {
     if (!st) return false;
-    const dur = Number(st.durSec) || 0;
-    if (!st.isOffice) return false;
-    if (dur >= 90 * 60) return true;
-    const inSec = parseTimeStr(st.inTime);
-    const inH = inSec / 3600;
-    // Kechki/tungi ofis (≥1 soat)
-    if (dur >= 3600 && (inH >= 17 || inH < 7)) return true;
+    if (st.isOffice || isOffice(st.place)) return true;
     return false;
+}
+/** @deprecated — isMapOfficeStop ishlating */
+function isLongOfficeStop(st) {
+    return isMapOfficeStop(st);
 }
 
 /** Ish kuni bo'yicha vaqt tartibi (1-chi tashrif = #1). */
@@ -1213,29 +1223,69 @@ function orderStopsByVisitTime(stops) {
     });
 }
 
+function stopIdentityKey(st) {
+    if (!st) return '';
+    return [
+        String(st.inTime || ''),
+        String(st.outTime || ''),
+        String(st.place || ''),
+        String(st.lat || ''),
+        String(st.lng || '')
+    ].join('|');
+}
+
 /**
- * Xarita: ofis = O, qolganlari kirish vaqti bo'yicha 1,2,3…
+ * Xarita: ofis = O, qolganlari kirish vaqti bo'yicha 1,2,3… (hech qachon 0).
  */
 function buildMapStops(stops, track) {
     const hydrated = hydrateStopCoords(stops, track).filter(st => validUzCoord(st.lat, st.lng));
     const officeMarks = [];
     const route = [];
     hydrated.forEach(st => {
-        if (isLongOfficeStop(st)) officeMarks.push(Object.assign({}, st, { _mapRole: 'office' }));
+        if (isMapOfficeStop(st)) officeMarks.push(Object.assign({}, st, { _mapRole: 'office' }));
         else route.push(st);
     });
-    const base = route.length ? route : hydrated;
-    const ordered = orderStopsByVisitTime(base);
+    // Ofis bo'lmasa ham 0 chiqmasin — faqat marshrut to'xtashlari
+    const ordered = orderStopsByVisitTime(route);
     const numbered = ordered.map((st, i) => {
-        const tableNum = st.tableNum != null ? st.tableNum : st.num;
+        const tableNum = Number(st.num);
         return Object.assign({}, st, {
             mapNum: i + 1,
             num: i + 1,
-            tableNum: tableNum,
+            tableNum: tableNum > 0 ? tableNum : (i + 1),
             _mapRole: 'route'
         });
     });
     return { numbered, officeMarks };
+}
+
+/** Jadval/xarita uchun ko'rsatiladigan belgi: O yoki 1..n */
+function stopDisplayNum(st, numbering) {
+    if (!st) return '—';
+    if (isMapOfficeStop(st)) return 'O';
+    if (numbering && numbering.byKey) {
+        const v = numbering.byKey[stopIdentityKey(st)];
+        if (v === 'O') return 'O';
+        const n = Number(v);
+        if (n > 0) return n;
+    }
+    const n = Number(st.mapNum || st.num);
+    return n > 0 ? n : '—';
+}
+
+function buildStopNumbering(stops, track) {
+    const prepared = prepareStopsList(stops || []);
+    const built = buildMapStops(prepared, track || []);
+    const byKey = Object.create(null);
+    (built.officeMarks || []).forEach(s => { byKey[stopIdentityKey(s)] = 'O'; });
+    (built.numbered || []).forEach(s => { byKey[stopIdentityKey(s)] = s.mapNum; });
+    // Koordinatasi yo'q ofislar ham O
+    prepared.forEach(s => {
+        if (isMapOfficeStop(s) && byKey[stopIdentityKey(s)] == null) {
+            byKey[stopIdentityKey(s)] = 'O';
+        }
+    });
+    return { prepared, built, byKey };
 }
 
 function mapWorthyStops(stops, track) {
@@ -1309,6 +1359,12 @@ async function refreshMap(stops, points) {
     }
 
     const list = sortStopsForRoute(rawList);
+    // Lotin OFIS / SKLAD ni qayta belgilash
+    rawList.forEach(st => {
+        if (st && !st.isOffice && typeof isOffice === 'function' && isOffice(st.place)) {
+            st.isOffice = true;
+        }
+    });
     const built = buildMapStops(rawList, track);
     const markerStops = built.numbered;
     const officeMarks = built.officeMarks || [];
@@ -2018,23 +2074,22 @@ function renderStops(stops) {
         return;
     }
 
-    // Xarita raqamlari bilan moslash (ofis = O, marshrut = 1,2,3…)
+    // Xarita bilan bir xil: ofis = O, marshrut = 1,2,3… (0 yo'q)
     const dayRec = STATE.currentDate && STATE.data[STATE.currentDate]
         ? STATE.data[STATE.currentDate][STATE.currentCar]
         : null;
     const track = normalizeTrackPoints(dayRec && dayRec.points);
-    const built = typeof buildMapStops === 'function' ? buildMapStops(stops, track) : null;
-    const mapByTable = Object.create(null);
-    if (built && built.numbered) {
-        built.numbered.forEach(s => {
-            if (s.tableNum != null) mapByTable[s.tableNum] = s.mapNum;
-        });
-    }
+    const numbering = typeof buildStopNumbering === 'function'
+        ? buildStopNumbering(stops, track)
+        : null;
 
     const dateVal = STATE.currentDate;
     const car = STATE.currentCar;
     let html = '';
     stops.forEach((st, i) => {
+        // isOffice ni qayta aniqlash (lotin OFIS ham)
+        if (!st.isOffice && isOffice(st.place)) st.isOffice = true;
+
         const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, st) : null;
         let rowCls = '', badge = '';
         if (rev && rev.status === 'allowed') {
@@ -2043,7 +2098,7 @@ function renderStops(stops) {
         } else if (rev && rev.status === 'violation') {
             rowCls = 'row-problem';
             badge = '<span class="badge b-problem">Qoidabuzarlik</span>';
-        } else if (st.isOffice) {
+        } else if (st.isOffice || isOffice(st.place)) {
             rowCls = 'row-office';
             badge = '<span class="badge b-office">Ofis</span>';
         } else if (st.isOutside) {
@@ -2062,10 +2117,10 @@ function renderStops(stops) {
             badge = '<span class="badge">—</span>';
         }
 
-        const tableNum = st.num || (i + 1);
-        let showNum = tableNum;
-        if (isLongOfficeStop(st)) showNum = 'O';
-        else if (mapByTable[tableNum] != null) showNum = mapByTable[tableNum];
+        let showNum = typeof stopDisplayNum === 'function'
+            ? stopDisplayNum(st, numbering)
+            : (Number(st.num) > 0 ? st.num : (i + 1));
+        if (showNum === 0 || showNum === '0') showNum = 'O';
 
         const canReview = true;
         html += `

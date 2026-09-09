@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m100"
+VM_BUILD = "m101"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -2408,7 +2408,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
       if(typeof prepareStopsList==='function') stops=prepareStopsList(stops);
       if(typeof hydrateStopCoords==='function') stops=hydrateStopCoords(stops,track);
       return stops.filter(function(s){
+        if(typeof isMapOfficeStop==='function'&&isMapOfficeStop(s)) return false;
         if(typeof isLongOfficeStop==='function'&&isLongOfficeStop(s)) return false;
+        if(typeof isOffice==='function'&&isOffice(s.place)) return false;
         return s&&s.lat&&s.lng;
       });
     }catch(e){return [];}
@@ -2447,9 +2449,19 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
       if(!dot) return;
       var t=String(dot.textContent||'').trim();
       if(t==='A'||t==='B'||t==='O'||t==='R') return;
-      if(!/^\d+$/.test(t)) return;
+      // 0 ni ham keyin qayta raqamlaymiz
+      if(t!=='0' && !/^\d+$/.test(t)) return;
       var ll=layer.getLatLng();
       var st=nearestStop(ll,stops);
+      // Ofis yonidagi pinlar O bo'lsin
+      if(st && typeof isMapOfficeStop==='function' && isMapOfficeStop(st)){
+        dot.textContent='O';
+        return;
+      }
+      if(st && typeof isOffice==='function' && isOffice(st.place)){
+        dot.textContent='O';
+        return;
+      }
       pins.push({dot:dot,score:st?visitScore(st.inTime):1e12});
     }
     try{ STATE.map.eachLayer(consider); }catch(e2){}

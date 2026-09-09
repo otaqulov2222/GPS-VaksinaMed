@@ -11,7 +11,7 @@
 <title>Dashboard — VaksinaMed</title>
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
-<script>window.__VM_BUILD = 'm100';</script>
+<script>window.__VM_BUILD = 'm101';</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 
@@ -2368,13 +2368,13 @@ input, select, textarea { max-width: 100%; }
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 
-<script src="/api/live-nav.js?v=m100"></script>
+<script src="/api/live-nav.js?v=m101"></script>
 <script src="auth.js?v=31"></script>
 
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app-m96.js?v=m100"></script>
+<script src="app-m96.js?v=m101"></script>
 
 <script src="office.js?v=16"></script>
 
@@ -2404,7 +2404,9 @@ input, select, textarea { max-width: 100%; }
       if (typeof prepareStopsList === 'function') stops = prepareStopsList(stops);
       if (typeof hydrateStopCoords === 'function') stops = hydrateStopCoords(stops, track);
       return stops.filter(function (s) {
+        if (typeof isMapOfficeStop === 'function' && isMapOfficeStop(s)) return false;
         if (typeof isLongOfficeStop === 'function' && isLongOfficeStop(s)) return false;
+        if (typeof isOffice === 'function' && isOffice(s.place)) return false;
         return s && s.lat && s.lng;
       });
     } catch (e) { return []; }
@@ -2437,9 +2439,17 @@ input, select, textarea { max-width: 100%; }
       if (!dot) return;
       var t = String(dot.textContent || '').trim();
       if (t === 'A' || t === 'B' || t === 'O' || t === 'R') return;
-      if (!/^\d+$/.test(t)) return;
+      if (t !== '0' && !/^\d+$/.test(t)) return;
       var ll = layer.getLatLng();
       var st = nearestStop(ll, stops);
+      if (st && typeof isMapOfficeStop === 'function' && isMapOfficeStop(st)) {
+        dot.textContent = 'O';
+        return;
+      }
+      if (st && typeof isOffice === 'function' && isOffice(st.place)) {
+        dot.textContent = 'O';
+        return;
+      }
       pins.push({
         dot: dot,
         ll: ll,
