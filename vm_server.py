@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m99"
+VM_BUILD = "m100"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -2424,24 +2424,15 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
     return best;
   }
   function paintBanner(ok,n){
+    // Debug UI yashirin — dizayn buzilmasin
     var ban=document.getElementById('vm-build-banner');
-    if(!ban){
-      ban=document.createElement('div');
-      ban.id='vm-build-banner';
-      ban.style.cssText='background:#c0392b;color:#fff;font:700 13px/1.2 monospace;padding:8px 12px;z-index:99999;position:relative';
-      var head=document.querySelector('.map-card .map-head')||document.querySelector('.map-card');
-      if(head&&head.parentNode) head.parentNode.insertBefore(ban, head.nextSibling);
-      else document.body.insertBefore(ban, document.body.firstChild);
-    }
-    ban.style.background=ok?'#1a7f37':'#c0392b';
-    ban.textContent=ok?('BUILD '+BUILD+' ✓ pinlar 1…'+n):('BUILD '+BUILD+' — xarita yuklanmoqda…');
+    if(ban) ban.remove();
     var stamp=document.getElementById('vm-build');
-    if(stamp){ stamp.textContent=ok?(BUILD+'✓ '+n):BUILD; stamp.style.background=ok?'#1a7f37':'#c0392b'; }
+    if(stamp) stamp.remove();
     var ov=document.getElementById('map-overlay-info');
-    if(ov&&ok){
-      var base=String(ov.textContent||'').replace(/\s*·\s*m\d+✓?/g,'').trim();
-      ov.textContent=(base?base+' · ':'')+BUILD;
-      ov.style.display='block';
+    if(ov){
+      var base=String(ov.textContent||'').replace(/\s*[·•]\s*m\d+✓?/gi,'').trim();
+      ov.textContent=base;
     }
   }
   function forcePins(){
@@ -2564,22 +2555,28 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             '<script src="/api/live-nav.js?v=%s"></script>\n'
             '<script src="/api/vm-boot.js?v=%s"></script>\n'
         ) % (VM_BUILD, VM_BUILD)
-        banner = (
-            '<div id="vm-build-banner" style="background:#c0392b;color:#fff;'
-            'font:700 13px/1.2 IBM Plex Mono,monospace;padding:8px 12px">'
-            "BUILD %s — agar qizil satr yo'q bo'lsa Ctrl+Shift+R</div>\n" % VM_BUILD
+
+        # Eski debug banner / badge / title prefix — UI dan olib tashlash
+        html = re.sub(
+            r'<div[^>]*id=["\']vm-build-banner["\'][^>]*>.*?</div>\s*',
+            "",
+            html,
+            flags=re.I | re.S,
         )
-        if "vm-build-banner" not in html:
-            if '<div class="map-legend">' in html:
-                html = html.replace(
-                    '<div class="map-legend">',
-                    banner + '<div class="map-legend">',
-                    1,
-                )
-            elif "<body>" in html:
-                html = html.replace("<body>", "<body>\n" + banner, 1)
-            elif "<body " in html:
-                html = re.sub(r"<body([^>]*)>", r"<body\1>\n" + banner, html, count=1)
+        html = re.sub(
+            r'<span[^>]*id=["\']vm-build["\'][^>]*>.*?</span>\s*',
+            "",
+            html,
+            flags=re.I | re.S,
+        )
+        html = re.sub(r"<title>\s*\[[^\]]+\]\s*", "<title>", html, count=1, flags=re.I)
+        html = re.sub(
+            r"(<title>)([^<]*?)\s*[·•]\s*m\d+(\s*</title>)",
+            r"\1\2\3",
+            html,
+            count=1,
+            flags=re.I,
+        )
 
         if "/api/live-nav.js" not in html or "/api/vm-boot.js" not in html:
             if "/api/live-nav.js" not in html and "/api/vm-boot.js" in html:
@@ -2598,8 +2595,6 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 "<head>\n<script>window.__VM_BUILD=%s</script>" % json.dumps(VM_BUILD),
                 1,
             )
-        if ("[%s]" % VM_BUILD) not in html and "<title>" in html:
-            html = html.replace("<title>", "<title>[%s] " % VM_BUILD, 1)
 
         raw = html.encode("utf-8")
         self.send_response(200)

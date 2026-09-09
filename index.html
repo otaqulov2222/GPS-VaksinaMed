@@ -8,10 +8,10 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-<title>Dashboard — VaksinaMed · m95</title>
+<title>Dashboard — VaksinaMed</title>
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
-<script>window.__VM_BUILD = 'm95';</script>
+<script>window.__VM_BUILD = 'm100';</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 
@@ -2082,10 +2082,8 @@ input, select, textarea { max-width: 100%; }
           <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
           <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
           <button class="btn btn-light btn-sm" id="btn-refresh-map">Yangilash</button>
-          <span id="vm-build" title="Xarita build" style="font:700 12px/1 IBM Plex Mono,monospace;color:#fff;padding:8px 10px;background:#c0392b;border-radius:6px">m95</span>
         </div>
       </div>
-      <div id="vm-build-banner" style="background:#c0392b;color:#fff;font:700 13px/1.2 IBM Plex Mono,monospace;padding:8px 12px;letter-spacing:.04em">BUILD m95 — agar bu qizil satr ko‘rinmasa, Ctrl+Shift+R qiling</div>
       <div class="map-legend">
         <span class="leg-item"><span class="leg-dot" style="background:#1a5fb4"></span> O'z dorixonasi / geozona</span>
         <span class="leg-item"><span class="leg-dot" style="background:#5b9fe0"></span> Boshqa yo'nalish</span>
@@ -2370,13 +2368,13 @@ input, select, textarea { max-width: 100%; }
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=5"></script>
 
-<script src="/api/live-nav.js?v=m99"></script>
+<script src="/api/live-nav.js?v=m100"></script>
 <script src="auth.js?v=31"></script>
 
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app-m96.js?v=m96"></script>
+<script src="app-m96.js?v=m100"></script>
 
 <script src="office.js?v=16"></script>
 
@@ -2461,20 +2459,13 @@ input, select, textarea { max-width: 100%; }
     pins.forEach(function (p, i) { p.dot.textContent = String(i + 1); });
     var ov = document.getElementById('map-overlay-info');
     if (ov) {
-      var base = String(ov.textContent || '').replace(/\s*·\s*m\d+✓?/g, '').trim();
-      ov.textContent = (base ? base + ' · ' : '') + 'm95';
-      ov.style.display = 'block';
+      var base = String(ov.textContent || '').replace(/\s*[·•]\s*m\d+✓?/gi, '').trim();
+      ov.textContent = base;
     }
     var stamp = document.getElementById('vm-build');
-    if (stamp) {
-      stamp.textContent = 'm95✓ ' + pins.length;
-      stamp.style.background = '#1a7f37';
-    }
+    if (stamp) stamp.remove();
     var ban = document.getElementById('vm-build-banner');
-    if (ban) {
-      ban.style.background = '#1a7f37';
-      ban.textContent = 'BUILD m95✓ — pinlar 1…' + pins.length + ' (vaqt tartibi)';
-    }
+    if (ban) ban.remove();
     return true;
   }
 
