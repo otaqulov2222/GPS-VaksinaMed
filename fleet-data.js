@@ -41,7 +41,9 @@ const FLEET_DRIVERS = [
     pharmacies: 'Учхоз,Учхоз макро,Кибрай фарход мадад,Поселка,Салар,МУ Налоговый,Ит Парк,Дархон,Кардиалогия,Алайский Ардус,Паркент,Ганга' },
   { car: '01 331 MLA', kind: 'damas', fullName: 'Ахтамов', shortName: 'Ахтамов', color: '#7f8c8d', routes: '—', pharmacies: '' },
   { car: '01 406 GNA', kind: 'labo', fullName: '01 406 GNA', shortName: '406 GNA', color: '#95a5a6', routes: '—', pharmacies: '' },
-  { car: '01 567 SGA', kind: 'damas', fullName: '01 567 SGA', shortName: '567 SGA', color: '#bdc3c7', routes: '—', pharmacies: '' }
+  { car: '01 567 SGA', kind: 'damas', fullName: '01 567 SGA', shortName: '567 SGA', color: '#bdc3c7', routes: '—', pharmacies: '' },
+  { car: '01 A055 MA', kind: 'truck', fullName: 'Muhammadali', shortName: 'Muhammadali', brand: 'Tahoe', color: '#0984e3',
+    routes: '—', pharmacies: '' }
 ];
 
 const FLEET_BASE = FLEET_DRIVERS.map(d => ({
