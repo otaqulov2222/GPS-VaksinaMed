@@ -1156,6 +1156,88 @@ body.fid-lock { overflow: hidden; }
 
 /* ===== Davomat Studio (Bugun) — ofis + Face oqimi ===== */
 .av-studio { display: grid; gap: 14px; }
+.av-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 980px) {
+  .av-workbench { grid-template-columns: 1fr; }
+}
+.av-side { display: grid; gap: 12px; }
+
+.av-map-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--att-muted);
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.35;
+  max-width: 100%;
+}
+.av-map-h > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.av-map-h h3 {
+  margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+
+.av-punch-card {
+  background: #fff;
+  border: 1px solid var(--att-line);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 6px 20px rgba(11,31,58,.05);
+}
+.av-punch-card-h {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--att-ink);
+  margin-bottom: 4px;
+}
+.av-punch-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--att-muted);
+  line-height: 1.4;
+}
+.av-continue { margin-top: 12px; }
+.av-linkish {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--att-muted);
+  font: 600 12px/1.2 'IBM Plex Sans', system-ui, sans-serif;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.av-linkish:hover { color: var(--att-ink); }
+
+.av-face-mini {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--att-line);
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(11,31,58,.04);
+}
+.av-face-mini .att-enrolled-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  object-fit: cover;
+}
 .av-hero {
   position: relative;
   overflow: hidden;
@@ -1179,7 +1261,9 @@ body.fid-lock { overflow: hidden; }
   font-family: 'IBM Plex Mono', monospace;
 }
 .av-date-pill {
-  font-size: 11px; font-weight: 650; padding: 7px 12px; border-radius: 999px;
+  font: 650 12px/1.2 'IBM Plex Mono', monospace;
+  letter-spacing: .04em;
+  padding: 7px 12px; border-radius: 999px;
   background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
   white-space: nowrap;
 }
@@ -1205,9 +1289,20 @@ body.fid-lock { overflow: hidden; }
 .av-glass .s { margin-top: 6px; font-size: 12px; opacity: .8; }
 .av-glass.live .v { color: #6ee7b7; }
 .av-glass.done .v { color: #93c5fd; }
+.av-sched-bar {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.16);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: rgba(244,248,252,.92);
+}
 
 .av-punch-row {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
 }
 @media (max-width: 560px) { .av-punch-row { grid-template-columns: 1fr; } }
 .av-punch {
@@ -1273,9 +1368,6 @@ body.fid-lock { overflow: hidden; }
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--att-line); background: #f7fafc;
 }
-.av-map-h h3 {
-  margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-}
 .av-geo-badge {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 11px; font-weight: 700; padding: 6px 11px; border-radius: 999px;
@@ -1285,7 +1377,10 @@ body.fid-lock { overflow: hidden; }
 .av-geo-badge.bad { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
 .av-geo-badge.load { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
 .av-map {
-  height: 260px; width: 100%; background: #e8eef5;
+  height: min(44vh, 360px);
+  min-height: 280px;
+  width: 100%;
+  background: #e8eef5;
 }
 .av-map-wrap { position: relative; }
 /* Leaflet locate — bitta tugma, leaflet-bar yo‘q (dublikat chegara chiqmasin) */
@@ -1356,8 +1451,8 @@ body.fid-lock { overflow: hidden; }
   display: block;
 }
 .av-pin-office i { background: #1a5fb4; }
-.av-pin-you i { background: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.35), 0 2px 6px rgba(11,31,58,.25); }
-.av-pin-out i { background: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,.35), 0 2px 6px rgba(11,31,58,.25); }
+.av-pin-you i { background: #16a34a; box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(11,31,58,.3); }
+.av-pin-out i { background: #dc2626; box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(11,31,58,.3); }
 
 .av-map-foot {
   display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center;

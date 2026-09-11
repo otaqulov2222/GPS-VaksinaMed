@@ -43,7 +43,6 @@
   let attMapCircle = null;
   let attMapUser = null;
   let attMapOffice = null;
-  let attMapAcc = null;
   let attMapFitted = false;
   let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle' };
   let attMethod = 'face';
@@ -117,9 +116,16 @@
   }
 
   function fmtDateLong(iso) {
+    // DD.MM.YYYY — locale (M09 / Fri) emas, raqamli sana
+    if (iso && /^\d{4}-\d{2}-\d{2}/.test(String(iso))) {
+      const p = String(iso).slice(0, 10).split('-');
+      return p[2] + '.' + p[1] + '.' + p[0];
+    }
     try {
-      const d = iso ? new Date(iso + 'T12:00:00') : new Date();
-      return d.toLocaleDateString('uz-UZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const d = iso ? new Date(iso) : new Date();
+      if (Number.isNaN(d.getTime())) return iso || '';
+      const pad = (n) => String(n).padStart(2, '0');
+      return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
     } catch (e) {
       return iso || '';
     }
@@ -205,17 +211,17 @@
     }
     if (gate) {
       if (geoLive.status === 'ok') {
-        gate.className = 'av-gate-banner on ok';
-        gate.textContent = 'Ofis ichidasiz — Face ID orqali Keldi / Ketdi ochiq.';
+        gate.className = 'av-gate-banner';
+        gate.textContent = '';
       } else if (geoLive.status === 'out') {
         gate.className = 'av-gate-banner on';
-        gate.textContent = 'Davomat faqat ofis radiusida ishlaydi. Hozir ~' + Math.round(geoLive.dist || 0) + ' m uzoqdasiz.';
+        gate.textContent = 'Davomat faqat ofis radiusida. Hozir ~' + Math.round(geoLive.dist || 0) + ' m uzoqdasiz — ofis zonasiga kiring.';
       } else if (geoLive.status === 'err') {
         gate.className = 'av-gate-banner on';
         gate.textContent = geoLive.err || 'Joylashuvni yoqing — ofisga kirganingizda tugmalar ochiladi.';
       } else {
         gate.className = 'av-gate-banner on';
-        gate.textContent = 'Joylashuv tekshirilmoqda… Ofisga kelganda tugmalar ochiladi.';
+        gate.textContent = 'Joylashuv tekshirilmoqda…';
       }
     }
 
@@ -256,7 +262,6 @@
     attMapCircle = null;
     attMapUser = null;
     attMapOffice = null;
-    attMapAcc = null;
     attMapFitted = false;
   }
 
@@ -277,26 +282,26 @@
     if (!attMapCircle) return;
     if (inside === true) {
       attMapCircle.setStyle({
-        color: '#16a34a',
+        color: '#15803d',
         fillColor: '#22c55e',
-        fillOpacity: 0.22,
-        weight: 3,
+        fillOpacity: 0.14,
+        weight: 2.5,
         dashArray: null
       });
     } else if (inside === false) {
       attMapCircle.setStyle({
         color: '#dc2626',
         fillColor: '#f87171',
-        fillOpacity: 0.14,
-        weight: 3,
-        dashArray: '6 6'
+        fillOpacity: 0.1,
+        weight: 2.5,
+        dashArray: '7 6'
       });
     } else {
       attMapCircle.setStyle({
         color: '#1a5fb4',
         fillColor: '#3b82f6',
-        fillOpacity: 0.14,
-        weight: 2,
+        fillOpacity: 0.12,
+        weight: 2.5,
         dashArray: null
       });
     }
@@ -319,8 +324,9 @@
       radius: off.radius,
       color: '#1a5fb4',
       fillColor: '#3b82f6',
-      fillOpacity: 0.16,
-      weight: 3
+      fillOpacity: 0.12,
+      weight: 2.5,
+      interactive: false
     }).addTo(attMap);
     attMapOffice = L.marker([off.lat, off.lng], {
       icon: pinIcon('Ofis', 'office'),
@@ -343,34 +349,19 @@
   function updateAttMap(lat, lng) {
     if (!attMap || !window.L) return;
     const inside = geoLive.inside === true;
-    const color = inside ? '#16a34a' : '#dc2626';
     const youKind = inside ? 'you' : 'you-out';
-    const youLabel = inside ? 'Siz · ichida' : 'Siz · tashqarida';
+    const youLabel = inside ? 'Siz (ichida)' : 'Siz (tashqarida)';
     styleZoneCircle(geoLive.inside);
 
     if (!attMapUser) {
       attMapUser = L.marker([lat, lng], {
         icon: pinIcon(youLabel, youKind),
         zIndexOffset: 400
-      }).addTo(attMap);
+      }).addTo(attMap).bindTooltip(youLabel, { direction: 'top', offset: [0, -8], opacity: 0.95 });
     } else {
       attMapUser.setLatLng([lat, lng]);
       attMapUser.setIcon(pinIcon(youLabel, youKind));
-    }
-
-    const acc = Math.max(12, Math.min(80, Number(geoLive.accuracy) || 25));
-    if (!attMapAcc) {
-      attMapAcc = L.circle([lat, lng], {
-        radius: acc,
-        color: color,
-        fillColor: color,
-        fillOpacity: 0.08,
-        weight: 1
-      }).addTo(attMap);
-    } else {
-      attMapAcc.setLatLng([lat, lng]);
-      attMapAcc.setRadius(acc);
-      attMapAcc.setStyle({ color: color, fillColor: color });
+      try { attMapUser.setTooltipContent(youLabel); } catch (e) {}
     }
 
     try {
@@ -381,7 +372,7 @@
       ]);
       if (attMapCircle) b.extend(attMapCircle.getBounds());
       if (!attMapFitted) {
-        attMap.fitBounds(b.pad(0.2));
+        attMap.fitBounds(b.pad(0.18));
         attMapFitted = true;
       } else {
         attMap.panTo([lat, lng], { animate: true });
@@ -1038,12 +1029,22 @@
 
   function fmtTime(iso) {
     if (!iso) return '—';
+    // Server Toshkent ISO: to‘liq HH:MM:SS (browsер TZ chalkashmasin)
+    const m = String(iso).match(/(?:T|\s)(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (m) return m[1] + ':' + m[2] + ':' + (m[3] || '00');
     try {
       const ms = parseTs(iso);
       if (Number.isNaN(ms)) return '—';
       const d = new Date(ms);
-      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      const p = (n) => String(n).padStart(2, '0');
+      return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
     } catch (e) { return '—'; }
+  }
+
+  function punchTime(p) {
+    if (!p) return '—';
+    if (p.atDisplay) return p.atDisplay;
+    return fmtTime(p.at);
   }
 
   function fmtDate(d) {
@@ -1136,8 +1137,8 @@
               <td>${esc(roleLabel(r.role))}</td>
               <td class="mono">${esc(r.car || '—')}</td>
               <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
-              <td class="mono">${r.in ? fmtTime(r.in.at) + (r.in.late ? ' !' : '') : '—'}</td>
-              <td class="mono">${r.out ? fmtTime(r.out.at) : '—'}</td>
+              <td class="mono">${r.in ? punchTime(r.in) + (r.in.late ? ' · kech' : '') : '—'}</td>
+              <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
               <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
               <td>${r.enrolled ? '✓' : '—'}</td>
               <td><button type="button" class="att-link-btn" data-person="${esc(r.userId)}">Oy</button></td>
@@ -1288,52 +1289,34 @@
               <div class="av-glass">
                 <div class="k">Joriy vaqt</div>
                 <div class="v" id="av-now-clock">--:--:--</div>
-                <div class="s">Bugun ham ajoyib kun!</div>
+                <div class="s">Ish kuni ${esc(s.in_start || '09:00')}–${esc(s.out_start || '18:00')}</div>
               </div>
               <div class="av-glass ${working ? 'live' : (done ? 'done' : '')}">
                 <div class="k">${working ? 'Ishlayapti' : (done ? 'Bugun yakunlandi' : 'Ishlagan vaqt')}</div>
                 <div class="v" id="att-live-timer">${fmtDur(dayWorkedSec(today) || 0)}</div>
-                <div class="s">${working ? 'Timer jonli' : (done ? 'Keldi + ketdi qayd etildi' : 'Hali boshlanmagan')}</div>
+                <div class="s">${working ? 'Timer jonli' : (done ? ('Keldi ' + punchTime(inn) + ' · Ketdi ' + punchTime(out)) : ('Ruxsat: ' + esc(s.in_late_after || '09:15') + ' gacha'))}</div>
               </div>
             </div>
+            <div class="av-sched-bar">${esc(s.scheduleNote || ((s.in_start || '09:00') + '–' + (s.out_start || '18:00') + ' · ' + (s.late_grace_min || 15) + ' daqiqa ruxsat'))}</div>
           </section>
 
           <div class="av-gate-banner" id="av-gate-banner">Joylashuv tekshirilmoqda…</div>
 
-          ${!enrolled ? `
-            <section class="av-method-card">
-              <h3>Face ID ulang</h3>
-              <p class="sub">Birinchi marta yuzingizni tizimga bogʻlang — keyin har kuni ofisda Keldi/Ketdi ochiladi.</p>
-              <button type="button" class="av-continue" id="btn-enroll">Face ID ulash<small>Kamera orqali bir marta</small></button>
-            </section>
-          ` : `
-            <div class="av-punch-row">
-              <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
-                <span class="ico">→]</span>
-                <div class="tag">● Keldi</div>
-                <div class="time">${inn ? fmtTime(inn.at) : '—'}</div>
-                <div class="plan">Rejada: ${esc(s.in_start || '08:30')}${inn && inn.late ? ' · kechikdi' : ''}</div>
-              </button>
-              <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
-                <span class="ico">[→</span>
-                <div class="tag">● Ketdi</div>
-                <div class="time">${out ? fmtTime(out.at) : '—'}</div>
-                <div class="plan">Rejada: ${esc(s.out_end || '21:00')}</div>
-              </button>
-            </div>
-          `}
-
+          <div class="av-workbench">
           <section class="av-map-card">
             <div class="av-map-h">
-              <h3>${esc(off.label)}</h3>
+              <div>
+                <h3>${esc(off.label)}</h3>
+                <div class="av-map-sub">Faqat yashil zona ichida davomat ochiladi · ${esc(String(off.radius))} m</div>
+              </div>
               <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
             </div>
             <div class="av-map-wrap">
               <div class="av-map" id="av-map"></div>
               <div class="av-map-legend">
-                <span><i class="lg-office"></i> Ofis markazi</span>
-                <span><i class="lg-zone"></i> Belgilangan radius</span>
-                <span><i class="lg-you"></i> Sizning joyingiz</span>
+                <span><i class="lg-office"></i> Ofis</span>
+                <span><i class="lg-zone"></i> Ruxsat zonasi (${esc(String(off.radius))} m)</span>
+                <span><i class="lg-you"></i> Siz</span>
               </div>
             </div>
             <div class="av-map-foot">
@@ -1342,32 +1325,49 @@
             </div>
           </section>
 
-          ${enrolled ? `
-          <section class="av-method-card">
-            <h3>Davomat usulini tanlang</h3>
-            <p class="sub">Ofis ichida boʻlsangiz — Face ID orqali davom eting</p>
-            <div class="av-methods">
-              <button type="button" class="av-method ${attMethod === 'face' ? 'on' : ''}" data-method="face" id="av-method-face">
-                <span class="check">✓</span>
-                <div class="m-ico">▣</div>
-                <div class="m-t">Face ID</div>
-                <div class="m-s">Rasmga olish orqali tasdiqlash</div>
+          <div class="av-side">
+          ${!enrolled ? `
+            <section class="av-method-card">
+              <h3>1. Face ID ulang</h3>
+              <p class="sub">Birinchi marta yuzingizni bogʻlang — keyin ofisda Keldi/Ketdi ishlaydi.</p>
+              <button type="button" class="av-continue" id="btn-enroll">Face ID ulash<small>Kamera orqali bir marta</small></button>
+            </section>
+          ` : `
+            <section class="av-punch-card">
+              <div class="av-punch-card-h">Keldi / Ketdi</div>
+              <p class="av-punch-hint">Rejada ${esc(s.in_start || '09:00')}–${esc(s.out_start || '18:00')}. ${esc(String(s.late_grace_min || 15))} daqiqa ruxsat — ${esc(s.in_late_after || '09:15')} gacha kechikish yoʻq.</p>
+              <div class="av-punch-row">
+                <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
+                  <span class="ico">→]</span>
+                  <div class="tag">Keldi</div>
+                  <div class="time">${inn ? punchTime(inn) : '—'}</div>
+                  <div class="plan">Rejada ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn ? ' · o‘z vaqtida' : '')}</div>
+                </button>
+                <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
+                  <span class="ico">[→</span>
+                  <div class="tag">Ketdi</div>
+                  <div class="time">${out ? punchTime(out) : '—'}</div>
+                  <div class="plan">Rejada ${esc(s.out_start || '18:00')}</div>
+                </button>
+              </div>
+              <button type="button" class="av-continue" id="av-continue" disabled>
+                <span>Ofisga keling</span>
+                <small>Face ID orqali tasdiqlash</small>
               </button>
-              <button type="button" class="av-method disabled" data-method="qr" disabled title="Tez orada">
-                <div class="m-ico">▦</div>
-                <div class="m-t">QR Scanner</div>
-                <div class="m-s">Tez orada</div>
-              </button>
+              <button type="button" class="av-linkish" id="btn-reenroll">Yuzni qayta ulash</button>
+            </section>
+          `}
+
+          ${face.photo ? `
+          <section class="av-face-mini">
+            <img class="att-enrolled-thumb" src="${face.photo}" alt="Face">
+            <div>
+              <div class="att-enrolled-title">Face ID tayyor</div>
+              <div class="att-hint" style="margin:2px 0 0">${esc(uname)}</div>
             </div>
-            <button type="button" class="av-continue" id="av-continue" disabled>
-              <span>Ofisga keling</span>
-              <small>${esc(off.label)} · ${esc(String(off.radius))} m</small>
-            </button>
-            <div style="margin-top:10px;text-align:center">
-              <button type="button" class="att-btn att-btn-face" id="btn-reenroll" style="min-height:36px;font-size:12px">Yuzni qayta ulash</button>
-            </div>
-          </section>
-          ` : ''}
+          </section>` : ''}
+          </div>
+          </div>
 
           <div class="att-msg" id="att-msg"></div>
           <div class="att-geo-box" id="att-geo-box" hidden>
@@ -1377,22 +1377,8 @@
             <button type="button" class="att-btn att-btn-in" id="btn-geo-check-2">Joylashuvni tekshirish</button>
           </div>
 
-          ${face.photo ? `
-          <section class="att-card">
-            <div class="att-card-h">Face ID profil</div>
-            <div class="att-card-b">
-              <div class="att-enrolled-block" style="margin:0">
-                <img class="att-enrolled-thumb" src="${face.photo}" alt="Face">
-                <div>
-                  <div class="att-enrolled-title">Tasdiqlangan yuz</div>
-                  <div class="att-hint" style="margin:4px 0 0">${esc(uname)} · ${esc(face.enrolledAt ? fmtTime(face.enrolledAt) : '')}</div>
-                </div>
-              </div>
-            </div>
-          </section>` : ''}
-
           <section class="av-hist">
-            <div class="av-hist-h">Bugungi / soʻnggi yozuvlar</div>
+            <div class="av-hist-h">Soʻnggi yozuvlar</div>
             <div class="av-hist-b">
               ${history.length ? `
                 <div class="scroll-x">
@@ -1402,14 +1388,14 @@
                     ${history.slice(0, 8).map((r) => `
                       <tr>
                         <td>${fmtDate(r.date)}</td>
-                        <td>${r.in ? fmtTime(r.in.at) + (r.late ? ' !' : '') : '—'}</td>
-                        <td>${r.out ? fmtTime(r.out.at) : '—'}</td>
+                        <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
+                        <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
                         <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
                         <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
                       </tr>`).join('')}
                   </tbody>
                 </table></div>
-              ` : `<p class="att-hint">Hali yozuv yoʻq. Ofisda Face ID bilan belgilang — tarix shu yerda chiqadi.</p>`}
+              ` : `<p class="att-hint">Hali yozuv yoʻq. Ofis zonasida Face ID bilan belgilang.</p>`}
             </div>
           </section>
         </div>
@@ -1427,8 +1413,8 @@
                   ${history.map((r) => `
                     <tr>
                       <td>${fmtDate(r.date)}</td>
-                      <td>${r.in ? fmtTime(r.in.at) + (r.late ? ' !' : '') : '—'}</td>
-                      <td>${r.out ? fmtTime(r.out.at) : '—'}</td>
+                      <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
+                      <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
                       <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
                       <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
                     </tr>`).join('')}
@@ -1599,14 +1585,6 @@
     if (cont) bindTap(cont, () => {
       const kind = cont.getAttribute('data-next') || (!((STATE.today || {}).in) ? 'in' : 'out');
       startAttendanceFlow(kind);
-    });
-    const methodFace = document.getElementById('av-method-face');
-    if (methodFace) bindTap(methodFace, () => {
-      attMethod = 'face';
-      document.querySelectorAll('.av-method[data-method]').forEach((el) => {
-        el.classList.toggle('on', el.getAttribute('data-method') === 'face');
-      });
-      paintGeoUI();
     });
 
     app.querySelectorAll('[data-person]').forEach((el) => {
@@ -2071,21 +2049,26 @@
       const s = d.settings || {};
       const o = s.office || {};
       box.innerHTML = `
+        <p class="att-hint" style="margin:0 0 12px">Haydovchilar va ofis (Jasur): <b>09:00–18:00</b>, kechikish ruxsati <b>15 daqiqa</b> (09:15 gacha belgi yoʻq).</p>
         <div class="row2">
-          <div class="fld"><label>Keldim (ochiladi)</label><input id="s-in-start" value="${esc(s.in_start || '')}"></div>
-          <div class="fld"><label>Kechikish dan</label><input id="s-late" value="${esc(s.in_late_after || '')}"></div>
+          <div class="fld"><label>Ish boshlanishi</label><input id="s-in-start" value="${esc(s.in_start || '09:00')}" placeholder="09:00"></div>
+          <div class="fld"><label>Ruxsat (daqiqa)</label><input id="s-grace" type="number" min="0" max="120" value="${esc(s.late_grace_min != null ? s.late_grace_min : 15)}"></div>
         </div>
         <div class="row2">
-          <div class="fld"><label>Ketdim (tavsiya)</label><input id="s-out-start" value="${esc(s.out_start || '')}"></div>
-          <div class="fld"><label>Kun yopiladi</label><input id="s-out-end" value="${esc(s.out_end || '')}"></div>
+          <div class="fld"><label>Kechikish dan (soat)</label><input id="s-late" value="${esc(s.in_late_after || '09:15')}" placeholder="09:15"></div>
+          <div class="fld"><label>Ish tugashi (rejada)</label><input id="s-out-start" value="${esc(s.out_start || '18:00')}" placeholder="18:00"></div>
+        </div>
+        <div class="row2">
+          <div class="fld"><label>Kun yopiladi (oxirgi punch)</label><input id="s-out-end" value="${esc(s.out_end || '20:00')}" placeholder="20:00"></div>
+          <div class="fld"><label>Ofis nomi</label><input id="s-label" value="${esc(o.label || '')}"></div>
         </div>
         <div class="row2">
           <div class="fld"><label>Ofis lat</label><input id="s-lat" value="${esc(o.lat || '')}"></div>
           <div class="fld"><label>Ofis lng</label><input id="s-lng" value="${esc(o.lng || '')}"></div>
         </div>
         <div class="row2">
-          <div class="fld"><label>Radius (m)</label><input id="s-radius" type="number" value="${esc(o.radius_m || 250)}"></div>
-          <div class="fld"><label>Ofis nomi</label><input id="s-label" value="${esc(o.label || '')}"></div>
+          <div class="fld"><label>Radius (m)</label><input id="s-radius" type="number" value="${esc(o.radius_m || 100)}"></div>
+          <div class="fld"></div>
         </div>
         <button type="button" class="att-btn att-btn-in" id="btn-save-set" style="margin-top:8px">Saqlash</button>
         <button type="button" class="att-btn att-btn-face" id="btn-here" style="margin-top:8px">Hozirgi joyimni ofis qil</button>
@@ -2108,6 +2091,7 @@
     try {
       const body = {
         in_start: document.getElementById('s-in-start').value,
+        late_grace_min: Number(document.getElementById('s-grace').value || 15),
         in_late_after: document.getElementById('s-late').value,
         out_start: document.getElementById('s-out-start').value,
         out_end: document.getElementById('s-out-end').value,

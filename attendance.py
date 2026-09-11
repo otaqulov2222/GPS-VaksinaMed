@@ -27,14 +27,26 @@ DEFAULT_SETTINGS = {
         "radius_m": 100,
         "label": "VaksinaMed ofis",
     },
-    "in_start": "08:30",
-    "in_end": "10:30",
+    # Haydovchilar + ofis (Jasur): 09:00–18:00, 15 daqiqa ruxsat
+    "in_start": "09:00",
+    "in_end": "10:00",
     "in_late_after": "09:15",
-    "out_start": "17:00",
-    "out_end": "21:00",
+    "late_grace_min": 15,
+    "out_start": "18:00",
+    "out_end": "20:00",
     "require_gps": True,
     "require_face": True,
     "enabled": True,
+}
+
+# Rol / shaxs bo‘yicha ish kuni (driver + Jasur)
+OFFICE_DAY_SCHEDULE = {
+    "in_start": "09:00",
+    "in_end": "10:00",
+    "in_late_after": "09:15",
+    "late_grace_min": 15,
+    "out_start": "18:00",
+    "out_end": "20:00",
 }
 
 _MAX_PHOTO = 900_000  # ~data URL length
@@ -141,23 +153,40 @@ class AttendanceStore:
         if self.persist.get(SETTINGS_KEY) is None:
             self._save(SETTINGS_KEY, dict(DEFAULT_SETTINGS))
             return
-        # Eski default 250 m → 100 m (joriy so‘rov)
         raw = self._load(SETTINGS_KEY, {})
         if not isinstance(raw, dict):
             return
-        office = raw.get("office") if isinstance(raw.get("office"), dict) else {}
+        changed = False
+        cur = dict(raw)
+        office = cur.get("office") if isinstance(cur.get("office"), dict) else {}
         try:
             r = float(office.get("radius_m") or 0)
         except (TypeError, ValueError):
             r = 0
+        # Eski default 250 m → 100 m
         if r == 250 or r <= 0:
-            cur = dict(DEFAULT_SETTINGS)
-            cur.update({k: v for k, v in raw.items() if k != "office"})
             of = dict(DEFAULT_SETTINGS["office"])
             of.update(office)
             of["radius_m"] = 100
             cur["office"] = of
-            self._save(SETTINGS_KEY, cur)
+            changed = True
+        # Eski ish kuni 08:30–21:00 → 09:00–18:00 (+15 daqiqa)
+        if str(cur.get("in_start") or "") in ("08:30", "8:30") and str(cur.get("out_end") or "") in ("21:00",):
+            for k, v in OFFICE_DAY_SCHEDULE.items():
+                cur[k] = v
+            changed = True
+        if "late_grace_min" not in cur:
+            cur["late_grace_min"] = 15
+            changed = True
+        if changed:
+            # DEFAULT bilan to‘ldirish
+            merged = dict(DEFAULT_SETTINGS)
+            merged.update({k: v for k, v in cur.items() if k != "office"})
+            of = dict(DEFAULT_SETTINGS["office"])
+            if isinstance(cur.get("office"), dict):
+                of.update(cur["office"])
+            merged["office"] = of
+            self._save(SETTINGS_KEY, merged)
 
     def settings(self) -> dict:
         with self.lock:
@@ -170,14 +199,43 @@ class AttendanceStore:
             if isinstance(raw.get("office"), dict):
                 office.update(raw["office"])
             out["office"] = office
+            try:
+                out["late_grace_min"] = max(0, min(120, int(out.get("late_grace_min") or 15)))
+            except (TypeError, ValueError):
+                out["late_grace_min"] = 15
             return out
+
+    @staticmethod
+    def _is_office_day_user(user: dict | None) -> bool:
+        """Haydovchilar va ofisdagi Jasur (admin) — 09:00–18:00."""
+        if not isinstance(user, dict):
+            return False
+        role = str(user.get("role") or "").strip().lower()
+        if role == "driver":
+            return True
+        blob = f"{user.get('name') or ''} {user.get('username') or ''}".lower()
+        if "jasur" in blob:
+            return True
+        # Oddiy admin (ofis) ham shu grafik
+        if role == "admin":
+            return True
+        return False
+
+    def settings_for_user(self, user: dict | None = None) -> dict:
+        """Punch / UI uchun shaxsga mos ish kuni."""
+        base = self.settings()
+        if self._is_office_day_user(user):
+            out = dict(base)
+            out.update(OFFICE_DAY_SCHEDULE)
+            return out
+        return base
 
     def save_settings(self, patch: dict) -> dict:
         cur = self.settings()
         if not isinstance(patch, dict):
             return cur
         for k in (
-            "in_start", "in_end", "in_late_after",
+            "in_start", "in_end", "in_late_after", "late_grace_min",
             "out_start", "out_end", "require_gps", "require_face", "enabled",
         ):
             if k in patch:
@@ -198,6 +256,16 @@ class AttendanceStore:
         for tkey in ("in_start", "in_end", "in_late_after", "out_start", "out_end"):
             if parse_hhmm(str(cur.get(tkey) or "")) is None:
                 cur[tkey] = DEFAULT_SETTINGS[tkey]
+        try:
+            cur["late_grace_min"] = max(0, min(120, int(cur.get("late_grace_min") or 15)))
+        except (TypeError, ValueError):
+            cur["late_grace_min"] = 15
+        # Grace o‘zgarsa — in_late_after ni moslashtirish (agar classic 09:00+15)
+        a = hhmm_to_min(cur.get("in_start"))
+        if a is not None and "in_late_after" in patch and parse_hhmm(str(patch.get("in_late_after") or "")) is None:
+            grace = int(cur.get("late_grace_min") or 15)
+            hm = a + grace
+            cur["in_late_after"] = f"{hm // 60:02d}:{hm % 60:02d}"
         with self.lock:
             self._save(SETTINGS_KEY, cur)
         return cur
@@ -319,14 +387,20 @@ class AttendanceStore:
     def _slot_ok(self, kind: str, settings: dict) -> tuple[bool, str, bool]:
         """return ok, message, is_late
 
-        Keldim: in_start dan kun oxirigacha (tavsiya oynasi in_end).
-        Ketdim: kirishdan keyin, out_end gacha (erta chiqish ham mumkin).
+        Keldim: in_start dan kun oxirigacha.
+        15 daqiqa ruxsat: in_late_after gacha kechikish YO‘Q (masalan 09:15 gacha OK).
+        Ketdim: out_end gacha.
         """
         now_m = minutes_now()
         if kind == "in":
             a = hhmm_to_min(settings.get("in_start"))
             late_after = hhmm_to_min(settings.get("in_late_after"))
-            # Tavsiya tugashi — faqat kechikish matni uchun; bloklamaydi
+            try:
+                grace = max(0, min(120, int(settings.get("late_grace_min") or 15)))
+            except (TypeError, ValueError):
+                grace = 15
+            if late_after is None and a is not None:
+                late_after = a + grace
             day_end = hhmm_to_min(settings.get("out_end")) or (23 * 60 + 59)
             if a is None:
                 return False, "Kirish vaqti sozlanmagan", False
@@ -334,8 +408,11 @@ class AttendanceStore:
                 return False, f"Kirish hali ochilmagan ({settings.get('in_start')} dan)", False
             if now_m > day_end:
                 return False, f"Bugungi ish kuni yopildi ({settings.get('out_end')})", False
+            # 09:15 gacha ruxsat — faqat undan KEYIN kechikish
             late = bool(late_after is not None and now_m > late_after)
-            return True, ("Kechikib keldi" if late else "O'z vaqtida"), late
+            if late:
+                return True, f"Kechikib keldi ({settings.get('in_late_after')} dan keyin)", True
+            return True, "O'z vaqtida", False
         if kind == "out":
             b = hhmm_to_min(settings.get("out_end")) or (23 * 60 + 59)
             out_start = hhmm_to_min(settings.get("out_start"))
@@ -362,7 +439,9 @@ class AttendanceStore:
         challenge: str | None = None,
         descriptor=None,
     ) -> tuple[dict | None, str | None]:
-        settings = self.settings()
+        settings = self.settings_for_user(
+            {"id": user_id, "username": username, "name": name, "role": role}
+        )
         if not settings.get("enabled", True):
             return None, "Davomat hozir o'chirilgan"
 
@@ -649,6 +728,20 @@ class AttendanceStore:
         except Exception:
             return None
 
+    @staticmethod
+    def _hhmmss_from_iso(iso_s) -> str | None:
+        """To‘liq o‘tish vaqti HH:MM:SS (Toshkent)."""
+        if not iso_s:
+            return None
+        try:
+            t = datetime.fromisoformat(str(iso_s))
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=TZ)
+            t = t.astimezone(TZ)
+            return f"{t.hour:02d}:{t.minute:02d}:{t.second:02d}"
+        except Exception:
+            return None
+
     def month_report(self, month: str, users: list) -> dict:
         """Admin: oy bo'yicha jamoa hisoboti + KPI."""
         dates = self._month_dates(month)
@@ -711,8 +804,8 @@ class AttendanceStore:
                     {
                         "date": d,
                         "status": status,
-                        "inAt": self._hhmm_from_iso(inn.get("at") if inn else None),
-                        "outAt": self._hhmm_from_iso(out.get("at") if out else None),
+                        "inAt": self._hhmmss_from_iso(inn.get("at") if inn else None),
+                        "outAt": self._hhmmss_from_iso(out.get("at") if out else None),
                         "late": bool(inn.get("late")) if inn else False,
                         "worked_sec": ws,
                         "distance_m": (inn or {}).get("distance_m") if inn else None,
@@ -822,8 +915,8 @@ class AttendanceStore:
                     "date": d,
                     "weekday": datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=TZ).strftime("%a"),
                     "status": status,
-                    "inAt": hhmm,
-                    "outAt": self._hhmm_from_iso(out.get("at") if out else None),
+                    "inAt": self._hhmmss_from_iso(inn.get("at") if inn else None),
+                    "outAt": self._hhmmss_from_iso(out.get("at") if out else None),
                     "late": bool(inn.get("late")) if inn else False,
                     "worked_sec": ws,
                     "distance_m": (inn or {}).get("distance_m") if inn else None,
@@ -856,8 +949,8 @@ class AttendanceStore:
             "settings": self.public_settings(),
         }
 
-    def public_settings(self) -> dict:
-        s = self.settings()
+    def public_settings(self, user: dict | None = None) -> dict:
+        s = self.settings_for_user(user) if user else self.settings()
         office = s.get("office") or {}
         return {
             "enabled": bool(s.get("enabled", True)),
@@ -866,17 +959,22 @@ class AttendanceStore:
             "in_start": s.get("in_start"),
             "in_end": s.get("in_end"),
             "in_late_after": s.get("in_late_after"),
+            "late_grace_min": int(s.get("late_grace_min") or 15),
             "out_start": s.get("out_start"),
             "out_end": s.get("out_end"),
             "office": {
                 "label": office.get("label"),
                 "radius_m": office.get("radius_m"),
-                # lat/lng admin sozlaydi; clientga kerak geozona tekshiruvi uchun
                 "lat": office.get("lat"),
                 "lng": office.get("lng"),
             },
             "serverNow": now_tz().isoformat(timespec="seconds"),
             "today": today_str(),
+            "scheduleNote": (
+                f"{s.get('in_start')}-{s.get('out_start')} · "
+                f"{int(s.get('late_grace_min') or 15)} daqiqa ruxsat "
+                f"({s.get('in_late_after')} gacha kechikish yo'q)"
+            ),
         }
 
     def me_payload(self, user_id: str, user: dict) -> dict:
@@ -884,11 +982,28 @@ class AttendanceStore:
         date = today_str()
         photo = None
         if face and isinstance(face.get("photo"), str) and face["photo"].startswith("data:image/"):
-            # O'z profilining tasdiqlangan selfisi (UI preview)
             photo = face["photo"] if len(face["photo"]) <= _MAX_PHOTO else None
+        uinfo = {
+            "id": user_id,
+            "username": user.get("username"),
+            "name": user.get("name"),
+            "role": user.get("role"),
+        }
+        today_rec = self.user_day(date, user_id)
+        # UI uchun to‘liq soatlar
+        if isinstance(today_rec.get("in"), dict) and today_rec["in"].get("at"):
+            today_rec = dict(today_rec)
+            inn = dict(today_rec["in"])
+            inn["atDisplay"] = self._hhmmss_from_iso(inn.get("at"))
+            today_rec["in"] = inn
+        if isinstance(today_rec.get("out"), dict) and today_rec["out"].get("at"):
+            today_rec = dict(today_rec)
+            out = dict(today_rec["out"])
+            out["atDisplay"] = self._hhmmss_from_iso(out.get("at"))
+            today_rec["out"] = out
         return {
             "ok": True,
-            "settings": self.public_settings(),
+            "settings": self.public_settings(uinfo),
             "enrolled": self.is_enrolled(user_id),
             "face": {
                 "hasPhoto": bool(photo or (face and face.get("photo"))),
@@ -900,12 +1015,7 @@ class AttendanceStore:
             }
             if face
             else None,
-            "today": self.user_day(date, user_id),
+            "today": today_rec,
             "history": self.user_history(user_id, 45),
-            "user": {
-                "id": user_id,
-                "username": user.get("username"),
-                "name": user.get("name"),
-                "role": user.get("role"),
-            },
+            "user": uinfo,
         }
