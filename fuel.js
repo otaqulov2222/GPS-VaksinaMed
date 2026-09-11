@@ -477,32 +477,46 @@ function syncDayPricesFromCar(car) {
 }
 
 /**
- * Spidometr oy boshi + kunlik km → bo'sh spidometr kataklarini to'ldirish.
- * Masalan: odoStart=58000, 2-kun km=13.89 → spidometr=58013.89
- * Qo'lda yozilgan spidometr (odo>0) o'zgartirilmaydi.
+ * Spidometr oy boshi + kunlik km → spidometr ustuni.
+ * force=true: oy boshi o‘zgaganda eski noto‘g‘ri qiymatlarni ham qayta yozadi.
+ * Qo‘lda yozilgan (odoSrc=user) force bo‘lmasa saqlanadi.
+ * Misol: odoStart=26000, 2-kun km=13.36 → spidometr=26013.36
  */
-function syncOdoChainFromKm(car) {
+function syncOdoChainFromKm(car, opts) {
   if (!car) return false;
+  opts = opts || {};
+  const force = !!opts.force;
   let prev = n(car.odoStart);
-  if (!prev) return false;
+  if (!(prev > 0)) return false;
   let changed = false;
   const dim = daysInMonth(STATE.month);
   for (let d = 1; d <= dim; d++) {
     const row = ensureDay(car, d);
+    const km = n(row.km);
     const odo = n(row.odo);
-    if (odo > 0) {
+    const manual = row.odoSrc === 'user';
+    // Eski xato: spidometr oy boshidan kichik (15.36 vs 26000)
+    const bogus = odo > 0 && prev > 1000 && odo + 0.05 < prev;
+
+    if (manual && odo > 0 && !force && !bogus) {
       prev = odo;
       continue;
     }
-    const km = n(row.km);
+
     if (km > 0) {
       const next = cleanFloat(prev + km);
       if (n(row.odo) !== next) {
         row.odo = next;
-        if (!row.kmSrc) row.kmSrc = 'odo-chain';
+        row.odoSrc = manual && !force && !bogus ? 'user' : 'auto';
         changed = true;
       }
       prev = next;
+    } else if (!force && odo > 0 && !bogus) {
+      prev = odo;
+    } else if ((force || bogus) && odo > 0 && !manual) {
+      row.odo = 0;
+      if (row.odoSrc === 'auto') delete row.odoSrc;
+      changed = true;
     }
   }
   return changed;
@@ -1072,7 +1086,7 @@ function dailyJamiHtml(rows) {
       <td><span class="out" data-j="km">${t.km ? fmtNum(t.km) : ''}</span></td>
       <td><span class="out" data-j="gasKm">${t.gasKm ? fmtNum(t.gasKm) : ''}</span></td>
       <td><span class="out" data-j="liqKm">${t.liqKm ? fmtNum(t.liqKm) : ''}</span></td>
-      <td><span class="out" data-j="odo">${last.odo ? fmtNum(last.odo) : ''}</span></td>
+      <td><span class="out" data-j="odo">${t.odo ? fmtNum(t.odo) : ''}</span></td>
       <td></td>
       <td></td>
       <td><span class="out" data-j="gasIn">${t.gasIn ? fmtNum(t.gasIn) : ''}</span></td>
@@ -1103,7 +1117,7 @@ function paintDailyJami(rows) {
   set('km', t.km ? fmtNum(t.km) : '');
   set('gasKm', t.gasKm ? fmtNum(t.gasKm) : '');
   set('liqKm', t.liqKm ? fmtNum(t.liqKm) : '');
-  set('odo', last.odo ? fmtNum(last.odo) : '');
+  set('odo', t.odo ? fmtNum(t.odo) : '');
   set('gasIn', t.gasIn ? fmtNum(t.gasIn) : '');
   set('gasSum', t.gasIn ? money(t.gasSum) : '');
   set('benzinIn', t.benzinIn ? fmtNum(t.benzinIn) : '');
@@ -2134,8 +2148,8 @@ function fillFromOdo() {
     }
     if (odo > 0) prev = odo;
   }
-  // Aksincha: km bor, spidometr bo'sh → oy boshi + km
-  if (syncOdoChainFromKm(car)) filled += 1;
+  // Aksincha: km bor, spidometr bo'sh/eski → oy boshi + km (majburiy qayta)
+  if (syncOdoChainFromKm(car, { force: true })) filled += 1;
   markDirty();
   renderDailyTable();
   toast(filled
@@ -4162,7 +4176,8 @@ function bind() {
         syncDayPricesFromCar(car);
         renderDailyTable();
       } else if (key === 'odoStart') {
-        syncOdoChainFromKm(car);
+        // Oy boshi o‘zgasa — kunlik spidometrni 26000+km qilib qayta hisoblash
+        syncOdoChainFromKm(car, { force: true });
         renderDailyTable();
       } else if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct') {
         schedulePaintCalc(true);
@@ -4196,6 +4211,7 @@ function bind() {
     const row = ensureDay(car, d);
     row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
     if (f === 'km' || f === 'odo') row.kmSrc = 'user';
+    if (f === 'odo') row.odoSrc = 'user';
     if (f === 'gasKm') {
       const raw = String(el.value || '').trim();
       row.gasKm = raw === '' ? null : n(raw);
@@ -4213,10 +4229,12 @@ function bind() {
       const km = n(row.km);
       if (row.mode === 'gaz') { row.gasKm = km; syncGasKmInput(km || ''); }
       else if (row.mode === 'benzin' || row.mode === 'dizel') { row.gasKm = 0; syncGasKmInput(0); }
-      // Bo'sh spidometrni oy boshi + km zanjiri bilan to'ldirish
-      if (syncOdoChainFromKm(car)) {
-        const odoInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="odo"]');
-        if (odoInp) odoInp.value = vin(ensureDay(car, d).odo);
+      // Spidometr = oy boshi + yig‘ilgan km (xato eski qiymatlar ham tuzatiladi)
+      if (syncOdoChainFromKm(car, { force: true })) {
+        renderDailyTable();
+        schedulePaintCalc(true);
+        markDirty();
+        return;
       }
     }
     if (f === 'odo' && n(row.odo) > 0) {
@@ -4258,7 +4276,7 @@ function bind() {
   document.getElementById('btn-recalc').onclick = () => {
     readParamsIntoCar();
     syncDayPricesFromCar(getCar(STATE.car));
-    syncOdoChainFromKm(getCar(STATE.car));
+    syncOdoChainFromKm(getCar(STATE.car), { force: true });
     renderDailyTable();
     schedulePaintCalc(true);
     renderChips();
