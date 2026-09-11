@@ -1635,7 +1635,7 @@ function renderStations() {
         <h3 style="margin:16px 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;">Zapravka nomlari</h3>
         <table class="gtable"><thead><tr><th>Nomi</th><th></th></tr></thead>
         <tbody>${list.map((s,i) => `<tr><td>${esc(s)}</td>
-          <td><button class="btn btn-ink btn-sm st-del" data-i="${i}" type="button">O'chirish</button></td></tr>`).join('') || '<tr><td colspan="2" class="muted">Hali yo\'q</td></tr>'}
+          <td>${(window.VmEatDelete && VmEatDelete.markup({ className: 'st-del eat-del--sm', 'data-i': String(i) })) || `<button class="btn btn-ink btn-sm st-del" data-i="${i}" type="button">O'chirish</button>`}</td></tr>`).join('') || '<tr><td colspan="2" class="muted">Hali yo\'q</td></tr>'}
         </tbody></table>
       </div></div>`;
   document.querySelectorAll('#panel-stations .subtab').forEach(b => {
@@ -1653,9 +1653,25 @@ function renderStations() {
   };
   document.querySelectorAll('.st-del').forEach(btn => {
     btn.onclick = async () => {
-      STATE.meta.stations.splice(Number(btn.getAttribute('data-i')), 1);
+      const i = Number(btn.getAttribute('data-i'));
+      if (window.VmEatDelete) {
+        const ok = await VmEatDelete.run(btn, {
+          confirm: 'Bu zapravka nomini o\'chirasizmi?',
+          action: async () => {
+            STATE.meta.stations.splice(i, 1);
+            await saveMeta();
+          }
+        });
+        if (ok) {
+          renderStations();
+          stationDatalist();
+        }
+        return;
+      }
+      STATE.meta.stations.splice(i, 1);
       await saveMeta();
       renderStations();
+      stationDatalist();
     };
   });
   const pdfSt = document.getElementById('btn-pdf-stations');
@@ -1903,7 +1919,7 @@ function renderCars() {
               <td><input data-v="benzinNorm" type="number" step="0.1" value="${vin(f.benzinNorm)}" title="${['dizel','dizel_gaz'].includes(f.fuelType) ? 'Dizel norma' : 'Benzin norma'}"></td>
               <td><input data-v="gasPrice" type="number" step="1" value="${vin(f.gasPrice)}"></td>
               <td><input data-v="benzinPrice" type="number" step="1" value="${vin(f.benzinPrice)}"></td>
-              <td><button type="button" class="btn btn-ink btn-sm car-hide">O'chirish</button></td>
+              <td>${(window.VmEatDelete && VmEatDelete.markup({ className: 'car-hide eat-del--sm' })) || `<button type="button" class="btn btn-ink btn-sm car-hide">O'chirish</button>`}</td>
             </tr>`;
             }).join('')}</tbody>
           </table>
@@ -1986,6 +2002,18 @@ function renderCars() {
     const hide = tr.querySelector('.car-hide');
     if (hide) hide.onclick = async (e) => {
       e.stopPropagation();
+      if (window.VmEatDelete) {
+        const ok = await VmEatDelete.run(hide, {
+          confirm: plate + ' ni ro\'yxatdan yashirish?',
+          action: async () => {
+            ensureVehicleMeta(plate).hidden = true;
+            await saveMeta();
+            if (STATE.car === plate) STATE.car = fleet()[0] && fleet()[0].car;
+          }
+        });
+        if (ok) renderAll();
+        return;
+      }
       if (!confirm(plate + ' ni ro\'yxatdan yashirish?')) return;
       ensureVehicleMeta(plate).hidden = true;
       await saveMeta();

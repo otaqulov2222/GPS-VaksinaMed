@@ -1,6 +1,6 @@
 /**
- * Pharmacy-only delete micro-interaction: trash bin "eats" the label.
- * Depends on GSAP (window.gsap). Scoped to .ph-eat-del buttons.
+ * Global delete micro-interaction: trash bin "eats" the label (GSAP).
+ * Use ONLY on delete actions via VmEatDelete.markup / .play / .run
  */
 (function (global) {
   'use strict';
@@ -8,13 +8,20 @@
   var LABEL = "Oʻchirish";
   var DONE_TEXT = "Oʻchirildi";
 
+  function escAttr(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  }
+
   function splitLabel(el, text) {
     el.textContent = '';
     var chars = Array.from(text);
     var spans = [];
     for (var i = 0; i < chars.length; i++) {
       var span = document.createElement('span');
-      span.className = 'ph-eat-del__letter';
+      span.className = 'eat-del__letter';
       span.textContent = chars[i] === ' ' ? '\u00a0' : chars[i];
       el.appendChild(span);
       spans.push(span);
@@ -22,10 +29,34 @@
     return spans;
   }
 
+  function ensureFx(btn) {
+    var fx = btn.querySelector('.eat-del__fx');
+    if (!fx) {
+      fx = document.createElement('span');
+      fx.className = 'eat-del__fx';
+      btn.appendChild(fx);
+    }
+    fx.innerHTML = '';
+    return fx;
+  }
+
+  function spawnSparks(fx, x, y, count) {
+    var nodes = [];
+    for (var i = 0; i < count; i++) {
+      var s = document.createElement('span');
+      s.className = 'eat-del__spark';
+      s.style.left = x + 'px';
+      s.style.top = y + 'px';
+      fx.appendChild(s);
+      nodes.push(s);
+    }
+    return nodes;
+  }
+
   function ensureParts(btn) {
-    var label = btn.querySelector('.ph-eat-del__label');
+    var label = btn.querySelector('.eat-del__label') || btn.querySelector('.ph-eat-del__label');
     if (!label) return null;
-    var letters = label.querySelectorAll('.ph-eat-del__letter');
+    var letters = label.querySelectorAll('.eat-del__letter, .ph-eat-del__letter');
     if (!letters.length) {
       letters = splitLabel(label, LABEL);
     } else {
@@ -33,13 +64,13 @@
     }
     return {
       btn: btn,
-      icon: btn.querySelector('.ph-eat-del__icon'),
-      svg: btn.querySelector('.ph-eat-del__svg'),
+      icon: btn.querySelector('.eat-del__icon, .ph-eat-del__icon'),
       lid: btn.querySelector('.bin-lid'),
       body: btn.querySelector('.bin-body'),
       label: label,
       letters: letters,
-      done: btn.querySelector('.ph-eat-del__done')
+      done: btn.querySelector('.eat-del__done, .ph-eat-del__done'),
+      fx: ensureFx(btn)
     };
   }
 
@@ -47,13 +78,16 @@
     var icon = parts.icon.getBoundingClientRect();
     var btn = parts.btn.getBoundingClientRect();
     return {
-      x: icon.left + icon.width * 0.5 - btn.left,
-      y: icon.top + icon.height * 0.35 - btn.top
+      x: icon.left + icon.width * 0.52 - btn.left,
+      y: icon.top + icon.height * 0.32 - btn.top
     };
   }
 
+  function wait(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+  }
+
   /**
-   * Play eat animation. Resolves when finished (or immediately if GSAP missing).
    * @param {HTMLElement} btn
    * @returns {Promise<void>}
    */
@@ -81,9 +115,10 @@
         return;
       }
 
-      gsap.killTweensOf([parts.lid, parts.body].concat(parts.letters));
+      var targets = [parts.lid, parts.body, parts.btn].concat(parts.letters);
+      gsap.killTweensOf(targets);
       gsap.set(parts.letters, { clearProps: 'all' });
-      gsap.set([parts.lid, parts.body], { clearProps: 'transform' });
+      gsap.set([parts.lid, parts.body, parts.btn], { clearProps: 'transform' });
       if (parts.done) gsap.set(parts.done, { opacity: 0 });
 
       var mouth = mouthPoint(parts);
@@ -93,133 +128,195 @@
           btn.classList.remove('is-busy');
           btn.classList.add('is-done');
           if (parts.done) {
-            gsap.to(parts.done, { opacity: 1, duration: 0.25 });
+            gsap.fromTo(
+              parts.done,
+              { opacity: 0, scale: 0.7 },
+              { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(1.8)' }
+            );
           }
           resolve();
         }
       });
 
-      // Lid opens
-      tl.to(parts.lid, {
-        rotation: -38,
-        duration: 0.28,
-        ease: 'back.out(1.6)',
-        transformOrigin: '12px 5px'
-      });
+      // Button inhale pulse
+      tl.to(parts.btn, {
+        scale: 1.06,
+        duration: 0.22,
+        ease: 'power2.out'
+      }, 0);
+      tl.to(parts.btn, {
+        scale: 1,
+        duration: 0.35,
+        ease: 'power2.inOut'
+      }, 0.22);
 
-      // Letters inhale L→R
+      // Lid flings open
+      tl.to(parts.lid, {
+        rotation: -48,
+        duration: 0.32,
+        ease: 'back.out(2.2)',
+        transformOrigin: '12px 5px'
+      }, 0.02);
+
+      // Letters inhale L→R with arc + blur
       parts.letters.forEach(function (letter, i) {
         var rect = letter.getBoundingClientRect();
         var btnRect = parts.btn.getBoundingClientRect();
         var fromX = rect.left + rect.width / 2 - btnRect.left;
         var fromY = rect.top + rect.height / 2 - btnRect.top;
         var dx = mouth.x - fromX;
-        var dy = mouth.y - fromY - 4;
+        var dy = mouth.y - fromY;
+        var t0 = 0.2 + i * 0.065;
 
-        tl.to(
-          letter,
-          {
-            x: dx,
-            y: dy - 10,
-            rotation: gsap.utils.random(-40, 40),
-            scale: 0.55,
-            duration: 0.18,
-            ease: 'power1.in'
-          },
-          0.22 + i * 0.07
-        );
-        tl.to(
-          letter,
-          {
-            x: dx,
-            y: dy + 2,
-            scale: 0,
-            opacity: 0,
-            rotation: gsap.utils.random(-90, 90),
-            duration: 0.16,
-            ease: 'power2.in'
-          },
-          0.34 + i * 0.07
-        );
-        // Bin chomp / jiggle per letter
-        tl.to(
-          parts.body,
-          {
-            scaleY: 0.88,
-            scaleX: 1.08,
-            duration: 0.07,
-            yoyo: true,
-            repeat: 1,
-            transformOrigin: 'center bottom'
-          },
-          0.38 + i * 0.07
-        );
-      });
+        tl.to(letter, {
+          x: dx * 0.55,
+          y: dy - 14 - gsap.utils.random(0, 6),
+          rotation: gsap.utils.random(-55, 55),
+          scale: 0.72,
+          filter: 'blur(0.4px)',
+          duration: 0.16,
+          ease: 'power1.in'
+        }, t0);
 
-      var after = 0.42 + parts.letters.length * 0.07;
+        tl.to(letter, {
+          x: dx,
+          y: dy + 3,
+          scale: 0,
+          opacity: 0,
+          rotation: gsap.utils.random(-120, 120),
+          filter: 'blur(2px)',
+          duration: 0.18,
+          ease: 'power3.in'
+        }, t0 + 0.12);
 
-      // Lid snaps shut
-      tl.to(
-        parts.lid,
-        {
-          rotation: 0,
-          duration: 0.35,
-          ease: 'elastic.out(1, 0.55)',
-          transformOrigin: '12px 5px'
-        },
-        after
-      );
-      tl.to(
-        parts.body,
-        {
-          scaleX: 1.06,
-          scaleY: 0.94,
-          duration: 0.12,
+        // Bin chomp
+        tl.to(parts.body, {
+          scaleY: 0.82,
+          scaleX: 1.14,
+          duration: 0.06,
           yoyo: true,
           repeat: 1,
+          ease: 'power1.inOut',
           transformOrigin: 'center bottom'
-        },
-        after
-      );
+        }, t0 + 0.16);
+
+        // Sparks at mouth
+        tl.add(function () {
+          var sparks = spawnSparks(parts.fx, mouth.x, mouth.y, 4);
+          sparks.forEach(function (sp, si) {
+            var ang = (-Math.PI / 2) + (si - 1.5) * 0.55;
+            gsap.fromTo(
+              sp,
+              { opacity: 1, x: 0, y: 0, scale: gsap.utils.random(0.7, 1.3) },
+              {
+                opacity: 0,
+                x: Math.cos(ang) * gsap.utils.random(10, 22),
+                y: Math.sin(ang) * gsap.utils.random(8, 18),
+                scale: 0,
+                duration: 0.35,
+                ease: 'power2.out'
+              }
+            );
+          });
+        }, t0 + 0.18);
+      });
+
+      var after = 0.28 + parts.letters.length * 0.065;
+
+      // Lid elastic slam
+      tl.to(parts.lid, {
+        rotation: 8,
+        duration: 0.16,
+        ease: 'power2.in',
+        transformOrigin: '12px 5px'
+      }, after);
+      tl.to(parts.lid, {
+        rotation: 0,
+        duration: 0.45,
+        ease: 'elastic.out(1.15, 0.42)',
+        transformOrigin: '12px 5px'
+      }, after + 0.14);
+
+      tl.to(parts.body, {
+        scaleX: 1.1,
+        scaleY: 0.88,
+        duration: 0.1,
+        yoyo: true,
+        repeat: 1,
+        transformOrigin: 'center bottom'
+      }, after + 0.12);
+
+      // Success flash on button
+      tl.to(parts.btn, {
+        boxShadow: '0 0 28px rgba(52,211,153,0.35)',
+        duration: 0.25
+      }, after + 0.2);
     });
   }
 
-  /** Markup helper for pharmacy rows */
-  function markup(id) {
-    var safe = String(id == null ? '' : id)
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;');
+  /**
+   * Confirm → animate → callback. Prevents double-clicks.
+   * @param {HTMLElement} btn
+   * @param {{ confirm?: string|false, afterMs?: number, action: Function }} opts
+   */
+  async function run(btn, opts) {
+    opts = opts || {};
+    if (!btn || btn.classList.contains('is-busy') || btn.classList.contains('is-done')) return false;
+    if (opts.confirm !== false) {
+      var msg = typeof opts.confirm === 'string' ? opts.confirm : 'Oʻchirasizmi?';
+      if (!global.confirm(msg)) return false;
+    }
+    try {
+      await play(btn);
+      await wait(opts.afterMs != null ? opts.afterMs : 380);
+    } catch (_) { /* continue */ }
+    if (typeof opts.action === 'function') {
+      await opts.action();
+    }
+    return true;
+  }
+
+  /**
+   * @param {Record<string,string>} attrs  e.g. { 'data-ph-del': id, className: 'j-del eat-del--sm' }
+   */
+  function markup(attrs) {
+    attrs = Object.assign({}, attrs || {});
+    var extra = String(attrs.className || attrs.class || '').trim();
+    delete attrs.className;
+    delete attrs.class;
+
+    var attrStr = '';
+    Object.keys(attrs).forEach(function (k) {
+      attrStr += ' ' + k + '="' + escAttr(attrs[k]) + '"';
+    });
+
+    var cls = ('eat-del' + (extra ? ' ' + extra : '')).trim();
+
     return (
-      '<button type="button" class="ph-eat-del" data-ph-del="' +
-      safe +
-      '" aria-label="' +
-      LABEL +
-      '">' +
-      '<span class="ph-eat-del__icon" aria-hidden="true">' +
-      '<svg class="ph-eat-del__svg" viewBox="0 0 24 24">' +
+      '<button type="button" class="' + cls + '"' + attrStr + ' aria-label="' + LABEL + '">' +
+      '<span class="eat-del__icon" aria-hidden="true">' +
+      '<svg class="eat-del__svg" viewBox="0 0 24 24">' +
       '<g class="bin-lid">' +
-      '<line x1="8" y1="5" x2="16" y2="5"/>' +
-      '<path d="M9 5 V4.2 a1.2 1.2 0 0 1 1.2-1.2 h3.6 A1.2 1.2 0 0 1 15 4.2 V5"/>' +
+      '<line x1="7.5" y1="5.2" x2="16.5" y2="5.2"/>' +
+      '<path d="M9.2 5.2 V4.1 a1.3 1.3 0 0 1 1.3-1.2 h3 a1.3 1.3 0 0 1 1.3 1.2 V5.2"/>' +
       '</g>' +
       '<g class="bin-body">' +
-      '<path d="M7.5 7.2 h9 l-0.7 12.2 a1.4 1.4 0 0 1-1.4 1.3 H9.6 a1.4 1.4 0 0 1-1.4-1.3 Z"/>' +
-      '<line x1="10.2" y1="10" x2="10.2" y2="16.5"/>' +
-      '<line x1="12" y1="10" x2="12" y2="16.5"/>' +
-      '<line x1="13.8" y1="10" x2="13.8" y2="16.5"/>' +
+      '<path d="M7.4 7.3 h9.2 l-0.75 12 a1.5 1.5 0 0 1-1.5 1.35 H9.65 a1.5 1.5 0 0 1-1.5-1.35 Z"/>' +
+      '<line x1="10.2" y1="10.1" x2="10.2" y2="16.6"/>' +
+      '<line x1="12" y1="10.1" x2="12" y2="16.6"/>' +
+      '<line x1="13.8" y1="10.1" x2="13.8" y2="16.6"/>' +
       '</g>' +
-      '</svg>' +
-      '</span>' +
-      '<span class="ph-eat-del__label">' +
-      LABEL +
-      '</span>' +
-      '<span class="ph-eat-del__done" aria-hidden="true">' +
+      '</svg></span>' +
+      '<span class="eat-del__label">' + LABEL + '</span>' +
+      '<span class="eat-del__fx" aria-hidden="true"></span>' +
+      '<span class="eat-del__done" aria-hidden="true">' +
       '<svg viewBox="0 0 24 24"><path d="M5 13 l4 4 L19 7"/></svg>' +
       DONE_TEXT +
-      '</span>' +
-      '</button>'
+      '</span></button>'
     );
   }
 
-  global.PhEatDelete = { play: play, markup: markup, LABEL: LABEL };
+  var api = { play: play, run: run, markup: markup, LABEL: LABEL, wait: wait };
+  global.VmEatDelete = api;
+  global.PhEatDelete = api; // backward compat
 })(typeof window !== 'undefined' ? window : this);

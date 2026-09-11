@@ -15,7 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
 <link rel="stylesheet" href="shell.css?v=24"/>
-<link rel="stylesheet" href="ph-delete-btn.css?v=1"/>
+<link rel="stylesheet" href="ph-delete-btn.css?v=2"/>
 
 <style>
 
@@ -1603,7 +1603,7 @@ body { overflow-x: clip; }
 
 <script src="auth.js?v=33"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-<script src="ph-delete-btn.js?v=1"></script>
+<script src="ph-delete-btn.js?v=2"></script>
 
 <script>
 
@@ -1773,7 +1773,7 @@ async function loadAll() {
           <button class="btn btn-sm btn-gold" data-act="save" data-id="${u.id}">Saqlash</button>
           <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
           ${view}
-          <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}" data-name="${esc(displayName || u.username)}">Oʻchirish</button>
+          ${VmEatDelete.markup({ 'data-act': 'del', 'data-id': u.id, 'data-name': displayName || u.username, className: 'eat-del--sm' })}
         </div>`;
     return `<tr data-uid="${esc(u.id)}">
       <td>${nameCell}</td>
@@ -1889,7 +1889,7 @@ async function loadTasks() {
 
         <td class="mono">${esc(created)}</td>
 
-        <td><button class="btn btn-sm btn-bad" data-task-del="${esc(t.id)}">O'chirish</button></td>
+        <td>${VmEatDelete.markup({ 'data-task-del': t.id, className: 'eat-del--sm' })}</td>
 
       </tr>`;
 
@@ -1910,15 +1910,16 @@ document.getElementById('tb-tasks').addEventListener('click', async (e) => {
   const id = btn.getAttribute('data-task-del');
 
   try {
-
-    await vmApi('/api/driver/tasks', { method: 'POST', body: JSON.stringify({ deleteId: id }) });
-
-    loadTasks();
-
+    const ok = await VmEatDelete.run(btn, {
+      confirm: 'Bu vazifani oʻchirasizmi?',
+      action: async () => {
+        await vmApi('/api/driver/tasks', { method: 'POST', body: JSON.stringify({ deleteId: id }) });
+      }
+    });
+    if (ok) loadTasks();
   } catch (err) {
-
     alert(err.message);
-
+    btn.classList.remove('is-busy', 'is-done');
   }
 
 });
@@ -1991,10 +1992,14 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
     } else if (act === 'del') {
 
       const who = btn.getAttribute('data-name') || id;
-      if (!confirm(who + ' — loginni butunlay o‘chirish? Bu amalni qaytarib bo‘lmaydi.')) return;
-
-      await vmApi('/api/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
-      show('msg-users', 'O‘chirildi: ' + who, true);
+      const ok = await VmEatDelete.run(btn, {
+        confirm: who + ' — loginni butunlay o‘chirish? Bu amalni qaytarib bo‘lmaydi.',
+        action: async () => {
+          await vmApi('/api/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
+          show('msg-users', 'O‘chirildi: ' + who, true);
+        }
+      });
+      if (!ok) return;
 
     } else if (act === 'reset') {
 
@@ -2449,7 +2454,7 @@ function renderPharms() {
 
       </td>
 
-      <td>${PhEatDelete.markup(p.id)}</td>
+      <td>${VmEatDelete.markup({ 'data-ph-del': p.id, className: 'eat-del--sm' })}</td>
 
     </tr>`;
 
@@ -2913,32 +2918,21 @@ document.getElementById('tb-ph').addEventListener('click', async (e) => {
 
   if (del) {
 
-    if (del.classList.contains('is-busy') || del.classList.contains('is-done')) return;
-
     const id = del.getAttribute('data-ph-del');
 
-    if (!confirm('Bu dorixonani oʻchirasizmi?')) return;
-
-    if (window.PhEatDelete && typeof PhEatDelete.play === 'function') {
-      try {
-        await PhEatDelete.play(del);
-        await new Promise(r => setTimeout(r, 420));
-      } catch (_) { /* continue delete even if animation fails */ }
-    }
-
-    PHARMS = PHARMS.filter(p => p.id !== id);
-
     try {
-
-      await savePharms();
-
-      show('msg-ph', 'Oʻchirildi.', true);
-
+      const ok = await VmEatDelete.run(del, {
+        confirm: 'Bu dorixonani oʻchirasizmi?',
+        action: async () => {
+          PHARMS = PHARMS.filter(p => p.id !== id);
+          await savePharms();
+          show('msg-ph', 'Oʻchirildi.', true);
+        }
+      });
+      if (!ok) return;
     } catch (err) {
-
       show('msg-ph', err.message, false);
       del.classList.remove('is-busy', 'is-done');
-
     }
 
     return;

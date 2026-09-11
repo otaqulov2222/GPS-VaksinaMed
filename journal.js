@@ -176,7 +176,24 @@ async function saveEntry() {
   renderJournal();
 }
 
-async function deleteEntry(id) {
+async function deleteEntry(id, btn) {
+  if (btn && window.VmEatDelete) {
+    const ok = await VmEatDelete.run(btn, {
+      confirm: "Bu qayd o'chirilsinmi?",
+      action: async () => {
+        const d = await vmApi('/api/office/journal', {
+          method: 'POST',
+          body: JSON.stringify({ deleteId: id })
+        });
+        J.items = d.items || J.items;
+        if (J.editId === id) J.editId = '';
+      }
+    });
+    if (!ok) return;
+    toast("O'chirildi");
+    renderJournal();
+    return;
+  }
   if (!confirm("Bu qayd o'chirilsinmi?")) return;
   const d = await vmApi('/api/office/journal', {
     method: 'POST',
@@ -385,7 +402,7 @@ function renderJournal() {
                     <td><span class="jl-level lv-${esc(lv)}">${esc(lv)}</span></td>
                     <td>${esc(it.note)}</td>
                     <td><button type="button" class="btn btn-ink btn-sm j-edit" data-id="${esc(it.id)}">Tahrir</button>
-                        <button type="button" class="btn btn-ink btn-sm j-del" data-id="${esc(it.id)}">x</button></td>
+                        ${(window.VmEatDelete && VmEatDelete.markup({ className: 'j-del eat-del--sm', 'data-id': it.id })) || `<button type="button" class="btn btn-ink btn-sm j-del" data-id="${esc(it.id)}">x</button>`}</td>
                   </tr>`;
                 }).join('') : '<tr><td colspan="9"><div class="jl-empty">Bu davrda qayd yo‘q. Chapdan yangi kamchilik yoki maktov qo‘shing.</div></td></tr>'}</tbody>
               </table>
@@ -465,7 +482,7 @@ function renderJournal() {
     };
   });
   panel.querySelectorAll('.j-del').forEach(b => {
-    b.onclick = () => deleteEntry(b.getAttribute('data-id')).catch(err => toast(err.message));
+    b.onclick = () => deleteEntry(b.getAttribute('data-id'), b).catch(err => toast(err.message));
   });
   const csv = document.getElementById('j-csv');
   if (csv) csv.onclick = exportJournalCsv;
