@@ -1813,7 +1813,7 @@ function renderCars() {
   document.getElementById('panel-cars').innerHTML = `
     <div class="card"><div class="card-h"><h3>Mashina va narx — qo'lda tahrirlash</h3></div>
       <div class="card-b">
-        <div class="hint">Haydovchi: <b>↻</b> almashtirish, <b>✎</b> / pastki qator — buyruqni ko‘rish va tahrirlash. Marka, norma, narx avtomatik saqlanadi.</div>
+        <div class="hint">Haydovchi katakchasi — <b>plombali pass</b>: plombani bosing (buyruqni ko‘rish/tahrirlash), o‘ngdagi <b>↻</b> — almashtirish. Marka, norma, narx avtomatik saqlanadi.</div>
         <div class="row-btns add-row" style="margin:0 0 12px;">
           <input id="nv-car" class="j-search" placeholder="01 000 AAA">
           <input id="nv-name" class="j-search" placeholder="Haydovchi F.I.O.">
@@ -1828,21 +1828,11 @@ function renderCars() {
             <thead><tr><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th></th></tr></thead>
             <tbody>${list.map((f, i) => {
               const last = lastNameHistory(f);
-              const card = renderDrvBuyruqCard(last);
               return `<tr data-plate="${esc(f.car)}">
               <td>${i + 1}</td>
               <td>${esc(plateDisp(f.car))}</td>
               <td><input data-v="brand" value="${esc(f.brand)}"></td>
-              <td class="drv-name-cell"><div class="drv-name-stack">
-                <div class="drv-name-row">
-                  <input class="drv-name-input" data-v="name" value="${esc(f.name)}" readonly title="${esc(f.name)}">
-                  <div class="drv-name-actions">
-                    <button type="button" class="drv-ico drv-rename-btn" title="Haydovchini almashtirish">↻</button>
-                    ${last ? '<button type="button" class="drv-ico drv-edit-bq" title="Buyruqni tahrirlash">✎</button>' : ''}
-                  </div>
-                </div>
-                ${card}
-              </div></td>
+              <td class="drv-name-cell">${renderDrvPass(f.name, last)}</td>
               <td><input data-v="card" value="${esc(f.card)}"></td>
               <td><select data-v="fuelType">
                 <option value="mixed"${f.fuelType==='mixed'?' selected':''}>Gaz+benzin</option>
@@ -1928,23 +1918,18 @@ function renderCars() {
         scheduleMetaSave();
       });
     });
-    const renameBtn = tr.querySelector('.drv-rename-btn');
-    if (renameBtn) {
-      renameBtn.onclick = () => {
+    const renameBtns = tr.querySelectorAll('.drv-rename-btn');
+    renameBtns.forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
         const info = vehicleInfo(plate);
         openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
       };
-    }
+    });
     const editBq = tr.querySelector('.drv-edit-bq');
     if (editBq) {
-      editBq.onclick = () => {
-        const info = vehicleInfo(plate);
-        openDriverRenameModal({ plate, oldName: info.name, mode: 'edit' });
-      };
-    }
-    const metaLine = tr.querySelector('.drv-meta-line');
-    if (metaLine) {
-      metaLine.onclick = () => {
+      editBq.onclick = (e) => {
+        e.stopPropagation();
         const info = vehicleInfo(plate);
         openDriverRenameModal({ plate, oldName: info.name, mode: 'edit' });
       };
@@ -2142,23 +2127,49 @@ function lastNameHistory(rec) {
   return hist[hist.length - 1];
 }
 
+function formatDrvDateShort(ymd) {
+  const p = String(ymd || '').split('-');
+  if (p.length !== 3) return String(ymd || '');
+  return p[2] + '.' + p[1] + '.' + p[0].slice(2);
+}
+
 function formatDrvHistChip(h) {
   if (!h) return '';
   const bits = [];
-  if (h.orderNo) bits.push('№ ' + h.orderNo);
-  if (h.fromDate) {
-    const p = String(h.fromDate).split('-');
-    bits.push(p.length === 3 ? (p[2] + '.' + p[1] + '.' + p[0].slice(2)) : h.fromDate);
-  }
+  if (h.fromDate) bits.push(formatDrvDateShort(h.fromDate));
   if (h.orderBasis) bits.push(h.orderBasis);
-  return bits.join(' · ') || 'Buyruq';
+  return bits.join(' · ') || 'Buyruq bor';
+}
+
+function renderDrvPass(name, h) {
+  const tip = h
+    ? [h.fromDate, h.orderNo ? ('№ ' + h.orderNo) : '', h.orderBasis, h.prevName ? ('oldingi: ' + h.prevName) : ''].filter(Boolean).join(' · ')
+    : 'Buyruq yo‘q — almashtirish uchun bosing';
+  const noShort = h && h.orderNo ? String(h.orderNo).replace(/^№\s*/i, '').slice(0, 6) : '';
+  const sealed = !!h;
+  const seal = sealed
+    ? `<span class="drv-pass-seal" aria-hidden="true"><b>№</b><em>${esc(noShort || '—')}</em></span>`
+    : `<span class="drv-pass-seal drv-pass-seal--empty" aria-hidden="true"><em>+</em></span>`;
+  const sub = sealed
+    ? esc(formatDrvHistChip(h))
+    : 'Buyruq biriktirilmagan';
+  const actClass = sealed ? 'drv-pass-act drv-rename-btn' : 'drv-pass-act drv-pass-act--ghost drv-rename-btn';
+  const actTitle = sealed ? 'Yangi haydovchiga almashtirish' : 'Haydovchini buyruq bilan belgilash';
+  return `<div class="drv-pass${sealed ? ' drv-pass--sealed' : ''}">
+    <input class="drv-name-input drv-name-sr" data-v="name" value="${esc(name)}" readonly tabindex="-1" aria-hidden="true">
+    <button type="button" class="drv-pass-body ${sealed ? 'drv-edit-bq' : 'drv-rename-btn'}" title="${esc(tip)}">
+      ${seal}
+      <span class="drv-pass-mid">
+        <strong>${esc(name || '—')}</strong>
+        <small>${sub}</small>
+      </span>
+    </button>
+    <button type="button" class="${actClass}" title="${esc(actTitle)}">↻</button>
+  </div>`;
 }
 
 function renderDrvBuyruqCard(h) {
-  if (!h) return '';
-  const tip = [h.fromDate, h.orderNo ? ('№ ' + h.orderNo) : '', h.orderBasis, h.prevName ? ('oldingi: ' + h.prevName) : '']
-    .filter(Boolean).join(' · ');
-  return `<button type="button" class="drv-meta-line" title="${esc(tip)}">${esc(formatDrvHistChip(h))}</button>`;
+  return '';
 }
 
 function namesEqual(a, b) {
