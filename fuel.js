@@ -229,7 +229,8 @@ function vehicleInfo(plate) {
     benzinNorm: extra.benzinNorm != null && extra.benzinNorm !== '' ? n(extra.benzinNorm) : (diesel ? 10 : 4),
     gasPrice: extra.gasPrice != null && extra.gasPrice !== '' ? n(extra.gasPrice) : 5200,
     benzinPrice: extra.benzinPrice != null && extra.benzinPrice !== '' ? n(extra.benzinPrice) : 11000,
-    hidden: !!extra.hidden
+    hidden: !!extra.hidden,
+    nameHistory: Array.isArray(extra.nameHistory) ? extra.nameHistory : []
   };
 }
 
@@ -240,7 +241,8 @@ function ensureVehicleMeta(plate) {
     STATE.meta.vehicles[plate] = {
       name: info.name, short: info.short, brand: info.brand, card: info.card,
       fuelType: info.fuelType, gasNorm: info.gasNorm, benzinNorm: info.benzinNorm,
-      gasPrice: info.gasPrice, benzinPrice: info.benzinPrice, hidden: false
+      gasPrice: info.gasPrice, benzinPrice: info.benzinPrice, hidden: false,
+      nameHistory: Array.isArray(info.nameHistory) ? info.nameHistory.slice() : []
     };
   }
   return STATE.meta.vehicles[plate];
@@ -384,6 +386,21 @@ function getCar(plate) {
 function driverOnDay(info, car, day) {
   const lat = typeof uzUi === 'function' ? uzUi : (s => s);
   let name = info.name;
+  const ym = String(STATE.month || '').slice(0, 7);
+  const hist = Array.isArray(info.nameHistory) ? info.nameHistory.slice() : [];
+  hist.sort((a, b) => String(a && a.fromDate || '').localeCompare(String(b && b.fromDate || '')));
+  hist.forEach(h => {
+    if (!h || !h.name || !h.fromDate) return;
+    const fd = String(h.fromDate).slice(0, 10);
+    if (fd < ym + '-01') {
+      name = lat(h.name);
+      return;
+    }
+    if (ym && fd.startsWith(ym)) {
+      const d = n(fd.slice(8, 10));
+      if (d && d <= day) name = lat(h.name);
+    }
+  });
   (car.driverChanges || []).forEach(ch => {
     if (n(ch.day) <= day && ch.name) name = lat(ch.name);
   });
@@ -1785,7 +1802,7 @@ function renderCars() {
   document.getElementById('panel-cars').innerHTML = `
     <div class="card"><div class="card-h"><h3>Mashina va narx — qo'lda tahrirlash</h3></div>
       <div class="card-b">
-        <div class="hint">Ism-familiya, marka, norma va narxni o‘zgartiring — <b>avtomatik bazaga saqlanadi</b>. Yangi mashina: raqam + F.I.O. (+ marka) → <b>Mashina qo‘shish</b>. Oy o‘rtasida haydovchi almashtirish uchun kunlik kiritishdagi <b>Haydovchini kun belgilab almashtirish</b> tugmasini ishlating.</div>
+        <div class="hint">Ism-familiyani <b>Almashtirish</b> orqali o‘zgartiring — sana, buyruq asosi va raqami majburiy, tarix bazaga saqlanadi. Marka, norma va narx avtomatik saqlanadi. Oy o‘rtasida: kunlik kiritishdagi <b>Haydovchini kun belgilab almashtirish</b>.</div>
         <div class="row-btns add-row" style="margin:0 0 12px;">
           <input id="nv-car" class="j-search" placeholder="01 000 AAA">
           <input id="nv-name" class="j-search" placeholder="Haydovchi F.I.O.">
@@ -1798,11 +1815,20 @@ function renderCars() {
         <div class="scroll-x">
           <table class="gtable">
             <thead><tr><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th></th></tr></thead>
-            <tbody>${list.map((f, i) => `<tr data-plate="${esc(f.car)}">
+            <tbody>${list.map((f, i) => {
+              const last = lastNameHistory(f);
+              const chip = last ? `<button type="button" class="drv-hist-chip" title="${esc([last.orderBasis, last.prevName ? ('oldingi: ' + last.prevName) : ''].filter(Boolean).join(' · '))}">${esc(formatDrvHistChip(last))}</button>` : '';
+              return `<tr data-plate="${esc(f.car)}">
               <td>${i + 1}</td>
               <td>${esc(plateDisp(f.car))}</td>
               <td><input data-v="brand" value="${esc(f.brand)}"></td>
-              <td><input data-v="name" value="${esc(f.name)}"></td>
+              <td class="drv-name-cell"><div class="drv-name-stack">
+                <div class="drv-name-row">
+                  <input data-v="name" value="${esc(f.name)}" readonly title="O‘zgartirish uchun «Almashtirish»ni bosing">
+                  <button type="button" class="btn btn-ink btn-sm drv-rename-btn">Almashtirish</button>
+                </div>
+                ${chip}
+              </div></td>
               <td><input data-v="card" value="${esc(f.card)}"></td>
               <td><select data-v="fuelType">
                 <option value="mixed"${f.fuelType==='mixed'?' selected':''}>Gaz+benzin</option>
@@ -1816,7 +1842,8 @@ function renderCars() {
               <td><input data-v="gasPrice" type="number" step="1" value="${vin(f.gasPrice)}"></td>
               <td><input data-v="benzinPrice" type="number" step="1" value="${vin(f.benzinPrice)}"></td>
               <td><button type="button" class="btn btn-ink btn-sm car-hide">O'chirish</button></td>
-            </tr>`).join('')}</tbody>
+            </tr>`;
+            }).join('')}</tbody>
           </table>
         </div>
       </div></div>`;
@@ -1847,6 +1874,7 @@ function renderCars() {
     rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(name) : (name.split(' ').pop() || '')) || name;
     rec.brand = brand;
     rec.hidden = false;
+    if (!Array.isArray(rec.nameHistory)) rec.nameHistory = [];
     if (brand && /tahoe|cobalt|nexia|spark|labo|damas/i.test(brand)) {
       const b = brand.toLowerCase();
       if (/damas/.test(b)) rec.kind = 'damas';
@@ -1878,6 +1906,7 @@ function renderCars() {
   document.querySelectorAll('#panel-cars tr[data-plate]').forEach(tr => {
     const plate = tr.getAttribute('data-plate');
     tr.querySelectorAll('[data-v]').forEach(el => {
+      if (el.getAttribute('data-v') === 'name') return;
       el.addEventListener('change', () => {
         applyCarField(plate, el);
         const st = document.getElementById('nv-save-st');
@@ -1885,6 +1914,20 @@ function renderCars() {
         scheduleMetaSave();
       });
     });
+    const renameBtn = tr.querySelector('.drv-rename-btn');
+    if (renameBtn) {
+      renameBtn.onclick = () => {
+        const info = vehicleInfo(plate);
+        openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
+      };
+    }
+    const chip = tr.querySelector('.drv-hist-chip');
+    if (chip) {
+      chip.onclick = () => {
+        const info = vehicleInfo(plate);
+        openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
+      };
+    }
     const hide = tr.querySelector('.car-hide');
     if (hide) hide.onclick = async () => {
       if (!confirm(plate + ' ni ro\'yxatdan yashirish?')) return;
@@ -2072,16 +2115,204 @@ function addChange() {
   renderDailyTable();
 }
 
+function lastNameHistory(rec) {
+  const hist = Array.isArray(rec && rec.nameHistory) ? rec.nameHistory : [];
+  if (!hist.length) return null;
+  return hist[hist.length - 1];
+}
+
+function formatDrvHistChip(h) {
+  if (!h) return '';
+  const bits = [];
+  if (h.fromDate) bits.push(h.fromDate);
+  if (h.orderNo) bits.push('№ ' + h.orderNo);
+  return bits.join(' · ') || 'Tarix';
+}
+
+function renderDrvHistPanel(plate) {
+  const rec = ensureVehicleMeta(plate);
+  const hist = Array.isArray(rec.nameHistory) ? rec.nameHistory.slice().reverse() : [];
+  const box = document.getElementById('drv-rn-hist');
+  if (!box) return;
+  if (!hist.length) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = '<h4>Oldingi almashtirishlar</h4>' + hist.slice(0, 8).map(h => `
+    <div class="drv-rn-hist-item">
+      <i></i>
+      <div>
+        <b>${esc(h.name || '')}</b>
+        <small>${esc([h.fromDate, h.orderNo ? ('№ ' + h.orderNo) : '', h.orderBasis].filter(Boolean).join(' · '))}</small>
+      </div>
+    </div>`).join('');
+}
+
+let _drvRenameCtx = null;
+
+function closeDriverRenameModal() {
+  const bg = document.getElementById('modal-drv-rename');
+  if (bg) bg.classList.remove('open');
+  _drvRenameCtx = null;
+}
+
+function openDriverRenameModal(opts) {
+  const plate = opts && opts.plate;
+  if (!plate) return;
+  const rec = ensureVehicleMeta(plate);
+  const oldName = String((opts && opts.oldName) || rec.name || '').trim();
+  const prefill = String((opts && opts.newName) || '').trim();
+  _drvRenameCtx = {
+    plate,
+    oldName,
+    mode: (opts && opts.mode) || 'meta'
+  };
+  const bg = document.getElementById('modal-drv-rename');
+  const plateEl = document.getElementById('drv-rn-plate');
+  const oldEl = document.getElementById('drv-rn-old');
+  const nameEl = document.getElementById('drv-rn-name');
+  const dateEl = document.getElementById('drv-rn-date');
+  const basisEl = document.getElementById('drv-rn-basis');
+  const noEl = document.getElementById('drv-rn-orderno');
+  if (plateEl) plateEl.textContent = plateDisp(plate);
+  if (oldEl) oldEl.textContent = oldName || '—';
+  if (nameEl) nameEl.value = prefill;
+  if (dateEl) dateEl.value = todayYmd();
+  if (basisEl) basisEl.value = '';
+  if (noEl) noEl.value = '';
+  renderDrvHistPanel(plate);
+  if (bg) bg.classList.add('open');
+  setTimeout(() => { if (nameEl) nameEl.focus(); }, 40);
+}
+
+async function commitDriverRename() {
+  if (!_drvRenameCtx) return;
+  const plate = _drvRenameCtx.plate;
+  const oldName = _drvRenameCtx.oldName;
+  const mode = _drvRenameCtx.mode;
+  const nameEl = document.getElementById('drv-rn-name');
+  const dateEl = document.getElementById('drv-rn-date');
+  const basisEl = document.getElementById('drv-rn-basis');
+  const noEl = document.getElementById('drv-rn-orderno');
+  const newName = String((nameEl && nameEl.value) || '').trim();
+  const fromDate = String((dateEl && dateEl.value) || '').trim().slice(0, 10);
+  const orderBasis = String((basisEl && basisEl.value) || '').trim();
+  const orderNo = String((noEl && noEl.value) || '').trim();
+  if (!newName) {
+    toast('Yangi haydovchi F.I.O. kiriting');
+    if (nameEl) nameEl.focus();
+    return;
+  }
+  if (!fromDate || !/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
+    toast('Amal qilish sanasini tanlang');
+    if (dateEl) dateEl.focus();
+    return;
+  }
+  if (!orderBasis) {
+    toast('Buyruq asosini kiriting');
+    if (basisEl) basisEl.focus();
+    return;
+  }
+  if (!orderNo) {
+    toast('Buyruq raqamini kiriting');
+    if (noEl) noEl.focus();
+    return;
+  }
+  if (newName === oldName) {
+    toast('Ism o‘zgarmagan');
+    return;
+  }
+
+  const rec = ensureVehicleMeta(plate);
+  const short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(newName) : (newName.split(/\s+/).pop() || '')) || newName;
+  const entry = {
+    name: newName,
+    short,
+    fromDate,
+    orderBasis,
+    orderNo,
+    prevName: oldName,
+    at: new Date().toISOString().slice(0, 19),
+    by: (window.VMAuth && VMAuth.user && (VMAuth.user.username || VMAuth.user.name || VMAuth.user.login)) || ''
+  };
+  rec.nameHistory = Array.isArray(rec.nameHistory) ? rec.nameHistory : [];
+  rec.nameHistory.push(entry);
+  if (rec.nameHistory.length > 40) rec.nameHistory = rec.nameHistory.slice(-40);
+  rec.name = newName;
+  rec.short = short;
+
+  // saveMeta jadvaldan o‘qisa eski ismni qayta yozmasin
+  document.querySelectorAll('#panel-cars tr[data-plate]').forEach(tr => {
+    if (tr.getAttribute('data-plate') !== plate) return;
+    const inp = tr.querySelector('input[data-v="name"]');
+    if (inp) inp.value = newName;
+  });
+
+  const day = n(fromDate.slice(8, 10)) || 1;
+  const ym = String(STATE.month || '').slice(0, 7);
+  if (!ym || fromDate.startsWith(ym) || mode === 'day') {
+    const car = getCar(plate);
+    car.driverChanges = car.driverChanges || [];
+    car.driverChanges.push({
+      day,
+      name: newName,
+      fromDate,
+      orderBasis,
+      orderNo
+    });
+    markDirty();
+  }
+
+  closeDriverRenameModal();
+  try {
+    await saveMeta();
+    if (typeof applyFleetNameOverrides === 'function') {
+      applyFleetNameOverrides(STATE.meta.vehicles || {});
+    }
+    if (STATE.dirty) await saveMonth();
+    toast('Haydovchi almashtirildi · № ' + orderNo);
+    const st = document.getElementById('nv-save-st');
+    if (st) st.textContent = 'Saqlandi';
+    renderChips();
+    if (STATE.car === plate) writeParams();
+    if (STATE.tab === 'cars') renderCars();
+    else renderDailyTable();
+    if (STATE.tab === 'journal' && window.VMJournal) window.VMJournal.render();
+  } catch (err) {
+    toast(err.message || 'Saqlanmadi');
+  }
+}
+
+function bindDriverRenameModal() {
+  const cancel = document.getElementById('drv-rn-cancel');
+  const save = document.getElementById('drv-rn-save');
+  const bg = document.getElementById('modal-drv-rename');
+  if (cancel) cancel.onclick = () => closeDriverRenameModal();
+  if (save) save.onclick = () => { commitDriverRename(); };
+  if (bg && !bg._drvBound) {
+    bg._drvBound = true;
+    bg.addEventListener('click', (e) => {
+      if (e.target === bg) closeDriverRenameModal();
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && bg && bg.classList.contains('open')) closeDriverRenameModal();
+  });
+}
+
 function addDriverChange() {
-  const day = n(prompt('Qaysi kundan yangi haydovchi?', '15')) || 1;
-  const name = (prompt('Yangi haydovchi F.I.O.', '') || '').trim();
-  if (!name) return;
-  const car = getCar(STATE.car);
-  car.driverChanges = car.driverChanges || [];
-  car.driverChanges.push({ day, name });
-  writeParams();
-  markDirty();
-  toast(day + '-kundan haydovchi: ' + name);
+  if (!STATE.car) {
+    toast('Avval mashina tanlang');
+    return;
+  }
+  const info = vehicleInfo(STATE.car);
+  openDriverRenameModal({
+    plate: STATE.car,
+    oldName: info.name,
+    mode: 'day'
+  });
 }
 
 function exportExcel() {
@@ -3734,6 +3965,7 @@ function bind() {
   document.getElementById('btn-prev-bal').onclick = () => fillPrevBalance().catch(err => toast(err.message));
   document.getElementById('btn-add-change').onclick = addChange;
   document.getElementById('btn-drv-change').onclick = addDriverChange;
+  bindDriverRenameModal();
   document.getElementById('btn-excel').onclick = exportExcel;
   const openImp = () => openImportModal();
   const btnImp = document.getElementById('btn-excel-import');

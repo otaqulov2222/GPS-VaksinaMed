@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m110"
+VM_BUILD = "m111"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -1580,8 +1580,35 @@ class OfficeStore:
                 kind = str(rec.get("kind") or "").strip().lower()[:12]
                 if kind in ("truck", "damas", "labo"):
                     entry["kind"] = kind
+                # Haydovchi ism tarixi (sana + buyruq asosi/raqami)
                 ck = _compact(p)
                 old_key = by_compact.get(ck)
+                prev_hist = []
+                if old_key and isinstance(vehicles.get(old_key), dict):
+                    prev_hist = vehicles[old_key].get("nameHistory") or []
+                hist_in = rec.get("nameHistory")
+                if not isinstance(hist_in, list):
+                    hist_in = prev_hist if isinstance(prev_hist, list) else []
+                cleaned_hist = []
+                for hi, h in enumerate(hist_in):
+                    if hi >= 40 or not isinstance(h, dict):
+                        continue
+                    nm = str(h.get("name") or "").strip()[:80]
+                    if not nm:
+                        continue
+                    cleaned_hist.append(
+                        {
+                            "name": nm,
+                            "short": str(h.get("short") or "")[:40],
+                            "fromDate": str(h.get("fromDate") or "")[:10],
+                            "orderBasis": str(h.get("orderBasis") or h.get("buyruq") or "")[:120],
+                            "orderNo": str(h.get("orderNo") or h.get("buyruqNo") or "")[:40],
+                            "at": str(h.get("at") or "")[:40],
+                            "prevName": str(h.get("prevName") or "")[:80],
+                            "by": str(h.get("by") or "")[:60],
+                        }
+                    )
+                entry["nameHistory"] = cleaned_hist
                 if old_key and old_key != p:
                     vehicles.pop(old_key, None)
                 vehicles[p] = entry

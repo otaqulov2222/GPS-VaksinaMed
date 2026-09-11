@@ -809,6 +809,183 @@ table.gtable input, table.gtable select {
 
 .modal-file input { display: none; }
 
+/* Haydovchi almashtirish — buyruq varaqasi */
+.drv-rename-box {
+  width: min(520px, 100%);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #9eb6d4;
+  box-shadow: 0 24px 48px rgba(11, 31, 58, .22);
+  background:
+    linear-gradient(180deg, #f4f8fc 0%, #ffffff 42%),
+    repeating-linear-gradient(
+      -12deg,
+      transparent,
+      transparent 11px,
+      rgba(26, 95, 180, .03) 11px,
+      rgba(26, 95, 180, .03) 12px
+    );
+}
+.drv-rename-box::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 5px;
+  background: linear-gradient(180deg, #0b1f3a, #1a5fb4 55%, #8eb6df);
+}
+.drv-rn-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 18px 8px 22px;
+  background: linear-gradient(90deg, #0b1f3a, #123050 70%, #1a5fb4);
+  color: #fff;
+  font: 600 11px/1.2 var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.drv-rn-ribbon span { opacity: .85; font-weight: 500; letter-spacing: .04em; }
+.drv-rename-box .modal-head {
+  border-bottom: 1px dashed #b8c9de;
+  padding-left: 22px;
+}
+.drv-rename-box .modal-body { padding-left: 22px; gap: 14px; }
+.drv-rename-box .modal-foot { padding-left: 22px; }
+.drv-rn-field { display: grid; gap: 5px; }
+.drv-rn-field label {
+  font: 600 11px/1.2 var(--sans);
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+.drv-rn-field input, .drv-rn-field textarea {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font: 600 13px/1 var(--sans);
+  color: var(--ink);
+  outline: none;
+}
+.drv-rn-field textarea {
+  height: auto;
+  min-height: 64px;
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.drv-rn-field input:focus, .drv-rn-field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26, 95, 180, .12);
+}
+.drv-rn-field.orderno input {
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: .04em;
+  border-style: dashed;
+  background: #f0f6fc;
+}
+.drv-rn-swap {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  padding: 12px;
+  border: 1px solid #c5d4e6;
+  background: rgba(255,255,255,.7);
+}
+.drv-rn-swap > div { display: grid; gap: 4px; min-width: 0; }
+.drv-rn-swap em {
+  font: 600 10px/1 var(--mono);
+  color: var(--faint);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  font-style: normal;
+}
+.drv-rn-swap strong {
+  font: 700 13px/1.35 var(--sans);
+  color: var(--ink);
+  word-break: break-word;
+}
+.drv-rn-swap .drv-rn-new strong { color: var(--accent); }
+.drv-rn-arrow {
+  align-self: center;
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: #0b1f3a;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+.drv-rn-hist {
+  border-top: 1px dashed #c5d4e6;
+  padding-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+.drv-rn-hist h4 {
+  font: 700 11px/1 var(--sans);
+  color: var(--muted);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.drv-rn-hist-item {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+.drv-rn-hist-item i {
+  width: 8px; height: 8px; margin-top: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: block;
+}
+.drv-rn-hist-item b { font-weight: 700; }
+.drv-rn-hist-item small { color: var(--muted); display: block; margin-top: 2px; }
+.drv-name-cell { min-width: 168px; }
+.drv-name-stack { display: grid; gap: 6px; }
+.drv-name-row { display: flex; gap: 6px; align-items: center; }
+.drv-name-row input { flex: 1; min-width: 0; }
+.drv-name-row .drv-rename-btn {
+  flex-shrink: 0;
+  padding: 0 8px;
+  height: 28px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.drv-hist-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid #c5d4e6;
+  background: #f0f6fc;
+  font: 500 10px/1.2 var(--mono);
+  color: #1a3558;
+  cursor: pointer;
+}
+.drv-hist-chip::before {
+  content: "";
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #1a5fb4;
+  flex-shrink: 0;
+}
+.drv-hist-chip:hover { border-color: #1a5fb4; }
+@media (max-width: 640px) {
+  .drv-rn-swap { grid-template-columns: 1fr; }
+  .drv-rn-arrow { transform: rotate(90deg); justify-self: center; }
+  .modal-row { grid-template-columns: 1fr; }
+}
+
 
 
 html { -webkit-text-size-adjust: 100%; }
@@ -1477,6 +1654,55 @@ table.dtable td.day {
 
 
 
+<div class="modal-bg" id="modal-drv-rename">
+  <div class="modal-box drv-rename-box">
+    <div class="drv-rn-ribbon">
+      <b>Buyruq varaqasi</b>
+      <span id="drv-rn-plate">—</span>
+    </div>
+    <div class="modal-head">
+      <div>
+        <h3>Haydovchi ismini almashtirish</h3>
+        <p>Yangi F.I.O., amal qilish sanasi, buyruq asosi va raqami majburiy. Maʼlumotlar bazaga tarix sifatida saqlanadi.</p>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="drv-rn-swap">
+        <div>
+          <em>Hozirgi</em>
+          <strong id="drv-rn-old">—</strong>
+        </div>
+        <div class="drv-rn-arrow" aria-hidden="true">→</div>
+        <div class="drv-rn-new">
+          <em>Yangi</em>
+          <div class="drv-rn-field" style="margin:0">
+            <input id="drv-rn-name" placeholder="Familiya Ism Sharif" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="drv-rn-field">
+          <label for="drv-rn-date">Qaysi sanadan</label>
+          <input type="date" id="drv-rn-date">
+        </div>
+        <div class="drv-rn-field orderno">
+          <label for="drv-rn-orderno">Buyruq raqami</label>
+          <input id="drv-rn-orderno" placeholder="№ 45-b" autocomplete="off">
+        </div>
+      </div>
+      <div class="drv-rn-field">
+        <label for="drv-rn-basis">Buyruq asosi</label>
+        <textarea id="drv-rn-basis" placeholder="Masalan: direktor buyrugʻi / kadrlar boʻlimi qarori"></textarea>
+      </div>
+      <div class="drv-rn-hist" id="drv-rn-hist" hidden></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ink btn-sm" type="button" id="drv-rn-cancel">Bekor</button>
+      <button class="btn btn-ok btn-sm" type="button" id="drv-rn-save">Buyruqni saqlash</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-excel-import">
 
   <div class="modal-box">
@@ -1608,7 +1834,7 @@ table.dtable td.day {
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=8"></script>
 <script src="auth.js?v=33"></script>
-<script src="fuel.js?v=55"></script>
+<script src="fuel.js?v=56"></script>
 <script src="journal.js?v=11"></script>
 </body>
 </html>
