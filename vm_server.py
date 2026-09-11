@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m107"
+VM_BUILD = "m108"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -580,19 +580,35 @@ class AuthStore:
             self._save_sessions()
 
     def _read(self):
-        if self._users_cache is not None:
+        # Vercel warm instance: eski _users_cache o'chirilgan haydovchini qaytarardi.
+        # Serverlessda HAR safar Neon'dan o'qiymiz.
+        if (not is_serverless()) and self._users_cache is not None:
             return self._users_cache
         data = self.persist.get("users")
         if not isinstance(data, dict):
             data = {"users": [], "audit": []}
         data.setdefault("users", [])
         data.setdefault("audit", [])
-        self._users_cache = data
+        # Nusxa — chaqiruvchi in-place o'zgartirsin, lekin keyingi so'rov DB dan qayta olsin
+        if is_serverless():
+            data = json.loads(json.dumps(data))
+            self._users_cache = None
+        else:
+            self._users_cache = data
         return data
 
     def _write(self, data):
-        self._users_cache = data
+        if not isinstance(data, dict):
+            data = {"users": [], "audit": []}
+        data.setdefault("users", [])
+        data.setdefault("audit", [])
+        data["updatedAt"] = iso_now()
         self.persist.put("users", data)
+        # Serverless: cache saqlamaymiz — boshqa instance bilan chalkashmasin
+        if is_serverless():
+            self._users_cache = None
+        else:
+            self._users_cache = data
 
     def _audit(self, data, act, who, detail=""):
         data.setdefault("audit", [])
@@ -803,14 +819,24 @@ class AuthStore:
                 return None, "Foydalanuvchi topilmadi"
             if not self.can_manage(actor_role, user):
                 return None, "Ruxsat yo'q"
-            data["users"] = [u for u in data["users"] if u["id"] != uid]
+            uname = user.get("username") or uid
+            data["users"] = [u for u in data["users"] if u.get("id") != uid]
             for sid, s in list(self.sessions.items()):
-                if s["user_id"] == uid:
+                if s.get("user_id") == uid:
                     self.sessions.pop(sid, None)
                     self._removed_sids.add(sid)
             self._save_sessions()
-            self._audit(data, "user_del", actor, user["username"])
+            self._audit(data, "user_del", actor, uname)
             self._write(data)
+            # Tekshiruv: Neon'da hali ham qolgan bo'lsa — xato
+            check = self.persist.get("users")
+            if isinstance(check, dict):
+                still = any(
+                    isinstance(u, dict) and u.get("id") == uid
+                    for u in (check.get("users") or [])
+                )
+                if still:
+                    return None, "O'chirish bazaga yozilmadi — qayta urinib ko'ring"
             return True, None
 
     def update_user(self, actor, uid, body, actor_role="admin_pro"):

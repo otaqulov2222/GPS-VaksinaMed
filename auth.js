@@ -344,6 +344,17 @@ function vmEnsurePasswordEye(inp) {
         parent.insertBefore(wrap, inp);
         wrap.appendChild(inp);
     }
+    // Wrap tashqarisidagi / dublikat ko'zlarni olib tashlash
+    const parent = wrap.parentNode;
+    if (parent) {
+        Array.from(parent.querySelectorAll(':scope > .pw-eye')).forEach((el) => {
+            if (!wrap.contains(el)) el.remove();
+        });
+    }
+    const eyes = wrap.querySelectorAll('.pw-eye');
+    if (eyes.length > 1) {
+        for (let i = 1; i < eyes.length; i++) eyes[i].remove();
+    }
     if (wrap.querySelector('.pw-eye')) return;
 
     const btn = document.createElement('button');

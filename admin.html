@@ -14,7 +14,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="shell.css?v=22"/>
+<link rel="stylesheet" href="shell.css?v=23"/>
 
 <style>
 
@@ -292,23 +292,34 @@ a { color: inherit; }
 
 .field input:focus { outline: none; border-color: var(--gold); background: #fff; box-shadow: 0 0 0 3px rgba(201,162,39,.18); }
 
-.pw-wrap { position: relative; }
+.pw-wrap { position: relative; display: block; width: 100%; }
 
-.pw-wrap input { padding-right: 44px; }
+.pw-wrap input { padding-right: 44px !important; box-sizing: border-box; width: 100%; }
 
 .pw-eye {
-
-  position: absolute; right: 4px; top: 4px; width: 34px; height: 34px;
-
-  border: 0; background: transparent; color: var(--muted); cursor: pointer;
-
-  display: flex; align-items: center; justify-content: center;
-
+  position: absolute !important;
+  right: 2px !important;
+  top: 50% !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: translateY(-50%) !important;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
 }
 
 .pw-eye:hover, .pw-eye.on { color: var(--gold); }
 
-.pw-eye svg { width: 18px; height: 18px; }
+.pw-eye svg { width: 18px; height: 18px; display: block; pointer-events: none; }
 
 .rules {
 
@@ -776,7 +787,17 @@ body { overflow-x: clip; }
 
             <label>Parol</label>
 
-            <input id="d-pass" type="password" autocomplete="new-password" placeholder="kamida 6 belgi">
+            <div class="pw-wrap">
+
+              <input id="d-pass" type="password" autocomplete="new-password" placeholder="kamida 6 belgi">
+
+              <button type="button" class="pw-eye" data-for="d-pass" title="Koʻrsatish">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+
+              </button>
+
+            </div>
 
           </div>
 

@@ -962,32 +962,40 @@ body.app-body::before {
 }
 
 
-/* Parol ko'zcha — barcha sahifalar */
+/* Parol ko'zcha — barcha sahifalar (markazda, hech qachon tepaga chiqmasin) */
 .pw-wrap {
-  position: relative;
+  position: relative !important;
   display: block;
   width: 100%;
 }
-.pw-wrap > input {
+.pw-wrap > input,
+.pw-wrap input[type="password"],
+.pw-wrap input[type="text"] {
   width: 100%;
   padding-right: 44px !important;
   box-sizing: border-box;
 }
-.pw-eye {
-  position: absolute;
-  right: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 44px;
-  height: 44px;
-  border: 0;
-  background: transparent;
+.pw-eye,
+button.pw-eye,
+.pw-wrap > .pw-eye {
+  position: absolute !important;
+  right: 2px !important;
+  top: 50% !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: translateY(-50%) !important;
+  width: 40px !important;
+  height: 40px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
   color: #5a7190;
   cursor: pointer;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
-  z-index: 2;
+  z-index: 3;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
