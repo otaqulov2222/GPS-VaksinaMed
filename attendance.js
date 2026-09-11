@@ -92,7 +92,7 @@
     return {
       lat: Number(o.lat) || 41.219119,
       lng: Number(o.lng) || 69.272688,
-      radius: Math.max(50, Number(o.radius_m) || 250),
+      radius: Math.max(50, Number(o.radius_m) || 100),
       label: o.label || 'VaksinaMed ofis'
     };
   }

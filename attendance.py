@@ -24,7 +24,7 @@ DEFAULT_SETTINGS = {
     "office": {
         "lat": 41.219119,
         "lng": 69.272688,
-        "radius_m": 250,
+        "radius_m": 100,
         "label": "VaksinaMed ofis",
     },
     "in_start": "08:30",
@@ -140,6 +140,24 @@ class AttendanceStore:
     def _ensure_settings(self):
         if self.persist.get(SETTINGS_KEY) is None:
             self._save(SETTINGS_KEY, dict(DEFAULT_SETTINGS))
+            return
+        # Eski default 250 m → 100 m (joriy so‘rov)
+        raw = self._load(SETTINGS_KEY, {})
+        if not isinstance(raw, dict):
+            return
+        office = raw.get("office") if isinstance(raw.get("office"), dict) else {}
+        try:
+            r = float(office.get("radius_m") or 0)
+        except (TypeError, ValueError):
+            r = 0
+        if r == 250 or r <= 0:
+            cur = dict(DEFAULT_SETTINGS)
+            cur.update({k: v for k, v in raw.items() if k != "office"})
+            of = dict(DEFAULT_SETTINGS["office"])
+            of.update(office)
+            of["radius_m"] = 100
+            cur["office"] = of
+            self._save(SETTINGS_KEY, cur)
 
     def settings(self) -> dict:
         with self.lock:
@@ -396,7 +414,7 @@ class AttendanceStore:
             try:
                 olat = float(office.get("lat"))
                 olng = float(office.get("lng"))
-                radius = float(office.get("radius_m") or 250)
+                radius = float(office.get("radius_m") or 100)
             except (TypeError, ValueError):
                 return None, "Ofis geozonasi sozlanmagan"
             dist_gps = haversine_m(lat_f, lng_f, olat, olng)
