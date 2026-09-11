@@ -93,12 +93,10 @@ def overlay_fuel_driver_names(office, drivers):
     for plate, rec in vehicles.items():
         if not isinstance(rec, dict) or rec.get("hidden"):
             continue
-        if not str(rec.get("name") or "").strip():
-            continue
         want = compact_car(plate)
         if want in seen:
             continue
-        name = str(rec.get("name") or "").strip()
+        name = str(rec.get("name") or "").strip() or str(plate).strip()
         short = str(rec.get("short") or "").strip()
         if not short:
             parts = name.split()
@@ -110,6 +108,9 @@ def overlay_fuel_driver_names(office, drivers):
             "routes": "—",
             "pharmacies": "",
             "color": "#7f8c8d",
+            "brand": str(rec.get("brand") or ""),
+            "fuelType": str(rec.get("fuelType") or "mixed"),
+            "kind": str(rec.get("kind") or "truck").lower() or "truck",
         })
         seen.add(want)
     return out

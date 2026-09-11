@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m105"
+VM_BUILD = "m106"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -1422,19 +1422,47 @@ class OfficeStore:
     def save_fuel_meta(self, body):
         cur = self.fuel_meta()
         if isinstance(body.get("vehicles"), dict):
+            # MERGE (upsert) — to'liq REPLACE emas.
+            # Sabab: bir brauzer eski meta bilan saveMonth qilsa yangi haydovchi o'chib ketardi.
+            prev = cur.get("vehicles") if isinstance(cur.get("vehicles"), dict) else {}
             vehicles = {}
+            # Avval mavjudlarni canonical kalit bilan ko'chirib olamiz
+            for plate, rec in prev.items():
+                if not isinstance(rec, dict):
+                    continue
+                p = str(plate).strip()[:32]
+                if not p:
+                    continue
+                vehicles[p] = dict(rec)
+
+            def _compact(p):
+                return re.sub(r"[\s/\-_]+", "", str(p or "")).upper()
+
+            by_compact = {_compact(k): k for k in vehicles.keys()}
+            replace_all = bool(body.get("replaceVehicles") or body.get("replace_vehicles"))
+            if replace_all:
+                vehicles = {}
+                by_compact = {}
+
             for i, (plate, rec) in enumerate(body["vehicles"].items()):
-                if i >= 80:
+                if i >= 200:
                     break
-                p = str(plate).strip()[:24]
+                p = str(plate).strip()[:32]
                 if not p or not isinstance(rec, dict):
                     continue
                 ft = str(rec.get("fuelType") or "mixed")[:12]
                 if ft not in ("mixed", "gaz", "benzin", "dizel", "dizel_gaz"):
                     ft = "mixed"
-                vehicles[p] = {
-                    "name": str(rec.get("name") or "")[:80],
-                    "short": str(rec.get("short") or "")[:40],
+                name = str(rec.get("name") or "").strip()[:80]
+                if not name:
+                    name = p
+                short = str(rec.get("short") or "").strip()[:40]
+                if not short:
+                    parts = name.split()
+                    short = (parts[-1] if parts else name)[:40]
+                entry = {
+                    "name": name,
+                    "short": short,
                     "brand": str(rec.get("brand") or "")[:40],
                     "card": str(rec.get("card") or "")[:40],
                     "fuelType": ft,
@@ -1444,6 +1472,26 @@ class OfficeStore:
                     "benzinPrice": as_num(rec.get("benzinPrice"), 11000),
                     "hidden": bool(rec.get("hidden")),
                 }
+                kind = str(rec.get("kind") or "").strip().lower()[:12]
+                if kind in ("truck", "damas", "labo"):
+                    entry["kind"] = kind
+                ck = _compact(p)
+                old_key = by_compact.get(ck)
+                if old_key and old_key != p:
+                    vehicles.pop(old_key, None)
+                vehicles[p] = entry
+                by_compact[ck] = p
+
+            # Aniq o'chirish (ixtiyoriy)
+            remove = body.get("removeVehicles") or body.get("remove_vehicles") or []
+            if isinstance(remove, (list, tuple)):
+                for raw in remove:
+                    ck = _compact(raw)
+                    old_key = by_compact.get(ck)
+                    if old_key:
+                        vehicles.pop(old_key, None)
+                        by_compact.pop(ck, None)
+
             cur["vehicles"] = vehicles
         if isinstance(body.get("stations"), list):
             cur["stations"] = [str(s).strip()[:80] for s in body["stations"] if str(s).strip()][:80]
@@ -1456,7 +1504,7 @@ class OfficeStore:
         if isinstance(body.get("docs"), dict):
             docs = {}
             for i, (plate, rec) in enumerate(body["docs"].items()):
-                if i >= 80 or not isinstance(rec, dict):
+                if i >= 200 or not isinstance(rec, dict):
                     continue
                 item = {}
                 for key in ("insurance", "tech", "ads", "cylinder"):
@@ -1470,8 +1518,12 @@ class OfficeStore:
                         "due": str(d.get("due") or "")[:10],
                         "months": months,
                     }
-                docs[str(plate).strip()[:24]] = item
-            cur["docs"] = docs
+                docs[str(plate).strip()[:32]] = item
+            # docs ham merge — eski hujjatlar yo'qolmasin
+            prev_docs = cur.get("docs") if isinstance(cur.get("docs"), dict) else {}
+            merged_docs = dict(prev_docs)
+            merged_docs.update(docs)
+            cur["docs"] = merged_docs
         self._save("fuel:meta", cur)
         try:
             import gps_sync

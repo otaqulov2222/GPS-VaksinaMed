@@ -45,6 +45,7 @@ const STATE = {
   gpsKm: {},
   yearMonths: {},
   saveTimer: null,
+  metaSaveTimer: null,
   dirty: false
 };
 
@@ -99,6 +100,15 @@ function plateCode(car) {
 function plateCompact(p) {
   return String(p || '').replace(/[\s\/\-_]/g, '').toUpperCase();
 }
+/** 01A055MA → 01 A055 MA; 01269KMA → 01 269 KMA */
+function formatPlateInput(raw) {
+  const c = plateCompact(raw);
+  let m = c.match(/^(\d{2})([A-Z]\d{3})([A-Z]{2,3})$/);
+  if (m) return m[1] + ' ' + m[2] + ' ' + m[3];
+  m = c.match(/^(\d{2})(\d{3})([A-Z]{2,3})$/);
+  if (m) return m[1] + ' ' + m[2] + ' ' + m[3];
+  return String(raw || '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
 function canonicalPlate(p) {
   const c = plateCompact(p);
   for (const d of DEFAULT_FLEET) {
@@ -107,7 +117,7 @@ function canonicalPlate(p) {
   for (const k of Object.keys(STATE.meta.vehicles || {})) {
     if (plateCompact(k) === c) return k;
   }
-  return String(p || '').trim();
+  return formatPlateInput(p) || String(p || '').trim();
 }
 function normalizeCarMap(cars) {
   const out = {};
@@ -805,6 +815,15 @@ async function saveMonth() {
 async function saveMeta() {
   readCarsTableToMeta();
   fleet().forEach(f => ensureVehicleMeta(f.car));
+  // Bo'sh ismli yangi mashinalar ham nom bilan saqlansin
+  Object.keys(STATE.meta.vehicles || {}).forEach((plate) => {
+    const rec = STATE.meta.vehicles[plate];
+    if (!rec || typeof rec !== 'object') return;
+    if (!String(rec.name || '').trim()) rec.name = plate;
+    if (!String(rec.short || '').trim()) {
+      rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(rec.name) : '') || rec.name;
+    }
+  });
   const d = await vmApi('/api/office/fuel/meta', {
     method: 'POST',
     body: JSON.stringify(STATE.meta)
@@ -813,6 +832,21 @@ async function saveMeta() {
   if (typeof applyFleetNameOverrides === 'function') {
     applyFleetNameOverrides(STATE.meta.vehicles || {});
   }
+  try { writeLocalMonth(); } catch (_e) {}
+}
+
+function scheduleMetaSave() {
+  clearTimeout(STATE.metaSaveTimer);
+  STATE.metaSaveTimer = setTimeout(async () => {
+    try {
+      await saveMeta();
+      const st = document.getElementById('nv-save-st');
+      if (st) st.textContent = 'Avto-saqlandi';
+    } catch (e) {
+      const st = document.getElementById('nv-save-st');
+      if (st) st.textContent = e.message || 'Saqlanmadi';
+    }
+  }, 900);
 }
 
 function applyCarField(plate, el) {
@@ -1751,7 +1785,7 @@ function renderCars() {
   document.getElementById('panel-cars').innerHTML = `
     <div class="card"><div class="card-h"><h3>Mashina va narx — qo'lda tahrirlash</h3></div>
       <div class="card-b">
-        <div class="hint">Ism-familiya, marka, norma va narxni o‘zgartiring, keyin <b>O‘zgarishlarni saqlash</b> ni bosing. Oy o‘rtasida haydovchi almashtirish uchun kunlik kiritishdagi <b>Haydovchini kun belgilab almashtirish</b> tugmasini ishlating.</div>
+        <div class="hint">Ism-familiya, marka, norma va narxni o‘zgartiring — <b>avtomatik bazaga saqlanadi</b>. Yangi mashina: raqam + F.I.O. (+ marka) → <b>Mashina qo‘shish</b>. Oy o‘rtasida haydovchi almashtirish uchun kunlik kiritishdagi <b>Haydovchini kun belgilab almashtirish</b> tugmasini ishlating.</div>
         <div class="row-btns add-row" style="margin:0 0 12px;">
           <input id="nv-car" class="j-search" placeholder="01 000 AAA">
           <input id="nv-name" class="j-search" placeholder="Haydovchi F.I.O.">
@@ -1787,24 +1821,57 @@ function renderCars() {
         </div>
       </div></div>`;
   document.getElementById('nv-add').onclick = async () => {
-    const car = (document.getElementById('nv-car').value || '').trim().toUpperCase();
+    const rawCar = (document.getElementById('nv-car').value || '').trim();
     const name = (document.getElementById('nv-name').value || '').trim();
     const brand = (document.getElementById('nv-brand').value || '').trim();
-    if (!car) return;
+    if (!rawCar) {
+      toast('Mashina raqamini kiriting');
+      return;
+    }
+    if (!name) {
+      toast('Haydovchi F.I.O. kiriting');
+      return;
+    }
+    const car = canonicalPlate(rawCar);
+    // Eski boshqa formatdagi kalitni birlashtirish
+    const compact = plateCompact(car);
+    Object.keys(STATE.meta.vehicles || {}).forEach((k) => {
+      if (k !== car && plateCompact(k) === compact) {
+        const old = STATE.meta.vehicles[k];
+        delete STATE.meta.vehicles[k];
+        STATE.meta.vehicles[car] = Object.assign({}, old || {}, STATE.meta.vehicles[car] || {});
+      }
+    });
     const rec = ensureVehicleMeta(car);
-    rec.name = name || car;
-    rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(name) : (name.split(' ').pop() || '')) || car;
+    rec.name = name;
+    rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(name) : (name.split(' ').pop() || '')) || name;
     rec.brand = brand;
     rec.hidden = false;
+    if (brand && /tahoe|cobalt|nexia|spark|labo|damas/i.test(brand)) {
+      const b = brand.toLowerCase();
+      if (/damas/.test(b)) rec.kind = 'damas';
+      else if (/labo/.test(b)) rec.kind = 'labo';
+      else rec.kind = 'truck';
+    }
+    getCar(car);
     try {
       await saveMeta();
-      toast('Mashina qo\'shildi');
+      if (typeof applyFleetNameOverrides === 'function') {
+        applyFleetNameOverrides(STATE.meta.vehicles || {});
+      }
+      toast('Mashina bazaga saqlandi');
+      document.getElementById('nv-car').value = '';
+      document.getElementById('nv-name').value = '';
+      document.getElementById('nv-brand').value = '';
+      const st = document.getElementById('nv-save-st');
+      if (st) st.textContent = 'Saqlandi';
     } catch (err) {
       toast(err.message || 'Saqlanmadi');
       return;
     }
     renderChips();
     renderCars();
+    if (STATE.tab === 'journal' && window.VMJournal) window.VMJournal.render();
   };
   const saveBtn = document.getElementById('nv-save');
   if (saveBtn) saveBtn.onclick = () => saveCarsMeta();
@@ -1814,7 +1881,8 @@ function renderCars() {
       el.addEventListener('change', () => {
         applyCarField(plate, el);
         const st = document.getElementById('nv-save-st');
-        if (st) st.textContent = 'Saqlanmagan... «O\'zgarishlarni saqlash» ni bosing';
+        if (st) st.textContent = 'Saqlanmoqda...';
+        scheduleMetaSave();
       });
     });
     const hide = tr.querySelector('.car-hide');

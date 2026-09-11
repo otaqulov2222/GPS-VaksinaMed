@@ -156,26 +156,30 @@ function applyFleetNameOverrides(vehicles, opts) {
   if (typeof DRIVERS !== 'undefined' && Array.isArray(DRIVERS)) DRIVERS.forEach(patch);
   Object.keys(map).forEach(plate => {
     const extra = map[plate];
-    if (!extra || extra.hidden || !extra.name) return;
+    if (!extra || extra.hidden) return;
     const exists = FLEET_DRIVERS.some(d => fleetPlateKey(d.car) === fleetPlateKey(plate));
     if (exists) return;
-    const short = extra.short || fleetShortFromName(extra.name) || extra.name;
+    const name = String(extra.name || plate).trim() || plate;
+    const short = extra.short || fleetShortFromName(name) || name;
+    const kind = String(extra.kind || 'truck').toLowerCase();
     FLEET_DRIVERS.push({
       car: plate,
-      fullName: extra.name,
+      fullName: name,
       shortName: short,
       brand: extra.brand || '',
       fuelType: extra.fuelType || 'mixed',
+      kind: (kind === 'damas' || kind === 'labo') ? kind : 'truck',
       routes: '—',
       pharmacies: '',
       color: '#7f8c8d'
     });
     FLEET_BASE.push({
       car: plate,
-      name: extra.name,
+      name,
       short,
       brand: extra.brand || '',
-      fuelType: extra.fuelType || 'mixed'
+      fuelType: extra.fuelType || 'mixed',
+      kind: (kind === 'damas' || kind === 'labo') ? kind : 'truck'
     });
   });
   window.DRIVERS = FLEET_DRIVERS;
