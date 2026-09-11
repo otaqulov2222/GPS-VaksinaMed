@@ -1813,7 +1813,7 @@ function renderCars() {
   document.getElementById('panel-cars').innerHTML = `
     <div class="card"><div class="card-h"><h3>Mashina va narx — qo'lda tahrirlash</h3></div>
       <div class="card-b">
-        <div class="hint">Ism-familiyani <b>Almashtirish</b> orqali o‘zgartiring — sana, buyruq asosi va raqami majburiy, tarix bazaga saqlanadi. Marka, norma va narx avtomatik saqlanadi. Oy o‘rtasida: kunlik kiritishdagi <b>Haydovchini kun belgilab almashtirish</b>.</div>
+        <div class="hint">Haydovchi: <b>↻</b> almashtirish, <b>✎</b> / pastki qator — buyruqni ko‘rish va tahrirlash. Marka, norma, narx avtomatik saqlanadi.</div>
         <div class="row-btns add-row" style="margin:0 0 12px;">
           <input id="nv-car" class="j-search" placeholder="01 000 AAA">
           <input id="nv-name" class="j-search" placeholder="Haydovchi F.I.O.">
@@ -1835,8 +1835,11 @@ function renderCars() {
               <td><input data-v="brand" value="${esc(f.brand)}"></td>
               <td class="drv-name-cell"><div class="drv-name-stack">
                 <div class="drv-name-row">
-                  <input data-v="name" value="${esc(f.name)}" readonly title="O‘zgartirish uchun «Almashtirish»ni bosing">
-                  <button type="button" class="btn btn-ink btn-sm drv-rename-btn">Almashtirish</button>
+                  <input class="drv-name-input" data-v="name" value="${esc(f.name)}" readonly title="${esc(f.name)}">
+                  <div class="drv-name-actions">
+                    <button type="button" class="drv-ico drv-rename-btn" title="Haydovchini almashtirish">↻</button>
+                    ${last ? '<button type="button" class="drv-ico drv-edit-bq" title="Buyruqni tahrirlash">✎</button>' : ''}
+                  </div>
                 </div>
                 ${card}
               </div></td>
@@ -1932,11 +1935,18 @@ function renderCars() {
         openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
       };
     }
-    const cardBtn = tr.querySelector('.drv-buyruq-card, .drv-hist-chip');
-    if (cardBtn) {
-      cardBtn.onclick = () => {
+    const editBq = tr.querySelector('.drv-edit-bq');
+    if (editBq) {
+      editBq.onclick = () => {
         const info = vehicleInfo(plate);
-        openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
+        openDriverRenameModal({ plate, oldName: info.name, mode: 'edit' });
+      };
+    }
+    const metaLine = tr.querySelector('.drv-meta-line');
+    if (metaLine) {
+      metaLine.onclick = () => {
+        const info = vehicleInfo(plate);
+        openDriverRenameModal({ plate, oldName: info.name, mode: 'edit' });
       };
     }
     const hide = tr.querySelector('.car-hide');
@@ -2135,29 +2145,49 @@ function lastNameHistory(rec) {
 function formatDrvHistChip(h) {
   if (!h) return '';
   const bits = [];
-  if (h.fromDate) bits.push(h.fromDate);
   if (h.orderNo) bits.push('№ ' + h.orderNo);
-  return bits.join(' · ') || 'Tarix';
+  if (h.fromDate) {
+    const p = String(h.fromDate).split('-');
+    bits.push(p.length === 3 ? (p[2] + '.' + p[1] + '.' + p[0].slice(2)) : h.fromDate);
+  }
+  if (h.orderBasis) bits.push(h.orderBasis);
+  return bits.join(' · ') || 'Buyruq';
 }
 
 function renderDrvBuyruqCard(h) {
   if (!h) return '';
-  const rows = [
-    h.fromDate ? `<div class="drv-bq-row"><b>Sana:</b> ${esc(h.fromDate)}</div>` : '',
-    h.orderNo ? `<div class="drv-bq-row"><b>Buyruq №:</b> ${esc(h.orderNo)}</div>` : '',
-    h.orderBasis ? `<div class="drv-bq-row"><b>Asos:</b> ${esc(h.orderBasis)}</div>` : '',
-    h.prevName ? `<div class="drv-bq-row"><b>Oldingi:</b> ${esc(h.prevName)}</div>` : ''
-  ].filter(Boolean).join('');
-  if (!rows) return '';
-  return `<button type="button" class="drv-buyruq-card" title="Buyruq tarixini ko‘rish">
-    <div class="drv-bq-head">Oxirgi buyruq</div>
-    ${rows}
-  </button>`;
+  const tip = [h.fromDate, h.orderNo ? ('№ ' + h.orderNo) : '', h.orderBasis, h.prevName ? ('oldingi: ' + h.prevName) : '']
+    .filter(Boolean).join(' · ');
+  return `<button type="button" class="drv-meta-line" title="${esc(tip)}">${esc(formatDrvHistChip(h))}</button>`;
 }
 
 function namesEqual(a, b) {
   const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
   return norm(a) === norm(b);
+}
+
+function setDriverRenameUiMode(mode) {
+  const title = document.getElementById('drv-rn-title');
+  const help = document.getElementById('drv-rn-help');
+  const save = document.getElementById('drv-rn-save');
+  const newLabel = document.getElementById('drv-rn-new-label');
+  const modeBar = document.getElementById('drv-rn-mode');
+  if (modeBar) {
+    modeBar.querySelectorAll('button').forEach(b => {
+      b.classList.toggle('on', b.getAttribute('data-mode') === (mode === 'edit' ? 'edit' : 'meta'));
+    });
+  }
+  if (mode === 'edit') {
+    if (title) title.textContent = 'Buyruqni tahrirlash';
+    if (help) help.textContent = 'Sana, buyruq raqami va asosni tuzating. Ismni ham shu yerda yangilashingiz mumkin.';
+    if (save) save.textContent = 'O‘zgarishni saqlash';
+    if (newLabel) newLabel.textContent = 'F.I.O.';
+  } else {
+    if (title) title.textContent = 'Haydovchi ismini almashtirish';
+    if (help) help.textContent = 'Yangi F.I.O. hozirgidan farq qilishi shart. Sana, buyruq asosi va raqami majburiy.';
+    if (save) save.textContent = 'Buyruqni saqlash';
+    if (newLabel) newLabel.textContent = 'Yangi';
+  }
 }
 
 function renderDrvHistPanel(plate) {
@@ -2194,11 +2224,13 @@ function openDriverRenameModal(opts) {
   if (!plate) return;
   const rec = ensureVehicleMeta(plate);
   const oldName = String((opts && opts.oldName) || rec.name || '').trim();
-  const prefill = String((opts && opts.newName) || '').trim();
+  const mode = (opts && opts.mode) || 'meta';
+  const last = lastNameHistory(rec);
   _drvRenameCtx = {
     plate,
     oldName,
-    mode: (opts && opts.mode) || 'meta'
+    mode,
+    hasHistory: !!last
   };
   const bg = document.getElementById('modal-drv-rename');
   const plateEl = document.getElementById('drv-rn-plate');
@@ -2207,15 +2239,29 @@ function openDriverRenameModal(opts) {
   const dateEl = document.getElementById('drv-rn-date');
   const basisEl = document.getElementById('drv-rn-basis');
   const noEl = document.getElementById('drv-rn-orderno');
+  const modeBar = document.getElementById('drv-rn-mode');
   if (plateEl) plateEl.textContent = plateDisp(plate);
   if (oldEl) oldEl.textContent = oldName || '—';
-  if (nameEl) nameEl.value = prefill;
-  if (dateEl) dateEl.value = todayYmd();
-  if (basisEl) basisEl.value = '';
-  if (noEl) noEl.value = '';
+  if (modeBar) modeBar.hidden = !(last && mode !== 'day');
+  setDriverRenameUiMode(mode === 'edit' ? 'edit' : 'meta');
+
+  if (mode === 'edit' && last) {
+    if (nameEl) nameEl.value = oldName;
+    if (dateEl) dateEl.value = String(last.fromDate || todayYmd()).slice(0, 10);
+    if (basisEl) basisEl.value = last.orderBasis || '';
+    if (noEl) noEl.value = last.orderNo || '';
+  } else {
+    if (nameEl) nameEl.value = String((opts && opts.newName) || '').trim();
+    if (dateEl) dateEl.value = todayYmd();
+    if (basisEl) basisEl.value = '';
+    if (noEl) noEl.value = '';
+  }
   renderDrvHistPanel(plate);
   if (bg) bg.classList.add('open');
-  setTimeout(() => { if (nameEl) nameEl.focus(); }, 40);
+  setTimeout(() => {
+    if (mode === 'edit' && noEl) noEl.focus();
+    else if (nameEl) nameEl.focus();
+  }, 40);
 }
 
 async function commitDriverRename() {
@@ -2232,7 +2278,7 @@ async function commitDriverRename() {
   const orderBasis = String((basisEl && basisEl.value) || '').trim();
   const orderNo = String((noEl && noEl.value) || '').trim();
   if (!newName) {
-    toast('Yangi haydovchi F.I.O. kiriting');
+    toast('Haydovchi F.I.O. kiriting');
     if (nameEl) nameEl.focus();
     return;
   }
@@ -2251,56 +2297,75 @@ async function commitDriverRename() {
     if (noEl) noEl.focus();
     return;
   }
-  if (namesEqual(newName, oldName)) {
-    toast('Saqlanmadi: YANGI ism HOZIRGIdan farq qilishi kerak');
-    if (nameEl) {
-      nameEl.classList.add('invalid');
-      nameEl.focus();
-      nameEl.select();
-      setTimeout(() => nameEl.classList.remove('invalid'), 1600);
-    }
-    return;
-  }
 
   const rec = ensureVehicleMeta(plate);
   const short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(newName) : (newName.split(/\s+/).pop() || '')) || newName;
-  const entry = {
-    name: newName,
-    short,
-    fromDate,
-    orderBasis,
-    orderNo,
-    prevName: oldName,
-    at: new Date().toISOString().slice(0, 19),
-    by: (window.VMAuth && VMAuth.user && (VMAuth.user.username || VMAuth.user.name || VMAuth.user.login)) || ''
-  };
-  rec.nameHistory = Array.isArray(rec.nameHistory) ? rec.nameHistory : [];
-  rec.nameHistory.push(entry);
-  if (rec.nameHistory.length > 40) rec.nameHistory = rec.nameHistory.slice(-40);
-  rec.name = newName;
-  rec.short = short;
 
-  // saveMeta jadvaldan o‘qisa eski ismni qayta yozmasin
+  if (mode === 'edit') {
+    rec.nameHistory = Array.isArray(rec.nameHistory) ? rec.nameHistory : [];
+    if (!rec.nameHistory.length) {
+      toast('Tahrirlash uchun buyruq tarixi yo‘q');
+      return;
+    }
+    const last = rec.nameHistory[rec.nameHistory.length - 1];
+    last.name = newName;
+    last.short = short;
+    last.fromDate = fromDate;
+    last.orderBasis = orderBasis;
+    last.orderNo = orderNo;
+    last.at = new Date().toISOString().slice(0, 19);
+    last.by = (window.VMAuth && VMAuth.user && (VMAuth.user.username || VMAuth.user.name || VMAuth.user.login)) || last.by || '';
+    if (!last.prevName) last.prevName = oldName;
+    rec.name = newName;
+    rec.short = short;
+  } else {
+    if (namesEqual(newName, oldName)) {
+      toast('Saqlanmadi: YANGI ism HOZIRGIdan farq qilishi kerak');
+      if (nameEl) {
+        nameEl.classList.add('invalid');
+        nameEl.focus();
+        nameEl.select();
+        setTimeout(() => nameEl.classList.remove('invalid'), 1600);
+      }
+      return;
+    }
+    const entry = {
+      name: newName,
+      short,
+      fromDate,
+      orderBasis,
+      orderNo,
+      prevName: oldName,
+      at: new Date().toISOString().slice(0, 19),
+      by: (window.VMAuth && VMAuth.user && (VMAuth.user.username || VMAuth.user.name || VMAuth.user.login)) || ''
+    };
+    rec.nameHistory = Array.isArray(rec.nameHistory) ? rec.nameHistory : [];
+    rec.nameHistory.push(entry);
+    if (rec.nameHistory.length > 40) rec.nameHistory = rec.nameHistory.slice(-40);
+    rec.name = newName;
+    rec.short = short;
+
+    const day = n(fromDate.slice(8, 10)) || 1;
+    const ym = String(STATE.month || '').slice(0, 7);
+    if (!ym || fromDate.startsWith(ym) || mode === 'day') {
+      const car = getCar(plate);
+      car.driverChanges = car.driverChanges || [];
+      car.driverChanges.push({
+        day,
+        name: newName,
+        fromDate,
+        orderBasis,
+        orderNo
+      });
+      markDirty();
+    }
+  }
+
   document.querySelectorAll('#panel-cars tr[data-plate]').forEach(tr => {
     if (tr.getAttribute('data-plate') !== plate) return;
     const inp = tr.querySelector('input[data-v="name"]');
     if (inp) inp.value = newName;
   });
-
-  const day = n(fromDate.slice(8, 10)) || 1;
-  const ym = String(STATE.month || '').slice(0, 7);
-  if (!ym || fromDate.startsWith(ym) || mode === 'day') {
-    const car = getCar(plate);
-    car.driverChanges = car.driverChanges || [];
-    car.driverChanges.push({
-      day,
-      name: newName,
-      fromDate,
-      orderBasis,
-      orderNo
-    });
-    markDirty();
-  }
 
   closeDriverRenameModal();
   try {
@@ -2309,7 +2374,7 @@ async function commitDriverRename() {
       applyFleetNameOverrides(STATE.meta.vehicles || {});
     }
     if (STATE.dirty) await saveMonth();
-    toast('Haydovchi almashtirildi · № ' + orderNo);
+    toast(mode === 'edit' ? ('Buyruq yangilandi · № ' + orderNo) : ('Haydovchi almashtirildi · № ' + orderNo));
     const st = document.getElementById('nv-save-st');
     if (st) st.textContent = 'Saqlandi';
     renderChips();
@@ -2326,8 +2391,22 @@ function bindDriverRenameModal() {
   const cancel = document.getElementById('drv-rn-cancel');
   const save = document.getElementById('drv-rn-save');
   const bg = document.getElementById('modal-drv-rename');
+  const modeBar = document.getElementById('drv-rn-mode');
   if (cancel) cancel.onclick = () => closeDriverRenameModal();
   if (save) save.onclick = () => { commitDriverRename(); };
+  if (modeBar && !modeBar._bound) {
+    modeBar._bound = true;
+    modeBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-mode]');
+      if (!btn || !_drvRenameCtx) return;
+      const next = btn.getAttribute('data-mode');
+      openDriverRenameModal({
+        plate: _drvRenameCtx.plate,
+        oldName: _drvRenameCtx.oldName,
+        mode: next === 'edit' ? 'edit' : 'meta'
+      });
+    });
+  }
   if (bg && !bg._drvBound) {
     bg._drvBound = true;
     bg.addEventListener('click', (e) => {
