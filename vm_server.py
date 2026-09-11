@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m106"
+VM_BUILD = "m107"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -734,7 +734,7 @@ class AuthStore:
         name = (name or "").strip()
         password = password or ""
         role = (role or "admin").strip()
-        car = str(car or "").strip()[:24]
+        car = str(car or "").strip()[:32]
         if role not in ("admin", "driver"):
             return None, "Rol noto'g'ri"
         if not username or len(username) < 3:
@@ -812,6 +812,85 @@ class AuthStore:
             self._audit(data, "user_del", actor, user["username"])
             self._write(data)
             return True, None
+
+    def update_user(self, actor, uid, body, actor_role="admin_pro"):
+        """Ism, login, parol, mashina — admin panelda to'liq tahrirlash."""
+        body = body if isinstance(body, dict) else {}
+        with self.lock:
+            data = self._read()
+            user = self.find_user(data, uid=uid)
+            if not user:
+                return None, "Foydalanuvchi topilmadi"
+            if not self.can_manage(actor_role, user):
+                return None, "Ruxsat yo'q"
+
+            name = body.get("name")
+            if name is not None:
+                name = str(name).strip()[:80]
+                if not name:
+                    return None, "Ism bo'sh bo'lmasin"
+                user["name"] = name
+
+            username = body.get("username")
+            if username is not None:
+                username = str(username).strip().lower()
+                if len(username) < 3:
+                    return None, "Login kamida 3 belgi bo'lsin"
+                if not all(c.isalnum() or c in "._-" for c in username):
+                    return None, "Login: faqat harf, raqam, . _ -"
+                other = self.find_user(data, username=username)
+                if other and other.get("id") != uid:
+                    return None, "Bu login band"
+                user["username"] = username
+
+            password = body.get("password")
+            if password is not None and str(password).strip() != "":
+                password = str(password)
+                if len(password) < 6:
+                    return None, "Parol kamida 6 belgi bo'lsin"
+                salt, pw_hash = hash_pw(password)
+                user["password_salt"] = salt
+                user["password_hash"] = pw_hash
+                user["password_plain"] = password
+
+            if user.get("role") == "driver" and "car" in body:
+                car = str(body.get("car") or "").strip()[:32]
+                if not car:
+                    return None, "Haydovchiga mashina biriktiring"
+                want = compact_plate(car)
+                for u in data.get("users", []):
+                    if (
+                        u.get("id") != uid
+                        and u.get("role") == "driver"
+                        and compact_plate(u.get("car")) == want
+                    ):
+                        return None, "Bu mashinaga allaqachon login berilgan"
+                user["car"] = car
+
+            if "active" in body and body.get("active") is not None:
+                user["active"] = bool(body.get("active"))
+                if not user["active"]:
+                    for sid, s in list(self.sessions.items()):
+                        if s["user_id"] == uid:
+                            self.sessions.pop(sid, None)
+                            self._removed_sids.add(sid)
+                    self._save_sessions()
+
+            self._audit(
+                data,
+                "user_edit",
+                actor,
+                "%s · %s" % (user.get("username"), user.get("role")),
+            )
+            self._write(data)
+            # Sessiyadagi ism/login yangilansin
+            for s in self.sessions.values():
+                if s.get("user_id") == uid:
+                    s["username"] = user["username"]
+                    s["name"] = user.get("name") or user["username"]
+                    s["car"] = user.get("car") or ""
+            self._save_sessions()
+            return self.public_user(user, include_password=True), None
 
     def reset_password(self, actor, uid, new_password, actor_role="admin_pro"):
         if len(new_password or "") < 6:
@@ -3535,6 +3614,19 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": err}, 400)
                 return
             self.send_json({"ok": True})
+            return
+
+        if path == "/api/users/update":
+            sess = self.require_staff()
+            if not sess:
+                return
+            user, err = STORE.update_user(
+                sess["username"], body.get("id"), body, sess.get("role")
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({"ok": True, "user": user})
             return
 
         if path == "/api/users/reset":

@@ -412,11 +412,14 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
 
 .chip-off { background: #e8eef5; color: var(--bad); border-color: #c5d4e6; }
 
-.row-btns { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 280px; }
+.users-table .u-inp { width: 100%; min-width: 90px; height: 34px; padding: 4px 8px; border: 1px solid #a8bdd4; background: #fff; font-size: 13px; }
+.users-table .u-inp-mono { font-family: var(--mono); }
+.users-table td.amal { min-width: 220px; vertical-align: top; }
 
 .row-btns .btn { white-space: nowrap; }
 
-.users-table { min-width: 980px; }
+.users-table { min-width: 1100px; }
 
 .users-table td { padding: 12px 10px; }
 
@@ -1426,82 +1429,57 @@ async function loadAll() {
 
 
   document.getElementById('tb-users').innerHTML = users.users.map(u => {
-
     const role = u.role === 'admin_pro'
-
       ? '<span class="chip chip-pro">Pro</span>'
-
       : (u.role === 'driver' ? '<span class="chip chip-drv">Haydovchi</span>' : '<span class="chip chip-admin">Admin</span>');
-
     const st = u.active
-
       ? '<span class="chip chip-on">Faol</span>'
-
       : '<span class="chip chip-off">Blok</span>';
-
     const isSuper = u.protected || u.role === 'admin_pro';
-
-    // Admin Pro va Admin: oddiy foydalanuvchilarni to'liq boshqaradi; Pro o'zini faqat parol
     const canManage = !isSuper;
-
-    const view = u.role === 'driver' && u.car
-
-      ? `<a class="btn btn-sm" href="/driver.html?car=${encodeURIComponent(u.car)}">Koʻrish</a>`
-
-      : '';
-
-    const acts = !canManage
-
-      ? `<div class="row-btns"><button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button></div>`
-
-      : `<div class="row-btns">
-
-          ${view}
-
-          <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
-
-          <button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
-
-          <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}">Oʻchirish</button>
-
-        </div>`;
-
     let displayName = u.name || u.username || '';
-
     if (u.role === 'driver' && u.car && typeof resolveDriver === 'function') {
-
       const live = resolveDriver(u.car);
-
-      displayName = live.fullName || live.name || displayName;
-
+      if (!u.name || u.name === u.username) displayName = live.fullName || live.name || displayName;
     }
-
-    const pwCell = u.password
-      ? `<span class="cred" title="Kirish paroli (ochiq)">${esc(u.password)}</span>`
-      : (u.hasPassword
-        ? `<span class="cred empty" title="Eski parol hash — «Parol» bosib yangilang, keyin koʻrinadi">Nomaʼlum*</span>`
-        : `<button class="pw-make" type="button" data-act="genpw" data-id="${u.id}" data-name="${esc(u.username)}">Parol yaratish</button>`);
-
-    return `<tr>
-
-      <td>${esc(displayName)}</td>
-
-      <td><span class="cred">${esc(u.username)}</span></td>
-
+    const carCell = u.role === 'driver'
+      ? (canManage
+        ? `<select class="u-inp u-inp-mono" data-f="car">${typeof carOptionsHtml === 'function' ? carOptionsHtml(u.car) : `<option value="${esc(u.car || '')}">${esc(u.car || '')}</option>`}</select>`
+        : `<span class="mono">${esc(u.car || '—')}</span>`)
+      : '<span class="mono">—</span>';
+    const nameCell = canManage
+      ? `<input class="u-inp" data-f="name" value="${esc(displayName)}">`
+      : esc(displayName);
+    const loginCell = canManage
+      ? `<input class="u-inp u-inp-mono" data-f="username" value="${esc(u.username)}">`
+      : `<span class="cred">${esc(u.username)}</span>`;
+    const pwVal = u.password ? esc(u.password) : '';
+    const pwCell = canManage
+      ? `<input class="u-inp u-inp-mono" data-f="password" placeholder="${u.password || u.hasPassword ? 'Parolni o‘zgartirish' : 'Yangi parol'}" value="${pwVal}" title="Bo‘sh qoldirsangiz parol o‘zgarmaydi">`
+      : (u.password
+        ? `<span class="cred">${esc(u.password)}</span>`
+        : (u.hasPassword ? `<span class="cred empty">Nomaʼlum*</span>` : '—'));
+    const view = u.role === 'driver' && u.car
+      ? `<a class="btn btn-sm" href="/driver.html?car=${encodeURIComponent(u.car)}">Kabinet</a>`
+      : '';
+    const acts = !canManage
+      ? `<div class="row-btns"><button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button></div>`
+      : `<div class="row-btns">
+          <button class="btn btn-sm btn-gold" data-act="save" data-id="${u.id}">Saqlash</button>
+          <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
+          ${view}
+          <button class="btn btn-sm btn-bad" data-act="del" data-id="${u.id}" data-name="${esc(displayName || u.username)}">Oʻchirish</button>
+        </div>`;
+    return `<tr data-uid="${esc(u.id)}">
+      <td>${nameCell}</td>
+      <td>${loginCell}</td>
       <td>${pwCell}</td>
-
       <td>${role}</td>
-
-      <td class="mono">${esc(u.car || '—')}</td>
-
+      <td>${carCell}</td>
       <td>${st}</td>
-
       <td class="mono">${esc(u.last_login || '—')}</td>
-
-      <td>${acts}</td>
-
+      <td class="amal">${acts}</td>
     </tr>`;
-
   }).join('');
 
 
@@ -1688,11 +1666,30 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
 
       await vmApi('/api/users/toggle', { method: 'POST', body: JSON.stringify({ id, active: btn.getAttribute('data-on') === '1' }) });
 
+    } else if (act === 'save') {
+      const tr = btn.closest('tr');
+      if (!tr) return;
+      const val = (f) => {
+        const el = tr.querySelector('[data-f="' + f + '"]');
+        return el ? String(el.value || '').trim() : '';
+      };
+      const payload = {
+        id,
+        name: val('name'),
+        username: val('username'),
+        password: val('password'),
+        car: val('car')
+      };
+      if (!payload.password) delete payload.password;
+      await vmApi('/api/users/update', { method: 'POST', body: JSON.stringify(payload) });
+      show('msg-users', 'Saqlandi: ' + (payload.username || payload.name), true);
     } else if (act === 'del') {
 
-      if (!confirm('Bu foydalanuvchini oʻchirish?')) return;
+      const who = btn.getAttribute('data-name') || id;
+      if (!confirm(who + ' — loginni butunlay o‘chirish? Bu amalni qaytarib bo‘lmaydi.')) return;
 
       await vmApi('/api/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
+      show('msg-users', 'O‘chirildi: ' + who, true);
 
     } else if (act === 'reset') {
 
@@ -2069,13 +2066,16 @@ function fillCarSelect() {
 
 
 function carOptionsHtml(selected) {
-
-  return officeCarsLive().map(([car, name]) =>
-
-    `<option value="${esc(car)}"${car === selected ? ' selected' : ''}>${esc(name)} — ${esc(car)}</option>`
-
-  ).join('');
-
+  const want = (typeof fleetPlateKey === 'function')
+    ? fleetPlateKey(selected)
+    : String(selected || '').replace(/\s+/g, '').toUpperCase();
+  return officeCarsLive().map(([car, name]) => {
+    const k = (typeof fleetPlateKey === 'function')
+      ? fleetPlateKey(car)
+      : String(car || '').replace(/\s+/g, '').toUpperCase();
+    const sel = (k && k === want) || car === selected;
+    return `<option value="${esc(car)}"${sel ? ' selected' : ''}>${esc(name)} — ${esc(car)}</option>`;
+  }).join('');
 }
 
 
