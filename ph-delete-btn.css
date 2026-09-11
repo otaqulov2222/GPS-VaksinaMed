@@ -1,31 +1,33 @@
-/* Global "bin eats label" delete button — scoped to .eat-del only */
+/* Light-theme delete button: white/soft bg, red icon + red label */
 .eat-del {
-  --eat-bg: linear-gradient(155deg, #1c2438 0%, #141b2d 48%, #0f1522 100%);
-  --eat-border: rgba(248, 113, 113, 0.42);
-  --eat-ink: #fff5f5;
-  --eat-accent: #fb7185;
-  --eat-accent-2: #f43f5e;
-  --eat-glow: rgba(244, 63, 94, 0.35);
-  --eat-ok: #34d399;
+  --eat-bg: #ffffff;
+  --eat-bg-hover: #fff5f5;
+  --eat-border: #fecaca;
+  --eat-ink: #dc2626;
+  --eat-accent: #ef4444;
+  --eat-accent-2: #b91c1c;
+  --eat-glow: rgba(239, 68, 68, 0.22);
+  --eat-ok: #059669;
+  --eat-ok-bg: #ecfdf5;
+  --eat-ok-border: #a7f3d0;
 
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   height: 34px;
   min-height: 34px !important;
-  padding: 0 14px 0 11px;
-  border: 1px solid var(--eat-border);
+  padding: 0 13px 0 10px;
+  border: 1.5px solid var(--eat-border);
   border-radius: 999px;
   background: var(--eat-bg);
   color: var(--eat-ink);
   box-shadow:
-    0 4px 14px rgba(15, 21, 34, 0.28),
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 0 18px rgba(244, 63, 94, 0.08);
+    0 1px 2px rgba(185, 28, 28, 0.06),
+    0 4px 12px rgba(185, 28, 28, 0.08);
   cursor: pointer;
   font: 700 11px/1 "IBM Plex Sans", system-ui, sans-serif;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: visible;
   user-select: none;
@@ -35,15 +37,16 @@
     box-shadow 0.22s ease,
     transform 0.18s ease,
     border-color 0.22s ease,
-    filter 0.22s ease;
+    background 0.22s ease,
+    color 0.22s ease;
 }
 
 .eat-del::before {
   content: "";
   position: absolute;
-  inset: -1px;
+  inset: 0;
   border-radius: inherit;
-  background: linear-gradient(120deg, transparent 20%, rgba(251, 113, 133, 0.22), transparent 80%);
+  background: radial-gradient(120% 80% at 20% 40%, rgba(239, 68, 68, 0.1), transparent 55%);
   opacity: 0;
   pointer-events: none;
   z-index: 0;
@@ -51,12 +54,13 @@
 }
 
 .eat-del:hover:not(.is-busy):not(.is-done) {
-  border-color: rgba(251, 113, 133, 0.75);
-  transform: translateY(-1px) scale(1.02);
+  background: var(--eat-bg-hover);
+  border-color: #f87171;
+  color: var(--eat-accent-2);
+  transform: translateY(-1px);
   box-shadow:
-    0 8px 22px rgba(15, 21, 34, 0.35),
-    0 0 24px var(--eat-glow);
-  filter: saturate(1.08);
+    0 2px 4px rgba(185, 28, 28, 0.08),
+    0 8px 20px var(--eat-glow);
 }
 
 .eat-del:hover:not(.is-busy):not(.is-done)::before {
@@ -64,11 +68,11 @@
 }
 
 .eat-del:active:not(.is-busy):not(.is-done) {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.985);
 }
 
 .eat-del:focus-visible {
-  outline: 2px solid var(--eat-accent);
+  outline: 2px solid #f87171;
   outline-offset: 2px;
 }
 
@@ -78,9 +82,11 @@
 }
 
 .eat-del.is-busy {
+  background: #fff1f2;
+  border-color: #fb7185;
   box-shadow:
-    0 6px 20px rgba(15, 21, 34, 0.4),
-    0 0 28px var(--eat-glow);
+    0 4px 16px rgba(239, 68, 68, 0.18),
+    0 0 0 3px rgba(254, 202, 202, 0.55);
 }
 
 .eat-del__icon {
@@ -91,7 +97,6 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  filter: drop-shadow(0 0 6px rgba(251, 113, 133, 0.35));
 }
 
 .eat-del__svg {
@@ -108,7 +113,7 @@
 }
 
 .eat-del__svg .bin-lid {
-  transform-origin: 12px 5px;
+  transform-origin: 7px 5px; /* hinge on left of lid */
 }
 
 .eat-del__svg path,
@@ -116,13 +121,13 @@
 .eat-del__svg rect {
   fill: none;
   stroke: var(--eat-accent);
-  stroke-width: 1.75;
+  stroke-width: 1.85;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .eat-del__svg .bin-body path {
-  fill: rgba(251, 113, 133, 0.14);
+  fill: rgba(239, 68, 68, 0.1);
 }
 
 .eat-del__label {
@@ -131,13 +136,15 @@
   display: inline-flex;
   align-items: center;
   height: 1em;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  color: var(--eat-ink);
+  font-weight: 700;
 }
 
 .eat-del__letter {
   display: inline-block;
-  will-change: transform, opacity, filter;
+  will-change: transform, opacity, filter, color;
   transform-origin: center bottom;
+  color: inherit;
 }
 
 .eat-del__fx {
@@ -150,11 +157,11 @@
 
 .eat-del__spark {
   position: absolute;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: radial-gradient(circle, #fff 0%, var(--eat-accent) 55%, transparent 70%);
-  box-shadow: 0 0 8px var(--eat-accent-2);
+  background: radial-gradient(circle, #fecaca 0%, #ef4444 50%, transparent 72%);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.55);
   opacity: 0;
   pointer-events: none;
 }
@@ -168,19 +175,17 @@
   gap: 6px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--eat-ok);
   opacity: 0;
   z-index: 4;
-  text-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
 }
 
 .eat-del.is-done {
-  border-color: rgba(52, 211, 153, 0.45);
-  box-shadow:
-    0 4px 16px rgba(15, 21, 34, 0.25),
-    0 0 20px rgba(52, 211, 153, 0.2);
-  background: linear-gradient(155deg, #14261f 0%, #101c18 100%);
+  background: var(--eat-ok-bg);
+  border-color: var(--eat-ok-border);
+  color: var(--eat-ok);
+  box-shadow: 0 2px 10px rgba(5, 150, 105, 0.12);
 }
 
 .eat-del.is-done .eat-del__icon,
@@ -200,10 +205,8 @@
   stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.45));
 }
 
-/* Compact for dense tables */
 .eat-del--sm {
   height: 30px;
   min-height: 30px !important;
@@ -216,11 +219,6 @@
 .eat-del--sm .eat-del__svg {
   width: 16px;
   height: 16px;
-}
-
-/* Legacy alias */
-.ph-eat-del {
-  /* mapped via JS class eat-del; keep empty for safety */
 }
 
 @media (max-width: 980px) {

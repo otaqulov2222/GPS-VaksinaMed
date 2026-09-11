@@ -115,10 +115,11 @@
         return;
       }
 
-      var targets = [parts.lid, parts.body, parts.btn].concat(parts.letters);
+      var hinge = '7px 5px';
+      var targets = [parts.lid, parts.body, parts.btn, parts.icon].concat(parts.letters);
       gsap.killTweensOf(targets);
       gsap.set(parts.letters, { clearProps: 'all' });
-      gsap.set([parts.lid, parts.body, parts.btn], { clearProps: 'transform' });
+      gsap.set([parts.lid, parts.body, parts.btn, parts.icon], { clearProps: 'transform' });
       if (parts.done) gsap.set(parts.done, { opacity: 0 });
 
       var mouth = mouthPoint(parts);
@@ -130,35 +131,85 @@
           if (parts.done) {
             gsap.fromTo(
               parts.done,
-              { opacity: 0, scale: 0.7 },
-              { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(1.8)' }
+              { opacity: 0, scale: 0.75, y: 4 },
+              { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: 'back.out(1.7)' }
             );
           }
           resolve();
         }
       });
 
-      // Button inhale pulse
+      // 1) Anticipation — soft press
       tl.to(parts.btn, {
-        scale: 1.06,
-        duration: 0.22,
-        ease: 'power2.out'
+        scale: 0.97,
+        duration: 0.12,
+        ease: 'power2.in'
       }, 0);
-      tl.to(parts.btn, {
-        scale: 1,
-        duration: 0.35,
-        ease: 'power2.inOut'
-      }, 0.22);
+      tl.to(parts.lid, {
+        rotation: 6,
+        y: 0.5,
+        duration: 0.12,
+        ease: 'power2.in',
+        transformOrigin: hinge
+      }, 0);
 
-      // Lid flings open
+      // 2) Dramatic lid open — overshoot then settle
+      tl.to(parts.btn, {
+        scale: 1.04,
+        duration: 0.38,
+        ease: 'power2.out'
+      }, 0.12);
+      tl.to(parts.lid, {
+        rotation: -62,
+        y: -1,
+        duration: 0.42,
+        ease: 'back.out(2.4)',
+        transformOrigin: hinge
+      }, 0.12);
+      tl.to(parts.icon, {
+        rotation: -4,
+        duration: 0.42,
+        ease: 'power2.out'
+      }, 0.12);
+      // Settle lid slightly closed from overshoot
       tl.to(parts.lid, {
         rotation: -48,
-        duration: 0.32,
-        ease: 'back.out(2.2)',
-        transformOrigin: '12px 5px'
-      }, 0.02);
+        duration: 0.28,
+        ease: 'sine.inOut',
+        transformOrigin: hinge
+      }, 0.5);
+      tl.to(parts.btn, {
+        scale: 1,
+        duration: 0.28,
+        ease: 'sine.out'
+      }, 0.5);
+      tl.to(parts.icon, {
+        rotation: 0,
+        duration: 0.28,
+        ease: 'sine.out'
+      }, 0.5);
 
-      // Letters inhale L→R with arc + blur
+      // Soft sparkle burst when lid opens
+      tl.add(function () {
+        var sparks = spawnSparks(parts.fx, mouth.x, mouth.y - 4, 6);
+        sparks.forEach(function (sp, si) {
+          var ang = (-Math.PI * 0.85) + si * 0.28;
+          gsap.fromTo(
+            sp,
+            { opacity: 0.95, x: 0, y: 0, scale: 0.4 },
+            {
+              opacity: 0,
+              x: Math.cos(ang) * gsap.utils.random(12, 26),
+              y: Math.sin(ang) * gsap.utils.random(10, 22),
+              scale: gsap.utils.random(0.2, 0.6),
+              duration: 0.55,
+              ease: 'power2.out'
+            }
+          );
+        });
+      }, 0.28);
+
+      // 3) Letters pulled in — strong red attention
       parts.letters.forEach(function (letter, i) {
         var rect = letter.getBoundingClientRect();
         var btnRect = parts.btn.getBoundingClientRect();
@@ -166,91 +217,106 @@
         var fromY = rect.top + rect.height / 2 - btnRect.top;
         var dx = mouth.x - fromX;
         var dy = mouth.y - fromY;
-        var t0 = 0.2 + i * 0.065;
+        var t0 = 0.62 + i * 0.072;
 
         tl.to(letter, {
-          x: dx * 0.55,
-          y: dy - 14 - gsap.utils.random(0, 6),
-          rotation: gsap.utils.random(-55, 55),
-          scale: 0.72,
-          filter: 'blur(0.4px)',
-          duration: 0.16,
-          ease: 'power1.in'
+          color: '#b91c1c',
+          scale: 1.12,
+          duration: 0.08,
+          ease: 'power1.out'
         }, t0);
 
         tl.to(letter, {
+          x: dx * 0.5,
+          y: dy - 16 - gsap.utils.random(0, 5),
+          rotation: gsap.utils.random(-40, 40),
+          scale: 0.78,
+          duration: 0.18,
+          ease: 'power2.in'
+        }, t0 + 0.06);
+
+        tl.to(letter, {
           x: dx,
-          y: dy + 3,
+          y: dy + 2,
           scale: 0,
           opacity: 0,
-          rotation: gsap.utils.random(-120, 120),
-          filter: 'blur(2px)',
-          duration: 0.18,
+          rotation: gsap.utils.random(-100, 100),
+          filter: 'blur(1.5px)',
+          duration: 0.2,
           ease: 'power3.in'
-        }, t0 + 0.12);
+        }, t0 + 0.2);
 
-        // Bin chomp
         tl.to(parts.body, {
-          scaleY: 0.82,
-          scaleX: 1.14,
-          duration: 0.06,
+          scaleY: 0.84,
+          scaleX: 1.12,
+          duration: 0.07,
           yoyo: true,
           repeat: 1,
           ease: 'power1.inOut',
           transformOrigin: 'center bottom'
-        }, t0 + 0.16);
+        }, t0 + 0.26);
 
-        // Sparks at mouth
+        // Subtle lid chomp per letter
+        tl.to(parts.lid, {
+          rotation: -42,
+          duration: 0.06,
+          yoyo: true,
+          repeat: 1,
+          ease: 'sine.inOut',
+          transformOrigin: hinge
+        }, t0 + 0.24);
+
         tl.add(function () {
-          var sparks = spawnSparks(parts.fx, mouth.x, mouth.y, 4);
+          var sparks = spawnSparks(parts.fx, mouth.x, mouth.y, 3);
           sparks.forEach(function (sp, si) {
-            var ang = (-Math.PI / 2) + (si - 1.5) * 0.55;
+            var ang = (-Math.PI / 2) + (si - 1) * 0.5;
             gsap.fromTo(
               sp,
-              { opacity: 1, x: 0, y: 0, scale: gsap.utils.random(0.7, 1.3) },
+              { opacity: 1, x: 0, y: 0, scale: 1 },
               {
                 opacity: 0,
-                x: Math.cos(ang) * gsap.utils.random(10, 22),
-                y: Math.sin(ang) * gsap.utils.random(8, 18),
+                x: Math.cos(ang) * gsap.utils.random(8, 18),
+                y: Math.sin(ang) * gsap.utils.random(6, 14),
                 scale: 0,
-                duration: 0.35,
+                duration: 0.32,
                 ease: 'power2.out'
               }
             );
           });
-        }, t0 + 0.18);
+        }, t0 + 0.28);
       });
 
-      var after = 0.28 + parts.letters.length * 0.065;
+      var after = 0.72 + parts.letters.length * 0.072;
 
-      // Lid elastic slam
+      // 4) Lid closes — elegant snap + elastic settle
       tl.to(parts.lid, {
-        rotation: 8,
-        duration: 0.16,
-        ease: 'power2.in',
-        transformOrigin: '12px 5px'
+        rotation: 10,
+        duration: 0.18,
+        ease: 'power3.in',
+        transformOrigin: hinge
       }, after);
       tl.to(parts.lid, {
         rotation: 0,
-        duration: 0.45,
-        ease: 'elastic.out(1.15, 0.42)',
-        transformOrigin: '12px 5px'
-      }, after + 0.14);
+        y: 0,
+        duration: 0.55,
+        ease: 'elastic.out(1.2, 0.4)',
+        transformOrigin: hinge
+      }, after + 0.16);
 
       tl.to(parts.body, {
-        scaleX: 1.1,
-        scaleY: 0.88,
+        scaleX: 1.08,
+        scaleY: 0.9,
         duration: 0.1,
         yoyo: true,
         repeat: 1,
         transformOrigin: 'center bottom'
-      }, after + 0.12);
+      }, after + 0.14);
 
-      // Success flash on button
       tl.to(parts.btn, {
-        boxShadow: '0 0 28px rgba(52,211,153,0.35)',
-        duration: 0.25
-      }, after + 0.2);
+        boxShadow: '0 2px 12px rgba(5,150,105,0.2)',
+        borderColor: '#a7f3d0',
+        duration: 0.3
+      }, after + 0.25);
     });
   }
 
