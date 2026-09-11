@@ -43,6 +43,8 @@
   let attMapCircle = null;
   let attMapUser = null;
   let attMapOffice = null;
+  let attMapAcc = null;
+  let attMapFitted = false;
   let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle' };
   let attMethod = 'face';
 
@@ -158,6 +160,7 @@
     };
     paintGeoUI();
     updateAttMap(lat, lng);
+    paintMapOverlay();
   }
 
   function applyGeoError(err) {
@@ -167,6 +170,8 @@
       status: 'err'
     };
     paintGeoUI();
+    styleZoneCircle(null);
+    paintMapOverlay();
   }
 
   function paintGeoUI() {
@@ -251,6 +256,76 @@
     attMapCircle = null;
     attMapUser = null;
     attMapOffice = null;
+    attMapAcc = null;
+    attMapFitted = false;
+  }
+
+  function pinIcon(label, kind) {
+    let cls = 'av-pin av-pin-office';
+    if (kind === 'you') cls = 'av-pin av-pin-you';
+    if (kind === 'you-out') cls = 'av-pin av-pin-you av-pin-out';
+    return L.divIcon({
+      className: 'av-pin-wrap',
+      html: '<div class="' + cls + '"><i></i><b>' + label + '</b></div>',
+      iconSize: [110, 40],
+      iconAnchor: [12, 12]
+    });
+  }
+
+  function styleZoneCircle(inside) {
+    if (!attMapCircle) return;
+    if (inside === true) {
+      attMapCircle.setStyle({
+        color: '#16a34a',
+        fillColor: '#22c55e',
+        fillOpacity: 0.22,
+        weight: 3,
+        dashArray: null
+      });
+    } else if (inside === false) {
+      attMapCircle.setStyle({
+        color: '#dc2626',
+        fillColor: '#f87171',
+        fillOpacity: 0.14,
+        weight: 3,
+        dashArray: '6 6'
+      });
+    } else {
+      attMapCircle.setStyle({
+        color: '#1a5fb4',
+        fillColor: '#3b82f6',
+        fillOpacity: 0.14,
+        weight: 2,
+        dashArray: null
+      });
+    }
+  }
+
+  function paintMapOverlay() {
+    const zone = document.getElementById('av-map-zone');
+    const you = document.getElementById('av-map-you');
+    if (zone) {
+      if (geoLive.status === 'ok') {
+        zone.className = 'av-map-zone ok';
+        zone.textContent = 'Belgilangan hudud ichidasiz';
+      } else if (geoLive.status === 'out') {
+        zone.className = 'av-map-zone bad';
+        zone.textContent = 'Belgilangan hududdan tashqaridasiz';
+      } else if (geoLive.status === 'err') {
+        zone.className = 'av-map-zone bad';
+        zone.textContent = 'Joylashuv aniqlanmadi';
+      } else {
+        zone.className = 'av-map-zone load';
+        zone.textContent = 'Hudud tekshirilmoqda…';
+      }
+    }
+    if (you) {
+      if (geoLive.lat != null && geoLive.dist != null) {
+        you.textContent = 'Siz: ' + Math.round(geoLive.dist) + ' m (ofis markazidan)';
+      } else {
+        you.textContent = 'Sizning joyingiz xaritada yashil/qizil belgi bilan';
+      }
+    }
   }
 
   function initAttMap() {
@@ -265,40 +340,72 @@
     attMapCircle = L.circle([off.lat, off.lng], {
       radius: off.radius,
       color: '#1a5fb4',
-      fillColor: '#1a5fb4',
-      fillOpacity: 0.12,
-      weight: 2
+      fillColor: '#3b82f6',
+      fillOpacity: 0.16,
+      weight: 3
     }).addTo(attMap);
-    attMapOffice = L.circleMarker([off.lat, off.lng], {
-      radius: 7,
-      color: '#0b1f3a',
-      fillColor: '#1a5fb4',
-      fillOpacity: 1,
-      weight: 2
-    }).addTo(attMap).bindPopup(off.label);
+    attMapOffice = L.marker([off.lat, off.lng], {
+      icon: pinIcon('Ofis', 'office'),
+      zIndexOffset: 200
+    }).addTo(attMap).bindPopup('<b>' + off.label + '</b><br>Radius: ' + off.radius + ' m');
+    styleZoneCircle(geoLive.inside);
     setTimeout(() => { try { attMap.invalidateSize(); } catch (e) {} }, 80);
+    // Radius toʻliq kórinsin
+    try {
+      attMap.fitBounds(attMapCircle.getBounds().pad(0.12));
+    } catch (e) {}
     if (geoLive.lat != null) updateAttMap(geoLive.lat, geoLive.lng);
+    paintMapOverlay();
   }
 
   function updateAttMap(lat, lng) {
     if (!attMap || !window.L) return;
-    const color = geoLive.inside ? '#16a34a' : '#dc2626';
+    const inside = geoLive.inside === true;
+    const color = inside ? '#16a34a' : '#dc2626';
+    const youKind = inside ? 'you' : 'you-out';
+    const youLabel = inside ? 'Siz · ichida' : 'Siz · tashqarida';
+    styleZoneCircle(geoLive.inside);
+
     if (!attMapUser) {
-      attMapUser = L.circleMarker([lat, lng], {
-        radius: 8,
-        color: '#fff',
-        fillColor: color,
-        fillOpacity: 1,
-        weight: 2
+      attMapUser = L.marker([lat, lng], {
+        icon: pinIcon(youLabel, youKind),
+        zIndexOffset: 400
       }).addTo(attMap);
     } else {
       attMapUser.setLatLng([lat, lng]);
-      attMapUser.setStyle({ fillColor: color });
+      attMapUser.setIcon(pinIcon(youLabel, youKind));
     }
+
+    const acc = Math.max(12, Math.min(80, Number(geoLive.accuracy) || 25));
+    if (!attMapAcc) {
+      attMapAcc = L.circle([lat, lng], {
+        radius: acc,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.08,
+        weight: 1
+      }).addTo(attMap);
+    } else {
+      attMapAcc.setLatLng([lat, lng]);
+      attMapAcc.setRadius(acc);
+      attMapAcc.setStyle({ color: color, fillColor: color });
+    }
+
     try {
       const off = officeInfo();
-      attMap.fitBounds(L.latLngBounds([[off.lat, off.lng], [lat, lng]]).pad(0.45));
+      const b = L.latLngBounds([
+        [off.lat, off.lng],
+        [lat, lng]
+      ]);
+      if (attMapCircle) b.extend(attMapCircle.getBounds());
+      if (!attMapFitted) {
+        attMap.fitBounds(b.pad(0.2));
+        attMapFitted = true;
+      } else {
+        attMap.panTo([lat, lng], { animate: true });
+      }
     } catch (e) {}
+    paintMapOverlay();
   }
 
   function startGeoWatch() {
@@ -1142,9 +1249,18 @@
               <h3>${esc(off.label)}</h3>
               <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
             </div>
-            <div class="av-map" id="av-map"></div>
+            <div class="av-map-wrap">
+              <div class="av-map-zone load" id="av-map-zone">Hudud tekshirilmoqda…</div>
+              <div class="av-map" id="av-map"></div>
+              <div class="av-map-legend">
+                <span><i class="lg-office"></i> Ofis markazi</span>
+                <span><i class="lg-zone"></i> Belgilangan radius</span>
+                <span><i class="lg-you"></i> Sizning joyingiz</span>
+              </div>
+            </div>
             <div class="av-map-foot">
               <span id="av-geo-dist">Radius <b>${esc(String(off.radius))}</b> m</span>
+              <span id="av-map-you" class="av-map-you">Sizning joyingiz xaritada</span>
               <button type="button" class="att-btn att-btn-face" id="btn-geo-check" style="min-height:36px;padding:0 12px;font-size:12px">Qayta tekshirish</button>
             </div>
           </section>

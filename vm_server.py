@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m124"
+VM_BUILD = "m125"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
