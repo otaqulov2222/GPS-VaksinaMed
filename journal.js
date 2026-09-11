@@ -265,7 +265,7 @@ function renderJournal() {
 
   panel.innerHTML = `
     <div class="jl">
-      <div class="card jl-form">
+      <div class="card jl-form ${J.kind==='good'?'is-good':'is-bad'}">
         <div class="card-h"><h3>${J.editId ? 'Qaydni tahrirlash' : 'Yangi qayd'}</h3></div>
         <div class="card-b">
           <div class="hint">Asosiy kalit — <b>mashina raqami</b>. Haydovchi o'zgarsa ham GPS va jurnal shu raqamda qoladi. Hozirgi haydovchini admin shu yerda almashtiradi.</div>
@@ -323,7 +323,7 @@ function renderJournal() {
             <label>Izoh</label>
             <textarea id="j-note" placeholder="Tafsilotlar...">${esc(editing ? (editing.note||'') : '')}</textarea>
           </div>
-          <button type="button" class="btn ${J.kind==='good'?'btn-ok':'btn-gold'}" style="width:100%;height:42px;${J.kind==='bad'?'background:#0b1f3a;border-color:#0b1f3a;color:#fff':''}" id="j-save">
+          <button type="button" class="btn ${J.kind==='good'?'btn-jl-good':'btn-jl-bad'}" style="width:100%;height:44px;" id="j-save">
             ${J.editId ? 'O\'zgarishni saqlash' : (J.kind==='good' ? "Maktov qo'shish" : "Kamchilik qo'shish")}
           </button>
           ${J.editId ? '<button type="button" class="btn btn-ink" style="width:100%;margin-top:8px;height:40px;" id="j-cancel">Bekor</button>' : ''}
@@ -351,7 +351,7 @@ function renderJournal() {
               </div>
               <div class="jl-search-row" id="j-range-row">
                 ${J.period==='range' ? `<input id="j-from" type="date" value="${esc(J.from||r.from)}"><input id="j-to" type="date" value="${esc(J.to||r.to)}">` : ''}
-                <input id="j-q" class="j-search" placeholder="Qidirish..." value="${esc(J.q)}">
+                <input id="j-q" class="j-search" placeholder="Qidirish: haydovchi, mashina, izoh..." value="${esc(J.q)}">
               </div>
               <div class="subtabs" id="j-filt">
                 ${[['all','Hammasi'],['bad','Faqat kamchilik'],['good','Faqat maktov'],['driver','Haydovchilar'],['pharmacy','Dorixonalar']].map(([v,t]) =>
@@ -360,8 +360,8 @@ function renderJournal() {
               </div>
             </div>
             <div class="kpis" style="margin-top:12px;">
-              <div class="kpi"><i>Kamchilik (davr)</i><b>${badN}</b></div>
-              <div class="kpi"><i>Maktov (davr)</i><b>${goodN}</b></div>
+              <div class="kpi kpi-bad"><i>Kamchilik (davr)</i><b>${badN}</b></div>
+              <div class="kpi kpi-good"><i>Maktov (davr)</i><b>${goodN}</b></div>
               <div class="kpi"><i>Obyektlar</i><b>${objects}</b></div>
               <div class="kpi"><i>Jami (hammasi)</i><b>${all.length}</b></div>
             </div>
@@ -374,19 +374,20 @@ function renderJournal() {
                   const who = it.category === 'pharmacy' ? it.pharmacy : (nowDrv || it.driver || '');
                   const changed = it.car && it.driver && nowDrv && it.driver !== nowDrv;
                   const g = gpsForPlate(it.car);
-                  return `<tr>
+                  const lv = String(it.level || 'orta');
+                  return `<tr class="${it.kind==='good'?'jl-row-good':'jl-row-bad'}">
                     <td>${it.kind==='good'?'<span class="tag-good">Maktov</span>':'<span class="tag-bad">Kamchilik</span>'}</td>
                     <td>${esc(who)}${changed ? `<div class="muted">qayd: ${esc(it.driver)} · hozir: ${esc(nowDrv)}</div>` : ''}</td>
                     <td>${esc(it.car ? (typeof plateDisp==='function'?plateDisp(it.car):it.car) : '')}</td>
                     <td class="num">${it.car ? (typeof fmt === 'function' ? fmt(g.km, 2) : (g.km || 0)) : ''}</td>
                     <td>${esc(dtShow(it.start))}${it.end ? ' — ' + esc(dtShow(it.end)) : ''}</td>
                     <td>${esc(it.reason)}</td>
-                    <td>${esc(it.level)}</td>
+                    <td><span class="jl-level lv-${esc(lv)}">${esc(lv)}</span></td>
                     <td>${esc(it.note)}</td>
                     <td><button type="button" class="btn btn-ink btn-sm j-edit" data-id="${esc(it.id)}">Tahrir</button>
                         <button type="button" class="btn btn-ink btn-sm j-del" data-id="${esc(it.id)}">x</button></td>
                   </tr>`;
-                }).join('') : '<tr><td colspan="9" class="muted">Bu davrda qayd yo\'q</td></tr>'}</tbody>
+                }).join('') : '<tr><td colspan="9"><div class="jl-empty">Bu davrda qayd yo‘q. Chapdan yangi kamchilik yoki maktov qo‘shing.</div></td></tr>'}</tbody>
               </table>
             </div>
           </div>
@@ -394,24 +395,24 @@ function renderJournal() {
         <div class="card">
           <div class="card-h"><h3>Tahlil</h3></div>
           <div class="card-b">
-            <div class="hint">${rows.length ? ('Davrda ' + badN + ' kamchilik, ' + goodN + ' maktov. GPS km mashina raqami bo\'yicha.') : 'Tanlangan davrda ma\'lumot yo\'q.'}</div>
+            <div class="hint">${rows.length ? ('Davrda <b style="color:#9f1239">' + badN + ' kamchilik</b>, <b style="color:#027a48">' + goodN + ' maktov</b>. GPS km mashina raqami bo\'yicha.') : 'Tanlangan davrda ma\'lumot yo\'q.'}</div>
             <div class="jl-two">
-              <div>
+              <div class="jl-analyze-bad">
                 <b>Kamchilik bo'yicha (kim ko'p)</b>
                 ${topBad.slice(0,8).map(x => {
                   const info = (typeof vehicleInfo==='function' && x.k) ? vehicleInfo(x.k) : { name: x.k };
                   const g = gpsForPlate(x.k);
                   return `<div class="jl-stat">
                     <span>${esc(info.name || x.k)} <span class="muted">${esc(x.k)}</span></span>
-                    <span><b>${x.n}</b> <span class="muted">${typeof fmt === 'function' ? fmt(g.km, 2) : (g.km||0)} km</span></span></div>`;
+                    <span><b style="color:#9f1239">${x.n}</b> <span class="muted">${typeof fmt === 'function' ? fmt(g.km, 2) : (g.km||0)} km</span></span></div>`;
                 }).join('') || '<p class="muted">—</p>'}
               </div>
-              <div>
+              <div class="jl-analyze-good">
                 <b>Maktov bo'yicha (kim ko'p)</b>
                 ${topGood.slice(0,8).map(x => {
                   const info = (typeof vehicleInfo==='function' && x.k) ? vehicleInfo(x.k) : { name: x.k };
                   return `<div class="jl-stat">
-                    <span>${esc(info.name || x.k)} <span class="muted">${esc(x.k)}</span></span><b>${x.n}</b></div>`;
+                    <span>${esc(info.name || x.k)} <span class="muted">${esc(x.k)}</span></span><b style="color:#027a48">${x.n}</b></div>`;
                 }).join('') || '<p class="muted">—</p>'}
               </div>
             </div>
