@@ -312,7 +312,7 @@ async def handle(request: Request, full_path: str = ""):
         try:
             from vm_server import VM_BUILD as _build
         except Exception:
-            _build = "m123"
+            _build = "m124"
         body = json.dumps(
             {
                 "ok": True,

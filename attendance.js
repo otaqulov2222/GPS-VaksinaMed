@@ -37,6 +37,14 @@
   let personMonth = '';
   let REPORT = null;
   let PERSON = null;
+  let geoWatchId = null;
+  let clockId = null;
+  let attMap = null;
+  let attMapCircle = null;
+  let attMapUser = null;
+  let attMapOffice = null;
+  let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle' };
+  let attMethod = 'face';
 
   const modal = document.getElementById('fid-modal');
   const video = document.getElementById('att-cam');
@@ -66,6 +74,253 @@
   function clearMsg() {
     const el = document.getElementById('att-msg');
     if (el) el.className = 'att-msg';
+  }
+
+  function haversineM(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toR = Math.PI / 180;
+    const dLat = (lat2 - lat1) * toR;
+    const dLng = (lng2 - lng1) * toR;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toR) * Math.cos(lat2 * toR) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  function officeInfo() {
+    const o = (STATE && STATE.settings && STATE.settings.office) || {};
+    return {
+      lat: Number(o.lat) || 41.219119,
+      lng: Number(o.lng) || 69.272688,
+      radius: Math.max(50, Number(o.radius_m) || 250),
+      label: o.label || 'VaksinaMed ofis'
+    };
+  }
+
+  function userDisplayName() {
+    const u = (STATE && STATE.user) || window.VM_USER || {};
+    return u.name || u.username || 'Xodim';
+  }
+
+  function userRoleLabel() {
+    const u = (STATE && STATE.user) || window.VM_USER || {};
+    const r = u.role || '';
+    if (r === 'admin_pro') return 'Admin Pro';
+    if (r === 'admin') return 'Admin';
+    if (r === 'driver') return 'Haydovchi';
+    return r || 'Xodim';
+  }
+
+  function fmtClock(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function fmtDateLong(iso) {
+    try {
+      const d = iso ? new Date(iso + 'T12:00:00') : new Date();
+      return d.toLocaleDateString('uz-UZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    } catch (e) {
+      return iso || '';
+    }
+  }
+
+  function stopClock() {
+    if (clockId) { clearInterval(clockId); clockId = null; }
+  }
+
+  function startClock() {
+    stopClock();
+    const tick = () => {
+      const el = document.getElementById('av-now-clock');
+      if (el) el.textContent = fmtClock(new Date());
+      const work = document.getElementById('att-live-timer');
+      if (work && STATE && STATE.today && STATE.today.in && !STATE.today.out) {
+        work.textContent = fmtDur(dayWorkedSec(STATE.today) || 0);
+      }
+    };
+    tick();
+    clockId = setInterval(tick, 1000);
+  }
+
+  function stopGeoWatch() {
+    if (geoWatchId != null && navigator.geolocation) {
+      try { navigator.geolocation.clearWatch(geoWatchId); } catch (e) {}
+    }
+    geoWatchId = null;
+  }
+
+  function applyGeoFix(lat, lng, accuracy) {
+    const off = officeInfo();
+    const dist = haversineM(lat, lng, off.lat, off.lng);
+    const inside = dist <= off.radius;
+    geoLive = {
+      inside, dist, accuracy: accuracy || null, lat, lng, err: null,
+      status: inside ? 'ok' : 'out'
+    };
+    paintGeoUI();
+    updateAttMap(lat, lng);
+  }
+
+  function applyGeoError(err) {
+    geoLive = {
+      inside: false, dist: null, accuracy: null, lat: null, lng: null,
+      err: err && err.message ? err.message : 'Joylashuv olinmadi',
+      status: 'err'
+    };
+    paintGeoUI();
+  }
+
+  function paintGeoUI() {
+    const badge = document.getElementById('av-geo-badge');
+    const distEl = document.getElementById('av-geo-dist');
+    const gate = document.getElementById('av-gate-banner');
+    const off = officeInfo();
+    const inBtn = document.getElementById('btn-keldim-main');
+    const outBtn = document.getElementById('btn-ketdim-main');
+    const goBtn = document.getElementById('av-continue');
+    const today = (STATE && STATE.today) || {};
+    const enrolled = !!(STATE && STATE.enrolled);
+    const done = !!(today.in && today.out);
+    const canIn = enrolled && !today.in && !done;
+    const canOut = enrolled && !!today.in && !today.out;
+    const inside = geoLive.inside === true;
+
+    if (badge) {
+      badge.className = 'av-geo-badge ' + (geoLive.status === 'ok' ? 'ok' : (geoLive.status === 'out' || geoLive.status === 'err' ? 'bad' : 'load'));
+      if (geoLive.status === 'ok') badge.textContent = '✓ Siz ofis hududidasiz';
+      else if (geoLive.status === 'out') badge.textContent = '✗ Ofisdan tashqarida';
+      else if (geoLive.status === 'err') badge.textContent = 'GPS yoʻq';
+      else badge.textContent = 'Joylashuv…';
+    }
+    if (distEl) {
+      if (geoLive.dist != null) {
+        distEl.innerHTML = 'Masofa: <b>' + Math.round(geoLive.dist) + ' m</b> · Radius <b>' + off.radius + ' m</b>';
+      } else {
+        distEl.innerHTML = 'Ofis: <b>' + esc(off.label) + '</b> · Radius <b>' + off.radius + ' m</b>';
+      }
+    }
+    if (gate) {
+      if (geoLive.status === 'ok') {
+        gate.className = 'av-gate-banner on ok';
+        gate.textContent = 'Ofis ichidasiz — Face ID orqali Keldi / Ketdi ochiq.';
+      } else if (geoLive.status === 'out') {
+        gate.className = 'av-gate-banner on';
+        gate.textContent = 'Davomat faqat ofis radiusida ishlaydi. Hozir ~' + Math.round(geoLive.dist || 0) + ' m uzoqdasiz.';
+      } else if (geoLive.status === 'err') {
+        gate.className = 'av-gate-banner on';
+        gate.textContent = geoLive.err || 'Joylashuvni yoqing — ofisga kirganingizda tugmalar ochiladi.';
+      } else {
+        gate.className = 'av-gate-banner on';
+        gate.textContent = 'Joylashuv tekshirilmoqda… Ofisga kelganda tugmalar ochiladi.';
+      }
+    }
+
+    const lockPunch = (btn, allow) => {
+      if (!btn) return;
+      const shouldEnable = allow && inside;
+      btn.disabled = !shouldEnable;
+      btn.classList.toggle('is-locked', !inside && allow);
+    };
+    lockPunch(inBtn, canIn);
+    lockPunch(outBtn, canOut);
+
+    if (goBtn) {
+      const nextKind = !today.in ? 'in' : (today.in && !today.out ? 'out' : null);
+      goBtn.disabled = !enrolled || done || !inside || !nextKind || attMethod !== 'face';
+      const lab = goBtn.querySelector('span');
+      const sub = goBtn.querySelector('small');
+      if (lab) {
+        if (!enrolled) lab.textContent = 'Avval Face ID ulang';
+        else if (done) lab.textContent = 'Bugun yakunlangan';
+        else if (!inside) lab.textContent = 'Ofisga keling';
+        else lab.textContent = nextKind === 'out' ? 'Face ID → Ketdi' : 'Face ID → Keldi';
+      }
+      if (sub) {
+        sub.textContent = inside
+          ? (nextKind === 'out' ? 'Ketishni yuz bilan tasdiqlash' : 'Kelishni yuz bilan tasdiqlash')
+          : (off.label + ' · ' + off.radius + ' m');
+      }
+      goBtn.setAttribute('data-next', nextKind || '');
+    }
+  }
+
+  function destroyAttMap() {
+    if (attMap) {
+      try { attMap.remove(); } catch (e) {}
+    }
+    attMap = null;
+    attMapCircle = null;
+    attMapUser = null;
+    attMapOffice = null;
+  }
+
+  function initAttMap() {
+    destroyAttMap();
+    const el = document.getElementById('av-map');
+    if (!el || !window.L) return;
+    const off = officeInfo();
+    attMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([off.lat, off.lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(attMap);
+    attMapCircle = L.circle([off.lat, off.lng], {
+      radius: off.radius,
+      color: '#1a5fb4',
+      fillColor: '#1a5fb4',
+      fillOpacity: 0.12,
+      weight: 2
+    }).addTo(attMap);
+    attMapOffice = L.circleMarker([off.lat, off.lng], {
+      radius: 7,
+      color: '#0b1f3a',
+      fillColor: '#1a5fb4',
+      fillOpacity: 1,
+      weight: 2
+    }).addTo(attMap).bindPopup(off.label);
+    setTimeout(() => { try { attMap.invalidateSize(); } catch (e) {} }, 80);
+    if (geoLive.lat != null) updateAttMap(geoLive.lat, geoLive.lng);
+  }
+
+  function updateAttMap(lat, lng) {
+    if (!attMap || !window.L) return;
+    const color = geoLive.inside ? '#16a34a' : '#dc2626';
+    if (!attMapUser) {
+      attMapUser = L.circleMarker([lat, lng], {
+        radius: 8,
+        color: '#fff',
+        fillColor: color,
+        fillOpacity: 1,
+        weight: 2
+      }).addTo(attMap);
+    } else {
+      attMapUser.setLatLng([lat, lng]);
+      attMapUser.setStyle({ fillColor: color });
+    }
+    try {
+      const off = officeInfo();
+      attMap.fitBounds(L.latLngBounds([[off.lat, off.lng], [lat, lng]]).pad(0.45));
+    } catch (e) {}
+  }
+
+  function startGeoWatch() {
+    stopGeoWatch();
+    geoLive.status = 'load';
+    paintGeoUI();
+    if (!navigator.geolocation) {
+      applyGeoError(new Error('Joylashuv qoʻllab-quvvatlanmaydi'));
+      return;
+    }
+    getGps().then((g) => {
+      applyGeoFix(g.lat, g.lng, g.accuracy);
+    }).catch((e) => {
+      applyGeoError(e);
+    });
+    geoWatchId = navigator.geolocation.watchPosition(
+      (pos) => applyGeoFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+      (err) => {
+        if (geoLive.lat == null) applyGeoError(err);
+      },
+      { enableHighAccuracy: true, maximumAge: 8000, timeout: 20000 }
+    );
   }
 
   function hideGeoHelp() {
@@ -803,6 +1058,9 @@
   function render() {
     if (!STATE) return;
     stopTimer();
+    stopClock();
+    stopGeoWatch();
+    destroyAttMap();
     const s = STATE.settings || {};
     const face = STATE.face || {};
     const today = STATE.today || {};
@@ -813,27 +1071,14 @@
     const history = STATE.history || [];
     const working = !!(inn && !out);
     const done = !!(inn && out);
+    const off = officeInfo();
+    const uname = userDisplayName();
+    const firstName = String(uname).split(/\s+/)[0] || uname;
     if (!boardDate) boardDate = dayInputValue('');
     if (!reportMonth) reportMonth = monthInputValue('');
     if (!personMonth) personMonth = monthInputValue('');
 
     app.innerHTML = `
-      <section class="att-hero">
-        <div>
-          <h1>Davomat</h1>
-          <p>${staff
-            ? 'Jamoa dashboard, oylik hisobot va xodim tahlili. Face ID + GPS himoyasi.'
-            : 'Face ID → <b>Keldim</b> / <b>Ketdim</b>. Ish vaqti avtomatik hisoblanadi. GPS + yuz himoyasi.'}</p>
-          <div class="att-chips">
-            <span class="att-chip">${esc(s.today || '')}</span>
-            <span class="att-chip">Keldim ${esc(s.in_start)} dan</span>
-            <span class="att-chip">Ketdim ${esc(s.out_end)} gacha</span>
-            <span class="att-chip">${esc((s.office && s.office.label) || 'Ofis')} · ${esc(String((s.office && s.office.radius_m) || '250'))} m</span>
-            <span class="att-chip ${enrolled ? 'ok' : 'bad'}">${enrolled ? 'Face ulangan' : 'Face ulanmagan'}</span>
-          </div>
-        </div>
-      </section>
-
       <div class="att-tabs" role="tablist">
         <button type="button" class="att-tab ${uiTab === 'bugun' ? 'on' : ''}" data-tab="bugun">Bugun</button>
         ${staff ? `<button type="button" class="att-tab ${uiTab === 'dash' ? 'on' : ''}" data-tab="dash">Dashboard</button>` : ''}
@@ -844,66 +1089,137 @@
       </div>
 
       <div class="att-panel" id="panel-bugun" ${uiTab === 'bugun' ? '' : 'hidden'}>
-        <section class="att-card">
-          <div class="att-card-h">Bugungi ish kuni</div>
-          <div class="att-card-b">
-            <div class="att-status-row">
-              <div class="att-stat ${inn ? (inn.late ? 'late' : 'ok') : 'empty'}">
-                <div class="lbl">Keldim</div>
-                <div class="val">${inn ? fmtTime(inn.at) + (inn.late ? ' · kechikdi' : '') : '—'}</div>
-              </div>
-              <div class="att-stat ${out ? 'ok' : 'empty'}">
-                <div class="lbl">Ketdim</div>
-                <div class="val">${out ? fmtTime(out.at) : '—'}</div>
-              </div>
-            </div>
-
-            <div class="att-timer-box ${working ? 'live' : (done ? 'done' : '')}">
-              <div class="att-timer-lbl">${working ? 'Ishlayapti' : (done ? 'Bugun yakunlandi' : 'Vaqt hisobi')}</div>
-              <div class="att-timer-val" id="att-live-timer">${fmtDur(dayWorkedSec(today) || 0)}</div>
-            </div>
-
-            ${!enrolled ? `
-              <p class="att-hint">Avval Face ID ulang — keyin har kuni Keldim / Ketdim.</p>
-              <div class="att-actions att-actions-main">
-                <button type="button" class="att-btn att-btn-face-cta" id="btn-enroll">Face ID ulash</button>
-              </div>
-            ` : `
-              <div class="att-actions att-actions-main att-actions-stack">
-                ${done
-                  ? `<button type="button" class="att-btn att-btn-done" disabled>Bugun yakunlandi</button>`
-                  : `
-                    <button type="button" class="att-btn att-btn-in" id="btn-keldim-main" ${inn ? 'disabled' : ''}>Keldim</button>
-                    <button type="button" class="att-btn att-btn-out" id="btn-ketdim-main" ${(!inn || out) ? 'disabled' : ''}>Ketdim</button>
-                  `
-                }
-                <button type="button" class="att-btn att-btn-face" id="btn-reenroll">Yuzni qayta ulash</button>
-              </div>
-              <p class="att-hint">Keldim/Ketdim → Face ID → tasdiq. Joylashuv ruxsatini bering — aks holda stamp yozilmaydi.</p>
-            `}
-            <div class="att-msg" id="att-msg"></div>
-            <div class="att-geo-box" id="att-geo-box" hidden>
-              <div class="att-geo-title">Joylashuv kerak</div>
-              <p class="att-geo-text" id="att-geo-text"></p>
-              <ol class="att-geo-steps" id="att-geo-steps"></ol>
-              <button type="button" class="att-btn att-btn-in" id="btn-geo-check">Joylashuvni tekshirish</button>
-            </div>
-          </div>
-        </section>
-
-        ${face.photo ? `
-        <section class="att-card" style="margin-top:14px">
-          <div class="att-card-h">Face ID</div>
-          <div class="att-card-b">
-            <div class="att-enrolled-block" style="margin:0">
-              <img class="att-enrolled-thumb" src="${face.photo}" alt="Face">
+        <div class="av-studio">
+          <section class="av-hero">
+            <div class="av-hero-top">
               <div>
-                <div class="att-enrolled-title">Tasdiqlangan yuz</div>
-                <div class="att-hint" style="margin:4px 0 0">${esc((STATE.user && STATE.user.name) || '')} · ${esc(face.enrolledAt ? fmtTime(face.enrolledAt) : '')}</div>
+                <div class="av-greet">Assalomu alaykum, <span>${esc(firstName)}</span></div>
+                <div class="av-role">${esc(userRoleLabel())} · ${esc(off.label)}</div>
+              </div>
+              <div class="av-date-pill">${esc(fmtDateLong(s.today))}</div>
+            </div>
+            <div class="av-hero-grid">
+              <div class="av-glass">
+                <div class="k">Joriy vaqt</div>
+                <div class="v" id="av-now-clock">--:--:--</div>
+                <div class="s">Bugun ham ajoyib kun!</div>
+              </div>
+              <div class="av-glass ${working ? 'live' : (done ? 'done' : '')}">
+                <div class="k">${working ? 'Ishlayapti' : (done ? 'Bugun yakunlandi' : 'Ishlagan vaqt')}</div>
+                <div class="v" id="att-live-timer">${fmtDur(dayWorkedSec(today) || 0)}</div>
+                <div class="s">${working ? 'Timer jonli' : (done ? 'Keldi + ketdi qayd etildi' : 'Hali boshlanmagan')}</div>
               </div>
             </div>
+          </section>
+
+          <div class="av-gate-banner" id="av-gate-banner">Joylashuv tekshirilmoqda…</div>
+
+          ${!enrolled ? `
+            <section class="av-method-card">
+              <h3>Face ID ulang</h3>
+              <p class="sub">Birinchi marta yuzingizni tizimga bogʻlang — keyin har kuni ofisda Keldi/Ketdi ochiladi.</p>
+              <button type="button" class="av-continue" id="btn-enroll">Face ID ulash<small>Kamera orqali bir marta</small></button>
+            </section>
+          ` : `
+            <div class="av-punch-row">
+              <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
+                <span class="ico">→]</span>
+                <div class="tag">● Keldi</div>
+                <div class="time">${inn ? fmtTime(inn.at) : '—'}</div>
+                <div class="plan">Rejada: ${esc(s.in_start || '08:30')}${inn && inn.late ? ' · kechikdi' : ''}</div>
+              </button>
+              <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
+                <span class="ico">[→</span>
+                <div class="tag">● Ketdi</div>
+                <div class="time">${out ? fmtTime(out.at) : '—'}</div>
+                <div class="plan">Rejada: ${esc(s.out_end || '21:00')}</div>
+              </button>
+            </div>
+          `}
+
+          <section class="av-map-card">
+            <div class="av-map-h">
+              <h3>${esc(off.label)}</h3>
+              <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
+            </div>
+            <div class="av-map" id="av-map"></div>
+            <div class="av-map-foot">
+              <span id="av-geo-dist">Radius <b>${esc(String(off.radius))}</b> m</span>
+              <button type="button" class="att-btn att-btn-face" id="btn-geo-check" style="min-height:36px;padding:0 12px;font-size:12px">Qayta tekshirish</button>
+            </div>
+          </section>
+
+          ${enrolled ? `
+          <section class="av-method-card">
+            <h3>Davomat usulini tanlang</h3>
+            <p class="sub">Ofis ichida boʻlsangiz — Face ID orqali davom eting</p>
+            <div class="av-methods">
+              <button type="button" class="av-method ${attMethod === 'face' ? 'on' : ''}" data-method="face" id="av-method-face">
+                <span class="check">✓</span>
+                <div class="m-ico">▣</div>
+                <div class="m-t">Face ID</div>
+                <div class="m-s">Rasmga olish orqali tasdiqlash</div>
+              </button>
+              <button type="button" class="av-method disabled" data-method="qr" disabled title="Tez orada">
+                <div class="m-ico">▦</div>
+                <div class="m-t">QR Scanner</div>
+                <div class="m-s">Tez orada</div>
+              </button>
+            </div>
+            <button type="button" class="av-continue" id="av-continue" disabled>
+              <span>Ofisga keling</span>
+              <small>${esc(off.label)} · ${esc(String(off.radius))} m</small>
+            </button>
+            <div style="margin-top:10px;text-align:center">
+              <button type="button" class="att-btn att-btn-face" id="btn-reenroll" style="min-height:36px;font-size:12px">Yuzni qayta ulash</button>
+            </div>
+          </section>
+          ` : ''}
+
+          <div class="att-msg" id="att-msg"></div>
+          <div class="att-geo-box" id="att-geo-box" hidden>
+            <div class="att-geo-title">Joylashuv kerak</div>
+            <p class="att-geo-text" id="att-geo-text"></p>
+            <ol class="att-geo-steps" id="att-geo-steps"></ol>
+            <button type="button" class="att-btn att-btn-in" id="btn-geo-check-2">Joylashuvni tekshirish</button>
           </div>
-        </section>` : ''}
+
+          ${face.photo ? `
+          <section class="att-card">
+            <div class="att-card-h">Face ID profil</div>
+            <div class="att-card-b">
+              <div class="att-enrolled-block" style="margin:0">
+                <img class="att-enrolled-thumb" src="${face.photo}" alt="Face">
+                <div>
+                  <div class="att-enrolled-title">Tasdiqlangan yuz</div>
+                  <div class="att-hint" style="margin:4px 0 0">${esc(uname)} · ${esc(face.enrolledAt ? fmtTime(face.enrolledAt) : '')}</div>
+                </div>
+              </div>
+            </div>
+          </section>` : ''}
+
+          <section class="av-hist">
+            <div class="av-hist-h">Bugungi / soʻnggi yozuvlar</div>
+            <div class="av-hist-b">
+              ${history.length ? `
+                <div class="scroll-x">
+                <table class="att-table">
+                  <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish vaqti</th><th>Holat</th></tr></thead>
+                  <tbody>
+                    ${history.slice(0, 8).map((r) => `
+                      <tr>
+                        <td>${fmtDate(r.date)}</td>
+                        <td>${r.in ? fmtTime(r.in.at) + (r.late ? ' !' : '') : '—'}</td>
+                        <td>${r.out ? fmtTime(r.out.at) : '—'}</td>
+                        <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
+                        <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table></div>
+              ` : `<p class="att-hint">Hali yozuv yoʻq. Ofisda Face ID bilan belgilang — tarix shu yerda chiqadi.</p>`}
+            </div>
+          </section>
+        </div>
       </div>
 
       <div class="att-panel" id="panel-tarix" ${uiTab === 'tarix' ? '' : 'hidden'}>
@@ -985,6 +1301,12 @@
     `;
 
     bindActions(staff);
+    if (uiTab === 'bugun') {
+      startClock();
+      startGeoWatch();
+      initAttMap();
+      paintGeoUI();
+    }
     if (staff && uiTab === 'dash') loadBoard();
     if (staff && uiTab === 'hisobot') loadReport();
     if (staff && uiTab === 'shaxs') loadPersonPanel();
@@ -1073,7 +1395,26 @@
     if (kIn) bindTap(kIn, () => startAttendanceFlow('in'));
     if (kOut) bindTap(kOut, () => startAttendanceFlow('out'));
     const geoBtn = document.getElementById('btn-geo-check');
-    if (geoBtn) bindTap(geoBtn, () => checkGeoNow());
+    if (geoBtn) bindTap(geoBtn, () => {
+      hideGeoHelp();
+      startGeoWatch();
+    });
+    const geoBtn2 = document.getElementById('btn-geo-check-2');
+    if (geoBtn2) bindTap(geoBtn2, () => checkGeoNow());
+
+    const cont = document.getElementById('av-continue');
+    if (cont) bindTap(cont, () => {
+      const kind = cont.getAttribute('data-next') || (!((STATE.today || {}).in) ? 'in' : 'out');
+      startAttendanceFlow(kind);
+    });
+    const methodFace = document.getElementById('av-method-face');
+    if (methodFace) bindTap(methodFace, () => {
+      attMethod = 'face';
+      document.querySelectorAll('.av-method[data-method]').forEach((el) => {
+        el.classList.toggle('on', el.getAttribute('data-method') === 'face');
+      });
+      paintGeoUI();
+    });
 
     app.querySelectorAll('[data-person]').forEach((el) => {
       bindTap(el, () => openPerson(el.getAttribute('data-person')));
@@ -1102,6 +1443,11 @@
     }
     if (kind === 'out' && today.out) {
       msg('Bugun Ketdim allaqachon bor', 'info');
+      return;
+    }
+    if (geoLive.inside !== true) {
+      msg('Faqat ofis radiusida ochiladi. Xaritada joylashuvingizni tekshiring.', 'err');
+      startGeoWatch();
       return;
     }
 
