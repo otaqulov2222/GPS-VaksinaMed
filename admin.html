@@ -423,6 +423,12 @@ td { padding: 10px 12px; border-bottom: 1px solid #eceff2; vertical-align: middl
 
 .chip-off { background: #e8eef5; color: var(--bad); border-color: #c5d4e6; }
 
+/* Faqat Admin Pro — oddiy admin ko'rmasin */
+.pro-only[hidden],
+.pro-only[aria-hidden="true"] {
+  display: none !important;
+}
+
 .row-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 280px; }
 .users-table .u-inp { width: 100%; min-width: 90px; height: 34px; padding: 4px 8px; border: 1px solid #a8bdd4; background: #fff; font-size: 13px; }
 .users-table .u-inp-mono { font-family: var(--mono); }
@@ -1191,7 +1197,7 @@ body { overflow-x: clip; }
 
 
 
-  <div class="card pro-only" style="margin-top:12px;">
+  <div class="card pro-only" id="card-telegram" hidden style="margin-top:12px;">
 
     <div class="head"><h2>Telegram ogohlantirish</h2></div>
 
@@ -1259,7 +1265,7 @@ body { overflow-x: clip; }
 
 
 
-  <div class="card pro-only" style="margin-top:12px;">
+  <div class="card pro-only" id="card-audit" hidden style="margin-top:12px;">
 
     <div class="head"><h2>Jurnal</h2></div>
 
@@ -1432,10 +1438,15 @@ let resetId = null;
 async function loadAll() {
 
   const me = window.VM_USER || {};
+  const isPro = me.role === 'admin_pro';
 
-  const reqs = [vmApi('/api/users'), vmApi('/api/sessions'), vmApi('/api/audit')];
+  const reqs = [vmApi('/api/users'), vmApi('/api/sessions')];
+  if (isPro) reqs.push(vmApi('/api/audit'));
 
-  const [users, sess, audit] = await Promise.all(reqs);
+  const results = await Promise.all(reqs);
+  const users = results[0];
+  const sess = results[1];
+  const audit = isPro ? results[2] : { audit: [] };
 
   window._VM_USERS = users.users || [];
 
@@ -2195,15 +2206,15 @@ async function loadOffice() {
 
   const tg = d.telegram || {};
 
-  document.getElementById('tg-on').checked = !!tg.enabled;
-
-  document.getElementById('tg-chat').value = tg.chatId || '';
-
+  const tgOn = document.getElementById('tg-on');
+  const tgChat = document.getElementById('tg-chat');
   const tok = document.getElementById('tg-token');
-
-  tok.value = '';
-
-  tok.placeholder = tg.hasToken ? 'Saqlangan — oʻzgartirmasangiz qoladi' : '123456:ABC...';
+  if (tgOn) tgOn.checked = !!tg.enabled;
+  if (tgChat) tgChat.value = tg.chatId || '';
+  if (tok) {
+    tok.value = '';
+    tok.placeholder = tg.hasToken ? 'Saqlangan — oʻzgartirmasangiz qoladi' : '123456:ABC...';
+  }
 
 }
 
@@ -2778,6 +2789,19 @@ if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document);
     return;
 
   }
+
+  window.VM_USER = me;
+  const isPro = me.role === 'admin_pro';
+  document.body.classList.toggle('role-admin-pro', isPro);
+  document.querySelectorAll('.pro-only').forEach((el) => {
+    if (isPro) {
+      el.hidden = false;
+      el.removeAttribute('aria-hidden');
+    } else {
+      el.hidden = true;
+      el.setAttribute('aria-hidden', 'true');
+    }
+  });
 
   if (typeof vmGatePage === 'function') vmGatePage(me);
 

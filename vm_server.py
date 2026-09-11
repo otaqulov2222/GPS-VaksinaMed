@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m108"
+VM_BUILD = "m109"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -3293,7 +3293,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             })
             return
         if path == "/api/audit":
-            sess = self.require_staff()
+            sess = self.require_pro()
             if not sess:
                 return
             self.send_json({"ok": True, "audit": STORE.audit()})
@@ -4001,7 +4001,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/telegram":
-            sess = self.require_staff()
+            sess = self.require_pro()
             if not sess:
                 return
             pub = OFFICE.save_telegram(body)
@@ -4009,7 +4009,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/telegram/test":
-            sess = self.require_staff()
+            sess = self.require_pro()
             if not sess:
                 return
             tg = OFFICE.settings()["telegram"]
