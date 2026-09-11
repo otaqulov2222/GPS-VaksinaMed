@@ -15,6 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
 <link rel="stylesheet" href="shell.css?v=24"/>
+<link rel="stylesheet" href="ph-delete-btn.css?v=1"/>
 
 <style>
 
@@ -1601,6 +1602,8 @@ body { overflow-x: clip; }
 <script src="fleet-data.js?v=8"></script>
 
 <script src="auth.js?v=33"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="ph-delete-btn.js?v=1"></script>
 
 <script>
 
@@ -2446,7 +2449,7 @@ function renderPharms() {
 
       </td>
 
-      <td><button class="btn btn-sm btn-bad" type="button" data-ph-del="${esc(p.id)}">Oʻchirish</button></td>
+      <td>${PhEatDelete.markup(p.id)}</td>
 
     </tr>`;
 
@@ -2910,9 +2913,18 @@ document.getElementById('tb-ph').addEventListener('click', async (e) => {
 
   if (del) {
 
+    if (del.classList.contains('is-busy') || del.classList.contains('is-done')) return;
+
     const id = del.getAttribute('data-ph-del');
 
     if (!confirm('Bu dorixonani oʻchirasizmi?')) return;
+
+    if (window.PhEatDelete && typeof PhEatDelete.play === 'function') {
+      try {
+        await PhEatDelete.play(del);
+        await new Promise(r => setTimeout(r, 420));
+      } catch (_) { /* continue delete even if animation fails */ }
+    }
 
     PHARMS = PHARMS.filter(p => p.id !== id);
 
@@ -2925,6 +2937,7 @@ document.getElementById('tb-ph').addEventListener('click', async (e) => {
     } catch (err) {
 
       show('msg-ph', err.message, false);
+      del.classList.remove('is-busy', 'is-done');
 
     }
 
