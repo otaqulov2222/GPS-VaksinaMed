@@ -1330,7 +1330,7 @@ body { overflow-x: clip; }
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=8"></script>
 
-<script src="auth.js?v=32"></script>
+<script src="auth.js?v=33"></script>
 
 <script>
 
@@ -2762,16 +2762,7 @@ document.getElementById('btn-tg-test').addEventListener('click', async () => {
 
 
 
-document.querySelectorAll('.pw-eye').forEach(btn => {
-  // auth.js vmInitPasswordEyes ham bog'laydi — dublikat bo'lmasin
-  if (btn.dataset.bound === '1') return;
-  btn.addEventListener('click', () => {
-    const el = document.getElementById(btn.getAttribute('data-for'));
-    if (!el) return;
-    el.type = el.type === 'password' ? 'text' : 'password';
-    btn.classList.toggle('on', el.type === 'text');
-  });
-});
+// Ko'z click — faqat auth.js dagi bitta global delegate (dublikat ochib-yopmasin)
 if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document);
 
 
