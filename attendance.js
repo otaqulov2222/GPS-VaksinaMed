@@ -408,6 +408,52 @@
     paintMapOverlay();
   }
 
+  function locateMeOnMap() {
+    const btn = document.getElementById('av-locate');
+    if (btn) btn.classList.add('is-busy');
+    const finish = () => { if (btn) btn.classList.remove('is-busy'); };
+
+    const focus = (lat, lng) => {
+      if (!attMap) {
+        initAttMap();
+      }
+      updateAttMap(lat, lng);
+      try {
+        const off = officeInfo();
+        const z = Math.max(16, attMap.getZoom());
+        // Avval o‘zingizga zoom, keyin ofis ham kórinsin
+        attMap.setView([lat, lng], z, { animate: true });
+        setTimeout(() => {
+          try {
+            const b = L.latLngBounds([[lat, lng], [off.lat, off.lng]]);
+            if (attMapCircle) b.extend(attMapCircle.getBounds());
+            attMap.fitBounds(b.pad(0.18), { animate: true, maxZoom: 18 });
+          } catch (e) {}
+        }, 280);
+      } catch (e) {
+        if (attMap) attMap.setView([lat, lng], 17, { animate: true });
+      }
+      paintMapOverlay();
+      msg(geoLive.inside ? 'Sizning joyingiz — ofis hududida' : 'Sizning joriy joyingizga qaytildi', geoLive.inside ? 'ok' : 'info');
+    };
+
+    getGps().then((g) => {
+      applyGeoFix(g.lat, g.lng, g.accuracy);
+      focus(g.lat, g.lng);
+      finish();
+    }).catch((e) => {
+      if (geoLive.lat != null) {
+        focus(geoLive.lat, geoLive.lng);
+        finish();
+        return;
+      }
+      applyGeoError(e);
+      showGeoHelp(e.message || 'Joylashuv olinmadi');
+      msg(e.message || 'Joylashuv olinmadi', 'err');
+      finish();
+    });
+  }
+
   function startGeoWatch() {
     stopGeoWatch();
     geoLive.status = 'load';
@@ -1252,6 +1298,13 @@
             <div class="av-map-wrap">
               <div class="av-map-zone load" id="av-map-zone">Hudud tekshirilmoqda…</div>
               <div class="av-map" id="av-map"></div>
+              <button type="button" class="av-locate" id="av-locate" title="Mening joyim" aria-label="Mening joyim">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                  <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
               <div class="av-map-legend">
                 <span><i class="lg-office"></i> Ofis markazi</span>
                 <span><i class="lg-zone"></i> Belgilangan radius</span>
@@ -1517,6 +1570,8 @@
     });
     const geoBtn2 = document.getElementById('btn-geo-check-2');
     if (geoBtn2) bindTap(geoBtn2, () => checkGeoNow());
+    const locateBtn = document.getElementById('av-locate');
+    if (locateBtn) bindTap(locateBtn, () => locateMeOnMap());
 
     const cont = document.getElementById('av-continue');
     if (cont) bindTap(cont, () => {
