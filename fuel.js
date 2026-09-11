@@ -923,8 +923,19 @@ function writeParams() {
   const info = vehicleInfo(STATE.car);
   document.getElementById('car-title').textContent = plateDisp(info.car) + ' — ' + (info.name || info.short || '');
   const bits = [];
+  const last = lastNameHistory(info);
+  if (last) {
+    bits.push(
+      'Buyruq: ' +
+      [last.fromDate, last.orderNo ? ('№ ' + last.orderNo) : '', last.orderBasis, last.prevName ? ('oldingi ' + last.prevName) : '']
+        .filter(Boolean).join(' · ')
+    );
+  }
   (car.changes || []).forEach(c => bits.push(c.day + '-kun ' + c.field + '=' + c.value));
-  (car.driverChanges || []).forEach(c => bits.push(c.day + '-kundan haydovchi: ' + c.name));
+  (car.driverChanges || []).forEach(c => {
+    const extra = [c.orderNo ? ('№ ' + c.orderNo) : '', c.orderBasis].filter(Boolean).join(' · ');
+    bits.push(c.day + '-kundan haydovchi: ' + c.name + (extra ? ' (' + extra + ')' : ''));
+  });
   document.getElementById('changes-box').innerHTML = bits.length ? ('Zanjir o\'zgarishlari: ' + bits.map(esc).join(' · ')) : '';
 }
 
@@ -1817,7 +1828,7 @@ function renderCars() {
             <thead><tr><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th></th></tr></thead>
             <tbody>${list.map((f, i) => {
               const last = lastNameHistory(f);
-              const chip = last ? `<button type="button" class="drv-hist-chip" title="${esc([last.orderBasis, last.prevName ? ('oldingi: ' + last.prevName) : ''].filter(Boolean).join(' · '))}">${esc(formatDrvHistChip(last))}</button>` : '';
+              const card = renderDrvBuyruqCard(last);
               return `<tr data-plate="${esc(f.car)}">
               <td>${i + 1}</td>
               <td>${esc(plateDisp(f.car))}</td>
@@ -1827,7 +1838,7 @@ function renderCars() {
                   <input data-v="name" value="${esc(f.name)}" readonly title="O‘zgartirish uchun «Almashtirish»ni bosing">
                   <button type="button" class="btn btn-ink btn-sm drv-rename-btn">Almashtirish</button>
                 </div>
-                ${chip}
+                ${card}
               </div></td>
               <td><input data-v="card" value="${esc(f.card)}"></td>
               <td><select data-v="fuelType">
@@ -1921,9 +1932,9 @@ function renderCars() {
         openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
       };
     }
-    const chip = tr.querySelector('.drv-hist-chip');
-    if (chip) {
-      chip.onclick = () => {
+    const cardBtn = tr.querySelector('.drv-buyruq-card, .drv-hist-chip');
+    if (cardBtn) {
+      cardBtn.onclick = () => {
         const info = vehicleInfo(plate);
         openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
       };
@@ -2129,6 +2140,26 @@ function formatDrvHistChip(h) {
   return bits.join(' · ') || 'Tarix';
 }
 
+function renderDrvBuyruqCard(h) {
+  if (!h) return '';
+  const rows = [
+    h.fromDate ? `<div class="drv-bq-row"><b>Sana:</b> ${esc(h.fromDate)}</div>` : '',
+    h.orderNo ? `<div class="drv-bq-row"><b>Buyruq №:</b> ${esc(h.orderNo)}</div>` : '',
+    h.orderBasis ? `<div class="drv-bq-row"><b>Asos:</b> ${esc(h.orderBasis)}</div>` : '',
+    h.prevName ? `<div class="drv-bq-row"><b>Oldingi:</b> ${esc(h.prevName)}</div>` : ''
+  ].filter(Boolean).join('');
+  if (!rows) return '';
+  return `<button type="button" class="drv-buyruq-card" title="Buyruq tarixini ko‘rish">
+    <div class="drv-bq-head">Oxirgi buyruq</div>
+    ${rows}
+  </button>`;
+}
+
+function namesEqual(a, b) {
+  const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return norm(a) === norm(b);
+}
+
 function renderDrvHistPanel(plate) {
   const rec = ensureVehicleMeta(plate);
   const hist = Array.isArray(rec.nameHistory) ? rec.nameHistory.slice().reverse() : [];
@@ -2220,8 +2251,14 @@ async function commitDriverRename() {
     if (noEl) noEl.focus();
     return;
   }
-  if (newName === oldName) {
-    toast('Ism o‘zgarmagan');
+  if (namesEqual(newName, oldName)) {
+    toast('Saqlanmadi: YANGI ism HOZIRGIdan farq qilishi kerak');
+    if (nameEl) {
+      nameEl.classList.add('invalid');
+      nameEl.focus();
+      nameEl.select();
+      setTimeout(() => nameEl.classList.remove('invalid'), 1600);
+    }
     return;
   }
 

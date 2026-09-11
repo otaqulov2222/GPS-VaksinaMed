@@ -980,6 +980,35 @@ table.gtable input, table.gtable select {
   flex-shrink: 0;
 }
 .drv-hist-chip:hover { border-color: #1a5fb4; }
+.drv-buyruq-card {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  max-width: 280px;
+  padding: 7px 9px;
+  border: 1px solid #b8c9de;
+  background: linear-gradient(180deg, #eef5fc, #f7fafc);
+  text-align: left;
+  cursor: pointer;
+  font: 500 11px/1.35 var(--sans);
+  color: var(--ink-2);
+}
+.drv-buyruq-card:hover { border-color: #1a5fb4; }
+.drv-buyruq-card .drv-bq-head {
+  font: 700 10px/1.2 var(--mono);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #1a5fb4;
+  margin-bottom: 2px;
+}
+.drv-buyruq-card b { color: var(--muted); font-weight: 600; }
+.drv-buyruq-card .drv-bq-row { word-break: break-word; }
+.drv-rn-field.invalid input,
+.drv-rn-field.invalid textarea,
+#drv-rn-name.invalid {
+  border-color: #b42318 !important;
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, .12);
+}
 @media (max-width: 640px) {
   .drv-rn-swap { grid-template-columns: 1fr; }
   .drv-rn-arrow { transform: rotate(90deg); justify-self: center; }
@@ -1663,7 +1692,7 @@ table.dtable td.day {
     <div class="modal-head">
       <div>
         <h3>Haydovchi ismini almashtirish</h3>
-        <p>Yangi F.I.O., amal qilish sanasi, buyruq asosi va raqami majburiy. Maʼlumotlar bazaga tarix sifatida saqlanadi.</p>
+        <p>Yangi F.I.O. <b>hozirgidan farq qilishi shart</b>. Sana, buyruq asosi va raqami majburiy — saqlangach jadvalda ko‘rinadi va bazaga yoziladi.</p>
       </div>
     </div>
     <div class="modal-body">
@@ -1834,7 +1863,7 @@ table.dtable td.day {
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=8"></script>
 <script src="auth.js?v=33"></script>
-<script src="fuel.js?v=56"></script>
+<script src="fuel.js?v=57"></script>
 <script src="journal.js?v=11"></script>
 </body>
 </html>
