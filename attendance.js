@@ -198,7 +198,7 @@
     }
     if (distEl) {
       if (geoLive.dist != null) {
-        distEl.innerHTML = 'Masofa: <b>' + Math.round(geoLive.dist) + ' m</b> · Radius <b>' + off.radius + ' m</b>';
+        distEl.innerHTML = 'Siz ofis markazidan <b>' + Math.round(geoLive.dist) + ' m</b> · Radius <b>' + off.radius + ' m</b>';
       } else {
         distEl.innerHTML = 'Ofis: <b>' + esc(off.label) + '</b> · Radius <b>' + off.radius + ' m</b>';
       }
@@ -264,11 +264,12 @@
     let cls = 'av-pin av-pin-office';
     if (kind === 'you') cls = 'av-pin av-pin-you';
     if (kind === 'you-out') cls = 'av-pin av-pin-you av-pin-out';
+    const safe = String(label || '').replace(/</g, '&lt;');
     return L.divIcon({
       className: 'av-pin-wrap',
-      html: '<div class="' + cls + '"><i></i><b>' + label + '</b></div>',
-      iconSize: [110, 40],
-      iconAnchor: [12, 12]
+      html: '<div class="' + cls + '" title="' + safe + '"><i></i></div>',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9]
     });
   }
 
@@ -302,30 +303,7 @@
   }
 
   function paintMapOverlay() {
-    const zone = document.getElementById('av-map-zone');
-    const you = document.getElementById('av-map-you');
-    if (zone) {
-      if (geoLive.status === 'ok') {
-        zone.className = 'av-map-zone ok';
-        zone.textContent = 'Belgilangan hudud ichidasiz';
-      } else if (geoLive.status === 'out') {
-        zone.className = 'av-map-zone bad';
-        zone.textContent = 'Belgilangan hududdan tashqaridasiz';
-      } else if (geoLive.status === 'err') {
-        zone.className = 'av-map-zone bad';
-        zone.textContent = 'Joylashuv aniqlanmadi';
-      } else {
-        zone.className = 'av-map-zone load';
-        zone.textContent = 'Hudud tekshirilmoqda…';
-      }
-    }
-    if (you) {
-      if (geoLive.lat != null && geoLive.dist != null) {
-        you.textContent = 'Siz: ' + Math.round(geoLive.dist) + ' m (ofis markazidan)';
-      } else {
-        you.textContent = 'Sizning joyingiz xaritada yashil/qizil belgi bilan';
-      }
-    }
+    /* Holat faqat header badge da — xarita ustida takrorlamaymiz */
   }
 
   function initAttMap() {
@@ -348,6 +326,7 @@
       icon: pinIcon('Ofis', 'office'),
       zIndexOffset: 200
     }).addTo(attMap).bindPopup('<b>' + off.label + '</b><br>Radius: ' + off.radius + ' m');
+    // Popup emas — title tooltip yetarli; marker faqat bitta nuqta
     styleZoneCircle(geoLive.inside);
     setTimeout(() => {
       try { attMap.invalidateSize(); } catch (e) {}
@@ -441,7 +420,7 @@
         ev.stopPropagation();
       } catch (e) {}
     }
-    const btn = document.getElementById('av-locate');
+    const btn = document.querySelector('.av-locate-ctrl-btn');
     const pulse = () => {
       if (!btn) return;
       btn.classList.add('is-active');
@@ -488,11 +467,10 @@
     const Ctrl = L.Control.extend({
       options: { position: 'bottomright' },
       onAdd: function () {
-        const box = L.DomUtil.create('div', 'av-locate-ctrl leaflet-bar');
-        const b = L.DomUtil.create('a', 'av-locate-ctrl-btn', box);
-        b.href = '#';
+        const box = L.DomUtil.create('div', 'av-locate-ctrl');
+        const b = L.DomUtil.create('button', 'av-locate-ctrl-btn', box);
+        b.type = 'button';
         b.title = 'Mening joyim';
-        b.setAttribute('role', 'button');
         b.setAttribute('aria-label', 'Mening joyim');
         b.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
         L.DomEvent.disableClickPropagation(box);
@@ -507,8 +485,6 @@
     });
     attMap._vmLocateCtrl = new Ctrl();
     attMap.addControl(attMap._vmLocateCtrl);
-    const htmlBtn = document.getElementById('av-locate');
-    if (htmlBtn) htmlBtn.hidden = true;
   }
 
   function startGeoWatch() {
@@ -1353,15 +1329,7 @@
               <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
             </div>
             <div class="av-map-wrap">
-              <div class="av-map-zone load" id="av-map-zone">Hudud tekshirilmoqda…</div>
               <div class="av-map" id="av-map"></div>
-              <button type="button" class="av-locate" id="av-locate" title="Mening joyim" aria-label="Mening joyim">
-                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                  <circle cx="12" cy="12" r="3" fill="currentColor"/>
-                  <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
-                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-              </button>
               <div class="av-map-legend">
                 <span><i class="lg-office"></i> Ofis markazi</span>
                 <span><i class="lg-zone"></i> Belgilangan radius</span>
@@ -1370,7 +1338,6 @@
             </div>
             <div class="av-map-foot">
               <span id="av-geo-dist">Radius <b>${esc(String(off.radius))}</b> m</span>
-              <span id="av-map-you" class="av-map-you">Sizning joyingiz xaritada</span>
               <button type="button" class="att-btn att-btn-face" id="btn-geo-check" style="min-height:36px;padding:0 12px;font-size:12px">Qayta tekshirish</button>
             </div>
           </section>
@@ -1627,15 +1594,6 @@
     });
     const geoBtn2 = document.getElementById('btn-geo-check-2');
     if (geoBtn2) bindTap(geoBtn2, () => checkGeoNow());
-    const locateBtn = document.getElementById('av-locate');
-    if (locateBtn) {
-      // Leaflet ustida bo‘lsa ham ishlasin — capture + to‘g‘ridan-to‘g‘ri handler
-      locateBtn.onclick = (e) => locateMeOnMap(e);
-      locateBtn.addEventListener('pointerup', (e) => {
-        if (e.button != null && e.button !== 0) return;
-        locateMeOnMap(e);
-      }, { passive: false });
-    }
 
     const cont = document.getElementById('av-continue');
     if (cont) bindTap(cont, () => {

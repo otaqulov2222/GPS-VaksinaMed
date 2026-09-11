@@ -1288,54 +1288,18 @@ body.fid-lock { overflow: hidden; }
   height: 260px; width: 100%; background: #e8eef5;
 }
 .av-map-wrap { position: relative; }
-.av-locate {
-  position: absolute;
-  right: 12px;
-  bottom: 58px;
-  z-index: 1200;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(142, 182, 223, 0.65);
-  background: #0b1f3a;
-  color: #fff;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  box-shadow: 0 6px 18px rgba(11, 31, 58, 0.35);
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-  -webkit-tap-highlight-color: transparent;
-  pointer-events: auto !important;
-  touch-action: manipulation;
-}
-.av-locate:hover {
-  transform: scale(1.05);
-  border-color: #8eb6df;
-  background: #123050;
-}
-.av-locate:active,
-.av-locate.is-active {
-  transform: scale(0.94);
-  box-shadow: 0 0 0 4px rgba(26, 95, 180, 0.35);
-  background: #1a5fb4;
-}
-.av-locate.is-busy {
-  opacity: 0.75;
-}
-.av-locate svg { display: block; pointer-events: none; }
-
-/* Leaflet ichidagi locate control */
+/* Leaflet locate — bitta tugma, leaflet-bar yo‘q (dublikat chegara chiqmasin) */
 .av-locate-ctrl {
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  margin-bottom: 12px !important;
-  margin-right: 12px !important;
+  margin: 0 12px 12px 0 !important;
 }
 .av-locate-ctrl-btn {
   width: 44px !important;
   height: 44px !important;
-  line-height: 44px !important;
+  padding: 0 !important;
+  margin: 0 !important;
   border-radius: 50% !important;
   border: 1.5px solid rgba(142, 182, 223, 0.65) !important;
   background: #0b1f3a !important;
@@ -1343,23 +1307,21 @@ body.fid-lock { overflow: hidden; }
   display: grid !important;
   place-items: center !important;
   box-shadow: 0 6px 18px rgba(11, 31, 58, 0.35) !important;
-  text-decoration: none !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
 }
 .av-locate-ctrl-btn:hover {
   background: #123050 !important;
   color: #fff !important;
 }
-.av-locate-ctrl-btn svg { display: block; pointer-events: none; }
-.av-map-zone {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-  z-index: 500; pointer-events: none;
-  font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
-  border: 1px solid; white-space: nowrap; max-width: calc(100% - 24px);
-  box-shadow: 0 4px 14px rgba(11,31,58,.12);
+.av-locate-ctrl-btn.is-active {
+  background: #1a5fb4 !important;
+  box-shadow: 0 0 0 4px rgba(26, 95, 180, 0.35) !important;
 }
-.av-map-zone.ok { background: #ecfdf5; border-color: #86efac; color: #047857; }
-.av-map-zone.bad { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
-.av-map-zone.load { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+.av-locate-ctrl-btn.is-busy { opacity: 0.75; }
+.av-locate-ctrl-btn svg { display: block; pointer-events: none; }
+
 .av-map-legend {
   display: flex; flex-wrap: wrap; gap: 10px 14px;
   padding: 8px 12px; background: #f8fafc; border-top: 1px solid var(--att-line);
@@ -1376,36 +1338,26 @@ body.fid-lock { overflow: hidden; }
   box-shadow: none;
 }
 .av-map-legend .lg-you { background: #16a34a; }
-.av-map-you {
-  font-size: 12px; font-weight: 650; color: var(--att-ink);
-  font-family: 'IBM Plex Mono', monospace;
-}
+
 .av-pin-wrap { background: transparent !important; border: 0 !important; }
 .av-pin {
-  display: flex; align-items: center; gap: 6px;
-  transform: translate(0, 0);
-  white-space: nowrap;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
   pointer-events: none;
 }
 .av-pin i {
-  width: 14px; height: 14px; border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
   border: 2px solid #fff;
-  box-shadow: 0 0 0 2px rgba(11,31,58,.2), 0 2px 8px rgba(11,31,58,.25);
-  flex-shrink: 0;
-}
-.av-pin b {
-  font: 700 11px/1 'IBM Plex Sans', system-ui, sans-serif;
-  padding: 4px 8px; border-radius: 999px;
-  background: #fff; color: var(--att-ink);
-  border: 1px solid var(--att-line);
-  box-shadow: 0 2px 8px rgba(11,31,58,.12);
+  box-shadow: 0 0 0 1px rgba(11,31,58,.2), 0 2px 6px rgba(11,31,58,.25);
+  display: block;
 }
 .av-pin-office i { background: #1a5fb4; }
-.av-pin-office b { color: #0b1f3a; }
-.av-pin-you i { background: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.35), 0 2px 8px rgba(11,31,58,.25); }
-.av-pin-you b { color: #047857; border-color: #86efac; background: #ecfdf5; }
-.av-pin-out i { background: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,.35), 0 2px 8px rgba(11,31,58,.25); }
-.av-pin-out b { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+.av-pin-you i { background: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.35), 0 2px 6px rgba(11,31,58,.25); }
+.av-pin-out i { background: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,.35), 0 2px 6px rgba(11,31,58,.25); }
 
 .av-map-foot {
   display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center;
