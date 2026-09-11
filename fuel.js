@@ -476,6 +476,38 @@ function syncDayPricesFromCar(car) {
   return changed;
 }
 
+/**
+ * Spidometr oy boshi + kunlik km → bo'sh spidometr kataklarini to'ldirish.
+ * Masalan: odoStart=58000, 2-kun km=13.89 → spidometr=58013.89
+ * Qo'lda yozilgan spidometr (odo>0) o'zgartirilmaydi.
+ */
+function syncOdoChainFromKm(car) {
+  if (!car) return false;
+  let prev = n(car.odoStart);
+  if (!prev) return false;
+  let changed = false;
+  const dim = daysInMonth(STATE.month);
+  for (let d = 1; d <= dim; d++) {
+    const row = ensureDay(car, d);
+    const odo = n(row.odo);
+    if (odo > 0) {
+      prev = odo;
+      continue;
+    }
+    const km = n(row.km);
+    if (km > 0) {
+      const next = cleanFloat(prev + km);
+      if (n(row.odo) !== next) {
+        row.odo = next;
+        if (!row.kmSrc) row.kmSrc = 'odo-chain';
+        changed = true;
+      }
+      prev = next;
+    }
+  }
+  return changed;
+}
+
 function syncAllCarsDayPrices() {
   let changed = false;
   Object.keys(STATE.cars || {}).forEach(plate => {
@@ -2050,18 +2082,24 @@ function fillFromOdo() {
   const car = getCar(STATE.car);
   const dim = daysInMonth(STATE.month);
   let prev = n(car.odoStart);
+  let filled = 0;
   for (let d = 1; d <= dim; d++) {
     const row = ensureDay(car, d);
     const odo = n(row.odo);
     if (odo > 0 && prev > 0 && odo + 0.0001 >= prev) {
-      row.km = odo - prev;
+      row.km = cleanFloat(odo - prev);
       row.kmSrc = 'odo';
+      filled += 1;
     }
     if (odo > 0) prev = odo;
   }
+  // Aksincha: km bor, spidometr bo'sh → oy boshi + km
+  if (syncOdoChainFromKm(car)) filled += 1;
   markDirty();
   renderDailyTable();
-  toast('Spidometr bo\'yicha km to\'ldirildi');
+  toast(filled
+    ? 'Spidometr va km bog\'landi'
+    : 'Avval «Spidometr oy boshi» yoki kunlik spidometr/km kiriting');
 }
 
 function fillFromGps() {
@@ -4076,13 +4114,19 @@ function bind() {
       const key = el.getAttribute('data-p');
       readParamsIntoCar();
       syncParamsToMeta(STATE.car, getCar(STATE.car));
+      const car = getCar(STATE.car);
       if (key === 'fuelType') {
         applyFuelTypeUi(el.value);
         renderDailyTable();
       } else if (key === 'gasPrice' || key === 'benzinPrice') {
-        // Yuqori narx → pastki jadval darhol
-        syncDayPricesFromCar(getCar(STATE.car));
+        syncDayPricesFromCar(car);
         renderDailyTable();
+      } else if (key === 'odoStart') {
+        syncOdoChainFromKm(car);
+        renderDailyTable();
+      } else if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct' || key === 'gasStart' || key === 'benzinStart') {
+        // Norma/qoldiq → sarf/qoldiq hisobi darhol yangilansin
+        schedulePaintCalc(true);
       } else {
         schedulePaintCalc();
       }
@@ -4102,7 +4146,8 @@ function bind() {
     const d = el.getAttribute('data-d');
     const f = el.getAttribute('data-f');
     if (!d || !f) return;
-    const row = ensureDay(getCar(STATE.car), d);
+    const car = getCar(STATE.car);
+    const row = ensureDay(car, d);
     row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
     if (f === 'km' || f === 'odo') row.kmSrc = 'user';
     if (f === 'gasKm') {
@@ -4122,6 +4167,31 @@ function bind() {
       const km = n(row.km);
       if (row.mode === 'gaz') { row.gasKm = km; syncGasKmInput(km || ''); }
       else if (row.mode === 'benzin' || row.mode === 'dizel') { row.gasKm = 0; syncGasKmInput(0); }
+      // Bo'sh spidometrni oy boshi + km zanjiri bilan to'ldirish
+      if (syncOdoChainFromKm(car)) {
+        const odoInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="odo"]');
+        if (odoInp) odoInp.value = vin(ensureDay(car, d).odo);
+      }
+    }
+    if (f === 'odo' && n(row.odo) > 0) {
+      // Spidometr yozilsa — oldingi qiymatdan km hisoblash (bo'sh km uchun)
+      let prev = n(car.odoStart);
+      const dayNum = n(d);
+      for (let i = 1; i < dayNum; i++) {
+        const pr = dayRow(car, i);
+        if (n(pr.odo) > 0) prev = n(pr.odo);
+        else if (n(pr.km) > 0 && prev > 0) prev = cleanFloat(prev + n(pr.km));
+      }
+      if (prev > 0 && n(row.odo) >= prev && !n(row.km)) {
+        row.km = cleanFloat(n(row.odo) - prev);
+        row.kmSrc = 'odo';
+        const kmInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="km"]');
+        if (kmInp) kmInp.value = vin(row.km);
+        if (row.mode === 'gaz') {
+          row.gasKm = row.km;
+          syncGasKmInput(row.km);
+        }
+      }
     }
     if (f === 'station' && el.value) {
       STATE.meta.stations = STATE.meta.stations || [];
@@ -4142,11 +4212,12 @@ function bind() {
   document.getElementById('btn-recalc').onclick = () => {
     readParamsIntoCar();
     syncDayPricesFromCar(getCar(STATE.car));
+    syncOdoChainFromKm(getCar(STATE.car));
     renderDailyTable();
     schedulePaintCalc(true);
     renderChips();
     saveMonth();
-    toast('Zanjir yangilandi — narxlar bog\'landi');
+    toast('Zanjir yangilandi — narx, norma va spidometr bog\'landi');
   };
   document.getElementById('btn-fill-odo').onclick = fillFromOdo;
   document.getElementById('btn-gps-km').onclick = fillFromGps;
