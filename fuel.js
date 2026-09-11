@@ -46,7 +46,8 @@ const STATE = {
   yearMonths: {},
   saveTimer: null,
   metaSaveTimer: null,
-  dirty: false
+  dirty: false,
+  carsOpenPlate: ''
 };
 
 function esc(s) {
@@ -1810,10 +1811,11 @@ function renderDocs() {
 
 function renderCars() {
   const list = fleet();
+  const caretSvg = '<span class="car-caret-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>';
   document.getElementById('panel-cars').innerHTML = `
     <div class="card"><div class="card-h"><h3>Mashina va narx — qo'lda tahrirlash</h3></div>
       <div class="card-b">
-        <div class="hint">Haydovchi katakchasi — <b>plombali pass</b>: plombani bosing (buyruqni ko‘rish/tahrirlash), o‘ngdagi <b>↻</b> — almashtirish. Marka, norma, narx avtomatik saqlanadi.</div>
+        <div class="hint">Chapdagi <b>▶</b> strelkani bosing — haydovchi buyruqlari (sana, №, asos) ochiladi. Ismni o‘zgartirish: <b>Almashtirish</b>. Marka, norma, narx avtomatik saqlanadi.</div>
         <div class="row-btns add-row" style="margin:0 0 12px;">
           <input id="nv-car" class="j-search" placeholder="01 000 AAA">
           <input id="nv-name" class="j-search" placeholder="Haydovchi F.I.O.">
@@ -1824,15 +1826,19 @@ function renderCars() {
         </div>
         <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
-          <table class="gtable">
-            <thead><tr><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th></th></tr></thead>
+          <table class="gtable" id="cars-edit-table">
+            <thead><tr><th></th><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th></th></tr></thead>
             <tbody>${list.map((f, i) => {
-              const last = lastNameHistory(f);
-              return `<tr data-plate="${esc(f.car)}">
-              <td>${i + 1}</td>
+              const hasHist = !!lastNameHistory(f);
+              return `<tr class="car-sum-row${STATE.carsOpenPlate === f.car ? ' open' : ''}" data-plate="${esc(f.car)}">
+              <td class="car-caret" title="Buyruq tarixini ochish">${caretSvg}</td>
+              <td>${i + 1}${hasHist ? ' <span style="color:#1a5fb4;font-size:10px;">●</span>' : ''}</td>
               <td>${esc(plateDisp(f.car))}</td>
               <td><input data-v="brand" value="${esc(f.brand)}"></td>
-              <td class="drv-name-cell">${renderDrvPass(f.name, last)}</td>
+              <td class="drv-name-cell"><div class="drv-name-inline">
+                <input data-v="name" value="${esc(f.name)}" readonly title="O‘zgartirish uchun «Almashtirish»">
+                <button type="button" class="btn btn-ink btn-sm drv-rename-btn">Almashtirish</button>
+              </div></td>
               <td><input data-v="card" value="${esc(f.card)}"></td>
               <td><select data-v="fuelType">
                 <option value="mixed"${f.fuelType==='mixed'?' selected':''}>Gaz+benzin</option>
@@ -1864,7 +1870,6 @@ function renderCars() {
       return;
     }
     const car = canonicalPlate(rawCar);
-    // Eski boshqa formatdagi kalitni birlashtirish
     const compact = plateCompact(car);
     Object.keys(STATE.meta.vehicles || {}).forEach((k) => {
       if (k !== car && plateCompact(k) === compact) {
@@ -1907,7 +1912,7 @@ function renderCars() {
   };
   const saveBtn = document.getElementById('nv-save');
   if (saveBtn) saveBtn.onclick = () => saveCarsMeta();
-  document.querySelectorAll('#panel-cars tr[data-plate]').forEach(tr => {
+  document.querySelectorAll('#panel-cars tr.car-sum-row[data-plate]').forEach(tr => {
     const plate = tr.getAttribute('data-plate');
     tr.querySelectorAll('[data-v]').forEach(el => {
       if (el.getAttribute('data-v') === 'name') return;
@@ -1918,24 +1923,17 @@ function renderCars() {
         scheduleMetaSave();
       });
     });
-    const renameBtns = tr.querySelectorAll('.drv-rename-btn');
-    renameBtns.forEach(btn => {
-      btn.onclick = (e) => {
+    const renameBtn = tr.querySelector('.drv-rename-btn');
+    if (renameBtn) {
+      renameBtn.onclick = (e) => {
         e.stopPropagation();
         const info = vehicleInfo(plate);
         openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
       };
-    });
-    const editBq = tr.querySelector('.drv-edit-bq');
-    if (editBq) {
-      editBq.onclick = (e) => {
-        e.stopPropagation();
-        const info = vehicleInfo(plate);
-        openDriverRenameModal({ plate, oldName: info.name, mode: 'edit' });
-      };
     }
     const hide = tr.querySelector('.car-hide');
-    if (hide) hide.onclick = async () => {
+    if (hide) hide.onclick = async (e) => {
+      e.stopPropagation();
       if (!confirm(plate + ' ni ro\'yxatdan yashirish?')) return;
       ensureVehicleMeta(plate).hidden = true;
       await saveMeta();
@@ -1943,6 +1941,7 @@ function renderCars() {
       renderAll();
     };
   });
+  bindCarExpandRows();
 }
 
 async function renderAll() {
@@ -2127,49 +2126,111 @@ function lastNameHistory(rec) {
   return hist[hist.length - 1];
 }
 
-function formatDrvDateShort(ymd) {
-  const p = String(ymd || '').split('-');
-  if (p.length !== 3) return String(ymd || '');
-  return p[2] + '.' + p[1] + '.' + p[0].slice(2);
+function carDriverDetailHtml(plate) {
+  const info = vehicleInfo(plate);
+  const rec = ensureVehicleMeta(plate);
+  const hist = Array.isArray(rec.nameHistory) ? rec.nameHistory.slice().reverse() : [];
+  const head = `
+    <div class="car-drv-detail-head">
+      <div>
+        <b>Haydovchi qo‘shimcha ma’lumotlari</b>
+        <span>${esc(plateDisp(info.car))} · ${esc(info.name || '—')}</span>
+      </div>
+      <div class="car-drv-detail-acts">
+        ${hist.length ? `<button type="button" class="btn btn-ink btn-sm car-drv-edit" data-plate="${esc(plate)}">Buyruqni tahrirlash</button>` : ''}
+        <button type="button" class="btn btn-ok btn-sm car-drv-rename" data-plate="${esc(plate)}">Almashtirish</button>
+      </div>
+    </div>`;
+  if (!hist.length) {
+    return `<div class="car-drv-detail">${head}
+      <div class="car-drv-empty">Hali buyruq tarixi yo‘q. «Almashtirish» orqali yangi haydovchi, sana, buyruq asosi va raqamini kiriting.</div>
+    </div>`;
+  }
+  const items = hist.map((h, idx) => `
+    <div class="car-drv-tl-item">
+      <div class="car-drv-tl-dot" title="${idx === 0 ? 'Eng so‘nggi' : ''}"></div>
+      <div class="car-drv-tl-body">
+        <strong>${esc(h.name || '—')}</strong>
+        <div class="car-drv-tl-grid">
+          <div><em>Qaysi sanadan</em><span>${esc(h.fromDate || '—')}</span></div>
+          <div><em>Buyruq raqami</em><span>${esc(h.orderNo ? ('№ ' + h.orderNo) : '—')}</span></div>
+          <div><em>Buyruq asosi</em><span>${esc(h.orderBasis || '—')}</span></div>
+        </div>
+        ${h.prevName ? `<div class="car-drv-tl-prev">Oldingi haydovchi: ${esc(h.prevName)}</div>` : ''}
+      </div>
+    </div>`).join('');
+  return `<div class="car-drv-detail">${head}<div class="car-drv-timeline">${items}</div></div>`;
 }
 
-function formatDrvHistChip(h) {
-  if (!h) return '';
-  const bits = [];
-  if (h.fromDate) bits.push(formatDrvDateShort(h.fromDate));
-  if (h.orderBasis) bits.push(h.orderBasis);
-  return bits.join(' · ') || 'Buyruq bor';
+function toggleCarDriverDetail(tr) {
+  if (!tr) return;
+  const plate = tr.getAttribute('data-plate');
+  const root = tr.closest('tbody');
+  if (!root || !plate) return;
+  const open = tr.classList.contains('open');
+  let detail = tr.nextElementSibling;
+  if (detail && !detail.classList.contains('car-detail-row')) detail = null;
+  if (open && detail) {
+    tr.classList.remove('open');
+    detail.remove();
+    if (STATE.carsOpenPlate === plate) STATE.carsOpenPlate = '';
+    return;
+  }
+  root.querySelectorAll('tr.car-sum-row.open').forEach(other => {
+    other.classList.remove('open');
+    const d = other.nextElementSibling;
+    if (d && d.classList.contains('car-detail-row')) d.remove();
+  });
+  tr.classList.add('open');
+  STATE.carsOpenPlate = plate;
+  const row = document.createElement('tr');
+  row.className = 'car-detail-row';
+  row.setAttribute('data-plate', plate);
+  const td = document.createElement('td');
+  td.colSpan = 12;
+  td.innerHTML = carDriverDetailHtml(plate);
+  row.appendChild(td);
+  tr.insertAdjacentElement('afterend', row);
+  const rename = row.querySelector('.car-drv-rename');
+  if (rename) {
+    rename.onclick = () => {
+      const info = vehicleInfo(plate);
+      openDriverRenameModal({ plate, oldName: info.name, mode: 'meta' });
+    };
+  }
+  const edit = row.querySelector('.car-drv-edit');
+  if (edit) {
+    edit.onclick = () => {
+      const info = vehicleInfo(plate);
+      openDriverRenameModal({ plate, oldName: info.name, mode: 'edit' });
+    };
+  }
+  try { row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_e) {}
 }
 
-function renderDrvPass(name, h) {
-  const tip = h
-    ? [h.fromDate, h.orderNo ? ('№ ' + h.orderNo) : '', h.orderBasis, h.prevName ? ('oldingi: ' + h.prevName) : ''].filter(Boolean).join(' · ')
-    : 'Buyruq yo‘q — almashtirish uchun bosing';
-  const noShort = h && h.orderNo ? String(h.orderNo).replace(/^№\s*/i, '').slice(0, 6) : '';
-  const sealed = !!h;
-  const seal = sealed
-    ? `<span class="drv-pass-seal" aria-hidden="true"><b>№</b><em>${esc(noShort || '—')}</em></span>`
-    : `<span class="drv-pass-seal drv-pass-seal--empty" aria-hidden="true"><em>+</em></span>`;
-  const sub = sealed
-    ? esc(formatDrvHistChip(h))
-    : 'Buyruq biriktirilmagan';
-  const actClass = sealed ? 'drv-pass-act drv-rename-btn' : 'drv-pass-act drv-pass-act--ghost drv-rename-btn';
-  const actTitle = sealed ? 'Yangi haydovchiga almashtirish' : 'Haydovchini buyruq bilan belgilash';
-  return `<div class="drv-pass${sealed ? ' drv-pass--sealed' : ''}">
-    <input class="drv-name-input drv-name-sr" data-v="name" value="${esc(name)}" readonly tabindex="-1" aria-hidden="true">
-    <button type="button" class="drv-pass-body ${sealed ? 'drv-edit-bq' : 'drv-rename-btn'}" title="${esc(tip)}">
-      ${seal}
-      <span class="drv-pass-mid">
-        <strong>${esc(name || '—')}</strong>
-        <small>${sub}</small>
-      </span>
-    </button>
-    <button type="button" class="${actClass}" title="${esc(actTitle)}">↻</button>
-  </div>`;
-}
-
-function renderDrvBuyruqCard(h) {
-  return '';
+function bindCarExpandRows() {
+  const root = document.querySelector('#panel-cars tbody');
+  if (!root) return;
+  root.querySelectorAll('tr.car-sum-row').forEach(tr => {
+    const caret = tr.querySelector('.car-caret');
+    if (caret) {
+      caret.onclick = (e) => {
+        e.stopPropagation();
+        toggleCarDriverDetail(tr);
+      };
+    }
+  });
+  if (STATE.carsOpenPlate) {
+    const want = String(STATE.carsOpenPlate);
+    const openTr = Array.from(root.querySelectorAll('tr.car-sum-row')).find(tr => tr.getAttribute('data-plate') === want);
+    if (openTr) {
+      const hasDetail = openTr.nextElementSibling && openTr.nextElementSibling.classList.contains('car-detail-row');
+      if (!hasDetail) {
+        openTr.classList.remove('open');
+        toggleCarDriverDetail(openTr);
+      }
+    }
+  }
 }
 
 function namesEqual(a, b) {
