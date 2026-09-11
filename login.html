@@ -228,9 +228,9 @@ document.getElementById('f').addEventListener('submit', async (e) => {
     if (!r.ok || !d.ok) throw new Error(d.error || 'Kirish muvaffaqiyatsiz');
     // Majburiy yangi dashboard (brauzer keshini yorib o'tish)
     var dest = d.redirect || '/';
-    if (dest === '/' || dest.indexOf('/index') === 0) dest = '/?cb=m106&t=' + Date.now();
-    else if (dest.indexOf('?') < 0) dest = dest + '?cb=m106&t=' + Date.now();
-    else dest = dest + '&cb=m106&t=' + Date.now();
+    if (dest === '/' || dest.indexOf('/index') === 0) dest = '/?cb=m108&t=' + Date.now();
+    else if (dest.indexOf('?') < 0) dest = dest + '?cb=m108&t=' + Date.now();
+    else dest = dest + '&cb=m108&t=' + Date.now();
     location.replace(dest);
   } catch (ex) {
     const msg = String(ex.message || '');
