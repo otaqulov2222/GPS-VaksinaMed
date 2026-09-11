@@ -1291,8 +1291,8 @@ body.fid-lock { overflow: hidden; }
 .av-locate {
   position: absolute;
   right: 12px;
-  bottom: 52px;
-  z-index: 600;
+  bottom: 58px;
+  z-index: 1200;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -1303,20 +1303,53 @@ body.fid-lock { overflow: hidden; }
   place-items: center;
   cursor: pointer;
   box-shadow: 0 6px 18px rgba(11, 31, 58, 0.35);
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   -webkit-tap-highlight-color: transparent;
+  pointer-events: auto !important;
+  touch-action: manipulation;
 }
 .av-locate:hover {
   transform: scale(1.05);
   border-color: #8eb6df;
   background: #123050;
 }
-.av-locate:active { transform: scale(0.96); }
-.av-locate.is-busy {
-  opacity: 0.7;
-  pointer-events: none;
+.av-locate:active,
+.av-locate.is-active {
+  transform: scale(0.94);
+  box-shadow: 0 0 0 4px rgba(26, 95, 180, 0.35);
+  background: #1a5fb4;
 }
-.av-locate svg { display: block; }
+.av-locate.is-busy {
+  opacity: 0.75;
+}
+.av-locate svg { display: block; pointer-events: none; }
+
+/* Leaflet ichidagi locate control */
+.av-locate-ctrl {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  margin-bottom: 12px !important;
+  margin-right: 12px !important;
+}
+.av-locate-ctrl-btn {
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 44px !important;
+  border-radius: 50% !important;
+  border: 1.5px solid rgba(142, 182, 223, 0.65) !important;
+  background: #0b1f3a !important;
+  color: #fff !important;
+  display: grid !important;
+  place-items: center !important;
+  box-shadow: 0 6px 18px rgba(11, 31, 58, 0.35) !important;
+  text-decoration: none !important;
+}
+.av-locate-ctrl-btn:hover {
+  background: #123050 !important;
+  color: #fff !important;
+}
+.av-locate-ctrl-btn svg { display: block; pointer-events: none; }
 .av-map-zone {
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
   z-index: 500; pointer-events: none;

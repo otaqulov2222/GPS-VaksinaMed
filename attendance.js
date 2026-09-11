@@ -349,7 +349,10 @@
       zIndexOffset: 200
     }).addTo(attMap).bindPopup('<b>' + off.label + '</b><br>Radius: ' + off.radius + ' m');
     styleZoneCircle(geoLive.inside);
-    setTimeout(() => { try { attMap.invalidateSize(); } catch (e) {} }, 80);
+    setTimeout(() => {
+      try { attMap.invalidateSize(); } catch (e) {}
+      attachLocateControl();
+    }, 80);
     // Radius toʻliq kórinsin
     try {
       attMap.fitBounds(attMapCircle.getBounds().pad(0.12));
@@ -408,50 +411,104 @@
     paintMapOverlay();
   }
 
-  function locateMeOnMap() {
-    const btn = document.getElementById('av-locate');
-    if (btn) btn.classList.add('is-busy');
-    const finish = () => { if (btn) btn.classList.remove('is-busy'); };
-
-    const focus = (lat, lng) => {
-      if (!attMap) {
-        initAttMap();
+  function forceCenterOnMe(lat, lng) {
+    if (lat == null || lng == null) return false;
+    if (!attMap) {
+      try { initAttMap(); } catch (e) { return false; }
+    }
+    if (!attMap) return false;
+    attMapFitted = false;
+    updateAttMap(lat, lng);
+    try { attMap.invalidateSize(true); } catch (e) {}
+    try {
+      const targetZoom = Math.max(17, attMap.getZoom() || 16);
+      if (typeof attMap.flyTo === 'function') {
+        attMap.flyTo([lat, lng], targetZoom, { duration: 0.55, easeLinearity: 0.25 });
+      } else {
+        attMap.setView([lat, lng], targetZoom, { animate: true });
       }
-      updateAttMap(lat, lng);
+    } catch (e) {
+      try { attMap.setView([lat, lng], 17); } catch (e2) {}
+    }
+    paintMapOverlay();
+    return true;
+  }
+
+  function locateMeOnMap(ev) {
+    if (ev) {
       try {
-        const off = officeInfo();
-        const z = Math.max(16, attMap.getZoom());
-        // Avval o‘zingizga zoom, keyin ofis ham kórinsin
-        attMap.setView([lat, lng], z, { animate: true });
-        setTimeout(() => {
-          try {
-            const b = L.latLngBounds([[lat, lng], [off.lat, off.lng]]);
-            if (attMapCircle) b.extend(attMapCircle.getBounds());
-            attMap.fitBounds(b.pad(0.18), { animate: true, maxZoom: 18 });
-          } catch (e) {}
-        }, 280);
-      } catch (e) {
-        if (attMap) attMap.setView([lat, lng], 17, { animate: true });
-      }
-      paintMapOverlay();
-      msg(geoLive.inside ? 'Sizning joyingiz — ofis hududida' : 'Sizning joriy joyingizga qaytildi', geoLive.inside ? 'ok' : 'info');
+        ev.preventDefault();
+        ev.stopPropagation();
+      } catch (e) {}
+    }
+    const btn = document.getElementById('av-locate');
+    const pulse = () => {
+      if (!btn) return;
+      btn.classList.add('is-active');
+      setTimeout(() => btn.classList.remove('is-active'), 450);
     };
+    pulse();
 
+    // 1) Darhol oxirgi ma'lum joyga qaytar (kutmasdan)
+    if (geoLive.lat != null && geoLive.lng != null) {
+      forceCenterOnMe(geoLive.lat, geoLive.lng);
+      msg(
+        geoLive.inside ? 'Sizning joyingiz — ofis hududida' : 'Joriy joyingizga qaytildi',
+        geoLive.inside ? 'ok' : 'info'
+      );
+    } else if (btn) {
+      btn.classList.add('is-busy');
+    }
+
+    // 2) GPS ni yangilab yana markazlashtir
     getGps().then((g) => {
       applyGeoFix(g.lat, g.lng, g.accuracy);
-      focus(g.lat, g.lng);
-      finish();
+      forceCenterOnMe(g.lat, g.lng);
+      msg(
+        geoLive.inside ? 'Sizning joyingiz — ofis hududida' : 'Joriy joyingizga qaytildi',
+        geoLive.inside ? 'ok' : 'info'
+      );
+      if (btn) btn.classList.remove('is-busy');
     }).catch((e) => {
       if (geoLive.lat != null) {
-        focus(geoLive.lat, geoLive.lng);
-        finish();
+        forceCenterOnMe(geoLive.lat, geoLive.lng);
+        if (btn) btn.classList.remove('is-busy');
         return;
       }
       applyGeoError(e);
       showGeoHelp(e.message || 'Joylashuv olinmadi');
       msg(e.message || 'Joylashuv olinmadi', 'err');
-      finish();
+      if (btn) btn.classList.remove('is-busy');
     });
+  }
+
+  function attachLocateControl() {
+    if (!attMap || !window.L) return;
+    if (attMap._vmLocateCtrl) return;
+    const Ctrl = L.Control.extend({
+      options: { position: 'bottomright' },
+      onAdd: function () {
+        const box = L.DomUtil.create('div', 'av-locate-ctrl leaflet-bar');
+        const b = L.DomUtil.create('a', 'av-locate-ctrl-btn', box);
+        b.href = '#';
+        b.title = 'Mening joyim';
+        b.setAttribute('role', 'button');
+        b.setAttribute('aria-label', 'Mening joyim');
+        b.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+        L.DomEvent.disableClickPropagation(box);
+        L.DomEvent.disableScrollPropagation(box);
+        L.DomEvent.on(b, 'click', function (e) {
+          L.DomEvent.preventDefault(e);
+          L.DomEvent.stop(e);
+          locateMeOnMap(e);
+        });
+        return box;
+      }
+    });
+    attMap._vmLocateCtrl = new Ctrl();
+    attMap.addControl(attMap._vmLocateCtrl);
+    const htmlBtn = document.getElementById('av-locate');
+    if (htmlBtn) htmlBtn.hidden = true;
   }
 
   function startGeoWatch() {
@@ -1571,7 +1628,14 @@
     const geoBtn2 = document.getElementById('btn-geo-check-2');
     if (geoBtn2) bindTap(geoBtn2, () => checkGeoNow());
     const locateBtn = document.getElementById('av-locate');
-    if (locateBtn) bindTap(locateBtn, () => locateMeOnMap());
+    if (locateBtn) {
+      // Leaflet ustida bo‘lsa ham ishlasin — capture + to‘g‘ridan-to‘g‘ri handler
+      locateBtn.onclick = (e) => locateMeOnMap(e);
+      locateBtn.addEventListener('pointerup', (e) => {
+        if (e.button != null && e.button !== 0) return;
+        locateMeOnMap(e);
+      }, { passive: false });
+    }
 
     const cont = document.getElementById('av-continue');
     if (cont) bindTap(cont, () => {
