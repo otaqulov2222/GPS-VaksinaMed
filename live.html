@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="shell.css?v=27"/>
+<link rel="stylesheet" href="shell.css?v=28"/>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
@@ -548,17 +548,109 @@ body.app-body {
   50% { opacity: .35; }
 }
 @media (max-width: 900px) {
+  /* Live: viewport ichida — xarita + ro‘yxat, siqilmasin */
+  body.app-body:has(.live-main) .app-main {
+    padding-bottom: 0 !important;
+    overflow: hidden !important;
+    display: flex;
+    flex-direction: column;
+  }
+  body.app-body:has(.live-main) .topbar .top-sub {
+    display: none;
+  }
   .live-main {
-    grid-template-columns: 1fr;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+    height: auto;
+    max-height: none;
+    padding: 8px;
+    gap: 8px;
+    overflow: hidden;
+  }
+  .live-map-card {
+    order: -1;
+    flex: 1.4 1 0;
+    min-height: 0;
+    border-radius: 16px;
+  }
+  .live-side {
+    order: 1;
+    flex: 0.95 1 0;
+    max-height: none;
+    min-height: 0;
+    border-radius: 16px;
+  }
+  .live-side-head {
+    padding: 10px 12px 10px;
+    gap: 8px;
+  }
+  .live-stats { gap: 6px; }
+  .live-stat {
+    padding: 8px 4px;
+    border-radius: 10px;
+  }
+  .live-stat i { font-size: 8px; margin-bottom: 2px; letter-spacing: .06em; }
+  .live-stat b { font-size: 16px; }
+  .live-search-wrap { border-radius: 12px; }
+  .live-search { font-size: 16px; height: 40px; }
+  .live-list { padding: 6px; }
+  .live-row {
+    padding: 9px 10px;
+    gap: 8px;
+    border-radius: 12px;
+  }
+  .live-map-head {
+    padding: 8px 10px;
+    gap: 8px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .live-map-head-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .live-map-actions {
+    width: 100%;
+    margin-left: 0;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .live-status-pill {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    height: 34px;
+    font-size: 11px;
+    padding: 0 10px 0 8px;
+  }
+  .live-legend { display: none; }
+  .live-btn {
+    height: 34px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: 10px;
+    gap: 6px;
+  }
+  .live-btn-ghost .live-btn-txt-long { display: none; }
+  .live-btn-ghost .live-btn-txt-short { display: inline; }
+  .live-btn-primary .live-btn-txt-long { display: none; }
+  .live-btn-primary .live-btn-txt-short { display: inline; }
+  #live-map {
+    flex: 1 1 auto;
+    min-height: 0;
     height: auto;
   }
-  .live-side { max-height: 42vh; }
-  #live-map { min-height: 48vh; }
-  .live-legend { display: none; }
-  .live-status-pill { max-width: 46vw; font-size: 11px; }
-  .live-btn span, .live-btn { font-size: 12px; }
-  .live-map-actions .live-btn-ghost { padding: 0 10px; }
+  #live-map .leaflet-control-zoom a {
+    width: 36px !important;
+    height: 36px !important;
+    line-height: 36px !important;
+  }
 }
+.live-btn-txt-short { display: none; }
+
 </style>
 </head>
 <body class="app-body">
@@ -633,11 +725,13 @@ body.app-body {
             <span class="live-status-pill" id="live-clock" title="Oxirgi yangilanish"><span class="dot" aria-hidden="true"></span><span class="live-clock-txt">—</span></span>
             <button type="button" class="live-btn live-btn-ghost" id="live-fit" title="Barcha mashinalarni ko‘rish">
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Hammasini ko‘rish
+              <span class="live-btn-txt-long">Hammasini ko‘rish</span>
+              <span class="live-btn-txt-short">Hammasi</span>
             </button>
             <button type="button" class="live-btn live-btn-primary" id="live-refresh" title="GPS ni yangilash">
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Yangilash
+              <span class="live-btn-txt-long">Yangilash</span>
+              <span class="live-btn-txt-short">Yangila</span>
             </button>
           </div>
         </div>
@@ -650,8 +744,8 @@ body.app-body {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=8"></script>
-<script src="auth.js?v=33"></script>
+<script src="auth.js?v=34"></script>
 <script src="map-tiles.js?v=3"></script>
-<script src="live.js?v=13"></script>
+<script src="live.js?v=14"></script>
 </body>
 </html>

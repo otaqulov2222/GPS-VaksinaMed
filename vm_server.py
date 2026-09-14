@@ -391,7 +391,17 @@ class PgPersist:
                     (key, raw),
                 )
 
-        self._with_conn(run)
+        last_err = None
+        for attempt in range(3):
+            try:
+                self._with_conn(run)
+                return
+            except Exception as e:
+                last_err = e
+                self._close_conn()
+                if attempt < 2:
+                    time.sleep(0.15 * (attempt + 1))
+        raise last_err
 
     def keys(self, prefix=""):
         like = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -404,10 +414,58 @@ class PgPersist:
         return self._with_conn(run)
 
 
+class DualPersist:
+    """Postgres asosiy + lokal fayl zaxira — DB uzilsa ham diskda qoladi."""
+
+    kind = "postgres+file"
+    durable = True
+
+    def __init__(self, primary, mirror):
+        self.primary = primary
+        self.mirror = mirror
+
+    def get(self, key, default=None):
+        try:
+            v = self.primary.get(key, None)
+            if v is not None:
+                return v
+        except Exception as e:
+            print("[WARN] postgres get:", e)
+        try:
+            v = self.mirror.get(key, None)
+            if v is not None:
+                return v
+        except Exception as e:
+            print("[WARN] file get:", e)
+        return default
+
+    def put(self, key, value):
+        self.primary.put(key, value)
+        try:
+            self.mirror.put(key, value)
+        except Exception as e:
+            print("[WARN] file mirror put:", e)
+
+    def keys(self, prefix=""):
+        out = set()
+        try:
+            out.update(self.primary.keys(prefix) or [])
+        except Exception as e:
+            print("[WARN] postgres keys:", e)
+        try:
+            out.update(self.mirror.keys(prefix) or [])
+        except Exception as e:
+            print("[WARN] file keys:", e)
+        return sorted(out)
+
+
 def make_persist(root):
+    persist_root = (os.environ.get("PERSIST_DIR") or "").strip() or root
     url = (os.environ.get("DATABASE_URL") or "").strip()
     if url:
-        persist = PgPersist(url)
+        pg = PgPersist(url)
+        file_p = FilePersist(persist_root)
+        persist = DualPersist(pg, file_p)
         users_file = os.path.join(root, "data", "users.json")
         if persist.get("users") is None and os.path.isfile(users_file):
             try:
@@ -416,12 +474,11 @@ def make_persist(root):
                 print("[OK] users.json bazaga ko'chirildi")
             except (OSError, json.JSONDecodeError):
                 pass
-        print("[OK] Saqlash: PostgreSQL — ma'lumotlar saqlanadi (Neon/Render)")
+        print("[OK] Saqlash: PostgreSQL + lokal zaxira — ma'lumotlar ikki joyda")
         return persist
     print("[OK] Saqlash: lokal fayl (production uchun DATABASE_URL / Neon qo'ying)")
     # Render’da deploydan keyin ham qoladigan disk (volume) bo‘lsa, uni shu yerga ulab qo‘ying.
     # Agar PERSIST_DIR berilmasa, eski holatdagi workspace ichidagi lokal fayl ishlaydi.
-    persist_root = (os.environ.get("PERSIST_DIR") or "").strip() or root
     return FilePersist(persist_root)
 
 
@@ -1831,7 +1888,14 @@ class OfficeStore:
             }
         cars = self._dedupe_cars(cars)
         payload = {"month": month, "savedAt": iso_now(), "cars": cars}
-        self._save("fuel:month:" + month, payload)
+        key = "fuel:month:" + month
+        try:
+            self._save(key, payload)
+        except Exception as e:
+            return None, "Bazaga yozilmadi: " + str(e)[:120]
+        check = self._load(key, None)
+        if not isinstance(check, dict) or check.get("savedAt") != payload.get("savedAt"):
+            return None, "Yozuv tekshiruvi muvaffaqiyatsiz — qayta saqlang"
         return payload, None
 
     def fuel_year(self, year):
@@ -3449,7 +3513,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if data is None:
                 self.send_json({"ok": False, "error": "Oy noto'g'ri"}, 400)
                 return
-            self.send_json({"ok": True, "month": month, "data": data})
+            self.send_json({
+                "ok": True,
+                "month": month,
+                "data": data,
+                "durable": bool(STORE.persist_info().get("durable")),
+                "persist": STORE.persist_info().get("kind") or "",
+            })
             return
 
         if path == "/api/office/fuel/gps-km":
@@ -4105,11 +4175,21 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             if self.deny_driver_write(sess):
                 return
-            payload, err = OFFICE.save_fuel_month(body.get("month"), body)
-            if err:
-                self.send_json({"ok": False, "error": err}, 400)
+            try:
+                payload, err = OFFICE.save_fuel_month(body.get("month"), body)
+            except Exception as e:
+                self.send_json({"ok": False, "error": "Saqlash xatosi: " + str(e)[:120]}, 500)
                 return
-            self.send_json({"ok": True, "savedAt": payload.get("savedAt")})
+            if err:
+                self.send_json({"ok": False, "error": err}, 500 if "Bazaga" in err or "tekshiruvi" in err else 400)
+                return
+            self.send_json({
+                "ok": True,
+                "savedAt": payload.get("savedAt"),
+                "durable": bool(STORE.persist_info().get("durable")),
+                "persist": STORE.persist_info().get("kind") or "",
+                "verified": True,
+            })
             return
 
         if path == "/api/office/journal":
@@ -4648,7 +4728,7 @@ def main():
   |  Parol: VM_SEED_PASS (.env)             |
   |  Birinchi ish: panelda parolni almashtiring! |"""
 
-    persist_line = "PostgreSQL (qoladi)" if STORE.persist_info().get("durable") else "lokal fayl"
+    persist_line = "PostgreSQL + lokal zaxira (qoladi)" if STORE.persist_info().get("durable") else "lokal fayl"
     if not STORE.persist_info().get("durable") and is_production():
         print(
             "\n  [DIQQAT] DATABASE_URL yo'q — ma'lumotlar saqlanmaydi.\n"

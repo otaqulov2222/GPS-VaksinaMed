@@ -47,7 +47,13 @@ const STATE = {
   saveTimer: null,
   metaSaveTimer: null,
   dirty: false,
-  carsOpenPlate: ''
+  carsOpenPlate: '',
+  saveInFlight: false,
+  saveQueued: false,
+  saveFailCount: 0,
+  persistDurable: null,
+  persistKind: '',
+  heartbeatTimer: null
 };
 
 function esc(s) {
@@ -598,12 +604,114 @@ function carHasWarn(plate) {
   return false;
 }
 
+function setSaveStatus(text, kind) {
+  const st = document.getElementById('save-st');
+  if (!st) return;
+  st.textContent = text;
+  st.classList.remove('ok', 'warn', 'err', 'busy');
+  if (kind) st.classList.add(kind);
+}
+
 function markDirty() {
   STATE.dirty = true;
-  const st = document.getElementById('save-st');
-  if (st) st.textContent = 'Saqlanmagan...';
+  setSaveStatus('Saqlanmoqda…', 'busy');
   clearTimeout(STATE.saveTimer);
-  STATE.saveTimer = setTimeout(saveMonth, 1500);
+  STATE.saveTimer = setTimeout(() => { saveMonth().catch(() => {}); }, 800);
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function rememberPersistInfo(d) {
+  if (!d || typeof d !== 'object') return;
+  if (typeof d.durable === 'boolean') STATE.persistDurable = d.durable;
+  if (d.persist) STATE.persistKind = String(d.persist);
+}
+
+function buildFuelMonthPayload() {
+  flushFormToState();
+  syncAllCarsDayPrices();
+  Object.keys(STATE.cars || {}).forEach(k => syncParamsToMeta(k, STATE.cars[k]));
+  return { month: STATE.month, cars: carsToSave({ skipFlush: true }) };
+}
+
+/** Sahifa yopilganda — serverga keepalive POST + local zaxira */
+function flushSaveKeepalive() {
+  try {
+    if (!STATE.month) return;
+    const payload = buildFuelMonthPayload();
+    writeLocalMonth();
+    if (!STATE.dirty && !STATE.saveQueued) return;
+    fetch('/api/office/fuel/month', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(() => {});
+  } catch (_e) { /* ignore */ }
+}
+
+async function saveMonth(opts) {
+  opts = opts || {};
+  if (STATE.saveInFlight) {
+    STATE.saveQueued = true;
+    return;
+  }
+  STATE.saveInFlight = true;
+  clearTimeout(STATE.saveTimer);
+  const maxAttempts = opts.attempts || 3;
+  let lastErr = null;
+  try {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const payload = buildFuelMonthPayload();
+        writeLocalMonth();
+        setSaveStatus(attempt > 1 ? ('Qayta urinish ' + attempt + '…') : 'Serverga yozilmoqda…', 'busy');
+        const d = await vmApi('/api/office/fuel/month', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        rememberPersistInfo(d);
+        try { await saveMeta(); } catch (e) { /* meta alohida */ }
+        Object.keys(STATE.cars || {}).forEach(k => {
+          STATE.cars[k]._fromServer = true;
+          delete STATE.cars[k]._replaceDays;
+        });
+        STATE.dirty = false;
+        STATE.saveFailCount = 0;
+        STATE.yearMonths = {};
+        writeLocalMonth();
+        const where = d.durable === false
+          ? ' (lokal fayl — DATABASE_URL tekshiring)'
+          : (d.durable ? ' · DB' : '');
+        const verified = d.verified ? ' ✓' : '';
+        setSaveStatus('Saqlandi ' + (d.savedAt || '') + where + verified, d.durable === false ? 'warn' : 'ok');
+        if (STATE.car) {
+          writeParams();
+          renderDailyTable();
+        }
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        STATE.saveFailCount += 1;
+        writeLocalMonth();
+        if (attempt < maxAttempts) await sleepMs(400 * attempt);
+      }
+    }
+    if (lastErr) {
+      setSaveStatus((lastErr.message || 'Saqlanmadi') + ' · lokal zaxira bor', 'err');
+      toast(lastErr.message || 'Saqlanmadi — internetni tekshiring');
+    }
+  } finally {
+    STATE.saveInFlight = false;
+    if (STATE.saveQueued) {
+      STATE.saveQueued = false;
+      if (STATE.dirty) markDirty();
+    }
+  }
 }
 
 async function loadAll() {
@@ -629,6 +737,12 @@ async function loadAll() {
     });
   }
   const serverCars = (month.data && month.data.cars) || {};
+  rememberPersistInfo(month);
+  if (STATE.persistDurable === false) {
+    setSaveStatus('Diqqat: DB emas — lokal fayl', 'warn');
+  } else if (STATE.persistDurable === true) {
+    setSaveStatus('DB ulangan · ' + (STATE.persistKind || 'postgres'), 'ok');
+  }
   const local = readLocalMonth(STATE.month);
   const adopted = adoptCars(serverCars);
   const localCars = (local && local.cars) || {};
@@ -666,6 +780,7 @@ async function changeMonth(ym) {
     vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(ym)).catch(() => ({ days: {} }))
   ]);
   const serverCars = (month.data && month.data.cars) || {};
+  rememberPersistInfo(month);
   const local = readLocalMonth(ym);
   const adopted = adoptCars(serverCars);
   const localCars = (local && local.cars) || {};
@@ -841,39 +956,6 @@ function carsToSave(opts) {
     out[STATE.car] = stripped;
   }
   return out;
-}
-
-async function saveMonth() {
-  try {
-    flushFormToState();
-    syncAllCarsDayPrices();
-    Object.keys(STATE.cars || {}).forEach(k => syncParamsToMeta(k, STATE.cars[k]));
-    const payload = { month: STATE.month, cars: carsToSave({ skipFlush: true }) };
-    writeLocalMonth();
-    const d = await vmApi('/api/office/fuel/month', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    try { await saveMeta(); } catch (e) {}
-    Object.keys(STATE.cars || {}).forEach(k => {
-      STATE.cars[k]._fromServer = true;
-      delete STATE.cars[k]._replaceDays;
-    });
-    STATE.dirty = false;
-    STATE.yearMonths = {};
-    writeLocalMonth();
-    const st = document.getElementById('save-st');
-    if (st) st.textContent = 'Saqlandi ' + (d.savedAt || '');
-    if (STATE.car) {
-      writeParams();
-      renderDailyTable();
-    }
-  } catch (e) {
-    writeLocalMonth();
-    const st = document.getElementById('save-st');
-    if (st) st.textContent = e.message || 'Saqlanmadi';
-    toast(e.message || 'Saqlanmadi');
-  }
 }
 
 async function saveMeta() {
@@ -4364,10 +4446,34 @@ function bind() {
     if (STATE.dirty) await saveMonth();
     vmLogout();
   };
-  window.addEventListener('beforeunload', () => {
+  window.addEventListener('beforeunload', (ev) => {
     flushFormToState();
     writeLocalMonth();
+    if (STATE.dirty) {
+      flushSaveKeepalive();
+      ev.preventDefault();
+      ev.returnValue = '';
+    }
   });
+  window.addEventListener('pagehide', () => {
+    flushFormToState();
+    writeLocalMonth();
+    if (STATE.dirty) flushSaveKeepalive();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flushFormToState();
+      writeLocalMonth();
+      if (STATE.dirty) flushSaveKeepalive();
+    } else if (document.visibilityState === 'visible' && STATE.dirty) {
+      saveMonth().catch(() => {});
+    }
+  });
+  if (!STATE.heartbeatTimer) {
+    STATE.heartbeatTimer = setInterval(() => {
+      if (STATE.dirty && !STATE.saveInFlight) saveMonth().catch(() => {});
+    }, 20000);
+  }
 }
 
 async function refreshGpsKmAuto() {

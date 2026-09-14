@@ -379,12 +379,12 @@ body:has(.fid-modal.open) .vm-sup-root {
 
 @media (max-width: 520px) {
   .vm-sup-root {
-    /* Pastki o‘ng FAB CTAlarni yopmasin — chapga */
-    left: max(10px, env(safe-area-inset-left, 0px));
-    right: auto;
+    /* Mobil ham pastki o‘ng — chapga o‘tkazilmasin */
+    left: auto;
+    right: max(10px, env(safe-area-inset-right, 0px));
     bottom: max(10px, env(safe-area-inset-bottom, 0px));
   }
-  /* Mobil: kunlik pastki tugmalar paneli ustida */
+  /* Mobil: kunlik pastki tugmalar paneli ustida (joyi o‘ngda qoladi) */
   body:has(#panel-daily.on) .vm-sup-root {
     bottom: calc(92px + env(safe-area-inset-bottom, 0px));
   }
@@ -394,8 +394,9 @@ body:has(.fid-modal.open) .vm-sup-root {
     max-height: calc(100dvh - 120px);
     bottom: calc(100% + 10px);
     border-radius: 18px;
-    left: calc(-1 * max(10px, env(safe-area-inset-left, 0px)));
-    right: auto;
+    left: auto;
+    right: 0;
+    transform-origin: bottom right;
   }
   .vm-sup-fab {
     width: 56px;

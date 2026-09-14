@@ -160,6 +160,20 @@ function liveInitMap() {
   setTimeout(() => {
     try { LIVE.map.invalidateSize(); } catch (e) {}
   }, 200);
+  setTimeout(() => {
+    try { LIVE.map.invalidateSize(); } catch (e) {}
+  }, 600);
+  if (!LIVE._resizeBound) {
+    LIVE._resizeBound = true;
+    window.addEventListener('resize', () => {
+      try { LIVE.map && LIVE.map.invalidateSize(); } catch (e) {}
+    });
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        try { LIVE.map && LIVE.map.invalidateSize(); } catch (e) {}
+      }, 280);
+    });
+  }
 }
 
 
@@ -542,6 +556,9 @@ async function liveBoot() {
   await liveFetch();
   liveStartPoll();
   liveStartMotion();
+  setTimeout(() => {
+    try { LIVE.map && LIVE.map.invalidateSize(); } catch (e) {}
+  }, 100);
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
@@ -551,6 +568,9 @@ async function liveBoot() {
       liveFetch();
       liveStartPoll();
       liveStartMotion();
+      setTimeout(() => {
+        try { LIVE.map && LIVE.map.invalidateSize(); } catch (e) {}
+      }, 120);
     }
   });
 }
