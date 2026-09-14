@@ -2264,8 +2264,8 @@
           <div class="att-qr-poster-head">
             <div>
               <div class="att-qr-kicker">Davomat</div>
-              <h3 class="att-qr-title">VaksinaMed GPS Office</h3>
-              <p class="att-qr-lead">Ofis QR plakati — chop eting yoki PNG/PDF yuklab oling.</p>
+              <h3 class="att-qr-title">Ofis QR</h3>
+              <p class="att-qr-lead">Chop etish · PNG · PDF</p>
             </div>
             <div class="att-qr-ver">v${esc(String(qr.version || 1))}</div>
           </div>
@@ -2432,38 +2432,76 @@
     });
   }
 
-  /** GPS uslubidagi yumaloq modulli QR — kvadrat pixel emas */
+  /** Premium GPS QR: oraliqli nuqtalar + radar finder + markaz pin */
   function drawGpsStyleQr(ctx, modules, size, opts) {
     const n = modules.size;
-    const marginMods = 2;
+    const marginMods = 3;
     const total = n + marginMods * 2;
     const cell = size / total;
-    const dark = (opts && opts.dark) || '#0b1f3a';
-    const accent = (opts && opts.accent) || '#1a8cff';
-    const light = (opts && opts.light) || '#ffffff';
+    const dark = (opts && opts.dark) || '#071525';
+    const accent = (opts && opts.accent) || '#0ea5e9';
+    const accent2 = (opts && opts.accent2) || '#0369a1';
+    const light = (opts && opts.light) || '#f8fbff';
 
-    ctx.fillStyle = light;
+    // Map-like panel
+    const panel = ctx.createLinearGradient(0, 0, size, size);
+    panel.addColorStop(0, '#f0f7ff');
+    panel.addColorStop(0.5, '#ffffff');
+    panel.addColorStop(1, '#e8f2fc');
+    ctx.fillStyle = panel;
     ctx.fillRect(0, 0, size, size);
+
+    // Soft grid under modules
+    ctx.strokeStyle = 'rgba(14,165,233,0.07)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= total; i++) {
+      const p = i * cell;
+      ctx.beginPath();
+      ctx.moveTo(p, 0);
+      ctx.lineTo(p, size);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, p);
+      ctx.lineTo(size, p);
+      ctx.stroke();
+    }
 
     function isOn(x, y) {
       if (x < 0 || y < 0 || x >= n || y >= n) return false;
-      return modules.get(x, y);
+      try {
+        return !!modules.get(x, y);
+      } catch (e) {
+        return !!(modules.data && modules.data[y * n + x]);
+      }
     }
 
     function inFinder(x, y) {
-      const inTL = x < 7 && y < 7;
-      const inTR = x >= n - 7 && y < 7;
-      const inBL = x < 7 && y >= n - 7;
-      return inTL || inTR || inBL;
+      return (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7);
     }
 
-    // Data modules — GPS nuqtalari (doira)
+    function inCenterLogo(x, y) {
+      const c = (n - 1) / 2;
+      return Math.abs(x - c) <= 3.2 && Math.abs(y - c) <= 3.2;
+    }
+
+    // Data: aniq oraliqli “sputnik” nuqtalari (bir-biriga yopishmasin)
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
-        if (!isOn(x, y) || inFinder(x, y)) continue;
+        if (!isOn(x, y) || inFinder(x, y) || inCenterLogo(x, y)) continue;
         const cx = (x + marginMods + 0.5) * cell;
         const cy = (y + marginMods + 0.5) * cell;
-        const r = cell * 0.40;
+        const r = cell * 0.30;
+        // capsule connect right/down for liquid look
+        if (isOn(x + 1, y) && !inFinder(x + 1, y) && !inCenterLogo(x + 1, y)) {
+          ctx.fillStyle = dark;
+          roundRect(ctx, cx - r, cy - r, cell + r * 2, r * 2, r);
+          ctx.fill();
+        }
+        if (isOn(x, y + 1) && !inFinder(x, y + 1) && !inCenterLogo(x, y + 1)) {
+          ctx.fillStyle = dark;
+          roundRect(ctx, cx - r, cy - r, r * 2, cell + r * 2, r);
+          ctx.fill();
+        }
         ctx.fillStyle = dark;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -2471,34 +2509,79 @@
       }
     }
 
-    // Finder — yumaloq burchakli joylashuv belgilari (standart 7×7 struktura)
+    // Finder = GPS “locator” eyes
     function drawLocator(ox, oy) {
       const px = (ox + marginMods) * cell;
       const py = (oy + marginMods) * cell;
       const s = cell * 7;
       const cx = px + s / 2;
       const cy = py + s / 2;
+      const R = cell * 0.9;
 
+      // Outer dark rounded plate
       ctx.fillStyle = dark;
-      roundRect(ctx, px, py, s, s, cell * 0.95);
+      roundRect(ctx, px, py, s, s, R);
       ctx.fill();
+      // Cyan ring frame
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = Math.max(2, cell * 0.22);
+      roundRect(ctx, px + cell * 0.35, py + cell * 0.35, s - cell * 0.7, s - cell * 0.7, R * 0.75);
+      ctx.stroke();
+      // Inner white well
       ctx.fillStyle = light;
-      roundRect(ctx, px + cell, py + cell, cell * 5, cell * 5, cell * 0.7);
+      roundRect(ctx, px + cell, py + cell, cell * 5, cell * 5, R * 0.55);
       ctx.fill();
-      // Ichki “radar” ko‘zi
-      ctx.fillStyle = accent;
+      // Radar rings
+      ctx.strokeStyle = 'rgba(14,165,233,0.45)';
+      ctx.lineWidth = Math.max(1.2, cell * 0.12);
+      ctx.beginPath();
+      ctx.arc(cx, cy, cell * 1.85, 0, Math.PI * 2);
+      ctx.stroke();
+      // Core
+      const core = ctx.createRadialGradient(cx - cell * 0.2, cy - cell * 0.2, 1, cx, cy, cell * 1.4);
+      core.addColorStop(0, '#7dd3fc');
+      core.addColorStop(0.55, accent);
+      core.addColorStop(1, accent2);
+      ctx.fillStyle = core;
       ctx.beginPath();
       ctx.arc(cx, cy, cell * 1.35, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = dark;
+      ctx.fillStyle = '#fff';
       ctx.beginPath();
-      ctx.arc(cx, cy, cell * 0.7, 0, Math.PI * 2);
+      ctx.arc(cx, cy, cell * 0.45, 0, Math.PI * 2);
       ctx.fill();
     }
 
     drawLocator(0, 0);
     drawLocator(n - 7, 0);
     drawLocator(0, n - 7);
+
+    // Center GPS pin (ECC H bilan skanlanadi)
+    const cc = (marginMods + (n - 1) / 2 + 0.5) * cell;
+    const pinR = cell * 2.5;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cc, cc, pinR + cell * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(14,165,233,0.4)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.moveTo(cc, cc + cell * 2.35);
+    ctx.bezierCurveTo(cc + cell * 1.6, cc + cell * 0.6, cc + cell * 1.55, cc - cell * 0.9, cc, cc - cell * 1.55);
+    ctx.bezierCurveTo(cc - cell * 1.55, cc - cell * 0.9, cc - cell * 1.6, cc + cell * 0.6, cc, cc + cell * 2.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cc, cc - cell * 0.35, cell * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = accent2;
+    ctx.beginPath();
+    ctx.arc(cc, cc - cell * 0.35, cell * 0.32, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   async function makeQrBitmap(payload, size) {
@@ -2506,32 +2589,42 @@
     tmp.width = size;
     tmp.height = size;
     const ctx = tmp.getContext('2d');
+    let eng = null;
     try {
-      const eng = await ensureQrLib();
-      if (eng.type === 'create' || (eng.lib && typeof eng.lib.create === 'function')) {
-        const lib = eng.lib || eng;
+      eng = await ensureQrLib();
+      const lib = eng.lib || window.QRCode || window.qrcode;
+      if (lib && typeof lib.create === 'function') {
         const qr = lib.create(payload, { errorCorrectionLevel: 'H' });
-        drawGpsStyleQr(ctx, qr.modules, size, {
-          dark: '#0b1f3a',
-          accent: '#1a8cff',
-          light: '#ffffff'
-        });
+        if (!qr || !qr.modules) throw new Error('QR matrix yo‘q');
+        drawGpsStyleQr(ctx, qr.modules, size, {});
         return tmp;
       }
-      if (eng.type === 'toCanvas') {
-        // create yo‘q bo‘lsa — oddiy, lekin yumaloq emas
-        await eng.lib.toCanvas(tmp, payload, {
-          width: size,
-          margin: 2,
-          errorCorrectionLevel: 'H',
-          color: { dark: '#0b1f3a', light: '#ffffff' }
-        });
+      await loadScriptOnce(QR_LIB);
+      const lib2 = window.QRCode || window.qrcode;
+      if (lib2 && typeof lib2.create === 'function') {
+        const qr = lib2.create(payload, { errorCorrectionLevel: 'H' });
+        drawGpsStyleQr(ctx, qr.modules, size, {});
         return tmp;
       }
-      return await makeQrViaCtor(eng.Ctor, payload, size);
+      throw new Error('QR create API yo‘q');
     } catch (e) {
+      console.warn('GPS QR draw fallback:', e);
+      try {
+        if (eng && eng.type === 'toCanvas' && eng.lib && typeof eng.lib.toCanvas === 'function') {
+          await eng.lib.toCanvas(tmp, payload, {
+            width: size,
+            margin: 2,
+            errorCorrectionLevel: 'H',
+            color: { dark: '#071525', light: '#ffffff' }
+          });
+          return tmp;
+        }
+        const ctorEng = eng && eng.Ctor ? eng : await ensureQrLib();
+        if (ctorEng && ctorEng.Ctor) return await makeQrViaCtor(ctorEng.Ctor, payload, size);
+        if (typeof window.QRCode === 'function') return await makeQrViaCtor(window.QRCode, payload, size);
+      } catch (e2) { /* last resort below */ }
       const url = 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size +
-        '&margin=8&ecc=H&color=0b1f3a&bgcolor=ffffff&data=' + encodeURIComponent(payload);
+        '&margin=8&ecc=H&color=071525&bgcolor=ffffff&data=' + encodeURIComponent(payload);
       const img = await loadImage(url);
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, size, size);
@@ -2548,87 +2641,57 @@
     officeQrMeta = qr;
 
     const W = 720;
-    const H = 820;
+    const H = 780;
     poster.width = W;
     poster.height = H;
     const ctx = poster.getContext('2d');
 
-    // Map / night GPS atmosphere
     const bg = ctx.createLinearGradient(0, 0, W, H);
-    bg.addColorStop(0, '#06101c');
-    bg.addColorStop(0.5, '#0a1c33');
-    bg.addColorStop(1, '#0d2744');
+    bg.addColorStop(0, '#050d18');
+    bg.addColorStop(0.55, '#0a1a30');
+    bg.addColorStop(1, '#0c223c');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
 
-    // Faint grid (GPS map vibe)
-    ctx.strokeStyle = 'rgba(125,211,252,0.06)';
-    ctx.lineWidth = 1;
-    for (let x = 40; x < W; x += 40) {
+    // Subtle radar arcs (atmosphere, not text)
+    ctx.strokeStyle = 'rgba(14,165,233,0.12)';
+    ctx.lineWidth = 1.5;
+    for (let i = 1; i <= 4; i++) {
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, H);
+      ctx.arc(W / 2, H * 0.46, 70 + i * 55, 0, Math.PI * 2);
       ctx.stroke();
     }
-    for (let y = 40; y < H; y += 40) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(W, y);
-      ctx.stroke();
-    }
-
-    // Soft radar glow behind QR
-    const glow = ctx.createRadialGradient(W / 2, H * 0.52, 40, W / 2, H * 0.52, 320);
-    glow.addColorStop(0, 'rgba(26,140,255,0.28)');
-    glow.addColorStop(0.55, 'rgba(26,140,255,0.08)');
-    glow.addColorStop(1, 'rgba(26,140,255,0)');
+    const glow = ctx.createRadialGradient(W / 2, H * 0.46, 30, W / 2, H * 0.46, 340);
+    glow.addColorStop(0, 'rgba(14,165,233,0.22)');
+    glow.addColorStop(1, 'rgba(14,165,233,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, W, H);
 
-    // Title only
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#7dd3fc';
-    ctx.font = '700 13px IBM Plex Mono, monospace';
-    ctx.fillText('VAKSINAMED', W / 2, 64);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '800 36px IBM Plex Sans, Arial, sans-serif';
-    ctx.fillText('GPS Office', W / 2, 108);
-
-    const ver = 'v' + String((qr && qr.version) || 1);
-    ctx.fillStyle = 'rgba(125,211,252,0.18)';
-    roundRect(ctx, W / 2 - 28, 124, 56, 26, 13);
-    ctx.fill();
-    ctx.fillStyle = '#ccebff';
-    ctx.font = '700 12px IBM Plex Mono, monospace';
-    ctx.fillText(ver, W / 2, 142);
-
-    // Glass card around QR + ketma-ketlik
-    const qrSize = 400;
+    const qrSize = 480;
     const qx = (W - qrSize) / 2;
-    const qy = 178;
-    const cardPad = 36;
-    const cardBottomExtra = 56;
-    ctx.fillStyle = 'rgba(255,255,255,0.96)';
-    roundRect(ctx, qx - cardPad, qy - cardPad, qrSize + cardPad * 2, qrSize + cardPad * 2 + cardBottomExtra, 32);
-    ctx.fill();
+    const qy = 88;
 
-    ctx.strokeStyle = 'rgba(26,140,255,0.35)';
-    ctx.lineWidth = 2;
-    roundRect(ctx, qx - 28, qy - 28, qrSize + 56, qrSize + 56 + cardBottomExtra, 26);
+    // Floating glass frame
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    roundRect(ctx, qx - 40, qy - 40, qrSize + 80, qrSize + 80, 36);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(125,211,252,0.28)';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, qx - 40, qy - 40, qrSize + 80, qrSize + 80, 36);
     ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, qx - 18, qy - 18, qrSize + 36, qrSize + 36, 28);
+    ctx.fill();
 
     const qrBmp = await makeQrBitmap(payload, qrSize);
     ctx.drawImage(qrBmp, qx, qy, qrSize, qrSize);
 
-    // Ketma-ketlik — QR ostida (kartochka ichida)
-    ctx.fillStyle = '#1a5fb4';
-    ctx.font = '700 13px IBM Plex Mono, monospace';
+    // Faqat bitta brend satri
     ctx.textAlign = 'center';
-    ctx.fillText('1  ZONA   →   2  SKAN   →   3  KELDI / KETDI', W / 2, qy + qrSize + 38);
-
-    ctx.fillStyle = 'rgba(200,230,255,0.9)';
-    ctx.font = '600 13px IBM Plex Mono, monospace';
-    ctx.fillText('VaksinaMed GPS Office', W / 2, qy + qrSize + cardPad + cardBottomExtra + 36);
+    ctx.fillStyle = 'rgba(186,230,253,0.92)';
+    ctx.font = '700 15px IBM Plex Sans, Arial, sans-serif';
+    ctx.fillText('VaksinaMed GPS Office', W / 2, qy + qrSize + 58);
     ctx.textAlign = 'left';
 
     return poster;
