@@ -412,43 +412,40 @@ class WialonClient:
     @staticmethod
     def resolve_official_km(trip, live):
         """
-        Boomerang «Пробег в поездках» — yagona haqiqat.
-        Math.max qilmaymiz: kattaroq (noto'g'ri) manba yopishib qolmasin.
+        Boomerang trip-km: «Пробег в поездках» / trips / get_trips.
+        Kun davomida km FAQAT o'sadi — trip-manbalaridan ENG TO'LIQini olamiz
+        (orqada qolib ketmasin). Generic «Пробег»/counter emas.
         """
         trip = trip if isinstance(trip, dict) else {}
         live = live if isinstance(live, dict) else {}
-        t_km = 0.0
-        l_km = 0.0
-        try:
-            t_km = float(trip.get("probeg") or 0)
-        except (TypeError, ValueError):
-            t_km = 0.0
-        try:
-            l_km = float(live.get("probeg") or 0)
-        except (TypeError, ValueError):
-            l_km = 0.0
-        t_src = str(trip.get("_kmSrc") or "")
+        candidates = []
 
-        # 1) Stats dagi «Пробег в поездках» (pref 3)
-        if t_km > 0 and t_src == "trip_stats":
-            return round(t_km + 1e-12, 2), "trip_stats"
-        # 2) Trips jadvali jami
-        if t_km > 0 and t_src == "trips":
-            return round(t_km + 1e-12, 2), "trips"
-        # 3) Trip report (boshqa label) — get_trips faqat zaxira
-        if t_km > 0:
-            if l_km <= 0:
-                return round(t_km + 1e-12, 2), t_src or "trip_report"
-            lo = min(t_km, l_km)
-            hi = max(t_km, l_km)
-            ratio = hi / lo if lo > 0.01 else 99.0
-            # Katta farq: hisobotni ishonamiz (Boomerang UI)
-            if ratio > 1.15:
-                return round(t_km + 1e-12, 2), t_src or "trip_report"
-            return round(t_km + 1e-12, 2), t_src or "trip_report"
-        if l_km > 0:
-            return round(l_km + 1e-12, 2), "get_trips"
-        return 0.0, ""
+        def add(km, src, rank):
+            try:
+                v = float(km or 0)
+            except (TypeError, ValueError):
+                return
+            if v > 0:
+                candidates.append((v, str(src or "trip"), int(rank)))
+
+        t_src = str(trip.get("_kmSrc") or "")
+        if trip.get("probeg"):
+            if t_src == "trip_stats":
+                add(trip.get("probeg"), "trip_stats", 3)
+            elif t_src == "trips":
+                add(trip.get("probeg"), "trips", 2)
+            else:
+                add(trip.get("probeg"), t_src or "trip_report", 2)
+        if live.get("probeg"):
+            add(live.get("probeg"), "get_trips", 2)
+
+        if not candidates:
+            return 0.0, ""
+        best_km = max(c[0] for c in candidates)
+        # Bir xil km bo'lsa — eng ishonchli manba (trip_stats)
+        tied = [c for c in candidates if abs(c[0] - best_km) < 0.05]
+        tied.sort(key=lambda c: c[2], reverse=True)
+        return round(best_km + 1e-12, 2), tied[0][1]
 
     @staticmethod
     def km_from_wialon(num, label="", value_text=""):

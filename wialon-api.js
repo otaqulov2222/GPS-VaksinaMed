@@ -471,21 +471,24 @@ class WialonGPSClient {
     }
 
     resolveOfficialKm(fromReport, fromTrips) {
-        const tKm = Number(fromReport && fromReport.km) || 0;
-        const lKm = Number(fromTrips && fromTrips.km) || 0;
-        const tSrc = String((fromReport && fromReport._kmSrc) || '');
-        if (tKm > 0 && tSrc === 'trip_stats') return { km: this.roundKm(tKm), src: 'trip_stats' };
-        if (tKm > 0 && tSrc === 'trips') return { km: this.roundKm(tKm), src: 'trips' };
-        if (tKm > 0) {
-            if (lKm <= 0) return { km: this.roundKm(tKm), src: tSrc || 'trip_report' };
-            const lo = Math.min(tKm, lKm);
-            const hi = Math.max(tKm, lKm);
-            const ratio = lo > 0.01 ? hi / lo : 99;
-            if (ratio > 1.15) return { km: this.roundKm(tKm), src: tSrc || 'trip_report' };
-            return { km: this.roundKm(tKm), src: tSrc || 'trip_report' };
+        // Trip-manbalaridan eng to'liq km (kun davomida o'sadi — orqada qolmasin)
+        const cands = [];
+        const push = (km, src, rank) => {
+            const v = Number(km) || 0;
+            if (v > 0) cands.push({ km: v, src: src || 'trip', rank: rank || 1 });
+        };
+        if (fromReport && fromReport.km) {
+            const src = String(fromReport._kmSrc || '');
+            if (src === 'trip_stats') push(fromReport.km, 'trip_stats', 3);
+            else if (src === 'trips') push(fromReport.km, 'trips', 2);
+            else push(fromReport.km, src || 'trip_report', 2);
         }
-        if (lKm > 0) return { km: this.roundKm(lKm), src: 'get_trips' };
-        return { km: 0, src: '' };
+        if (fromTrips && fromTrips.km) push(fromTrips.km, 'get_trips', 2);
+        if (!cands.length) return { km: 0, src: '' };
+        const bestKm = Math.max(...cands.map(c => c.km));
+        const tied = cands.filter(c => Math.abs(c.km - bestKm) < 0.05)
+            .sort((a, b) => b.rank - a.rank);
+        return { km: this.roundKm(bestKm), src: tied[0].src };
     }
 
     async resolveReportTemplates() {

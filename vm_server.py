@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m130"
+VM_BUILD = "m131"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -1456,7 +1456,7 @@ class OfficeStore:
             "fetched": int(st.get("fetched") or st.get("cars") or 0),
             "total": int(st.get("total") or 0),
             "error": str(st.get("error") or "")[:200],
-            "autoIntervalSec": int(os.environ.get("GPS_SYNC_INTERVAL", "180")),
+            "autoIntervalSec": int(os.environ.get("GPS_SYNC_INTERVAL", "300")),
             "syncDate": str(st.get("syncDate") or ""),
             "lastDate": str(st.get("lastDate") or ""),
             "message": str(st.get("message") or "")[:180],
@@ -4665,7 +4665,15 @@ def start_gps_worker(office, base_dir):
             return
         import gps_sync
 
-        enqueue_gps_sync(office, base_dir, gps_sync.today_tashkent(), "auto")
+        d = gps_sync.today_tashkent()
+        # Har 5 daqiqada avvalo km — Boomerangdan orqada qolmasin
+        try:
+            gps_sync.refresh_day_trip_km(
+                office, base_dir, d, time_budget_sec=90, saved_by="auto-km"
+            )
+        except Exception as e:
+            print("[gps-sync auto-km]", e)
+        enqueue_gps_sync(office, base_dir, d, "auto")
         yday = gps_sync.yesterday_tashkent()
         rec = office.get_report(yday)
         cars = rec.get("cars") if isinstance(rec, dict) else None
