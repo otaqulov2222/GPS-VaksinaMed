@@ -386,6 +386,71 @@ class WialonClient:
         return t.get("chrono") or t.get("trip") or t.get("any")
 
     @staticmethod
+    def km_from_trip_distances(distances):
+        """
+        unit/get_trips distance: Wialon odatda METR.
+        Kunlik jami 1..800 km oralig'iga moslab aniqlaymiz.
+        """
+        vals = [float(d) for d in (distances or []) if d and float(d) > 0]
+        if not vals:
+            return 0.0
+        raw_sum = sum(vals)
+        as_m = raw_sum / 1000.0
+        as_km = raw_sum
+        med = sorted(vals)[len(vals) // 2]
+        # Segment katta bo'lsa yoki jami 5k+ — metr
+        if med >= 400.0 or raw_sum >= 5000.0:
+            return round(as_m + 1e-12, 2)
+        if 1.0 <= as_km <= 800.0 and as_m < 1.0:
+            return round(as_km + 1e-12, 2)
+        if 1.0 <= as_m <= 800.0:
+            return round(as_m + 1e-12, 2)
+        if 1.0 <= as_km <= 800.0:
+            return round(as_km + 1e-12, 2)
+        return round((as_m if as_m >= 1.0 else as_km) + 1e-12, 2)
+
+    @staticmethod
+    def resolve_official_km(trip, live):
+        """
+        Boomerang «Пробег в поездках» — yagona haqiqat.
+        Math.max qilmaymiz: kattaroq (noto'g'ri) manba yopishib qolmasin.
+        """
+        trip = trip if isinstance(trip, dict) else {}
+        live = live if isinstance(live, dict) else {}
+        t_km = 0.0
+        l_km = 0.0
+        try:
+            t_km = float(trip.get("probeg") or 0)
+        except (TypeError, ValueError):
+            t_km = 0.0
+        try:
+            l_km = float(live.get("probeg") or 0)
+        except (TypeError, ValueError):
+            l_km = 0.0
+        t_src = str(trip.get("_kmSrc") or "")
+
+        # 1) Stats dagi «Пробег в поездках» (pref 3)
+        if t_km > 0 and t_src == "trip_stats":
+            return round(t_km + 1e-12, 2), "trip_stats"
+        # 2) Trips jadvali jami
+        if t_km > 0 and t_src == "trips":
+            return round(t_km + 1e-12, 2), "trips"
+        # 3) Trip report (boshqa label) — get_trips faqat zaxira
+        if t_km > 0:
+            if l_km <= 0:
+                return round(t_km + 1e-12, 2), t_src or "trip_report"
+            lo = min(t_km, l_km)
+            hi = max(t_km, l_km)
+            ratio = hi / lo if lo > 0.01 else 99.0
+            # Katta farq: hisobotni ishonamiz (Boomerang UI)
+            if ratio > 1.15:
+                return round(t_km + 1e-12, 2), t_src or "trip_report"
+            return round(t_km + 1e-12, 2), t_src or "trip_report"
+        if l_km > 0:
+            return round(l_km + 1e-12, 2), "get_trips"
+        return 0.0, ""
+
+    @staticmethod
     def km_from_wialon(num, label="", value_text=""):
         """Boomerang qiymatini o'zgartirmasdan km ga o'tkazish (metr bo'lsa /1000)."""
         try:
@@ -493,13 +558,11 @@ class WialonClient:
                 stats["_kmSrc"] = trip_stats.get("_kmSrc") or "trip_report"
 
         trip_live = self.fetch_unit_trips_stats(unit_id, date_str)
+        official_km, official_src = self.resolve_official_km(trip_stats, trip_live)
+        if official_km > 0:
+            stats["probeg"] = official_km
+            stats["_kmSrc"] = official_src
         if trip_live:
-            live_km = float(trip_live.get("probeg") or 0)
-            cur_km = float(stats.get("probeg") or 0)
-            # Kattaroq (yangi) qiymat — Boomerang bilan moslash
-            if live_km > 0 and live_km > cur_km + 0.01:
-                stats["probeg"] = live_km
-                stats["_kmSrc"] = "get_trips"
             if trip_live.get("maxSpeed") and float(trip_live["maxSpeed"]) > float(stats.get("maxSpeed") or 0):
                 stats["maxSpeed"] = float(trip_live["maxSpeed"])
             if trip_live.get("avgSpeed") and not stats.get("avgSpeed"):
@@ -764,16 +827,7 @@ class WialonClient:
                 avg_n += 1
         km = 0.0
         if distances:
-            raw_sum = sum(distances)
-            as_m = raw_sum / 1000.0
-            as_km = raw_sum
-            # Kunlik Labo/furgon: 1..800 km oralig'i ishonchli
-            if 1.0 <= as_m <= 800.0:
-                km = as_m
-            elif 1.0 <= as_km <= 800.0:
-                km = as_km
-            else:
-                km = as_m if as_m >= 1.0 else as_km
+            km = self.km_from_trip_distances(distances)
         out = {
             "probeg": round(km + 1e-12, 2) if km > 0 else 0.0,
             "maxSpeed": round(max_speed + 1e-12, 1) if max_speed > 0 else 0.0,
@@ -829,12 +883,22 @@ class WialonClient:
             if rows_n and not stats.get("poezdok"):
                 stats["poezdok"] = rows_n
         if best > 0:
-            # Stats vs jadval — kattaroqni olamiz (Muxriddin 27.73 vs 28.29 kabi farq).
+            # Trips jadvali = Boomerang «Пробег в поездках» jami — pastroq bo'lsa ham yoziladi
+            # (generic «Пробег» / get_trips shishib qolgan bo'lsa tuzatadi).
             cur = float(stats.get("probeg") or 0)
+            cur_src = str(stats.get("_kmSrc") or "")
             if best > cur + 0.01:
                 stats["probeg"] = best
                 stats["_kmSrc"] = "trips"
             elif not cur:
+                stats["probeg"] = best
+                stats["_kmSrc"] = "trips"
+            elif cur_src in ("", "get_trips", "trip_report") and abs(best - cur) >= 0.05:
+                stats["probeg"] = best
+                stats["_kmSrc"] = "trips"
+            elif cur_src == "trip_stats" and abs(best - cur) < 0.05:
+                pass
+            elif cur_src != "trip_stats" and abs(best - cur) >= 0.05:
                 stats["probeg"] = best
                 stats["_kmSrc"] = "trips"
 
@@ -879,12 +943,18 @@ class WialonClient:
                 elif re.search(r"л\b|литр|бензин|дизел|diesel|petrol", blob, re.I):
                     stats["benzin"] = num
         if best_km > 0:
-            if stats.get("_kmSrc") == "trips" and best_pref < 3:
+            cur_src = str(stats.get("_kmSrc") or "")
+            # «Пробег в поездках» (pref 3) — har doim yutadi
+            if best_pref >= 3:
+                stats["probeg"] = best_km
+                stats["_kmSrc"] = "trip_stats"
+            elif cur_src == "trips" and best_pref < 3:
+                pass
+            elif cur_src == "trip_stats":
                 pass
             else:
                 stats["probeg"] = best_km
-                if best_pref >= 3:
-                    stats["_kmSrc"] = "trip_stats"
+                stats["_kmSrc"] = "trip_stats" if best_pref >= 3 else "trip_report"
         if best_max > 0:
             stats["maxSpeed"] = round(best_max, 1)
 
@@ -1118,24 +1188,15 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
                 live = client.fetch_unit_trips_stats(unit["id"], date_str)
             except Exception:
                 live = None
-            new_km = 0.0
-            src = ""
-            candidates = []
-            if trip and trip.get("probeg"):
-                candidates.append((float(trip["probeg"]), str(trip.get("_kmSrc") or "trip_report")))
-            if live and live.get("probeg"):
-                candidates.append((float(live["probeg"]), "get_trips"))
-            for ck, cs in candidates:
-                if ck > new_km + 0.01:
-                    new_km = ck
-                    src = cs
+            new_km, src = WialonClient.resolve_official_km(trip, live)
             if new_km <= 0:
                 continue
             row = dict(cars_out[drv["car"]])
             st = dict(row.get("stats") or {})
             old_km = float(st.get("probeg") or 0)
+            # Rasmiy Boomerang km — yuqori yoki pastga ham tuzatiladi
             changed = abs(new_km - old_km) >= 0.05
-            if changed or new_km > old_km:
+            if changed:
                 st["probeg"] = round(new_km + 1e-12, 2)
                 st["metricsSource"] = src or st.get("metricsSource") or ""
                 samples.append({
@@ -1144,6 +1205,8 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
                     "new": round(new_km, 2),
                     "src": src,
                 })
+            elif src and not st.get("metricsSource"):
+                st["metricsSource"] = src
             if trip:
                 if trip.get("maxSpeed"):
                     st["maxSpeed"] = float(trip["maxSpeed"])
@@ -1159,7 +1222,7 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
             row["stats"] = st
             row["kmSyncedAt"] = int(time.time())
             cars_out[drv["car"]] = row
-            if changed or new_km > old_km:
+            if changed:
                 updated += 1
 
         if updated:
@@ -1722,12 +1785,14 @@ def sync_today(
     force=False,
     max_cars=None,
     only_plates=None,
+    refresh_km=True,
 ):
     """
     GPS sync. time_budget_sec / max_cars — Vercel 504 oldini olish (qisqa bo'laklar).
     force=True — eng eski mashinalardan qayta tortish (hammasini birdan o'chirmaydi).
     force=False — faqat syncedAt yo'q mashinalar.
     only_plates — faqat shu raqam(lar); haydovchi kabineti uchun bitta mashina.
+    refresh_km=True — oxirida Boomerang «Пробег в поездках» ni qayta yozadi (kun davomida o'sadi).
     """
     import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1744,16 +1809,37 @@ def sync_today(
         if not only_set:
             only_set = None
 
+    def left():
+        if budget is None:
+            return 9999.0
+        return budget - (time.time() - t0)
+
+    def run_km_refresh(tag="km"):
+        if not refresh_km or only_set:
+            return {"updated": 0}
+        # Kamida 12s kerak — aks holda o'tkazib yuboramiz
+        rem = left()
+        if rem < 12:
+            return {"updated": 0, "skipped": True}
+        try:
+            return (
+                refresh_day_trip_km(
+                    office,
+                    base_dir,
+                    date_str,
+                    time_budget_sec=min(max(12.0, rem - 2.0), 90.0),
+                    saved_by="%s-%s" % (saved_by or "auto", tag),
+                )
+                or {"updated": 0}
+            )
+        except Exception as e:
+            return {"ok": False, "updated": 0, "error": str(e)[:120]}
+
     def _status(**kw):
         # Bitta mashina yangilanishi umumiy fleet statusini buzmasin
         if only_set:
             return
         office.set_gps_status(**kw)
-
-    def left():
-        if budget is None:
-            return 9999.0
-        return budget - (time.time() - t0)
 
     cfg = office.gps_config_internal() if office is not None else None
     if office is None:
@@ -1840,13 +1926,15 @@ def sync_today(
             jobs = jobs[:max_cars]
 
         if not jobs:
+            km_r = run_km_refresh("skip")
+            km_n = int((km_r or {}).get("updated") or 0)
             synced_n = sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt"))
             _status(
                 running=False,
                 cars=len(cars),
                 error="",
                 date=date_str,
-                message="Tekshirildi — ma'lumot yangi",
+                message=("Km yangilandi (%d)" % km_n) if km_n else "Tekshirildi — ma'lumot yangi",
                 fetched=synced_n,
                 total=total_fleet,
                 touch_last_sync=True,
@@ -1860,6 +1948,7 @@ def sync_today(
                 "partial": synced_n < total_fleet,
                 "errors": [],
                 "skipped": True,
+                "kmUpdated": km_n,
             }
 
         def fetch_one(unit, drv):
@@ -1943,6 +2032,9 @@ def sync_today(
         partial = synced_n < total_fleet
         if cars:
             office.save_report(date_str, cars, saved_by=saved_by)
+        # Kun davomida km o'sadi — Boomerang «Пробег в поездках» ni qayta yozamiz
+        km_r = run_km_refresh("after")
+        km_n = int((km_r or {}).get("updated") or 0)
         err_txt = ("; ".join(errors[:5]) + ("…" if len(errors) > 5 else "")) if errors else ""
         if partial and not err_txt:
             err_txt = "Qisman: %d/%d mashina" % (synced_n, total_fleet)
@@ -1951,6 +2043,8 @@ def sync_today(
             if partial
             else ("Yangilandi %d/%d" % (done, total_fleet) if done else ("Tayyor %d/%d" % (synced_n, total_fleet)))
         )
+        if km_n:
+            msg = ("Km+%d · " % km_n) + msg
         _status(
             running=False,
             cars=len(cars),
@@ -1963,7 +2057,7 @@ def sync_today(
             touch_last_sync=True,
         )
         return {
-            "ok": done > 0 or synced_n > 0,
+            "ok": done > 0 or synced_n > 0 or km_n > 0,
             "date": date_str,
             "cars": len(cars),
             "fetched": synced_n,
@@ -1971,6 +2065,7 @@ def sync_today(
             "total": total_fleet,
             "partial": partial,
             "errors": errors[:20],
+            "kmUpdated": km_n,
         }
     except Exception as e:
         _status(running=False, error=str(e)[:200], date=date_str, message="Xato")

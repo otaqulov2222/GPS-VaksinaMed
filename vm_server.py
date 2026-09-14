@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m129"
+VM_BUILD = "m130"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -3187,6 +3187,17 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 d = gps_sync.today_tashkent()
                 # Vercel Fluid: 25s ichida javob — parallel + time budget
                 with _gps_sync_lock:
+                    # Avval to'liq km (Boomerang), keyin to'xtashlar sync
+                    try:
+                        gps_sync.refresh_day_trip_km(
+                            OFFICE,
+                            DIRECTORY,
+                            d,
+                            time_budget_sec=22,
+                            saved_by="cron-km",
+                        )
+                    except Exception:
+                        pass
                     result = (
                         gps_sync.sync_today(
                             OFFICE,
@@ -3195,6 +3206,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                             saved_by="cron",
                             time_budget_sec=20,
                             parallel=True,
+                            refresh_km=True,
                         )
                         or {}
                     )
@@ -4606,7 +4618,20 @@ def _gps_queue_runner(office, base_dir):
                     running=True, date=d, message="Navbat boshlandi", job_id=job_id
                 )
                 with _gps_sync_lock:
-                    result = gps_sync.sync_today(office, base_dir, d, saved_by=saved_by) or {}
+                    # Km alohida — kun davomida Boomerang bilan bir xil qolsin
+                    try:
+                        gps_sync.refresh_day_trip_km(
+                            office,
+                            base_dir,
+                            d,
+                            time_budget_sec=80,
+                            saved_by="%s-km" % (saved_by or "auto"),
+                        )
+                    except Exception as _km_e:
+                        print("[gps-sync km]", _km_e)
+                    result = gps_sync.sync_today(
+                        office, base_dir, d, saved_by=saved_by, force=True, refresh_km=True
+                    ) or {}
                 office.set_gps_status(
                     running=False,
                     cars=int(result.get("cars") or 0),

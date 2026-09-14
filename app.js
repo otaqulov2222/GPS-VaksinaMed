@@ -1520,8 +1520,8 @@ async function refreshDayKm(dateVal, opts) {
             } catch (e) {}
             if (!metrics || !(metrics.km || metrics.trips || metrics.maxSpeed)) continue;
             if (metrics.km) {
-                // Faqat yaxshiroq/aniqroq (katta) trip km — pastroq chronologiya qiymatiga yozmaslik
-                if (!oldKm || metrics.km >= oldKm - 0.05) st.probeg = metrics.km;
+                st.probeg = metrics.km;
+                if (metrics._kmSrc) st.metricsSource = metrics._kmSrc;
             }
             if (metrics.maxSpeed) {
                 const oldSp = Number(st.maxSpeed) || 0;

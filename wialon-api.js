@@ -452,18 +452,40 @@ class WialonGPSClient {
 
     kmFromTripList(list) {
         if (!list || !list.length) return 0;
-        let rawSum = 0;
+        const vals = [];
         list.forEach(tr => {
             const d = this.tripDistanceMeters(tr);
-            if (d > 0) rawSum += d;
+            if (d > 0) vals.push(d);
         });
-        if (!rawSum) return 0;
+        if (!vals.length) return 0;
+        const rawSum = vals.reduce((a, b) => a + b, 0);
         const asM = rawSum / 1000;
         const asKm = rawSum;
-        // Kunlik: 1..800 km — metr yoki km ekanini aniqlash
+        const med = vals.slice().sort((a, b) => a - b)[Math.floor(vals.length / 2)];
+        // Wialon odatda metr; segment katta yoki jami 5k+ → /1000
+        if (med >= 400 || rawSum >= 5000) return this.roundKm(asM);
+        if (asKm >= 1 && asKm <= 800 && asM < 1) return this.roundKm(asKm);
         if (asM >= 1 && asM <= 800) return this.roundKm(asM);
         if (asKm >= 1 && asKm <= 800) return this.roundKm(asKm);
         return this.roundKm(asM >= 1 ? asM : asKm);
+    }
+
+    resolveOfficialKm(fromReport, fromTrips) {
+        const tKm = Number(fromReport && fromReport.km) || 0;
+        const lKm = Number(fromTrips && fromTrips.km) || 0;
+        const tSrc = String((fromReport && fromReport._kmSrc) || '');
+        if (tKm > 0 && tSrc === 'trip_stats') return { km: this.roundKm(tKm), src: 'trip_stats' };
+        if (tKm > 0 && tSrc === 'trips') return { km: this.roundKm(tKm), src: 'trips' };
+        if (tKm > 0) {
+            if (lKm <= 0) return { km: this.roundKm(tKm), src: tSrc || 'trip_report' };
+            const lo = Math.min(tKm, lKm);
+            const hi = Math.max(tKm, lKm);
+            const ratio = lo > 0.01 ? hi / lo : 99;
+            if (ratio > 1.15) return { km: this.roundKm(tKm), src: tSrc || 'trip_report' };
+            return { km: this.roundKm(tKm), src: tSrc || 'trip_report' };
+        }
+        if (lKm > 0) return { km: this.roundKm(lKm), src: 'get_trips' };
+        return { km: 0, src: '' };
     }
 
     async resolveReportTemplates() {
@@ -612,10 +634,14 @@ class WialonGPSClient {
         }
         if (best > 0) {
             const cur = Number(chronology.stats.probeg) || 0;
+            const curSrc = String(chronology.stats._kmSrc || '');
             if (best > cur + 0.01) {
                 chronology.stats.probeg = best;
                 chronology.stats._kmSrc = 'trips';
             } else if (!cur) {
+                chronology.stats.probeg = best;
+                chronology.stats._kmSrc = 'trips';
+            } else if (curSrc !== 'trip_stats' && Math.abs(best - cur) >= 0.05) {
                 chronology.stats.probeg = best;
                 chronology.stats._kmSrc = 'trips';
             }
@@ -630,23 +656,20 @@ class WialonGPSClient {
         } catch (e) {
             console.warn('report stats:', e);
         }
-        // 2) unit/get_trips — zaxira / to'ldirish
+        // 2) unit/get_trips — faqat zaxira
         let fromTrips = null;
         try {
             fromTrips = await this.officialDayMetrics(unitId, timeFrom, timeTo);
         } catch (e) {}
 
         if (fromReport && (fromReport.km || fromReport.trips || fromReport.maxSpeed)) {
-            const repKm = Number(fromReport.km) || 0;
-            const liveKm = Number(fromTrips && fromTrips.km) || 0;
-            // Kattaroq qiymat — Boomerang bilan mos
-            const km = Math.max(repKm, liveKm);
+            const picked = this.resolveOfficialKm(fromReport, fromTrips);
             const maxSpeed = Math.max(
                 Number(fromReport.maxSpeed) || 0,
                 Number(fromTrips && fromTrips.maxSpeed) || 0
             );
             return {
-                km: this.roundKm(km),
+                km: picked.km || this.roundKm(fromReport.km),
                 maxSpeed,
                 avgSpeed: fromReport.avgSpeed || (fromTrips && fromTrips.avgSpeed) || 0,
                 trips: Math.max(Number(fromReport.trips) || 0, Number(fromTrips && fromTrips.trips) || 0),
@@ -655,7 +678,7 @@ class WialonGPSClient {
                 motoChas: fromReport.motoChas || '—',
                 gas: fromReport.gas || 0,
                 benzin: fromReport.benzin || 0,
-                _kmSrc: (liveKm > repKm + 0.01) ? 'get_trips' : (fromReport._kmSrc || (repKm ? 'trip_report' : 'get_trips'))
+                _kmSrc: picked.src || fromReport._kmSrc || 'trip_report'
             };
         }
         if (fromTrips && (fromTrips.km || fromTrips.trips || fromTrips.maxSpeed)) return fromTrips;
@@ -734,9 +757,15 @@ class WialonGPSClient {
             }
         });
         if (bestKm > 0) {
-            if (!(chronology.stats._kmSrc === 'trips' && bestPref < 3)) {
+            const curSrc = String(chronology.stats._kmSrc || '');
+            if (bestPref >= 3) {
                 chronology.stats.probeg = bestKm;
-                if (bestPref >= 3) chronology.stats._kmSrc = 'trip_stats';
+                chronology.stats._kmSrc = 'trip_stats';
+            } else if (curSrc === 'trips' || curSrc === 'trip_stats') {
+                /* trips jadvali / trip_stats saqlansin */
+            } else {
+                chronology.stats.probeg = bestKm;
+                chronology.stats._kmSrc = 'trip_report';
             }
         }
     }
