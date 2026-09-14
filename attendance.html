@@ -6,9 +6,9 @@
 <title>Davomat - VaksinaMed</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="shell.css?v=23"/>
+<link rel="stylesheet" href="shell.css?v=27"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="attendance.css?v=34"/>
+<link rel="stylesheet" href="attendance.css?v=38"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -38,7 +38,10 @@
 
   <div class="app-main">
     <header class="topbar">
-      <label for="nav-open" class="nav-burger">Menyu</label>
+      <label for="nav-open" class="nav-burger" title="Menyu" aria-label="Menyu">
+        <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>
+        <span class="nav-burger-lbl">Menyu</span>
+      </label>
       <div>
         <div class="top-title">Davomat</div>
         <div class="top-sub">QR / GPS / vaqt</div>
@@ -100,6 +103,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="auth.js?v=35"></script>
-<script src="attendance.js?v=34"></script>
+<script src="attendance.js?v=38"></script>
 </body>
 </html>

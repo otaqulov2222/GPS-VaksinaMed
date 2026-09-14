@@ -2724,7 +2724,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
     def serve_patched_html(self, filename):
         """HTML ni disktan o'qib: Live menyu + build banner + boot script."""
         fpath = os.path.join(DIRECTORY, filename)
-        with open(fpath, "r", encoding="utf-8") as f:
+        with open(fpath, "r", encoding="utf-8", errors="replace") as f:
             html = f.read()
 
         # Live menyu — HTML keshidan mustaqil majburiy inject

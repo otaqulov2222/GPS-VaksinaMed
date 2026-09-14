@@ -16,7 +16,7 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-<link rel="stylesheet" href="shell.css?v=23"/>
+<link rel="stylesheet" href="shell.css?v=27"/>
 
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -498,11 +498,15 @@ body.app-body {
     min-height: 44px !important;
     touch-action: manipulation;
   }
-  .wrap { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+  .drv-daybar input, .drv-daybar select {
+    min-height: 44px;
+    height: 44px;
+  }
+  .wrap { padding-bottom: 24px; }
 }
 
 @media (max-width: 520px) {
-  .wrap { padding: 12px 12px calc(72px + env(safe-area-inset-bottom, 0px)); }
+  .wrap { padding: 12px 12px 24px; }
   .drv-day-meta { width: 100%; margin-left: 0; }
   .stop-item { grid-template-columns: 1fr; }
   .badge { justify-self: start; }
@@ -557,7 +561,10 @@ body.app-body {
 
     <header class="topbar">
 
-      <label for="nav-open" class="nav-burger">Menyu</label>
+      <label for="nav-open" class="nav-burger" title="Menyu" aria-label="Menyu">
+        <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>
+        <span class="nav-burger-lbl">Menyu</span>
+      </label>
 
       <div class="tb-page">
 

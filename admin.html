@@ -14,7 +14,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="shell.css?v=24"/>
+<link rel="stylesheet" href="shell.css?v=27"/>
 <link rel="stylesheet" href="ph-delete-btn.css?v=3"/>
 
 <style>
@@ -886,7 +886,10 @@ body { overflow-x: clip; }
 
     <header class="topbar">
 
-      <label for="nav-open" class="nav-burger">Menyu</label>
+      <label for="nav-open" class="nav-burger" title="Menyu" aria-label="Menyu">
+        <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>
+        <span class="nav-burger-lbl">Menyu</span>
+      </label>
 
       <div class="tb-title">Admin</div>
 

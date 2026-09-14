@@ -159,12 +159,20 @@ input:focus { outline: none; border-color: var(--mark); box-shadow: 0 0 0 3px rg
 
 html { -webkit-text-size-adjust: 100%; }
 @media (max-width: 640px) {
-  body { padding: max(16px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)); align-items: flex-start; }
+  body {
+    padding:
+      max(16px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(16px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    align-items: flex-start;
+  }
   .wrap { max-width: 100%; }
   .brand-lockup { gap: 10px; }
   .brand-lockup img, .brand-lockup svg { width: 44px; height: 44px; }
   .brand-name { font-size: 18px; }
   input, .btn-go { font-size: 16px; min-height: 44px; }
+  .pw-toggle { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
   .form, .top { padding: 16px; }
 }
 </style>

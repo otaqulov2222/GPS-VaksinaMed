@@ -500,7 +500,7 @@
     if (!attMap || !window.L) return;
     if (attMap._vmLocateCtrl) return;
     const Ctrl = L.Control.extend({
-      options: { position: 'bottomright' },
+      options: { position: 'bottomleft' },
       onAdd: function () {
         const box = L.DomUtil.create('div', 'av-locate-ctrl');
         const b = L.DomUtil.create('button', 'av-locate-ctrl-btn', box);
@@ -628,6 +628,10 @@
     if (errText) {
       setFidUI({ status: 'FAILED', hint: errText, progress: 0, tone: 'err' });
     }
+    try {
+      const el = btnRetry || fidRetryWrap;
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } catch (e) { /* ignore */ }
   }
 
   function showFidActions() {
@@ -1350,13 +1354,37 @@
     const nextAction = done ? 'Bugun yakunlandi' : (!geoLive.inside ? 'Ofis zonasiga boring' : (!ticketOk ? 'Ofis QR skanerlang' : (!inn ? 'Keldimni bosing' : 'Ketdimni bosing')));
 
     app.innerHTML = `
-      <div class="att-tabs" role="tablist">
-        <button type="button" class="att-tab ${uiTab === 'bugun' ? 'on' : ''}" data-tab="bugun">Bugun</button>
-        ${staff ? `<button type="button" class="att-tab ${uiTab === 'dash' ? 'on' : ''}" data-tab="dash">Dashboard</button>` : ''}
-        ${staff ? `<button type="button" class="att-tab ${uiTab === 'hisobot' ? 'on' : ''}" data-tab="hisobot">Hisobot</button>` : ''}
-        ${staff ? `<button type="button" class="att-tab ${uiTab === 'shaxs' ? 'on' : ''}" data-tab="shaxs">Xodim</button>` : ''}
-        <button type="button" class="att-tab ${uiTab === 'tarix' ? 'on' : ''}" data-tab="tarix">Tarix</button>
-        ${staff ? `<button type="button" class="att-tab ${uiTab === 'soz' ? 'on' : ''}" data-tab="soz">Sozlamalar</button>` : ''}
+      <div class="att-tabs" role="tablist" aria-label="Davomat bo‘limlari">
+        <button type="button" class="att-tab ${uiTab === 'bugun' ? 'on' : ''}" data-tab="bugun" title="Bugun">
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+          <span class="att-tab-lbl">Bugun</span>
+          <span class="att-tab-abbr">Bu</span>
+        </button>
+        ${staff ? `<button type="button" class="att-tab ${uiTab === 'dash' ? 'on' : ''}" data-tab="dash" title="Dashboard">
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg></span>
+          <span class="att-tab-lbl">Dashboard</span>
+          <span class="att-tab-abbr">Da</span>
+        </button>` : ''}
+        ${staff ? `<button type="button" class="att-tab ${uiTab === 'hisobot' ? 'on' : ''}" data-tab="hisobot" title="Hisobot">
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 15v-4M12 15V8M16 15v-7"/></svg></span>
+          <span class="att-tab-lbl">Hisobot</span>
+          <span class="att-tab-abbr">Hi</span>
+        </button>` : ''}
+        ${staff ? `<button type="button" class="att-tab ${uiTab === 'shaxs' ? 'on' : ''}" data-tab="shaxs" title="Xodim">
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.8-3.2 4.2-4.8 7-4.8S17.2 15.8 19 19"/></svg></span>
+          <span class="att-tab-lbl">Xodim</span>
+          <span class="att-tab-abbr">Xo</span>
+        </button>` : ''}
+        <button type="button" class="att-tab ${uiTab === 'tarix' ? 'on' : ''}" data-tab="tarix" title="Tarix">
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg></span>
+          <span class="att-tab-lbl">Tarix</span>
+          <span class="att-tab-abbr">Ta</span>
+        </button>
+        ${staff ? `<button type="button" class="att-tab ${uiTab === 'soz' ? 'on' : ''}" data-tab="soz" title="Sozlamalar">
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/></svg></span>
+          <span class="att-tab-lbl">Sozlamalar</span>
+          <span class="att-tab-abbr">So</span>
+        </button>` : ''}
       </div>
 
       <div class="att-panel" id="panel-bugun" ${uiTab === 'bugun' ? '' : 'hidden'}>
@@ -1901,9 +1929,14 @@
         if (modal) modal.classList.add('scanning');
         setFidUI({ status: 'SCANNING…', hint: 'Ofis QR ni ramkaga tuting', progress: 40, tone: 'scan' });
         html5Qr = new window.Html5Qrcode('qr-reader');
+        const box = Math.max(120, Math.min(
+          240,
+          Math.floor((holder.clientWidth || 280) * 0.72),
+          Math.floor((holder.clientHeight || 280) * 0.72)
+        ));
         await html5Qr.start(
           { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 240, height: 240 } },
+          { fps: 10, qrbox: { width: box, height: box } },
           (decoded) => accept(decoded),
           () => {}
         );

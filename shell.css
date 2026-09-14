@@ -685,6 +685,7 @@ body.app-body::before {
     height: 100dvh;
     max-height: 100dvh;
     overflow: hidden;
+    --shell-topbar-h: calc(52px + env(safe-area-inset-top, 0px));
   }
   .app-shell {
     grid-template-columns: 1fr;
@@ -707,14 +708,16 @@ body.app-body::before {
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-    --shell-sticky-top: calc(52px + env(safe-area-inset-top, 0px));
+    --shell-sticky-top: var(--shell-topbar-h);
   }
   .app-main > .topbar,
   .app-shell .topbar {
     position: sticky;
     top: 0;
     z-index: 100;
-    min-height: 52px;
+    box-sizing: border-box;
+    height: var(--shell-topbar-h);
+    min-height: var(--shell-topbar-h);
     padding:
       max(10px, env(safe-area-inset-top, 0px))
       max(12px, env(safe-area-inset-right, 0px))
@@ -727,6 +730,19 @@ body.app-body::before {
     gap: 8px;
     border-bottom: 1px solid #d7e3f0;
     box-shadow: 0 4px 16px rgba(11, 31, 58, 0.06);
+  }
+  .app-shell .topbar .top-title,
+  .app-shell .topbar .top-sub {
+    min-width: 0;
+  }
+  .app-shell .topbar .acts {
+    flex-shrink: 0;
+  }
+  .app-shell .topbar .tb-user-name {
+    max-width: min(28vw, 110px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .nav-burger {
     display: inline-flex !important;
@@ -940,9 +956,25 @@ body.app-body::before {
   }
 }
 
+@media (max-width: 980px) {
+  .pw-eye {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 @media (max-width: 640px) {
   .app-main .topbar .tb-page { min-width: 0; flex: 1 1 auto; }
+  .app-main .topbar .top-sub { display: none; }
+  .app-main .topbar .tb-user-name { display: none; }
   .nav-rail { width: min(92vw, 300px); }
+  .nav-burger {
+    border-radius: 12px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
 }
 
 @media print {
@@ -1043,3 +1075,89 @@ a.nav-link[href="/profile.html"][aria-current="page"] {
   height: 0 !important;
 }
 .app-body *::-webkit-scrollbar-corner { background: transparent; }
+
+/* Topbar action icons — desktop: text + optional ico; mobile: compact rail */
+.nav-burger-ico {
+  display: none;
+  width: 18px;
+  height: 18px;
+}
+.nav-burger-ico svg { width: 100%; height: 100%; display: block; }
+.nav-burger-lbl { display: inline; }
+.tb-ico {
+  display: none;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.tb-ico svg { width: 100%; height: 100%; display: block; }
+.tb-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .nav-burger {
+    min-width: 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+  .nav-burger-ico { display: block !important; }
+  .nav-burger-lbl { display: none !important; }
+
+  .app-main .topbar .acts,
+  .app-main .topbar .tb-actions {
+    gap: 4px !important;
+    scrollbar-width: none !important;
+  }
+  .app-main .topbar .acts::-webkit-scrollbar,
+  .app-main .topbar .tb-actions::-webkit-scrollbar {
+    display: none !important;
+    height: 0 !important;
+  }
+
+  .app-main .topbar .acts > .btn.tb-act,
+  .app-main .topbar .tb-actions > .btn.tb-act,
+  .app-main .topbar .acts > .tb-act,
+  .app-main .topbar .tb-actions > .tb-act {
+    flex: 0 0 auto !important;
+    min-width: 46px !important;
+    max-width: 58px !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 6px 4px 5px !important;
+    border-radius: 11px !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    font-size: 9px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+  }
+  .app-main .topbar .tb-ico {
+    display: block !important;
+    width: 17px !important;
+    height: 17px !important;
+  }
+  .app-main .topbar .lbl-full { display: none !important; }
+  .app-main .topbar .lbl-short {
+    display: block !important;
+    line-height: 1 !important;
+    font-size: 9px !important;
+  }
+  .app-main .topbar .btn-success.tb-act {
+    background: #0b1f3a !important;
+    border-color: #0b1f3a !important;
+    color: #fff !important;
+  }
+  .app-main .topbar .btn-success.tb-act .tb-ico { color: #7dd3fc; }
+}
