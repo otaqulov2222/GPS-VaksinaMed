@@ -6,8 +6,12 @@
   const app = document.getElementById('att-app');
   if (!app) return;
 
-  const QR_LIB = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js';
+  const QR_LIB = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js';
+  const QR_LIB_FALLBACK = 'https://unpkg.com/qrcode@1.5.1/build/qrcode.min.js';
+  const QR_LIB_JS = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
   const HTML5_QR = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+  let officeQrMeta = null;
+
 
   let STATE = null;
   let busy = false;
@@ -2247,25 +2251,37 @@
   function renderSettings() {
     const box = document.getElementById('att-settings');
     if (!box || !STATE) return;
+    box.innerHTML = `<p class="att-hint">Ofis QR yuklanmoqda…</p>`;
     Promise.all([
       api('/api/attendance/settings'),
       api('/api/attendance/qr')
     ]).then(async ([d, qr]) => {
       const s = d.settings || {};
       const o = s.office || {};
+      officeQrMeta = qr;
       box.innerHTML = `
-        <div class="att-qr-print-card" id="att-qr-print">
-          <div class="att-qr-print-h">Ofis QR (chop etish)</div>
-          <p class="att-hint">Shu kodni printerdan chiqarib ofis devoriga yopishtiring. Faqat shu ofis + zona ichida ishlaydi.</p>
-          <canvas id="office-qr-canvas" width="280" height="280" style="max-width:100%;background:#fff;border-radius:12px"></canvas>
-          <div class="att-hint mono" style="margin-top:8px">v${esc(String(qr.version || 1))} · ${esc(qr.label || o.label || 'Ofis')}</div>
-          <div class="att-toolbar" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+        <div class="att-qr-poster-wrap" id="att-qr-print">
+          <div class="att-qr-poster-head">
+            <div>
+              <div class="att-qr-kicker">VaksinaMed · Office Access</div>
+              <h3 class="att-qr-title">Ofis QR plakati</h3>
+              <p class="att-qr-lead">Chop eting yoki PNG/PDF yuklab oling — ofis devoriga yopishtiring. Faqat zona ichida ishlaydi.</p>
+            </div>
+            <div class="att-qr-ver">v${esc(String(qr.version || 1))}</div>
+          </div>
+          <div class="att-qr-stage">
+            <canvas id="office-qr-poster" width="720" height="960" aria-label="Ofis QR plakat"></canvas>
+            <div class="att-qr-loading" id="office-qr-loading">QR chizilmoqda…</div>
+          </div>
+          <div class="att-qr-actions">
             <button type="button" class="att-btn att-btn-in" id="btn-qr-print">Chop etish</button>
             <button type="button" class="att-btn att-btn-face" id="btn-qr-png">PNG yuklash</button>
-            <button type="button" class="att-btn att-btn-out" id="btn-qr-rotate">QR yangilash</button>
+            <button type="button" class="att-btn att-btn-out" id="btn-qr-pdf">PDF yuklash</button>
+            <button type="button" class="att-btn" id="btn-qr-rotate" style="background:#0b1f3a;color:#fff;border-color:#0b1f3a">QR yangilash</button>
           </div>
+          <p class="att-hint" id="office-qr-status">v${esc(String(qr.version || 1))} · ${esc(qr.label || o.label || 'Ofis')}</p>
         </div>
-        <hr style="margin:18px 0;border:none;border-top:1px solid #d7e2ef">
+        <hr style="margin:22px 0;border:none;border-top:1px solid #d7e2ef">
         <p class="att-hint" style="margin:0 0 12px">Haydovchilar va ofis: <b>09:00–18:00</b>, kechikish ruxsati <b>15 daqiqa</b>.</p>
         <div class="row2">
           <div class="fld"><label>Ish boshlanishi</label><input id="s-in-start" value="${esc(s.in_start || '09:00')}" placeholder="09:00"></div>
@@ -2299,12 +2315,25 @@
           msg('Lat/lng yozildi — Saqlash bosing', 'info');
         } catch (e) { msg(e.message, 'err'); }
       };
-      await paintOfficeQrCanvas(qr.payload || '');
+      try {
+        await renderOfficeQrPoster(qr);
+        const st = document.getElementById('office-qr-status');
+        if (st) st.textContent = 'Tayyor · v' + (qr.version || 1) + ' · ' + (qr.label || o.label || 'Ofis');
+      } catch (e) {
+        const st = document.getElementById('office-qr-status');
+        if (st) st.textContent = 'QR xato: ' + (e.message || 'chizilmadi');
+        msg(e.message || 'QR chizilmadi', 'err');
+      }
+      const loadEl = document.getElementById('office-qr-loading');
+      if (loadEl) loadEl.hidden = true;
+
       const printBtn = document.getElementById('btn-qr-print');
       const pngBtn = document.getElementById('btn-qr-png');
+      const pdfBtn = document.getElementById('btn-qr-pdf');
       const rotBtn = document.getElementById('btn-qr-rotate');
-      if (printBtn) printBtn.onclick = () => printOfficeQr(qr);
+      if (printBtn) printBtn.onclick = () => printOfficeQrPoster();
       if (pngBtn) pngBtn.onclick = () => downloadOfficeQrPng(qr);
+      if (pdfBtn) pdfBtn.onclick = () => downloadOfficeQrPdf(qr);
       if (rotBtn) rotBtn.onclick = async () => {
         if (!confirm('Eski chop etilgan QR ishlamaydi. Yangilaysizmi?')) return;
         try {
@@ -2314,7 +2343,6 @@
           });
           msg('Yangi ofis QR yaratildi — qayta chop eting', 'ok');
           renderSettings();
-          Object.assign(qr, nr);
         } catch (e) { msg(e.message || 'Yangilash xato', 'err'); }
       };
     }).catch((e) => {
@@ -2322,50 +2350,344 @@
     });
   }
 
-  async function paintOfficeQrCanvas(payload) {
-    const canvas = document.getElementById('office-qr-canvas');
-    if (!canvas || !payload) return;
-    await loadScriptOnce(QR_LIB);
-    if (!window.QRCode) throw new Error('QR generator yuklanmadi');
-    await window.QRCode.toCanvas(canvas, payload, {
-      width: 280,
-      margin: 2,
-      color: { dark: '#0b1f3a', light: '#ffffff' }
+  async function ensureQrLib() {
+    if (window.QRCode && typeof window.QRCode.toCanvas === 'function') return { type: 'toCanvas', lib: window.QRCode };
+    try {
+      await loadScriptOnce(QR_LIB);
+    } catch (e1) {
+      try {
+        await loadScriptOnce(QR_LIB_FALLBACK);
+      } catch (e2) {
+        /* next fallback */
+      }
+    }
+    const lib = window.QRCode || window.qrcode;
+    if (lib && typeof lib.toCanvas === 'function') return { type: 'toCanvas', lib: lib };
+
+    // davidshimjs/qrcodejs — constructor API
+    if (typeof window.QRCode === 'function' && window.QRCode.CorrectLevel) {
+      return { type: 'ctor', Ctor: window.QRCode };
+    }
+    await loadScriptOnce(QR_LIB_JS);
+    if (typeof window.QRCode === 'function') return { type: 'ctor', Ctor: window.QRCode };
+    throw new Error('QR kutubxonasi yuklanmadi');
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('QR rasm yuklanmadi'));
+      img.src = src;
     });
   }
 
-  function printOfficeQr(qr) {
-    const canvas = document.getElementById('office-qr-canvas');
-    if (!canvas) return;
-    const w = window.open('', '_blank', 'width=480,height=640');
-    if (!w) {
-      msg('Popup bloklangan', 'err');
+  function makeQrViaCtor(Ctor, payload, size) {
+    return new Promise((resolve, reject) => {
+      const holder = document.createElement('div');
+      holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:' + size + 'px;height:' + size + 'px';
+      document.body.appendChild(holder);
+      try {
+        // eslint-disable-next-line no-new
+        new Ctor(holder, {
+          text: payload,
+          width: size,
+          height: size,
+          colorDark: '#0b1f3a',
+          colorLight: '#ffffff',
+          correctLevel: (Ctor.CorrectLevel && Ctor.CorrectLevel.H) || 2
+        });
+      } catch (e) {
+        holder.remove();
+        reject(e);
+        return;
+      }
+      const finish = () => {
+        try {
+          const srcCanvas = holder.querySelector('canvas');
+          const srcImg = holder.querySelector('img');
+          const tmp = document.createElement('canvas');
+          tmp.width = size;
+          tmp.height = size;
+          const ctx = tmp.getContext('2d');
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, size, size);
+          if (srcCanvas) ctx.drawImage(srcCanvas, 0, 0, size, size);
+          else if (srcImg && srcImg.src) ctx.drawImage(srcImg, 0, 0, size, size);
+          else throw new Error('QR DOM element topilmadi');
+          holder.remove();
+          resolve(tmp);
+        } catch (e) {
+          holder.remove();
+          reject(e);
+        }
+      };
+      setTimeout(finish, 80);
+    });
+  }
+
+  async function makeQrBitmap(payload, size) {
+    const tmp = document.createElement('canvas');
+    try {
+      const eng = await ensureQrLib();
+      if (eng.type === 'toCanvas') {
+        await eng.lib.toCanvas(tmp, payload, {
+          width: size,
+          margin: 2,
+          errorCorrectionLevel: 'H',
+          color: { dark: '#0b1f3a', light: '#ffffff' }
+        });
+        return tmp;
+      }
+      return await makeQrViaCtor(eng.Ctor, payload, size);
+    } catch (e) {
+      // Oxirgi fallback: tashqi rasm (CORS bilan)
+      const url = 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size +
+        '&margin=8&ecc=H&color=0b1f3a&bgcolor=ffffff&data=' + encodeURIComponent(payload);
+      const img = await loadImage(url);
+      tmp.width = size;
+      tmp.height = size;
+      const ctx = tmp.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, size, size);
+      ctx.drawImage(img, 0, 0, size, size);
+      return tmp;
+    }
+  }
+
+  async function renderOfficeQrPoster(qr) {
+    const poster = document.getElementById('office-qr-poster');
+    if (!poster) throw new Error('Poster canvas topilmadi');
+    const payload = (qr && qr.payload) || '';
+    if (!payload) throw new Error('QR payload yo‘q — serverdan olinmadi');
+    officeQrMeta = qr;
+
+    const W = 720;
+    const H = 960;
+    poster.width = W;
+    poster.height = H;
+    const ctx = poster.getContext('2d');
+
+    // Background
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#071525');
+    bg.addColorStop(0.45, '#0b1f3a');
+    bg.addColorStop(1, '#123050');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Accent glow
+    const glow = ctx.createRadialGradient(W * 0.85, 80, 20, W * 0.85, 80, 280);
+    glow.addColorStop(0, 'rgba(125,211,252,0.35)');
+    glow.addColorStop(1, 'rgba(125,211,252,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // Top brand bar
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(0, 0, W, 110);
+    ctx.fillStyle = '#7dd3fc';
+    ctx.font = '700 14px IBM Plex Mono, monospace';
+    ctx.fillText('VAKSINA MED  ·  MACHINE CONTROL', 48, 48);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 34px IBM Plex Sans, Arial, sans-serif';
+    ctx.fillText('OFIS QR', 48, 88);
+
+    // Version badge
+    const ver = 'v' + String((qr && qr.version) || 1);
+    ctx.fillStyle = 'rgba(125,211,252,0.2)';
+    roundRect(ctx, W - 120, 36, 72, 32, 16);
+    ctx.fill();
+    ctx.fillStyle = '#e0f2fe';
+    ctx.font = '700 14px IBM Plex Mono, monospace';
+    ctx.fillText(ver, W - 98, 57);
+
+    // White card for QR
+    const cardX = 56;
+    const cardY = 150;
+    const cardW = W - 112;
+    const cardH = 560;
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, cardX, cardY, cardW, cardH, 28);
+    ctx.fill();
+
+    // Office label
+    const label = String((qr && qr.label) || 'VaksinaMed ofis');
+    ctx.fillStyle = '#0b1f3a';
+    ctx.font = '700 22px IBM Plex Sans, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, W / 2, cardY + 48);
+    ctx.fillStyle = '#5a7190';
+    ctx.font = '500 13px IBM Plex Sans, Arial, sans-serif';
+    ctx.fillText('Faqat shu ofis geozonasida ishlaydi', W / 2, cardY + 74);
+    ctx.textAlign = 'left';
+
+    // QR bitmap
+    const qrSize = 360;
+    const qrBmp = await makeQrBitmap(payload, qrSize);
+    const qx = (W - qrSize) / 2;
+    const qy = cardY + 110;
+    // soft frame + scan corners
+    ctx.fillStyle = '#f4f8fc';
+    roundRect(ctx, qx - 22, qy - 22, qrSize + 44, qrSize + 44, 22);
+    ctx.fill();
+    ctx.drawImage(qrBmp, qx, qy, qrSize, qrSize);
+    drawScanCorners(ctx, qx - 10, qy - 10, qrSize + 20, qrSize + 20, 28, '#1a5fb4');
+
+    // Steps under QR in card
+    ctx.fillStyle = '#1a5fb4';
+    ctx.font = '700 12px IBM Plex Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('1  ZONA   →   2  SKAN   →   3  KELDI / KETDI', W / 2, cardY + cardH - 36);
+    ctx.textAlign = 'left';
+
+    // Bottom instructions
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.font = '700 18px IBM Plex Sans, Arial, sans-serif';
+    ctx.fillText('Devorga yopishtiring', 48, 760);
+    ctx.fillStyle = 'rgba(238,245,252,0.78)';
+    ctx.font = '500 14px IBM Plex Sans, Arial, sans-serif';
+    const lines = [
+      '• Telefon kamerasi orqali shu QR ni skanerlang',
+      '• Ofis radiusida bo‘lsangiz Keldim/Ketdim ochiladi',
+      '• Yangilashdan keyin eski plakat ishlamaydi'
+    ];
+    lines.forEach((ln, i) => ctx.fillText(ln, 48, 792 + i * 26));
+
+    ctx.fillStyle = 'rgba(125,211,252,0.85)';
+    ctx.font = '600 12px IBM Plex Mono, monospace';
+    ctx.fillText('gps · vaksinagps.duckdns.org/attendance.html', 48, 920);
+
+    return poster;
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function drawScanCorners(ctx, x, y, w, h, len, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    // TL
+    ctx.beginPath();
+    ctx.moveTo(x, y + len);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + len, y);
+    ctx.stroke();
+    // TR
+    ctx.beginPath();
+    ctx.moveTo(x + w - len, y);
+    ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w, y + len);
+    ctx.stroke();
+    // BL
+    ctx.beginPath();
+    ctx.moveTo(x, y + h - len);
+    ctx.lineTo(x, y + h);
+    ctx.lineTo(x + len, y + h);
+    ctx.stroke();
+    // BR
+    ctx.beginPath();
+    ctx.moveTo(x + w - len, y + h);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x + w, y + h - len);
+    ctx.stroke();
+  }
+
+  function getOfficePosterCanvas() {
+    return document.getElementById('office-qr-poster');
+  }
+
+  function printOfficeQrPoster() {
+    const canvas = getOfficePosterCanvas();
+    if (!canvas || !canvas.width) {
+      msg('Avval QR chizilsin', 'err');
       return;
     }
-    const label = (qr && qr.label) || 'VaksinaMed ofis';
+    const w = window.open('', '_blank', 'width=520,height=720');
+    if (!w) {
+      msg('Popup bloklangan — brauzer ruxsat bering', 'err');
+      return;
+    }
     w.document.write(
-      '<html><head><title>Ofis QR</title><style>' +
-      'body{font-family:Arial,sans-serif;text-align:center;padding:24px;color:#0b1f3a}' +
-      'h1{font-size:22px;margin:0 0 8px}p{margin:0 0 16px;color:#456}' +
-      'img{width:320px;height:320px;border:1px solid #ccd}' +
+      '<html><head><title>VaksinaMed Ofis QR</title><style>' +
+      'body{margin:0;background:#111;display:flex;justify-content:center;align-items:center;min-height:100vh}' +
+      'img{max-width:100%;height:auto;box-shadow:0 12px 40px rgba(0,0,0,.4)}' +
+      '@media print{body{background:#fff}img{box-shadow:none;width:100%}}' +
       '</style></head><body>' +
-      '<h1>VAKSINA MED — OFIS QR</h1>' +
-      '<p>' + String(label).replace(/</g, '') + ' · Faqat shu ofis ichida</p>' +
-      '<img src="' + canvas.toDataURL('image/png') + '"/>' +
-      '<p style="margin-top:16px;font-size:12px">Davomat: zona + QR skan → Keldim/Ketdim</p>' +
-      '<script>window.onload=function(){setTimeout(function(){window.print()},200)}<\/script>' +
+      '<img src="' + canvas.toDataURL('image/png') + '" alt="Ofis QR"/>' +
+      '<script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script>' +
       '</body></html>'
     );
     w.document.close();
   }
 
   function downloadOfficeQrPng(qr) {
-    const canvas = document.getElementById('office-qr-canvas');
-    if (!canvas) return;
-    const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
-    a.download = 'vaksina-ofis-qr-v' + ((qr && qr.version) || 1) + '.png';
-    a.click();
+    const canvas = getOfficePosterCanvas();
+    if (!canvas || !canvas.width) {
+      msg('QR hali chizilmadi — sahifani yangilang', 'err');
+      return;
+    }
+    try {
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = 'vaksina-ofis-qr-v' + ((qr && qr.version) || (officeQrMeta && officeQrMeta.version) || 1) + '.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      msg('PNG yuklandi', 'ok');
+    } catch (e) {
+      msg(e.message || 'PNG xato', 'err');
+    }
+  }
+
+  function downloadOfficeQrPdf(qr) {
+    const canvas = getOfficePosterCanvas();
+    if (!canvas || !canvas.width) {
+      msg('QR hali chizilmadi — sahifani yangilang', 'err');
+      return;
+    }
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!JsPDF) {
+      msg('PDF kutubxonasi yuklanmadi', 'err');
+      return;
+    }
+    try {
+      const doc = new JsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 28;
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2;
+      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+      const w = canvas.width * ratio;
+      const h = canvas.height * ratio;
+      const x = (pageW - w) / 2;
+      const y = (pageH - h) / 2;
+      doc.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, w, h);
+      doc.save('vaksina-ofis-qr-v' + ((qr && qr.version) || 1) + '.pdf');
+      msg('PDF yuklandi', 'ok');
+    } catch (e) {
+      msg(e.message || 'PDF xato', 'err');
+    }
+  }
+
+  // Eski oddiy canvas API o‘rniga poster
+  async function paintOfficeQrCanvas() {
+    if (officeQrMeta) return renderOfficeQrPoster(officeQrMeta);
+  }
+
+  function printOfficeQr() {
+    printOfficeQrPoster();
   }
 
   async function saveSettings() {
