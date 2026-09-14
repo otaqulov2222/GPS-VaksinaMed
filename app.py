@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -377,6 +379,56 @@ async def handle(request: Request, full_path: str = ""):
         }
         return Response(
             content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            status_code=202,
+            media_type="application/json",
+        )
+
+    # Hetzner: push dan keyin git pull + restart (CRON_SECRET)
+    if path == "/api/cron/deploy" and request.method in ("GET", "POST", "HEAD"):
+        if not _cron_authorized(request):
+            return Response(
+                content=b'{"ok":false,"error":"Unauthorized"}',
+                status_code=401,
+                media_type="application/json",
+            )
+        if request.method == "HEAD":
+            return Response(status_code=202, media_type="application/json")
+        script = (os.environ.get("DEPLOY_SCRIPT") or "").strip() or "/opt/vaksina/hetzner_auto_pull.sh"
+        if not os.path.isfile(script):
+            return Response(
+                content=json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"Deploy script topilmadi: {script}",
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8"),
+                status_code=500,
+                media_type="application/json",
+            )
+
+        def _run_deploy() -> None:
+            time.sleep(0.4)
+            try:
+                subprocess.run(
+                    ["/bin/bash", script],
+                    check=False,
+                    timeout=180,
+                    capture_output=True,
+                )
+            except Exception:
+                pass
+
+        threading.Thread(target=_run_deploy, daemon=True, name="hetzner-deploy").start()
+        return Response(
+            content=json.dumps(
+                {
+                    "ok": True,
+                    "accepted": True,
+                    "message": "Deploy boshlandi (git pull + restart)",
+                },
+                ensure_ascii=False,
+            ).encode("utf-8"),
             status_code=202,
             media_type="application/json",
         )

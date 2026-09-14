@@ -1,0 +1,11 @@
+[Unit]
+Description=VaksinaMed auto-deploy timer (har 1 daqiqa)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Unit=vaksina-auto-deploy.service
+
+[Install]
+WantedBy=timers.target

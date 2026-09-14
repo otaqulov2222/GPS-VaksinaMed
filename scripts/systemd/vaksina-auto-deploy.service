@@ -1,0 +1,10 @@
+[Unit]
+Description=VaksinaMed auto-deploy (git pull + restart)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=APP_DIR=/opt/vaksina/app
+Environment=DEPLOY_BRANCH=main
+ExecStart=/opt/vaksina/hetzner_auto_pull.sh
+Nice=10
