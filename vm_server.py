@@ -3173,19 +3173,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 "role": sess["role"],
                 "car": sess.get("car") or "",
             }
-            face_enrolled = False
+            face_enrolled = True
+            attendance_ready = True
             try:
                 if ATTENDANCE:
-                    face_enrolled = ATTENDANCE.is_enrolled(str(sess["user_id"]))
+                    attendance_ready = True
+                    face_enrolled = False  # Face ID o'chirilgan
             except Exception:
-                face_enrolled = False
+                attendance_ready = True
             self.send_json(
                 {
                     "ok": True,
                     "user": user,
                     "persist": STORE.persist_info(),
                     "vehicles": (OFFICE.fuel_meta() or {}).get("vehicles") or {},
-                    "faceEnrolled": face_enrolled,
+                    "faceEnrolled": False,
+                    "attendanceReady": attendance_ready,
+                    "qrReady": True,
                 }
             )
             return
@@ -3301,8 +3305,21 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not ATTENDANCE:
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
-            self.send_json({"ok": True, "settings": ATTENDANCE.settings()})
+            s = dict(ATTENDANCE.settings())
+            s.pop("office_qr_secret", None)
+            self.send_json({"ok": True, "settings": s})
             return
+
+        if path == "/api/attendance/qr":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            self.send_json({"ok": True, **ATTENDANCE.get_office_qr()})
+            return
+
         if path == "/api/users":
             sess = self.require_staff()
             if not sess:
@@ -4284,21 +4301,59 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_user()
             if not sess:
                 return
+            self.send_json(
+                {
+                    "ok": False,
+                    "error": "Face ID o'chirilgan. Ofis QR skanerlashdan foydalaning.",
+                },
+                410,
+            )
+            return
+
+        if path == "/api/attendance/qr/verify":
+            sess = self.require_user()
+            if not sess:
+                return
             if not ATTENDANCE:
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
-            result, err = ATTENDANCE.enroll(
-                str(sess["user_id"]),
-                username=str(sess.get("username") or ""),
-                name=str(sess.get("name") or ""),
-                photo=body.get("photo"),
-                credential_id=body.get("credentialId"),
-                descriptor=body.get("descriptor"),
+            result, err = ATTENDANCE.verify_office_qr(
+                user_id=str(sess["user_id"]),
+                payload=str(body.get("payload") or body.get("qr") or ""),
+                lat=body.get("lat"),
+                lng=body.get("lng"),
+                accuracy=body.get("accuracy"),
+                user={
+                    "id": sess.get("user_id"),
+                    "username": sess.get("username"),
+                    "name": sess.get("name"),
+                    "role": sess.get("role"),
+                },
             )
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
                 return
-            self.send_json({"ok": True, **result})
+            self.send_json(result)
+            return
+
+        if path == "/api/attendance/qr/rotate":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            confirm = str(body.get("confirm") or "").strip().lower()
+            if confirm not in ("1", "true", "yes", "rotate", "yangilash"):
+                self.send_json(
+                    {
+                        "ok": False,
+                        "error": "Tasdiqlang: confirm=yangilash (eski chop etilgan QR ishlamaydi)",
+                    },
+                    400,
+                )
+                return
+            self.send_json({"ok": True, **ATTENDANCE.rotate_office_qr()})
             return
 
         if path == "/api/attendance/punch":
@@ -4321,6 +4376,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 credential_id=body.get("credentialId"),
                 challenge=body.get("challenge"),
                 descriptor=body.get("descriptor"),
+                qr_ticket=body.get("qrTicket") or body.get("qr_ticket"),
             )
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
@@ -4336,7 +4392,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
             saved = ATTENDANCE.save_settings(body if isinstance(body, dict) else {})
-            self.send_json({"ok": True, "settings": saved})
+            # Sirni javobda yubormaslik
+            pub = dict(saved)
+            pub.pop("office_qr_secret", None)
+            self.send_json({"ok": True, "settings": pub})
             return
 
         self.send_json({"ok": False, "error": "Not found"}, 404)

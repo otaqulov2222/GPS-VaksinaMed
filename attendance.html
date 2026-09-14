@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shell.css?v=23"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="attendance.css?v=27"/>
+<link rel="stylesheet" href="attendance.css?v=28"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -41,7 +41,7 @@
       <label for="nav-open" class="nav-burger">Menyu</label>
       <div>
         <div class="top-title">Davomat</div>
-        <div class="top-sub">Face / GPS / vaqt</div>
+        <div class="top-sub">QR / GPS / vaqt</div>
       </div>
       <div class="acts">
         <span id="tb-user-name" class="tb-user-name">-</span>
@@ -60,9 +60,9 @@
   <div class="fid-panel" role="dialog" aria-modal="true" aria-labelledby="fid-title">
     <button type="button" class="fid-close" id="fid-close" aria-label="Yopish">&times;</button>
     <div class="fid-head">
-      <div class="fid-kicker">VAKSINAMED BIOMETRIC</div>
-      <h2 id="fid-title" class="fid-title">FACE ID</h2>
-      <p class="fid-sub" id="fid-sub">Yuz tahlili</p>
+      <div class="fid-kicker">VAKSINAMED OFFICE QR</div>
+      <h2 id="fid-title" class="fid-title">OFIS QR</h2>
+      <p class="fid-sub" id="fid-sub">Devordagi kodni skanerlang</p>
     </div>
 
     <div class="fid-viewport" id="fid-viewport">
@@ -80,7 +80,7 @@
     <div class="fid-meta">
       <div class="fid-status" id="fid-status">LOADING...</div>
       <div class="fid-seg" id="fid-seg" aria-hidden="true"></div>
-      <p class="fid-hint" id="fid-hint">Kameraga to'g'ri qarang - harakatsiz turing</p>
+      <p class="fid-hint" id="fid-hint">Ofis QR kodini markazga tuting</p>
       <div class="fid-actions" id="fid-actions" hidden>
         <button type="button" class="fid-btn fid-btn-in" id="fid-keldim">Keldim</button>
         <button type="button" class="fid-btn fid-btn-out" id="fid-ketdim">Ketdim</button>
@@ -99,7 +99,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="auth.js?v=33"></script>
-<script src="attendance.js?v=27"></script>
+<script src="auth.js?v=34"></script>
+<script src="attendance.js?v=28"></script>
 </body>
 </html>

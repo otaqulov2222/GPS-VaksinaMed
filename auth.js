@@ -214,12 +214,10 @@ function vmEnsureDavomatNav() {
             st.className = 'vm-face-status';
             profil.appendChild(st);
         }
-        st.classList.toggle('on', faceOn);
-        st.classList.toggle('off', !faceOn);
-        st.innerHTML = faceOn
-            ? '<i></i> Face ulangan'
-            : '<i></i> Face ulanmagan';
-        st.setAttribute('aria-label', faceOn ? 'Face ulangan' : 'Face ulanmagan');
+        st.classList.add('on');
+        st.classList.remove('off');
+        st.innerHTML = '<i></i> QR ofis';
+        st.setAttribute('aria-label', 'Ofis QR davomat');
     });
 }
 

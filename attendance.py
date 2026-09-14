@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Davomat: Face ulash + kirish/chiqish (GPS + vaqt + biometriya)."""
+"""Davomat: Ofis QR + GPS geozona + kirish/chiqish (vaqt)."""
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import math
 import re
 import secrets
@@ -19,6 +20,10 @@ SETTINGS_KEY = "attendance:settings"
 FACE_PREFIX = "attendance:face:"
 DAY_PREFIX = "attendance:day:"
 CHALLENGE_PREFIX = "attendance:chal:"
+QR_TICKET_PREFIX = "attendance:qrticket:"
+
+QR_TICKET_TTL_MIN = 10
+QR_PREFIX = "VMATT1"
 
 DEFAULT_SETTINGS = {
     "office": {
@@ -35,7 +40,11 @@ DEFAULT_SETTINGS = {
     "out_start": "18:00",
     "out_end": "20:00",
     "require_gps": True,
-    "require_face": True,
+    "require_face": False,
+    "require_qr": True,
+    "office_qr_secret": "",
+    "office_qr_version": 1,
+    "office_qr_updated_at": "",
     "enabled": True,
 }
 
@@ -178,6 +187,19 @@ class AttendanceStore:
         if "late_grace_min" not in cur:
             cur["late_grace_min"] = 15
             changed = True
+        # Face → QR migratsiya
+        if cur.get("require_face") is True and "require_qr" not in cur:
+            cur["require_face"] = False
+            cur["require_qr"] = True
+            changed = True
+        if "require_qr" not in cur:
+            cur["require_qr"] = True
+            changed = True
+        if not str(cur.get("office_qr_secret") or "").strip():
+            cur["office_qr_secret"] = secrets.token_urlsafe(24)
+            cur["office_qr_version"] = int(cur.get("office_qr_version") or 1)
+            cur["office_qr_updated_at"] = now_tz().isoformat(timespec="seconds")
+            changed = True
         if changed:
             # DEFAULT bilan to‘ldirish
             merged = dict(DEFAULT_SETTINGS)
@@ -203,7 +225,221 @@ class AttendanceStore:
                 out["late_grace_min"] = max(0, min(120, int(out.get("late_grace_min") or 15)))
             except (TypeError, ValueError):
                 out["late_grace_min"] = 15
+            out["require_face"] = bool(out.get("require_face", False))
+            out["require_qr"] = bool(out.get("require_qr", True))
+            out["require_gps"] = bool(out.get("require_gps", True))
+            secret = str(out.get("office_qr_secret") or "").strip()
+            if not secret:
+                secret = secrets.token_urlsafe(24)
+                out["office_qr_secret"] = secret
+                out["office_qr_version"] = int(out.get("office_qr_version") or 1)
+                out["office_qr_updated_at"] = now_tz().isoformat(timespec="seconds")
+                self._save(SETTINGS_KEY, out)
+            else:
+                out["office_qr_secret"] = secret
+                try:
+                    out["office_qr_version"] = max(1, int(out.get("office_qr_version") or 1))
+                except (TypeError, ValueError):
+                    out["office_qr_version"] = 1
             return out
+
+    def office_qr_payload(self, settings: dict | None = None) -> str:
+        s = settings or self.settings()
+        ver = int(s.get("office_qr_version") or 1)
+        secret = str(s.get("office_qr_secret") or "").strip()
+        return f"{QR_PREFIX}.{ver}.{secret}"
+
+    def get_office_qr(self) -> dict:
+        s = self.settings()
+        office = s.get("office") or {}
+        return {
+            "payload": self.office_qr_payload(s),
+            "version": int(s.get("office_qr_version") or 1),
+            "updatedAt": s.get("office_qr_updated_at") or "",
+            "label": office.get("label") or "Ofis",
+            "radius_m": office.get("radius_m"),
+            "require_qr": bool(s.get("require_qr", True)),
+        }
+
+    def rotate_office_qr(self) -> dict:
+        with self.lock:
+            raw = self._load(SETTINGS_KEY, {})
+            if not isinstance(raw, dict):
+                raw = {}
+            cur = dict(DEFAULT_SETTINGS)
+            cur.update({k: v for k, v in raw.items() if k != "office"})
+            office = dict(DEFAULT_SETTINGS["office"])
+            if isinstance(raw.get("office"), dict):
+                office.update(raw["office"])
+            cur["office"] = office
+            try:
+                ver = int(cur.get("office_qr_version") or 1) + 1
+            except (TypeError, ValueError):
+                ver = 2
+            cur["office_qr_version"] = ver
+            cur["office_qr_secret"] = secrets.token_urlsafe(24)
+            cur["office_qr_updated_at"] = now_tz().isoformat(timespec="seconds")
+            cur["require_qr"] = True
+            cur["require_face"] = False
+            self._save(SETTINGS_KEY, cur)
+        return self.get_office_qr()
+
+    def _parse_office_qr(self, raw: str) -> tuple[int | None, str | None]:
+        text = str(raw or "").strip()
+        if not text:
+            return None, None
+        # URL yoki ortiqcha matndan payloadni ajratish
+        m = re.search(r"(VMATT1\.\d+\.[A-Za-z0-9_\-]+)", text)
+        if m:
+            text = m.group(1)
+        parts = text.split(".")
+        if len(parts) != 3 or parts[0] != QR_PREFIX:
+            return None, None
+        try:
+            ver = int(parts[1])
+        except ValueError:
+            return None, None
+        secret = parts[2].strip()
+        if len(secret) < 16:
+            return None, None
+        return ver, secret
+
+    def _gps_inside_office(
+        self,
+        settings: dict,
+        lat: float | None,
+        lng: float | None,
+        accuracy: float | None,
+    ) -> tuple[bool, float | None, str | None]:
+        office = settings.get("office") or {}
+        if not settings.get("require_gps", True):
+            return True, None, None
+        try:
+            lat_f = float(lat)
+            lng_f = float(lng)
+        except (TypeError, ValueError):
+            return False, None, "Joylashuv ruxsati kerak"
+        if not (-90.0 <= lat_f <= 90.0 and -180.0 <= lng_f <= 180.0):
+            return False, None, "Joylashuv koordinatasi noto'g'ri"
+        try:
+            acc_f = float(accuracy) if accuracy is not None else None
+        except (TypeError, ValueError):
+            acc_f = None
+        if acc_f is not None and acc_f > 150:
+            return False, None, (
+                f"Joylashuv aniq emas ({int(acc_f)} m). "
+                "Ochig'roq joyda qayta urinib ko'ring."
+            )
+        try:
+            olat = float(office.get("lat"))
+            olng = float(office.get("lng"))
+            radius = float(office.get("radius_m") or 100)
+        except (TypeError, ValueError):
+            return False, None, "Ofis geozonasi sozlanmagan"
+        dist = haversine_m(lat_f, lng_f, olat, olng)
+        if dist > radius:
+            return False, dist, (
+                f"Ofis zonasi tashqarisida ({int(dist)} m). "
+                f"Radius: {int(radius)} m."
+            )
+        return True, dist, None
+
+    def qr_ticket_key(self, user_id: str) -> str:
+        return QR_TICKET_PREFIX + str(user_id)
+
+    def get_qr_ticket(self, user_id: str) -> dict | None:
+        with self.lock:
+            data = self._load(self.qr_ticket_key(user_id))
+        if not isinstance(data, dict) or not data.get("ticket"):
+            return None
+        try:
+            exp = datetime.fromisoformat(str(data.get("exp")))
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=TZ)
+            if now_tz() > exp:
+                return None
+        except Exception:
+            return None
+        left = 0
+        try:
+            left = max(0, int((exp - now_tz()).total_seconds()))
+        except Exception:
+            left = 0
+        return {
+            "ticket": data.get("ticket"),
+            "exp": data.get("exp"),
+            "expiresInSec": left,
+            "qrVersion": data.get("qrVersion"),
+        }
+
+    def verify_office_qr(
+        self,
+        *,
+        user_id: str,
+        payload: str,
+        lat: float | None,
+        lng: float | None,
+        accuracy: float | None,
+        user: dict | None = None,
+    ) -> tuple[dict | None, str | None]:
+        settings = self.settings_for_user(user)
+        if not settings.get("enabled", True):
+            return None, "Davomat hozir o'chirilgan"
+        if not settings.get("require_qr", True):
+            return None, "Ofis QR hozir o'chirilgan"
+
+        ok_gps, dist, gerr = self._gps_inside_office(settings, lat, lng, accuracy)
+        if not ok_gps:
+            return None, gerr or "Ofis zonasiga kiring"
+
+        ver, secret = self._parse_office_qr(payload)
+        if ver is None or not secret:
+            return None, "QR o'qilmadi — ofis QR kodini skanerlang"
+        cur_ver = int(settings.get("office_qr_version") or 1)
+        cur_secret = str(settings.get("office_qr_secret") or "").strip()
+        if ver != cur_ver or not hmac.compare_digest(secret, cur_secret):
+            return None, "Bu QR ofisga mos emas yoki eskirgan. Admin yangi QR chop etsin."
+
+        ticket = secrets.token_urlsafe(24)
+        exp = now_tz() + timedelta(minutes=QR_TICKET_TTL_MIN)
+        rec = {
+            "ticket": ticket,
+            "userId": str(user_id),
+            "exp": exp.isoformat(timespec="seconds"),
+            "qrVersion": cur_ver,
+            "distance_m": round(dist, 1) if dist is not None else None,
+            "createdAt": now_tz().isoformat(timespec="seconds"),
+        }
+        with self.lock:
+            self._save(self.qr_ticket_key(user_id), rec)
+        return {
+            "ok": True,
+            "qrTicket": ticket,
+            "expiresInSec": QR_TICKET_TTL_MIN * 60,
+            "exp": rec["exp"],
+            "distance_m": rec["distance_m"],
+            "message": "Ofis QR tasdiqlandi — endi Keldim / Ketdim",
+        }, None
+
+    def consume_qr_ticket(self, user_id: str, ticket: str) -> str | None:
+        key = self.qr_ticket_key(user_id)
+        want = str(ticket or "").strip()
+        with self.lock:
+            data = self._load(key)
+            self._save(key, {})
+        if not isinstance(data, dict) or not data.get("ticket"):
+            return "Avval ofis QR ni skanerlang"
+        if not want or not hmac.compare_digest(str(data.get("ticket")), want):
+            return "QR ruxsati mos emas — qayta skanerlang"
+        try:
+            exp = datetime.fromisoformat(str(data.get("exp")))
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=TZ)
+            if now_tz() > exp:
+                return "QR ruxsati muddati tugagan — qayta skanerlang"
+        except Exception:
+            return "QR ruxsati xato"
+        return None
 
     @staticmethod
     def _is_office_day_user(user: dict | None) -> bool:
@@ -236,10 +472,17 @@ class AttendanceStore:
             return cur
         for k in (
             "in_start", "in_end", "in_late_after", "late_grace_min",
-            "out_start", "out_end", "require_gps", "require_face", "enabled",
+            "out_start", "out_end", "require_gps", "require_face", "require_qr", "enabled",
         ):
             if k in patch:
                 cur[k] = patch[k]
+        cur["require_face"] = bool(cur.get("require_face", False))
+        cur["require_qr"] = bool(cur.get("require_qr", True))
+        # QR sirri client orqali o'zgarmasligi kerak
+        s_full = self.settings()
+        cur["office_qr_secret"] = s_full.get("office_qr_secret")
+        cur["office_qr_version"] = s_full.get("office_qr_version")
+        cur["office_qr_updated_at"] = s_full.get("office_qr_updated_at")
         if isinstance(patch.get("office"), dict):
             office = dict(cur["office"])
             for ok in ("lat", "lng", "radius_m", "label"):
@@ -279,8 +522,8 @@ class AttendanceStore:
             return data if isinstance(data, dict) else None
 
     def is_enrolled(self, user_id: str) -> bool:
-        f = self.get_face(user_id)
-        return bool(f and f.get("descriptor"))
+        # QR rejimida alohida enroll yo'q — har bir foydalanuvchi tayyor
+        return True
 
     def enroll(
         self,
@@ -292,49 +535,10 @@ class AttendanceStore:
         credential_id: str | None = None,
         descriptor=None,
     ) -> tuple[dict | None, str | None]:
-        photo_c, err = clean_photo(photo)
-        if err:
-            return None, err
-        desc, derr = clean_descriptor(descriptor)
-        if derr:
-            return None, derr
-        if not desc:
-            return None, "Yuz aniqlanmadi. Kameraga to'g'ri qarang va qayta urinib ko'ring."
-        cid = str(credential_id or "").strip()[:200]
-        rec = {
-            "userId": str(user_id),
-            "username": str(username or "")[:60],
-            "name": str(name or "")[:80],
-            "photo": photo_c,
-            "descriptor": desc,
-            "credentialId": cid or None,
-            "enrolledAt": now_tz().isoformat(timespec="seconds"),
-            "updatedAt": now_tz().isoformat(timespec="seconds"),
-        }
-        with self.lock:
-            self._save(self.face_key(user_id), rec)
-        return {
-            "enrolled": True,
-            "hasPhoto": bool(photo_c),
-            "hasDescriptor": True,
-            "hasWebAuthn": bool(cid),
-            "enrolledAt": rec["enrolledAt"],
-        }, None
+        return None, "Face ID o'chirilgan. Ofis QR skanerlashdan foydalaning."
 
     def match_face(self, user_id: str, descriptor) -> tuple[bool, float, str | None]:
-        face = self.get_face(user_id)
-        if not face or not face.get("descriptor"):
-            return False, 99.0, "Avval Face ulash qiling"
-        desc, err = clean_descriptor(descriptor)
-        if err or not desc:
-            return False, 99.0, err or "Yuz o'qilmadi"
-        stored = face.get("descriptor")
-        if len(desc) != len(stored):
-            return False, 99.0, "Yuz modeli mos emas — Face ni qayta ulang"
-        dist = face_distance(stored, desc)
-        if dist <= FACE_MATCH_MAX:
-            return True, dist, None
-        return False, dist, "Yuz mos kelmadi. O'zingizni skanerlang yoki yorug'likni yaxshilang."
+        return False, 99.0, "Face ID o'chirilgan"
 
     def issue_challenge(self, user_id: str, purpose: str) -> dict:
         chal = secrets.token_urlsafe(32)
@@ -438,6 +642,7 @@ class AttendanceStore:
         credential_id: str | None = None,
         challenge: str | None = None,
         descriptor=None,
+        qr_ticket: str | None = None,
     ) -> tuple[dict | None, str | None]:
         settings = self.settings_for_user(
             {"id": user_id, "username": username, "name": name, "role": role}
@@ -449,8 +654,32 @@ class AttendanceStore:
         if kind not in ("in", "out"):
             return None, "Tur: in yoki out"
 
+        # Avval GPS — ticketni behuda sarflamaslik
+        ok_gps, dist_gps, gerr = self._gps_inside_office(settings, lat, lng, accuracy)
+        if not ok_gps:
+            return None, gerr or "Ofis zonasiga kiring"
+        try:
+            lat_f = float(lat) if lat is not None else None
+            lng_f = float(lng) if lng is not None else None
+        except (TypeError, ValueError):
+            lat_f = lng_f = None
+        if settings.get("require_gps", True):
+            try:
+                lat_f = float(lat)
+                lng_f = float(lng)
+            except (TypeError, ValueError):
+                return None, "Joylashuv ruxsati kerak"
+
         face_score = None
-        if settings.get("require_face", True):
+        photo_out = None
+        method = "office_qr"
+
+        if settings.get("require_qr", True):
+            terr = self.consume_qr_ticket(user_id, qr_ticket or "")
+            if terr:
+                return None, terr
+            method = "office_qr"
+        elif settings.get("require_face", False):
             ok_m, dist, merr = self.match_face(user_id, descriptor)
             if not ok_m:
                 return None, merr or "Yuz tasdiqlanmadi"
@@ -458,62 +687,16 @@ class AttendanceStore:
             photo_c, perr = clean_photo(photo)
             if perr:
                 return None, perr
-            photo = photo_c
+            photo_out = photo_c
+            method = "face_match"
+            chal_err = self.consume_challenge(user_id, challenge or "", purpose=str(kind))
+            if chal_err:
+                return None, chal_err
         else:
-            photo_c, perr = clean_photo(photo)
-            if perr:
-                return None, perr
-            photo = photo_c
-
-        # Bir martalik challenge (replay oldini olish)
-        chal_err = self.consume_challenge(user_id, challenge or "", purpose=str(kind))
-        if chal_err:
-            return None, chal_err
-
-        # GPS
-        dist_gps = None
-        office = settings.get("office") or {}
-        if settings.get("require_gps", True):
-            try:
-                lat_f = float(lat)
-                lng_f = float(lng)
-            except (TypeError, ValueError):
-                return None, "Joylashuv ruxsati kerak"
-            if not (-90.0 <= lat_f <= 90.0 and -180.0 <= lng_f <= 180.0):
-                return None, "Joylashuv koordinatasi noto'g'ri"
-            try:
-                acc_f = float(accuracy) if accuracy is not None else None
-            except (TypeError, ValueError):
-                acc_f = None
-            if acc_f is not None and acc_f > 150:
-                return None, (
-                    f"Joylashuv aniq emas ({int(acc_f)} m). "
-                    "Ochig'roq joyda qayta urinib ko'ring."
-                )
-            try:
-                olat = float(office.get("lat"))
-                olng = float(office.get("lng"))
-                radius = float(office.get("radius_m") or 100)
-            except (TypeError, ValueError):
-                return None, "Ofis geozonasi sozlanmagan"
-            dist_gps = haversine_m(lat_f, lng_f, olat, olng)
-            if dist_gps > radius:
-                return None, (
-                    f"Ofis zonasi tashqarisida ({int(dist_gps)} m). "
-                    f"Radius: {int(radius)} m."
-                )
-        else:
-            try:
-                lat_f = float(lat) if lat is not None else None
-                lng_f = float(lng) if lng is not None else None
-            except (TypeError, ValueError):
-                lat_f = lng_f = None
-            acc_f = None
-            try:
-                if accuracy is not None:
-                    acc_f = float(accuracy)
-            except (TypeError, ValueError):
-                acc_f = None
+            if challenge:
+                chal_err = self.consume_challenge(user_id, challenge or "", purpose=str(kind))
+                if chal_err:
+                    return None, chal_err
 
         slot_ok, slot_msg, is_late = self._slot_ok(kind, settings)
         if not slot_ok:
@@ -551,14 +734,14 @@ class AttendanceStore:
                 "distance_m": round(dist_gps, 1) if dist_gps is not None else None,
                 "face_score": round(float(face_score), 4) if face_score is not None else None,
                 "late": bool(is_late) if kind == "in" else False,
-                "method": "face_match",
+                "method": method,
                 "note": slot_msg,
-                "photoHash": hashlib.sha256((photo or "")[:8000].encode("utf-8", "ignore")).hexdigest()[:16]
-                if photo
+                "photoHash": hashlib.sha256((photo_out or "")[:8000].encode("utf-8", "ignore")).hexdigest()[:16]
+                if photo_out
                 else None,
             }
-            if photo and len(photo) < 400_000:
-                entry["photo"] = photo
+            if photo_out and len(photo_out) < 400_000:
+                entry["photo"] = photo_out
 
             urec[kind] = entry
             urec["updatedAt"] = ts
@@ -571,8 +754,9 @@ class AttendanceStore:
             "kind": kind,
             "late": bool(is_late) if kind == "in" else False,
             "message": slot_msg,
-            "faceMatched": True,
+            "faceMatched": False,
             "faceScore": entry.get("face_score"),
+            "qrVerified": method == "office_qr",
             "record": urec,
             "distance_m": entry.get("distance_m"),
         }, None
@@ -955,7 +1139,9 @@ class AttendanceStore:
         return {
             "enabled": bool(s.get("enabled", True)),
             "require_gps": bool(s.get("require_gps", True)),
-            "require_face": bool(s.get("require_face", True)),
+            "require_face": False,
+            "require_qr": bool(s.get("require_qr", True)),
+            "qrTicketTtlMin": QR_TICKET_TTL_MIN,
             "in_start": s.get("in_start"),
             "in_end": s.get("in_end"),
             "in_late_after": s.get("in_late_after"),
@@ -978,11 +1164,7 @@ class AttendanceStore:
         }
 
     def me_payload(self, user_id: str, user: dict) -> dict:
-        face = self.get_face(user_id)
         date = today_str()
-        photo = None
-        if face and isinstance(face.get("photo"), str) and face["photo"].startswith("data:image/"):
-            photo = face["photo"] if len(face["photo"]) <= _MAX_PHOTO else None
         uinfo = {
             "id": user_id,
             "username": user.get("username"),
@@ -1001,21 +1183,17 @@ class AttendanceStore:
             out = dict(today_rec["out"])
             out["atDisplay"] = self._hhmmss_from_iso(out.get("at"))
             today_rec["out"] = out
+        ticket = self.get_qr_ticket(user_id)
         return {
             "ok": True,
             "settings": self.public_settings(uinfo),
-            "enrolled": self.is_enrolled(user_id),
-            "face": {
-                "hasPhoto": bool(photo or (face and face.get("photo"))),
-                "hasDescriptor": bool(face and face.get("descriptor")),
-                "hasWebAuthn": bool(face and face.get("credentialId")),
-                "credentialId": (face or {}).get("credentialId"),
-                "enrolledAt": (face or {}).get("enrolledAt"),
-                "photo": photo,
-            }
-            if face
-            else None,
+            "enrolled": True,
+            "attendanceReady": True,
+            "qrReady": True,
+            "qrTicket": ticket,
+            "face": None,
             "today": today_rec,
             "history": self.user_history(user_id, 45),
             "user": uinfo,
+            "serverNow": now_tz().isoformat(timespec="seconds"),
         }

@@ -1,34 +1,23 @@
 'use strict';
 /**
- * VaksinaMed Davomat — Face modal → Keldim/Ketdim + timer + tarix
+ * VaksinaMed Davomat — Ofis QR + geozona → Keldim/Ketdim
  */
 (function () {
   const app = document.getElementById('att-app');
   if (!app) return;
 
-  const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model';
-  const FACE_API_SRC = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/dist/face-api.js';
-
-  const MESH_EDGES = [
-    [0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12],[12,13],[13,14],[14,15],[15,16],
-    [17,18],[18,19],[19,20],[20,21],[22,23],[23,24],[24,25],[25,26],
-    [27,28],[28,29],[29,30],[30,33],[31,32],[32,33],[33,34],[34,35],
-    [36,37],[37,38],[38,39],[39,40],[40,41],[41,36],
-    [42,43],[43,44],[44,45],[45,46],[46,47],[47,42],
-    [48,49],[49,50],[50,51],[51,52],[52,53],[53,54],[54,55],[55,56],[56,57],[57,58],[58,59],[59,48],
-    [60,61],[61,62],[62,63],[63,64],[64,65],[65,66],[66,67],[67,60],
-    [21,22],[27,21],[27,22],[31,48],[35,54],[0,17],[16,26],[8,57]
-  ];
+  const QR_LIB = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js';
+  const HTML5_QR = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
 
   let STATE = null;
   let busy = false;
   let stream = null;
-  let modelsReady = false;
-  let modelsLoading = null;
   let scanLoop = null;
   let modalOpen = false;
   let abortScan = null;
-  let pendingScan = null; // { descriptor, photo, gps }
+  let pendingScan = null;
+  let qrTicketLocal = null; // { ticket, exp, expiresInSec }
+  let html5Qr = null;
   let timerId = null;
   let uiTab = 'bugun';
   let boardDate = '';
@@ -45,7 +34,7 @@
   let attMapOffice = null;
   let attMapFitted = false;
   let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle' };
-  let attMethod = 'face';
+  let attMethod = 'qr';
 
   const modal = document.getElementById('fid-modal');
   const video = document.getElementById('att-cam');
@@ -57,8 +46,20 @@
   const fidRetryWrap = document.getElementById('fid-retry-wrap');
   const btnRetry = document.getElementById('fid-retry');
   const btnCancel = document.getElementById('fid-cancel');
-  let pendingKind = null; // 'in' | 'out' | null
+  let pendingKind = null;
   let flowRetry = null;
+
+  function activeQrTicket() {
+    const t = qrTicketLocal || (STATE && STATE.qrTicket) || null;
+    if (!t || !t.ticket) return null;
+    if (t.expiresInSec != null && Number(t.expiresInSec) <= 0) return null;
+    if (t.exp) {
+      try {
+        if (Date.now() > new Date(t.exp).getTime()) return null;
+      } catch (e) { /* ignore */ }
+    }
+    return t;
+  }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -189,10 +190,10 @@
     const outBtn = document.getElementById('btn-ketdim-main');
     const goBtn = document.getElementById('av-continue');
     const today = (STATE && STATE.today) || {};
-    const enrolled = !!(STATE && STATE.enrolled);
+    const ticketOk = !!activeQrTicket();
     const done = !!(today.in && today.out);
-    const canIn = enrolled && !today.in && !done;
-    const canOut = enrolled && !!today.in && !today.out;
+    const canIn = !today.in && !done;
+    const canOut = !!today.in && !today.out;
     const inside = geoLive.inside === true;
 
     if (badge) {
@@ -211,8 +212,13 @@
     }
     if (gate) {
       if (geoLive.status === 'ok') {
-        gate.className = 'av-gate-banner';
-        gate.textContent = '';
+        if (ticketOk) {
+          gate.className = 'av-gate-banner on ok';
+          gate.textContent = 'Ofis QR tasdiqlandi — endi Keldim / Ketdim bosing.';
+        } else {
+          gate.className = 'av-gate-banner';
+          gate.textContent = '';
+        }
       } else if (geoLive.status === 'out') {
         gate.className = 'av-gate-banner on';
         gate.textContent = 'Davomat faqat ofis radiusida. Hozir ~' + Math.round(geoLive.dist || 0) + ' m uzoqdasiz — ofis zonasiga kiring.';
@@ -227,30 +233,33 @@
 
     const lockPunch = (btn, allow) => {
       if (!btn) return;
-      const shouldEnable = allow && inside;
+      const shouldEnable = allow && inside && ticketOk;
       btn.disabled = !shouldEnable;
-      btn.classList.toggle('is-locked', !inside && allow);
+      btn.classList.toggle('is-locked', !(inside && ticketOk) && allow);
     };
     lockPunch(inBtn, canIn);
     lockPunch(outBtn, canOut);
 
     if (goBtn) {
       const nextKind = !today.in ? 'in' : (today.in && !today.out ? 'out' : null);
-      goBtn.disabled = !enrolled || done || !inside || !nextKind || attMethod !== 'face';
+      goBtn.disabled = done || !inside || !nextKind;
+      goBtn.setAttribute('data-next', nextKind || '');
+      goBtn.setAttribute('data-action', ticketOk ? 'punch' : 'scan');
       const lab = goBtn.querySelector('span');
       const sub = goBtn.querySelector('small');
       if (lab) {
-        if (!enrolled) lab.textContent = 'Avval Face ID ulang';
-        else if (done) lab.textContent = 'Bugun yakunlangan';
+        if (done) lab.textContent = 'Bugun yakunlangan';
         else if (!inside) lab.textContent = 'Ofisga keling';
-        else lab.textContent = nextKind === 'out' ? 'Face ID → Ketdi' : 'Face ID → Keldi';
+        else if (!ticketOk) lab.textContent = 'Ofis QR skanerlash';
+        else lab.textContent = nextKind === 'out' ? 'Ketdimni tasdiqlash' : 'Keldimni tasdiqlash';
       }
       if (sub) {
-        sub.textContent = inside
-          ? (nextKind === 'out' ? 'Ketishni yuz bilan tasdiqlash' : 'Kelishni yuz bilan tasdiqlash')
-          : (off.label + ' · ' + off.radius + ' m');
+        sub.textContent = !inside
+          ? (off.label + ' · ' + off.radius + ' m')
+          : (!ticketOk
+            ? 'Devordagi ofis QR ni skanerlang'
+            : (nextKind === 'out' ? 'QR tasdiqlandi — Ketdim' : 'QR tasdiqlandi — Keldim'));
       }
-      goBtn.setAttribute('data-next', nextKind || '');
     }
   }
 
@@ -633,34 +642,17 @@
   }
 
   function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      if (window.faceapi) { resolve(); return; }
-      const s = document.createElement('script');
-      s.src = src;
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Face model skripti yuklanmadi (internet kerak)'));
-      document.head.appendChild(s);
-    });
+    return loadScriptOnce(src);
   }
 
   async function ensureModels() {
-    if (modelsReady) return;
-    if (modelsLoading) return modelsLoading;
-    modelsLoading = (async () => {
-      setFidUI({ status: 'LOADING…', hint: 'Yuz tahlil modeli yuklanmoqda', progress: 8, tone: 'load' });
-      await loadScript(FACE_API_SRC);
-      if (!window.faceapi) throw new Error('face-api yuklanmadi');
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-      ]);
-      modelsReady = true;
-    })();
-    try { await modelsLoading; }
-    finally { modelsLoading = null; }
+    return;
   }
+
+  const MODEL_URL = '';
+  const FACE_API_SRC = '';
+  let modelsReady = true;
+  let modelsLoading = null;
 
   function getGpsOnce(opts) {
     return new Promise((resolve, reject) => {
@@ -759,12 +751,16 @@
       try { abortScan(); } catch (e) {}
       abortScan = null;
     }
+    stopQrScanner().catch(() => {});
     stopCam();
     pendingScan = null;
     pendingKind = null;
     flowRetry = null;
     hideFidActions();
     hideRetry();
+    const holder = document.getElementById('qr-reader');
+    if (holder) holder.remove();
+    if (video) video.style.display = '';
     if (!modal) return;
     modal.classList.remove('open', 'ok', 'err', 'warn', 'scanning');
     modal.hidden = true;
@@ -781,13 +777,13 @@
     }
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: 'user' },
-        width: { ideal: 720 },
-        height: { ideal: 960 },
-        aspectRatio: { ideal: 0.75 }
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
       },
       audio: false
     });
+    video.style.display = '';
     video.srcObject = stream;
     video.hidden = false;
     await video.play().catch(() => {});
@@ -1125,11 +1121,11 @@
         ${kpiCard('Ishda', c.working || 0, 'info')}
         ${kpiCard('Kechikdi', c.late || 0, 'warn')}
         ${kpiCard('Yo‘q', c.absent || 0, 'bad')}
-        ${kpiCard('Face', c.enrolled || 0)}
+        ${kpiCard('QR', c.enrolled || 0)}
       </div>
       <div class="scroll-x">
       <table class="att-table">
-        <thead><tr><th>Ism</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Keldim</th><th>Ketdim</th><th>Ish</th><th>Face</th><th></th></tr></thead>
+        <thead><tr><th>Ism</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Keldim</th><th>Ketdim</th><th>Ish</th><th></th></tr></thead>
         <tbody>
           ${rows.map((r) => `
             <tr>
@@ -1140,9 +1136,8 @@
               <td class="mono">${r.in ? punchTime(r.in) + (r.in.late ? ' · kech' : '') : '—'}</td>
               <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
               <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
-              <td>${r.enrolled ? '✓' : '—'}</td>
               <td><button type="button" class="att-link-btn" data-person="${esc(r.userId)}">Oy</button></td>
-            </tr>`).join('') || '<tr><td colspan="9">Bo‘sh</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="8">Bo‘sh</td></tr>'}
         </tbody>
       </table></div>`;
   }
@@ -1155,7 +1150,7 @@
     return `
       <div class="att-kpi-row">
         ${kpiCard('Odam', s.people || 0)}
-        ${kpiCard('Face ulangan', s.enrolled || 0, 'ok')}
+        ${kpiCard('QR tayyor', s.enrolled || 0, 'ok')}
         ${kpiCard('Kelgan kunlar', s.presentDays || 0, 'info')}
         ${kpiCard('Kechikish', s.lateDays || 0, 'warn')}
         ${kpiCard('Yo‘qlik', s.absentDays || 0, 'bad')}
@@ -1176,7 +1171,7 @@
             (p.days || []).forEach((x) => { byDate[x.date] = x; });
             return `<tr class="att-row-click" data-person="${esc(p.userId)}" title="Oylikni ochish">
               <td><b>${esc(p.name || p.username)}</b>
-                <div class="att-sub">${esc(roleLabel(p.role))}${p.car ? ' · ' + esc(p.car) : ''}${p.enrolled ? '' : ' · Face yo‘q'}</div>
+                <div class="att-sub">${esc(roleLabel(p.role))}${p.car ? ' · ' + esc(p.car) : ''}</div>
               </td>
               <td class="mono">${p.presentDays}</td>
               <td class="mono">${p.lateDays}</td>
@@ -1204,7 +1199,7 @@
       <div class="att-person-head">
         <div>
           <div class="att-person-name">${esc(u.name || u.username || '—')}</div>
-          <div class="att-sub">@${esc(u.username || '')} · ${esc(roleLabel(u.role))}${u.car ? ' · ' + esc(u.car) : ''} · Face ${u.enrolled ? 'ulangan' : 'yo‘q'}</div>
+          <div class="att-sub">@${esc(u.username || '')} · ${esc(roleLabel(u.role))}${u.car ? ' · ' + esc(u.car) : ''}</div>
         </div>
       </div>
       <div class="att-kpi-row">
@@ -1326,16 +1321,9 @@
           </section>
 
           <div class="av-side">
-          ${!enrolled ? `
-            <section class="av-method-card">
-              <h3>1. Face ID ulang</h3>
-              <p class="sub">Birinchi marta yuzingizni bogʻlang — keyin ofisda Keldi/Ketdi ishlaydi.</p>
-              <button type="button" class="av-continue" id="btn-enroll">Face ID ulash<small>Kamera orqali bir marta</small></button>
-            </section>
-          ` : `
             <section class="av-punch-card">
-              <div class="av-punch-card-h">Keldi / Ketdi</div>
-              <p class="av-punch-hint">Rejada ${esc(s.in_start || '09:00')}–${esc(s.out_start || '18:00')}. ${esc(String(s.late_grace_min || 15))} daqiqa ruxsat — ${esc(s.in_late_after || '09:15')} gacha kechikish yoʻq.</p>
+              <div class="av-punch-card-h">Ofis QR · Keldi / Ketdi</div>
+              <p class="av-punch-hint">1) Ofis zonasi · 2) Devordagi QR skan · 3) Keldim / Ketdim. Rejada ${esc(s.in_start || '09:00')}–${esc(s.out_start || '18:00')}, ${esc(String(s.late_grace_min || 15))} daqiqa ruxsat.</p>
               <div class="av-punch-row">
                 <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
                   <span class="ico">→]</span>
@@ -1352,20 +1340,10 @@
               </div>
               <button type="button" class="av-continue" id="av-continue" disabled>
                 <span>Ofisga keling</span>
-                <small>Face ID orqali tasdiqlash</small>
+                <small>Zona ichida QR skanerlash</small>
               </button>
-              <button type="button" class="av-linkish" id="btn-reenroll">Yuzni qayta ulash</button>
+              <p class="att-hint" id="av-qr-ticket-hint" style="margin:10px 0 0">${activeQrTicket() ? 'QR ruxsati faol — Keldim/Ketdim ochiq.' : 'QR hali skanerlanmagan.'}</p>
             </section>
-          `}
-
-          ${face.photo ? `
-          <section class="av-face-mini">
-            <img class="att-enrolled-thumb" src="${face.photo}" alt="Face">
-            <div>
-              <div class="att-enrolled-title">Face ID tayyor</div>
-              <div class="att-hint" style="margin:2px 0 0">${esc(uname)}</div>
-            </div>
-          </section>` : ''}
           </div>
           </div>
 
@@ -1395,7 +1373,7 @@
                       </tr>`).join('')}
                   </tbody>
                 </table></div>
-              ` : `<p class="att-hint">Hali yozuv yoʻq. Ofis zonasida Face ID bilan belgilang.</p>`}
+              ` : `<p class="att-hint">Hali yozuv yoʻq. Ofis zonasida QR skanerlab belgilang.</p>`}
             </div>
           </section>
         </div>
@@ -1524,8 +1502,8 @@
     const personSel = document.getElementById('person-select');
     const personMonthEl = document.getElementById('person-month');
 
-    if (enroll) bindTap(enroll, () => doEnroll());
-    if (re) bindTap(re, () => { if (!busy) doEnroll(true); });
+    if (enroll) enroll.remove();
+    if (re) re.remove();
     if (board) bindTap(board, () => {
       if (boardDateEl) boardDate = boardDateEl.value || boardDate;
       loadBoard();
@@ -1571,8 +1549,8 @@
         if (personId) loadPerson(true);
       });
     }
-    if (kIn) bindTap(kIn, () => startAttendanceFlow('in'));
-    if (kOut) bindTap(kOut, () => startAttendanceFlow('out'));
+    if (kIn) bindTap(kIn, () => confirmPunch('in'));
+    if (kOut) bindTap(kOut, () => confirmPunch('out'));
     const geoBtn = document.getElementById('btn-geo-check');
     if (geoBtn) bindTap(geoBtn, () => {
       hideGeoHelp();
@@ -1583,8 +1561,10 @@
 
     const cont = document.getElementById('av-continue');
     if (cont) bindTap(cont, () => {
+      const action = cont.getAttribute('data-action') || 'scan';
       const kind = cont.getAttribute('data-next') || (!((STATE.today || {}).in) ? 'in' : 'out');
-      startAttendanceFlow(kind);
+      if (action === 'punch' && activeQrTicket()) confirmPunch(kind);
+      else startQrScanFlow();
     });
 
     app.querySelectorAll('[data-person]').forEach((el) => {
@@ -1592,125 +1572,200 @@
     });
   }
 
-  /** Face verify → Keldim/Ketdim tasdiq */
-  async function startAttendanceFlow(kind) {
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      const prev = document.querySelector('script[data-src="' + src + '"]');
+      if (prev && prev.getAttribute('data-ready') === '1') {
+        resolve();
+        return;
+      }
+      if (prev) {
+        prev.addEventListener('load', () => resolve());
+        prev.addEventListener('error', () => reject(new Error('Skript yuklanmadi')));
+        return;
+      }
+      const s = document.createElement('script');
+      s.src = src;
+      s.async = true;
+      s.setAttribute('data-src', src);
+      s.onload = () => { s.setAttribute('data-ready', '1'); resolve(); };
+      s.onerror = () => reject(new Error('Skript yuklanmadi: ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function stopQrScanner() {
+    abortScan = null;
+    if (html5Qr) {
+      try { await html5Qr.stop(); } catch (e) { /* ignore */ }
+      try { await html5Qr.clear(); } catch (e) { /* ignore */ }
+      html5Qr = null;
+    }
+    if (scanLoop) {
+      cancelAnimationFrame(scanLoop);
+      scanLoop = null;
+    }
+    stopCam();
+  }
+
+  async function startQrScanFlow() {
     if (busy) return;
-    if (!STATE || !STATE.enrolled) {
-      msg('Avval Face ID ulang', 'err');
-      return;
-    }
-    const today = STATE.today || {};
-    if (today.in && today.out) {
-      msg('Bugun allaqachon yakunlangan', 'info');
-      return;
-    }
-    if (kind === 'in' && today.in) {
-      msg('Bugun Keldim allaqachon bor', 'info');
-      return;
-    }
-    if (kind === 'out' && !today.in) {
-      msg('Avval Keldim qiling', 'info');
-      return;
-    }
-    if (kind === 'out' && today.out) {
-      msg('Bugun Ketdim allaqachon bor', 'info');
-      return;
-    }
     if (geoLive.inside !== true) {
-      msg('Faqat ofis radiusida ochiladi. Xaritada joylashuvingizni tekshiring.', 'err');
+      msg('Faqat ofis radiusida QR skanerlash mumkin', 'err');
       startGeoWatch();
       return;
     }
-
-    pendingKind = kind || null;
     busy = true;
     clearMsg();
-    openModal(
-      'FACE ID',
-      kind === 'out' ? 'Ketdim uchun yuzni tasdiqlang' : 'Keldim uchun yuzni tasdiqlang'
-    );
-    flowRetry = () => startAttendanceFlow(kind);
-
+    openModal('OFIS QR', 'Devordagi ofis QR kodini ramkaga tuting');
+    flowRetry = () => startQrScanFlow();
     try {
-      // iOS: kamera + GPS birga so'ralsa joylashuv "denied" bo'lishi mumkin — avval GPS
-      setFidUI({ status: 'JOYLASHUV…', hint: 'Joylashuvga Ruxsat bosing (birinchi qadam)', progress: 8, tone: 'load' });
+      setFidUI({ status: 'JOYLASHUV…', hint: 'Joylashuv tekshirilmoqda', progress: 10, tone: 'load' });
       const gps = await getGps();
-
-      setFidUI({ status: 'KAMERA…', hint: 'Endi kameraga ruxsat bering', progress: 16, tone: 'load' });
-      await startCam();
-
-      setFidUI({ status: 'LOADING…', hint: 'Yuz modeli…', progress: 24, tone: 'load' });
-      await ensureModels();
-
-      const scan = await scanFace({
-        needSamples: 3,
-        label: 'Telefonni odatdagidek ushlang — yuz oval ichida',
-        timeoutMs: 25000
+      setFidUI({ status: 'KAMERA…', hint: 'Kameraga ruxsat bering', progress: 25, tone: 'load' });
+      const payload = await scanOfficeQrPayload();
+      setFidUI({ status: 'TEKSHIRUV…', hint: 'Ofis QR tasdiqlanmoqda', progress: 80, tone: 'load' });
+      const r = await api('/api/attendance/qr/verify', {
+        method: 'POST',
+        body: JSON.stringify({
+          payload,
+          lat: gps.lat,
+          lng: gps.lng,
+          accuracy: gps.accuracy
+        })
       });
-
-      stopScanLoop();
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-        stream = null;
-      }
-
-      pendingScan = { descriptor: scan.descriptor, photo: scan.photo, gps };
-      showFidActions();
-      // Agar kind aniq — darhol yozish (bitta bosish mobil uchun)
-      if (kind === 'in' || kind === 'out') {
-        await confirmPunch(kind);
-      } else {
-        busy = false;
-      }
+      qrTicketLocal = {
+        ticket: r.qrTicket,
+        exp: r.exp,
+        expiresInSec: r.expiresInSec
+      };
+      if (STATE) STATE.qrTicket = qrTicketLocal;
+      await stopQrScanner();
+      setFidUI({
+        status: 'SUCCESS',
+        hint: r.message || 'Ofis QR tasdiqlandi — endi Keldim / Ketdim',
+        progress: 100,
+        tone: 'ok'
+      });
+      await new Promise((x) => setTimeout(x, 700));
+      closeModal();
+      msg(r.message || 'QR tasdiqlandi', 'ok');
+      paintGeoUI();
     } catch (e) {
-      stopCam();
-      const text = e.message || 'Xato';
-      const isGeo = /joylashuv|geolocation|GPS|location|yopiq/i.test(text) || e.code === 1 || e.code === 2 || e.code === 3;
-      if (isGeo) {
-        // Modal ichida qora ekran chalkashtiradi — asosiy sahifada yo'riqnoma
-        closeModal();
-        showGeoHelp(text);
-        msg('Avval joylashuvni yoqing, keyin Keldim.', 'err');
-        busy = false;
-        return;
-      }
+      await stopQrScanner();
+      const text = e.message || 'QR xato';
       if (modal) { modal.classList.add('err'); modal.classList.remove('ok', 'scanning'); }
       setFidUI({ status: 'FAILED', hint: text, progress: 0, tone: 'err' });
       msg(text, 'err');
       showRetry(text);
+    } finally {
       busy = false;
     }
   }
 
+  function scanOfficeQrPayload() {
+    return new Promise(async (resolve, reject) => {
+      let settled = false;
+      const done = (err, val) => {
+        if (settled) return;
+        settled = true;
+        abortScan = null;
+        if (err) reject(err);
+        else resolve(val);
+      };
+      abortScan = () => done(new Error('Bekor qilindi'));
+
+      const accept = (raw) => {
+        const text = String(raw || '').trim();
+        if (!text) return;
+        if (!/VMATT1\.\d+\./.test(text)) {
+          setFidUI({ status: 'QR…', hint: 'Bu ofis QR emas — to‘g‘ri kodni tuting', progress: 40, tone: 'warn' });
+          return;
+        }
+        done(null, text);
+      };
+
+      try {
+        if (window.BarcodeDetector) {
+          await startCam();
+          if (modal) modal.classList.add('scanning');
+          setFidUI({ status: 'SCANNING…', hint: 'Ofis QR ni ramkaga tuting', progress: 40, tone: 'scan' });
+          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          const tick = async () => {
+            if (settled) return;
+            try {
+              if (video && video.readyState >= 2) {
+                const codes = await detector.detect(video);
+                if (codes && codes[0] && codes[0].rawValue) {
+                  accept(codes[0].rawValue);
+                  return;
+                }
+              }
+            } catch (e) { /* keep scanning */ }
+            scanLoop = requestAnimationFrame(() => { setTimeout(tick, 120); });
+          };
+          tick();
+          return;
+        }
+
+        await loadScriptOnce(HTML5_QR);
+        if (!window.Html5Qrcode) throw new Error('QR skaner yuklanmadi');
+        const vp = document.getElementById('fid-viewport');
+        let holder = document.getElementById('qr-reader');
+        if (!holder && vp) {
+          holder = document.createElement('div');
+          holder.id = 'qr-reader';
+          holder.style.cssText = 'position:absolute;inset:0;z-index:5;overflow:hidden';
+          vp.appendChild(holder);
+        }
+        if (video) video.style.display = 'none';
+        if (modal) modal.classList.add('scanning');
+        setFidUI({ status: 'SCANNING…', hint: 'Ofis QR ni ramkaga tuting', progress: 40, tone: 'scan' });
+        html5Qr = new window.Html5Qrcode('qr-reader');
+        await html5Qr.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (decoded) => accept(decoded),
+          () => {}
+        );
+      } catch (e) {
+        done(e);
+      }
+    });
+  }
+
+  /** QR ticket bor → Keldim/Ketdim */
+  async function startAttendanceFlow(kind) {
+    if (!activeQrTicket()) {
+      await startQrScanFlow();
+      return;
+    }
+    await confirmPunch(kind);
+  }
+
   async function confirmPunch(kind) {
-    if (!pendingScan) {
-      msg('Avval yuzni tasdiqlang', 'err');
+    const ticket = activeQrTicket();
+    if (!ticket) {
+      msg('Avval ofis QR ni skanerlang', 'err');
+      return;
+    }
+    if (geoLive.inside !== true) {
+      msg('Faqat ofis radiusida ochiladi', 'err');
       return;
     }
     busy = true;
+    clearMsg();
     hideFidActions();
     hideRetry();
     try {
       setFidUI({
         status: kind === 'in' ? 'KELDIM…' : 'KETDIM…',
-        hint: 'Tasdiq kaliti…',
-        progress: 92,
-        tone: 'ok'
-      });
-      const chalRes = await api('/api/attendance/challenge', {
-        method: 'POST',
-        body: JSON.stringify({ purpose: kind })
-      });
-      const challenge = chalRes && chalRes.challenge;
-      if (!challenge) throw new Error('Challenge olinmadi');
-
-      setFidUI({
-        status: kind === 'in' ? 'KELDIM…' : 'KETDIM…',
         hint: 'Yozilmoqda…',
-        progress: 100,
+        progress: 90,
         tone: 'ok'
       });
-      const { descriptor, photo, gps } = pendingScan;
+      if (!modalOpen) openModal(kind === 'in' ? 'KELDIM' : 'KETDIM', 'Davomat yozilmoqda');
+      const gps = await getGps();
       const r = await api('/api/attendance/punch', {
         method: 'POST',
         body: JSON.stringify({
@@ -1718,12 +1773,11 @@
           lat: gps.lat,
           lng: gps.lng,
           accuracy: gps.accuracy,
-          photo,
-          descriptor,
-          credentialId: null,
-          challenge
+          qrTicket: ticket.ticket
         })
       });
+      qrTicketLocal = null;
+      if (STATE) STATE.qrTicket = null;
       setFidUI({
         status: 'SUCCESS',
         hint: r.message || (kind === 'in' ? 'Keldim qayd etildi' : 'Ketdim qayd etildi'),
@@ -1740,49 +1794,22 @@
       const text = e.message || 'Xato';
       setFidUI({ status: 'DENIED', hint: text, progress: 0, tone: 'err' });
       msg(text, 'err');
+      if (/QR|skaner|ruxsat/i.test(text)) {
+        qrTicketLocal = null;
+        if (STATE) STATE.qrTicket = null;
+      }
       showRetry(text);
+      flowRetry = () => {
+        if (/QR|skaner|ruxsat/i.test(text)) startQrScanFlow();
+        else confirmPunch(kind);
+      };
     } finally {
       busy = false;
     }
   }
 
-  async function doEnroll(isRe) {
-    if (busy) return;
-    busy = true;
-    clearMsg();
-    pendingKind = null;
-    openModal('FACE ID', isRe ? 'Yuzni qayta ulash' : 'Birinchi ulash');
-    flowRetry = () => doEnroll(isRe);
-    try {
-      setFidUI({ status: 'RUXSAT…', hint: 'Kameraga ruxsat bering', progress: 8, tone: 'load' });
-      await startCam();
-      try { await getGps(); } catch (e) { /* enroll uchun GPS shart emas */ }
-      setFidUI({ status: 'LOADING…', hint: 'Yuz modeli…', progress: 20, tone: 'load' });
-      await ensureModels();
-      const scan = await scanFace({
-        needSamples: 5,
-        label: 'Telefonni odatdagidek ushlang — yuz oval ichida',
-        timeoutMs: 28000
-      });
-      setFidUI({ status: 'SAVING…', hint: 'Face ID saqlanmoqda', progress: 100, tone: 'ok' });
-      await api('/api/attendance/enroll', {
-        method: 'POST',
-        body: JSON.stringify({ photo: scan.photo, descriptor: scan.descriptor, credentialId: null })
-      });
-      await new Promise((r) => setTimeout(r, 500));
-      closeModal();
-      msg('Face ID ulandi. Endi Keldim bosing.', 'ok');
-      await reload();
-    } catch (e) {
-      if (modal) modal.classList.add('err');
-      stopCam();
-      const text = e.message || 'Ulanish xato';
-      setFidUI({ status: 'FAILED', hint: text, progress: 0, tone: 'err' });
-      msg(text, 'err');
-      showRetry(text);
-    } finally {
-      busy = false;
-    }
+  async function doEnroll() {
+    msg('Face ID o‘chirilgan. Ofis QR dan foydalaning.', 'info');
   }
 
   function exportReportXlsx() {
@@ -2045,11 +2072,26 @@
   function renderSettings() {
     const box = document.getElementById('att-settings');
     if (!box || !STATE) return;
-    api('/api/attendance/settings').then((d) => {
+    Promise.all([
+      api('/api/attendance/settings'),
+      api('/api/attendance/qr')
+    ]).then(async ([d, qr]) => {
       const s = d.settings || {};
       const o = s.office || {};
       box.innerHTML = `
-        <p class="att-hint" style="margin:0 0 12px">Haydovchilar va ofis (Jasur): <b>09:00–18:00</b>, kechikish ruxsati <b>15 daqiqa</b> (09:15 gacha belgi yoʻq).</p>
+        <div class="att-qr-print-card" id="att-qr-print">
+          <div class="att-qr-print-h">Ofis QR (chop etish)</div>
+          <p class="att-hint">Shu kodni printerdan chiqarib ofis devoriga yopishtiring. Faqat shu ofis + zona ichida ishlaydi.</p>
+          <canvas id="office-qr-canvas" width="280" height="280" style="max-width:100%;background:#fff;border-radius:12px"></canvas>
+          <div class="att-hint mono" style="margin-top:8px">v${esc(String(qr.version || 1))} · ${esc(qr.label || o.label || 'Ofis')}</div>
+          <div class="att-toolbar" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+            <button type="button" class="att-btn att-btn-in" id="btn-qr-print">Chop etish</button>
+            <button type="button" class="att-btn att-btn-face" id="btn-qr-png">PNG yuklash</button>
+            <button type="button" class="att-btn att-btn-out" id="btn-qr-rotate">QR yangilash</button>
+          </div>
+        </div>
+        <hr style="margin:18px 0;border:none;border-top:1px solid #d7e2ef">
+        <p class="att-hint" style="margin:0 0 12px">Haydovchilar va ofis: <b>09:00–18:00</b>, kechikish ruxsati <b>15 daqiqa</b>.</p>
         <div class="row2">
           <div class="fld"><label>Ish boshlanishi</label><input id="s-in-start" value="${esc(s.in_start || '09:00')}" placeholder="09:00"></div>
           <div class="fld"><label>Ruxsat (daqiqa)</label><input id="s-grace" type="number" min="0" max="120" value="${esc(s.late_grace_min != null ? s.late_grace_min : 15)}"></div>
@@ -2082,9 +2124,73 @@
           msg('Lat/lng yozildi — Saqlash bosing', 'info');
         } catch (e) { msg(e.message, 'err'); }
       };
+      await paintOfficeQrCanvas(qr.payload || '');
+      const printBtn = document.getElementById('btn-qr-print');
+      const pngBtn = document.getElementById('btn-qr-png');
+      const rotBtn = document.getElementById('btn-qr-rotate');
+      if (printBtn) printBtn.onclick = () => printOfficeQr(qr);
+      if (pngBtn) pngBtn.onclick = () => downloadOfficeQrPng(qr);
+      if (rotBtn) rotBtn.onclick = async () => {
+        if (!confirm('Eski chop etilgan QR ishlamaydi. Yangilaysizmi?')) return;
+        try {
+          const nr = await api('/api/attendance/qr/rotate', {
+            method: 'POST',
+            body: JSON.stringify({ confirm: 'yangilash' })
+          });
+          msg('Yangi ofis QR yaratildi — qayta chop eting', 'ok');
+          renderSettings();
+          Object.assign(qr, nr);
+        } catch (e) { msg(e.message || 'Yangilash xato', 'err'); }
+      };
     }).catch((e) => {
       box.innerHTML = `<p class="att-hint">${esc(e.message)}</p>`;
     });
+  }
+
+  async function paintOfficeQrCanvas(payload) {
+    const canvas = document.getElementById('office-qr-canvas');
+    if (!canvas || !payload) return;
+    await loadScriptOnce(QR_LIB);
+    if (!window.QRCode) throw new Error('QR generator yuklanmadi');
+    await window.QRCode.toCanvas(canvas, payload, {
+      width: 280,
+      margin: 2,
+      color: { dark: '#0b1f3a', light: '#ffffff' }
+    });
+  }
+
+  function printOfficeQr(qr) {
+    const canvas = document.getElementById('office-qr-canvas');
+    if (!canvas) return;
+    const w = window.open('', '_blank', 'width=480,height=640');
+    if (!w) {
+      msg('Popup bloklangan', 'err');
+      return;
+    }
+    const label = (qr && qr.label) || 'VaksinaMed ofis';
+    w.document.write(
+      '<html><head><title>Ofis QR</title><style>' +
+      'body{font-family:Arial,sans-serif;text-align:center;padding:24px;color:#0b1f3a}' +
+      'h1{font-size:22px;margin:0 0 8px}p{margin:0 0 16px;color:#456}' +
+      'img{width:320px;height:320px;border:1px solid #ccd}' +
+      '</style></head><body>' +
+      '<h1>VAKSINA MED — OFIS QR</h1>' +
+      '<p>' + String(label).replace(/</g, '') + ' · Faqat shu ofis ichida</p>' +
+      '<img src="' + canvas.toDataURL('image/png') + '"/>' +
+      '<p style="margin-top:16px;font-size:12px">Davomat: zona + QR skan → Keldim/Ketdim</p>' +
+      '<script>window.onload=function(){setTimeout(function(){window.print()},200)}<\/script>' +
+      '</body></html>'
+    );
+    w.document.close();
+  }
+
+  function downloadOfficeQrPng(qr) {
+    const canvas = document.getElementById('office-qr-canvas');
+    if (!canvas) return;
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'vaksina-ofis-qr-v' + ((qr && qr.version) || 1) + '.png';
+    a.click();
   }
 
   async function saveSettings() {
@@ -2095,6 +2201,8 @@
         in_late_after: document.getElementById('s-late').value,
         out_start: document.getElementById('s-out-start').value,
         out_end: document.getElementById('s-out-end').value,
+        require_face: false,
+        require_qr: true,
         office: {
           lat: document.getElementById('s-lat').value,
           lng: document.getElementById('s-lng').value,
@@ -2112,7 +2220,9 @@
 
   async function reload() {
     STATE = await api('/api/attendance/me');
-    window._vmFaceEnrolled = !!STATE.enrolled;
+    if (STATE && STATE.qrTicket) qrTicketLocal = STATE.qrTicket;
+    window._vmFaceEnrolled = true;
+    window._vmAttendanceReady = true;
     if (typeof vmEnsureDavomatNav === 'function') vmEnsureDavomatNav();
     render();
   }
@@ -2150,9 +2260,7 @@
   });
 
   async function probeGeoOnBoot() {
-    if (!STATE || !STATE.enrolled) return;
     const perm = await readGeoPermission();
-    // Faqat aniq "denied" bo'lsa yo'riqnoma — aks holda har ochilishda prompt chiqmasin
     if (perm === 'denied') {
       showGeoHelp('Joylashuv bloklangan. Pastdagi qadamlarni bajaring, keyin «Joylashuvni tekshirish».');
     }
@@ -2169,8 +2277,6 @@
       }
       vmGatePage(user);
       await reload();
-      ensureModels().catch(() => {});
-      // Mobil: joylashuv bloklangan bo'lsa darhol yo'riqnoma + Tekshirish tugmasi
       probeGeoOnBoot();
     } catch (e) {
       app.innerHTML = `<p class="att-loading">${esc(e.message || 'Xato')}</p>`;
