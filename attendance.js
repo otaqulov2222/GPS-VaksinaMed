@@ -142,8 +142,13 @@
       const el = document.getElementById('av-now-clock');
       if (el) el.textContent = fmtClock(new Date());
       const work = document.getElementById('att-live-timer');
+      const work2 = document.getElementById('att-dayline-work');
+      const dur = fmtDur(dayWorkedSec(STATE && STATE.today) || 0);
       if (work && STATE && STATE.today && STATE.today.in && !STATE.today.out) {
-        work.textContent = fmtDur(dayWorkedSec(STATE.today) || 0);
+        work.textContent = dur;
+      }
+      if (work2 && STATE && STATE.today && STATE.today.in && !STATE.today.out) {
+        work2.textContent = dur;
       }
     };
     tick();
@@ -239,6 +244,32 @@
     };
     lockPunch(inBtn, canIn);
     lockPunch(outBtn, canOut);
+
+    const pill = document.getElementById('av-qr-pill');
+    if (pill) {
+      pill.classList.toggle('on', ticketOk);
+      pill.textContent = ticketOk ? 'QR faol' : 'QR kutilyapti';
+    }
+    const hint = document.getElementById('av-qr-ticket-hint');
+    if (hint) {
+      hint.textContent = ticketOk
+        ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim bosing.'
+        : 'QR hali skanerlanmagan.';
+    }
+    const steps = document.getElementById('av-steps');
+    if (steps) {
+      const geo = steps.querySelector('[data-step="geo"]');
+      const qr = steps.querySelector('[data-step="qr"]');
+      const punch = steps.querySelector('[data-step="punch"]');
+      const setSt = (el, st) => {
+        if (!el) return;
+        el.classList.remove('wait', 'now', 'done');
+        el.classList.add(st);
+      };
+      setSt(geo, inside ? 'done' : (geoLive.status === 'err' || geoLive.status === 'out' ? 'now' : 'wait'));
+      setSt(qr, ticketOk ? 'done' : (inside ? 'now' : 'wait'));
+      setSt(punch, done ? 'done' : (ticketOk ? 'now' : 'wait'));
+    }
 
     if (goBtn) {
       const nextKind = !today.in ? 'in' : (today.in && !today.out ? 'out' : null);
@@ -1070,9 +1101,12 @@
     if (Number.isNaN(t0)) return;
     const tick = () => {
       const el = document.getElementById('att-live-timer');
-      if (!el) return;
+      const el2 = document.getElementById('att-dayline-work');
+      if (!el && !el2) return;
       const sec = Math.max(0, Math.floor((Date.now() - t0) / 1000));
-      el.textContent = fmtDur(sec);
+      const txt = fmtDur(sec);
+      if (el) el.textContent = txt;
+      if (el2) el2.textContent = txt;
     };
     tick();
     timerId = setInterval(tick, 1000);
@@ -1090,8 +1124,51 @@
     return Math.max(0, Math.floor((Date.now() - t0) / 1000));
   }
 
-  function roleLabel(r) {
-    return ({ admin_pro: 'Admin Pro', admin: 'Admin', driver: 'Haydovchi' })[r] || r || '—';
+  function weekStripHtml(history, todayIso) {
+    const days = [];
+    const base = todayIso && /^\d{4}-\d{2}-\d{2}/.test(String(todayIso))
+      ? String(todayIso).slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const [yy, mm, dd] = base.split('-').map(Number);
+    const anchor = new Date(yy, mm - 1, dd);
+    const map = {};
+    (history || []).forEach((r) => {
+      if (r && r.date) map[r.date] = r;
+    });
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(anchor);
+      d.setDate(anchor.getDate() - i);
+      const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const rec = map[iso];
+      let tone = 'empty';
+      if (rec) {
+        if (rec.status === 'done' || (rec.in && rec.out)) tone = 'done';
+        else if (rec.late || (rec.in && rec.in.late)) tone = 'late';
+        else if (rec.in) tone = 'in';
+        else if (rec.status === 'absent') tone = 'absent';
+      }
+      const isToday = iso === base;
+      days.push(
+        `<div class="av-week-day ${tone}${isToday ? ' today' : ''}" title="${esc(fmtDate(iso))}">` +
+        `<span class="wd">${['Ya','Du','Se','Ch','Pa','Ju','Sh'][d.getDay()]}</span>` +
+        `<span class="dn">${d.getDate()}</span>` +
+        `<i></i></div>`
+      );
+    }
+    return days.join('');
+  }
+
+  function monthPulseFromHistory(history) {
+    let present = 0;
+    let late = 0;
+    let full = 0;
+    (history || []).forEach((r) => {
+      if (!r) return;
+      if (r.in) present += 1;
+      if (r.late || (r.in && r.in.late)) late += 1;
+      if (r.in && r.out) full += 1;
+    });
+    return { present, late, full, days: (history || []).length };
   }
 
   function monthInputValue(ym) {
@@ -1260,6 +1337,14 @@
     if (!reportMonth) reportMonth = monthInputValue('');
     if (!personMonth) personMonth = monthInputValue('');
 
+    const ticketOk = !!activeQrTicket();
+    const stepGeo = geoLive.inside === true ? 'done' : (geoLive.status === 'err' || geoLive.status === 'out' ? 'now' : 'wait');
+    const stepQr = ticketOk ? 'done' : (geoLive.inside === true ? 'now' : 'wait');
+    const stepPunch = done ? 'done' : (ticketOk ? 'now' : 'wait');
+    const dayStatus = done ? 'Yakunlangan' : (working ? 'Ishda' : (inn ? 'Kelgan' : 'Kutilmoqda'));
+    const pulse = monthPulseFromHistory(history);
+    const nextAction = done ? 'Bugun yakunlandi' : (!geoLive.inside ? 'Ofis zonasiga boring' : (!ticketOk ? 'Ofis QR skanerlang' : (!inn ? 'Keldimni bosing' : 'Ketdimni bosing')));
+
     app.innerHTML = `
       <div class="att-tabs" role="tablist">
         <button type="button" class="att-tab ${uiTab === 'bugun' ? 'on' : ''}" data-tab="bugun">Bugun</button>
@@ -1271,80 +1356,165 @@
       </div>
 
       <div class="att-panel" id="panel-bugun" ${uiTab === 'bugun' ? '' : 'hidden'}>
-        <div class="av-studio">
-          <section class="av-hero">
-            <div class="av-hero-top">
-              <div>
-                <div class="av-greet">Assalomu alaykum, <span>${esc(firstName)}</span></div>
-                <div class="av-role">${esc(userRoleLabel())} · ${esc(off.label)}</div>
+        <div class="av-studio av-pro">
+
+          <section class="av-stage">
+            <div class="av-stage-main">
+              <div class="av-stage-mark">VAKSINA · DAVOMAT</div>
+              <h2 class="av-stage-title">Kunni <em>aniq</em><br>belgilang</h2>
+              <p class="av-stage-lead">Ofis zonasi + QR skan + Keldi/Ketdi. Brauzer orqali professional nazorat.</p>
+              <div class="av-stage-who">
+                <div class="who-name">${esc(uname)}</div>
+                <div class="who-meta">${esc(userRoleLabel())} · ${esc(off.label)}</div>
               </div>
-              <div class="av-date-pill">${esc(fmtDateLong(s.today))}</div>
+              <div class="av-stage-pills">
+                <span class="av-status-chip ${done ? 'ok' : (working ? 'live' : 'idle')}">${esc(dayStatus)}</span>
+                <span class="av-date-pill">${esc(fmtDateLong(s.today))}</span>
+              </div>
             </div>
-            <div class="av-hero-grid">
-              <div class="av-glass">
-                <div class="k">Joriy vaqt</div>
+            <div class="av-stage-clock">
+              <div class="ring ${working ? 'live' : ''}" aria-hidden="true"></div>
+              <div class="clock-box">
+                <div class="k">Hozir</div>
                 <div class="v" id="av-now-clock">--:--:--</div>
-                <div class="s">Ish kuni ${esc(s.in_start || '09:00')}–${esc(s.out_start || '18:00')}</div>
+                <div class="s">${esc(s.in_start || '09:00')}–${esc(s.out_start || '18:00')}</div>
               </div>
-              <div class="av-glass ${working ? 'live' : (done ? 'done' : '')}">
-                <div class="k">${working ? 'Ishlayapti' : (done ? 'Bugun yakunlandi' : 'Ishlagan vaqt')}</div>
+              <div class="work-box ${working ? 'live' : (done ? 'done' : '')}">
+                <div class="k">${working ? 'Ishlayapti' : (done ? 'Yopildi' : 'Ish vaqti')}</div>
                 <div class="v" id="att-live-timer">${fmtDur(dayWorkedSec(today) || 0)}</div>
-                <div class="s">${working ? 'Timer jonli' : (done ? ('Keldi ' + punchTime(inn) + ' · Ketdi ' + punchTime(out)) : ('Ruxsat: ' + esc(s.in_late_after || '09:15') + ' gacha'))}</div>
+                <div class="s">${esc(nextAction)}</div>
               </div>
             </div>
-            <div class="av-sched-bar">${esc(s.scheduleNote || ((s.in_start || '09:00') + '–' + (s.out_start || '18:00') + ' · ' + (s.late_grace_min || 15) + ' daqiqa ruxsat'))}</div>
           </section>
+
+          <section class="av-pulse-row">
+            <div class="av-pulse-card">
+              <div class="k">Oxirgi 45 kun</div>
+              <div class="v">${pulse.present}</div>
+              <div class="s">Kelgan kunlar</div>
+            </div>
+            <div class="av-pulse-card warn">
+              <div class="k">Kechikish</div>
+              <div class="v">${pulse.late}</div>
+              <div class="s">Belgilangan</div>
+            </div>
+            <div class="av-pulse-card ok">
+              <div class="k">To‘liq kun</div>
+              <div class="v">${pulse.full}</div>
+              <div class="s">Keldi + Ketdi</div>
+            </div>
+            <div class="av-pulse-card navy">
+              <div class="k">Keyingi qadam</div>
+              <div class="v-sm">${esc(nextAction)}</div>
+              <div class="s">Tizim yo‘riqnomasi</div>
+            </div>
+          </section>
+
+          <section class="av-week-card">
+            <div class="av-week-h">
+              <div>
+                <h3>Haftalik ritm</h3>
+                <p>Oxirgi 7 kun — yashil to‘liq, sariq kechikish, ko‘k ishda</p>
+              </div>
+            </div>
+            <div class="av-week-strip">${weekStripHtml(history, s.today)}</div>
+          </section>
+
+          <ol class="av-steps" id="av-steps" aria-label="Davomat qadamlari">
+            <li class="av-step ${stepGeo}" data-step="geo"><span class="n">01</span><div><b>Geozona</b><small>${esc(String(off.radius))} m ichida</small></div></li>
+            <li class="av-step ${stepQr}" data-step="qr"><span class="n">02</span><div><b>Ofis QR</b><small>Devordagi kod</small></div></li>
+            <li class="av-step ${stepPunch}" data-step="punch"><span class="n">03</span><div><b>Stamp</b><small>Keldi / Ketdi</small></div></li>
+          </ol>
+
+          <div class="av-journey">
+            <div class="av-journey-track">
+              <div class="node ${inn ? 'on' : 'wait'}">
+                <span class="dot"></span>
+                <div class="lab">Keldi</div>
+                <div class="val mono">${inn ? punchTime(inn) : '—'}</div>
+                <div class="meta">${inn ? (inn.late ? 'Kechikdi' : 'O‘z vaqtida') : 'Reja ' + esc(s.in_start || '09:00')}</div>
+              </div>
+              <div class="rail ${working || done ? 'on' : ''}"></div>
+              <div class="node focus">
+                <span class="dot"></span>
+                <div class="lab">Ish</div>
+                <div class="val mono" id="att-dayline-work">${fmtDur(dayWorkedSec(today) || 0)}</div>
+                <div class="meta">${done ? 'Kun yopiq' : (working ? 'Davom etmoqda' : 'Boshlanmagan')}</div>
+              </div>
+              <div class="rail ${done ? 'on' : ''}"></div>
+              <div class="node ${out ? 'on' : 'wait'}">
+                <span class="dot"></span>
+                <div class="lab">Ketdi</div>
+                <div class="val mono">${out ? punchTime(out) : '—'}</div>
+                <div class="meta">${out ? 'Qayd etildi' : 'Reja ' + esc(s.out_start || '18:00')}</div>
+              </div>
+            </div>
+          </div>
 
           <div class="av-gate-banner" id="av-gate-banner">Joylashuv tekshirilmoqda…</div>
 
-          <div class="av-workbench">
-          <section class="av-map-card">
-            <div class="av-map-h">
-              <div>
-                <h3>${esc(off.label)}</h3>
-                <div class="av-map-sub">Faqat yashil zona ichida davomat ochiladi · ${esc(String(off.radius))} m</div>
+          <div class="av-workbench av-workbench-pro">
+            <section class="av-map-card">
+              <div class="av-map-h">
+                <div>
+                  <div class="av-map-kicker">Live geofence</div>
+                  <h3>${esc(off.label)}</h3>
+                  <div class="av-map-sub">Faqat yashil doira ichida skan va stamp ochiladi</div>
+                </div>
+                <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
               </div>
-              <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
-            </div>
-            <div class="av-map-wrap">
-              <div class="av-map" id="av-map"></div>
-              <div class="av-map-legend">
-                <span><i class="lg-office"></i> Ofis</span>
-                <span><i class="lg-zone"></i> Ruxsat zonasi (${esc(String(off.radius))} m)</span>
-                <span><i class="lg-you"></i> Siz</span>
+              <div class="av-map-wrap">
+                <div class="av-map" id="av-map"></div>
+                <div class="av-map-legend">
+                  <span><i class="lg-office"></i> Ofis</span>
+                  <span><i class="lg-zone"></i> ${esc(String(off.radius))} m</span>
+                  <span><i class="lg-you"></i> Siz</span>
+                </div>
               </div>
-            </div>
-            <div class="av-map-foot">
-              <span id="av-geo-dist">Radius <b>${esc(String(off.radius))}</b> m</span>
-              <button type="button" class="att-btn att-btn-face" id="btn-geo-check" style="min-height:36px;padding:0 12px;font-size:12px">Qayta tekshirish</button>
-            </div>
-          </section>
-
-          <div class="av-side">
-            <section class="av-punch-card">
-              <div class="av-punch-card-h">Ofis QR · Keldi / Ketdi</div>
-              <p class="av-punch-hint">1) Ofis zonasi · 2) Devordagi QR skan · 3) Keldim / Ketdim. Rejada ${esc(s.in_start || '09:00')}–${esc(s.out_start || '18:00')}, ${esc(String(s.late_grace_min || 15))} daqiqa ruxsat.</p>
-              <div class="av-punch-row">
-                <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
-                  <span class="ico">→]</span>
-                  <div class="tag">Keldi</div>
-                  <div class="time">${inn ? punchTime(inn) : '—'}</div>
-                  <div class="plan">Rejada ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn ? ' · o‘z vaqtida' : '')}</div>
-                </button>
-                <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
-                  <span class="ico">[→</span>
-                  <div class="tag">Ketdi</div>
-                  <div class="time">${out ? punchTime(out) : '—'}</div>
-                  <div class="plan">Rejada ${esc(s.out_start || '18:00')}</div>
-                </button>
+              <div class="av-map-foot">
+                <span id="av-geo-dist">Radius <b>${esc(String(off.radius))}</b> m</span>
+                <button type="button" class="att-btn att-btn-face" id="btn-geo-check">Qayta tekshirish</button>
               </div>
-              <button type="button" class="av-continue" id="av-continue" disabled>
-                <span>Ofisga keling</span>
-                <small>Zona ichida QR skanerlash</small>
-              </button>
-              <p class="att-hint" id="av-qr-ticket-hint" style="margin:10px 0 0">${activeQrTicket() ? 'QR ruxsati faol — Keldim/Ketdim ochiq.' : 'QR hali skanerlanmagan.'}</p>
             </section>
-          </div>
+
+            <div class="av-side">
+              <section class="av-punch-card av-punch-card-pro">
+                <div class="av-punch-card-h">
+                  <span>Stamp paneli</span>
+                  <span class="av-qr-pill ${ticketOk ? 'on' : ''}" id="av-qr-pill">${ticketOk ? 'QR faol' : 'QR kutilyapti'}</span>
+                </div>
+                <p class="av-punch-hint">Zona → QR → Keldi/Ketdi. Har bir Ketdi uchun qayta skan talab qilinadi.</p>
+                <div class="av-punch-row">
+                  <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
+                    <span class="ico">IN</span>
+                    <div class="tag">Keldi</div>
+                    <div class="time">${inn ? punchTime(inn) : '—'}</div>
+                    <div class="plan">Rejada ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn ? ' · o‘z vaqtida' : '')}</div>
+                  </button>
+                  <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
+                    <span class="ico">OUT</span>
+                    <div class="tag">Ketdi</div>
+                    <div class="time">${out ? punchTime(out) : '—'}</div>
+                    <div class="plan">Rejada ${esc(s.out_start || '18:00')}</div>
+                  </button>
+                </div>
+                <button type="button" class="av-continue" id="av-continue" disabled>
+                  <span>Ofisga keling</span>
+                  <small>Zona ichida QR skanerlash</small>
+                </button>
+                <p class="av-ticket-hint" id="av-qr-ticket-hint">${ticketOk ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim.' : 'QR hali skanerlanmagan.'}</p>
+              </section>
+
+              <section class="av-howto">
+                <h3>Qanday ishlaydi</h3>
+                <ul>
+                  <li><b>1.</b> Ofis ${esc(String(off.radius))} m ichiga kiring</li>
+                  <li><b>2.</b> Devordagi ofis QR ni skanerlang</li>
+                  <li><b>3.</b> Keldim / Ketdim ni bosing</li>
+                </ul>
+                <div class="av-howto-note">${esc(s.scheduleNote || '')}</div>
+              </section>
+            </div>
           </div>
 
           <div class="att-msg" id="att-msg"></div>
@@ -1355,15 +1525,20 @@
             <button type="button" class="att-btn att-btn-in" id="btn-geo-check-2">Joylashuvni tekshirish</button>
           </div>
 
-          <section class="av-hist">
-            <div class="av-hist-h">Soʻnggi yozuvlar</div>
+          <section class="av-hist av-hist-pro">
+            <div class="av-hist-h">
+              <div>
+                <h3>Soʻnggi yozuvlar</h3>
+                <p class="av-hist-sub">Shaxsiy stamp jurnal</p>
+              </div>
+            </div>
             <div class="av-hist-b">
               ${history.length ? `
                 <div class="scroll-x">
                 <table class="att-table">
                   <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish vaqti</th><th>Holat</th></tr></thead>
                   <tbody>
-                    ${history.slice(0, 8).map((r) => `
+                    ${history.slice(0, 10).map((r) => `
                       <tr>
                         <td>${fmtDate(r.date)}</td>
                         <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
@@ -1373,7 +1548,7 @@
                       </tr>`).join('')}
                   </tbody>
                 </table></div>
-              ` : `<p class="att-hint">Hali yozuv yoʻq. Ofis zonasida QR skanerlab belgilang.</p>`}
+              ` : `<div class="av-empty">Hali yozuv yoʻq. Ofisda QR skanerlab birinchi stampni qoʻying.</div>`}
             </div>
           </section>
         </div>
