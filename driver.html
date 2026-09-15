@@ -446,6 +446,36 @@ body.app-body {
   position: relative;
   border-radius: 0 0 var(--radius) var(--radius);
   overflow: hidden;
+  isolation: isolate;
+}
+.map-frame::before {
+  content: "Xaritani bosing — keyin zoom/surish";
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 450;
+  pointer-events: none;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  color: #0b1f3a;
+  background: rgba(255,255,255,.96);
+  border: 1px solid #c5d4e6;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(11, 31, 58, 0.12);
+}
+.map-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 400;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(11, 31, 58, 0.06);
+}
+.map-frame.is-active::before { display: none; }
+.map-frame.is-active::after {
+  box-shadow: inset 0 0 0 2px #1a5fb4;
 }
 
 #driver-map {
@@ -692,7 +722,7 @@ let lastPaintKey = '';
 let liveVisBound = false;
 
 let drvMap = null;
-
+let drvMapActive = false;
 let drvMapLayers = [];
 
 function isTodaySelected() {
@@ -811,6 +841,52 @@ function drvPinIcon(label, color, isEnd) {
 
 }
 
+function setDrvMapActive(on) {
+  const frame = document.getElementById('map-frame');
+  if (frame) frame.classList.toggle('is-active', !!on);
+}
+
+function lockDrvMap() {
+  if (!drvMap) return;
+  try { drvMap.scrollWheelZoom.disable(); } catch (e) {}
+  try { drvMap.dragging.disable(); } catch (e) {}
+  try { drvMap.doubleClickZoom.disable(); } catch (e) {}
+  try { drvMap.boxZoom.disable(); } catch (e) {}
+  try { if (drvMap.touchZoom) drvMap.touchZoom.disable(); } catch (e) {}
+  try { if (drvMap.tap) drvMap.tap.disable(); } catch (e) {}
+  drvMapActive = false;
+  setDrvMapActive(false);
+}
+
+function unlockDrvMap() {
+  if (!drvMap) return;
+  try { drvMap.scrollWheelZoom.enable(); } catch (e) {}
+  try { drvMap.dragging.enable(); } catch (e) {}
+  try { drvMap.doubleClickZoom.enable(); } catch (e) {}
+  try { drvMap.boxZoom.enable(); } catch (e) {}
+  try { if (drvMap.touchZoom) drvMap.touchZoom.enable(); } catch (e) {}
+  try { if (drvMap.tap) drvMap.tap.enable(); } catch (e) {}
+  drvMapActive = true;
+  setDrvMapActive(true);
+}
+
+function bindDrvMapLock() {
+  const frame = document.getElementById('map-frame');
+  if (!frame || frame._drvMapLockBound) return;
+  frame._drvMapLockBound = true;
+  frame.addEventListener('click', () => unlockDrvMap());
+  frame.addEventListener('mouseleave', () => lockDrvMap());
+  frame.addEventListener('touchend', (e) => {
+    if (e.target && frame.contains(e.target)) unlockDrvMap();
+  }, { passive: true });
+  document.addEventListener('click', (e) => {
+    if (!frame.contains(e.target)) lockDrvMap();
+  });
+  document.addEventListener('touchstart', (e) => {
+    if (!frame.contains(e.target)) lockDrvMap();
+  }, { passive: true });
+}
+
 function initDriverMap() {
   const el = document.getElementById('driver-map');
   if (!el || typeof L === 'undefined') return;
@@ -819,18 +895,19 @@ function initDriverMap() {
   drvMap = L.map(el, {
     zoomControl: true,
     attributionControl: false,
-    scrollWheelZoom: true,
-    dragging: true,
-    tap: true,
+    scrollWheelZoom: false,
+    dragging: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    touchZoom: false,
+    tap: false,
     maxZoom: 18,
     minZoom: 3
   }).setView([41.3111, 69.2797], 12);
 
-  // Sichqoncha g'ildiragi faqat xarita ustida — sahifa scrollini ushlab qolmasin
-  drvMap.scrollWheelZoom.disable();
-  el.addEventListener('mouseenter', () => { try { drvMap.scrollWheelZoom.enable(); } catch (e) {} });
-  el.addEventListener('mouseleave', () => { try { drvMap.scrollWheelZoom.disable(); } catch (e) {} });
-  el.addEventListener('click', () => { try { drvMap.scrollWheelZoom.enable(); } catch (e) {} });
+  // Scroll sahifani siljitadi; xarita faqat bir marta bosilganda ochiladi
+  lockDrvMap();
+  bindDrvMapLock();
 
   if (typeof vmAddMapTiles === 'function') vmAddMapTiles(drvMap);
   else L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
