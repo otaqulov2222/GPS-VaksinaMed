@@ -20,6 +20,8 @@ const STATE = {
     mapRouteMain: null,
     mapRouteArrows: null,
     mapRouteGen: 0,
+    mapTelemetry: null,
+    showTrackTelemetry: false,
     pharmacies:  [],
     reviews:     {}
 };
@@ -61,17 +63,49 @@ function normalizeTrackPoints(pts) {
     const out = [];
     for (let i = 0; i < pts.length; i++) {
         const p = pts[i];
-        let lat, lng;
+        let lat, lng, t = 0, s = 0;
         if (Array.isArray(p) && p.length >= 2) {
             lat = Number(p[0]); lng = Number(p[1]);
+            if (p.length >= 3) t = Number(p[2]) || 0;
+            if (p.length >= 4) s = Number(p[3]) || 0;
         } else if (p && typeof p === 'object') {
             lat = Number(p.lat != null ? p.lat : p.y);
             lng = Number(p.lng != null ? p.lng : p.x);
+            t = Number(p.t || p.time || p.ts || 0) || 0;
+            s = Number(p.s != null ? p.s : (p.speed != null ? p.speed : 0)) || 0;
         } else continue;
         if (!validUzCoord(lat, lng)) continue;
-        out.push([Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5]);
+        const row = [Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5];
+        if (t > 0 || s > 0) {
+            row.push(t > 1e12 ? Math.floor(t / 1000) : Math.floor(t));
+            row.push(Math.round(s * 10) / 10);
+        }
+        out.push(row);
     }
     return out;
+}
+
+function trackLatLngs(pts) {
+    return normalizeTrackPoints(pts).map(p => [p[0], p[1]]);
+}
+
+function fmtTrackTs(unixSec) {
+    const sec = Number(unixSec) || 0;
+    if (sec < 1e8) return '—';
+    try {
+        const d = new Date(sec * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        const local = new Date(d.getTime() + 5 * 3600 * 1000);
+        return local.getUTCFullYear() + '-' + pad(local.getUTCMonth() + 1) + '-' + pad(local.getUTCDate())
+            + ' ' + pad(local.getUTCHours()) + ':' + pad(local.getUTCMinutes()) + ':' + pad(local.getUTCSeconds());
+    } catch (e) {
+        return '—';
+    }
+}
+
+function trackHasTelemetry(pts) {
+    const n = normalizeTrackPoints(pts);
+    return n.some(p => p.length >= 3 && p[2] > 0);
 }
 let CAL = { y: new Date().getFullYear(), m: new Date().getMonth() };
 
@@ -150,6 +184,9 @@ function loadAll() {
             const d = new Date(STATE.currentDate);
             CAL.y = d.getFullYear(); CAL.m = d.getMonth();
         }
+        try {
+            STATE.showTrackTelemetry = localStorage.getItem('vm_show_track_tele') === '1';
+        } catch (_) {}
     } catch(e) { console.error('loadAll:', e); }
 }
 
@@ -1078,6 +1115,68 @@ function removeMapRouteLayers() {
     }
 }
 
+function removeBoomerangTelemetry() {
+    if (!STATE.map) return;
+    if (STATE.mapTelemetry) {
+        try { STATE.map.removeLayer(STATE.mapTelemetry); } catch (e) {}
+        STATE.mapTelemetry = null;
+    }
+}
+
+/** Boomerang uslubi: qizil nuqta + vaqt/tezlik yorliqlari (toggle bilan). */
+function drawBoomerangTelemetry(track) {
+    removeBoomerangTelemetry();
+    if (!STATE.map || !STATE.showTrackTelemetry) return;
+    const pts = normalizeTrackPoints(track).filter(p => Array.isArray(p) && p.length >= 3 && p[2] > 1e8);
+    if (pts.length < 1) return;
+    const maxLab = 90;
+    const step = Math.max(1, Math.ceil(pts.length / maxLab));
+    const idxs = [];
+    for (let i = 0; i < pts.length; i += step) idxs.push(i);
+    if (idxs[idxs.length - 1] !== pts.length - 1) idxs.push(pts.length - 1);
+    const layers = [];
+    idxs.forEach((i, n) => {
+        const pt = pts[i];
+        const speed = pt[3] != null ? Number(pt[3]) : 0;
+        const html = '<b>' + fmtTrackTs(pt[2]) + '</b><br>' + Math.round(speed) + ' км/ч';
+        const m = L.circleMarker([pt[0], pt[1]], {
+            radius: 4.5,
+            color: '#ffffff',
+            weight: 1.5,
+            fillColor: '#e11d48',
+            fillOpacity: 1,
+            opacity: 1
+        });
+        m.bindTooltip(html, {
+            permanent: true,
+            direction: (n % 2 === 0) ? 'right' : 'left',
+            offset: (n % 2 === 0) ? [10, 0] : [-10, 0],
+            className: 'vm-boom-tip',
+            opacity: 0.96
+        });
+        layers.push(m);
+    });
+    if (layers.length) {
+        STATE.mapTelemetry = L.layerGroup(layers).addTo(STATE.map);
+    }
+}
+
+async function refreshTrackTelemetry() {
+    if (!STATE.showTrackTelemetry) {
+        removeBoomerangTelemetry();
+        return;
+    }
+    const day = STATE.currentDate && STATE.data[STATE.currentDate]
+        ? STATE.data[STATE.currentDate][STATE.currentCar]
+        : null;
+    if (!day) return;
+    let track = normalizeTrackPoints(day.points);
+    if (!trackHasTelemetry(track)) {
+        track = await ensureTrackPoints(day, { needTelemetry: true });
+    }
+    drawBoomerangTelemetry(track);
+}
+
 function drawMapRouteLayers(latlngs) {
     removeMapRouteLayers();
     if (!STATE.map || !latlngs || latlngs.length < 2) return;
@@ -1318,13 +1417,28 @@ function setMapOverlay(info) {
     el.textContent = info;
 }
 
-async function ensureTrackPoints(rec) {
+async function ensureWialonSession() {
+    if (!window.wialonGPS) return false;
+    if (wialonGPS.sessionId) return true;
+    if (!STATE.gpsConfig || (typeof hasGpsConfig === 'function' && !hasGpsConfig())) return false;
+    try {
+        return !!(await wialonGPS.login(STATE.gpsConfig));
+    } catch (e) {
+        return false;
+    }
+}
+
+async function ensureTrackPoints(rec, opts) {
+    opts = opts || {};
+    const needTele = !!opts.needTelemetry;
     if (!rec) return [];
     const existing = normalizeTrackPoints(rec.points);
-    if (existing.length >= 2) return existing;
-    if (!window.wialonGPS || !wialonGPS.sessionId || !STATE.currentCar || !STATE.currentDate) {
+    if (existing.length >= 2 && (!needTele || trackHasTelemetry(existing))) {
         return existing;
     }
+    if (!STATE.currentCar || !STATE.currentDate) return existing;
+    const okSess = await ensureWialonSession();
+    if (!okSess) return existing;
     try {
         let units = wialonGPS.units || [];
         if (!units.length) units = await wialonGPS.getUnits();
@@ -1336,16 +1450,26 @@ async function ensureTrackPoints(rec) {
         });
         if (!unit) return existing;
         const { timeFrom, timeTo } = wialonGPS.dayBoundsTashkent(STATE.currentDate);
-        const pts = await wialonGPS.fetchTrackPoints(unit.id, timeFrom, timeTo);
+        const pts = await wialonGPS.fetchTrackPoints(unit.id, timeFrom, timeTo, {
+            maxPts: needTele ? 700 : 500
+        });
         const norm = normalizeTrackPoints(pts);
         if (norm.length >= 2) {
+            if (needTele && !trackHasTelemetry(norm) && existing.length >= 2) {
+                return existing;
+            }
             rec.points = norm;
             if (STATE.data[STATE.currentDate] && STATE.data[STATE.currentDate][STATE.currentCar]) {
                 STATE.data[STATE.currentDate][STATE.currentCar].points = norm;
                 saveAll();
             }
+            // Keyingi kun ochilishida Wialonsiz ham ishlashi uchun serverga yozamiz
+            if (trackHasTelemetry(norm) && window.VMOffice && typeof VMOffice.saveReport === 'function') {
+                try { VMOffice.saveReport(STATE.currentDate); } catch (_) {}
+            }
+            return norm;
         }
-        return norm;
+        return existing;
     } catch (e) {
         console.warn('ensureTrackPoints:', e);
         return existing;
@@ -1363,12 +1487,16 @@ async function refreshMap(stops, points) {
         STATE.currentCar || '',
         rawList.length,
         track.length,
+        STATE.showTrackTelemetry ? '1' : '0',
+        trackHasTelemetry(track) ? '1' : '0',
         rawList[0] && rawList[0].inTime,
         rawList[rawList.length - 1] && rawList[rawList.length - 1].inTime,
         track[0] && track[0][0],
         track.length && track[track.length - 1] && track[track.length - 1][0]
     ].join('|');
     if (STATE._mapSig === sig && STATE.mapMarkers && STATE.mapMarkers.length) {
+        if (STATE.showTrackTelemetry) drawBoomerangTelemetry(track);
+        else removeBoomerangTelemetry();
         mapInvalidate();
         return;
     }
@@ -1378,6 +1506,7 @@ async function refreshMap(stops, points) {
     STATE.mapMarkers.forEach(m => STATE.map.removeLayer(m));
     STATE.mapMarkers = [];
     removeMapRouteLayers();
+    removeBoomerangTelemetry();
     setMapOverlay(null);
     mapInvalidate();
 
@@ -1387,7 +1516,19 @@ async function refreshMap(stops, points) {
             ? STATE.data[STATE.currentDate][STATE.currentCar]
             : null;
         if (day) {
-            track = await ensureTrackPoints(day);
+            track = await ensureTrackPoints(day, {
+                needTelemetry: !!STATE.showTrackTelemetry
+            });
+            if (gen !== STATE.mapRouteGen) return;
+        }
+    }
+    // Vaqt/tezlik yoqilgan, lekin eski trekda faqat lat/lng — shu kun uchun qayta
+    if (STATE.showTrackTelemetry && track.length >= 2 && !trackHasTelemetry(track)) {
+        const day = STATE.currentDate && STATE.data[STATE.currentDate]
+            ? STATE.data[STATE.currentDate][STATE.currentCar]
+            : null;
+        if (day) {
+            track = await ensureTrackPoints(day, { needTelemetry: true });
             if (gen !== STATE.mapRouteGen) return;
         }
     }
@@ -1406,7 +1547,7 @@ async function refreshMap(stops, points) {
 
     // Asosiy chiziq — haqiqiy GPS trek; bo'lmasa to'xtashlar orasidagi yo'l
     let routeLatlngs = track.length >= 2
-        ? track.slice()
+        ? track.map(p => [p[0], p[1]])
         : markerStops.filter(st => validUzCoord(st.lat, st.lng)).map(st => [st.lat, st.lng]);
 
     if (routeLatlngs.length > 1) {
@@ -1444,9 +1585,9 @@ async function refreshMap(stops, points) {
     if (track.length >= 2) {
         const aIcon = mapPinIcon('A', '#0b1f3a', true);
         const bIcon = mapPinIcon('B', '#1a5fb4', true);
-        STATE.mapMarkers.push(L.marker(track[0], { icon: aIcon, zIndexOffset: 80 }).addTo(STATE.map)
+        STATE.mapMarkers.push(L.marker([track[0][0], track[0][1]], { icon: aIcon, zIndexOffset: 80 }).addTo(STATE.map)
             .bindPopup('<b>Boshlanish</b><br>Kunlik marshrut A nuqtasi'));
-        STATE.mapMarkers.push(L.marker(track[track.length - 1], { icon: bIcon, zIndexOffset: 80 }).addTo(STATE.map)
+        STATE.mapMarkers.push(L.marker([track[track.length - 1][0], track[track.length - 1][1]], { icon: bIcon, zIndexOffset: 80 }).addTo(STATE.map)
             .bindPopup('<b>Tugash</b><br>Kunlik marshrut B nuqtasi'));
     }
 
@@ -1498,6 +1639,8 @@ async function refreshMap(stops, points) {
         `);
         STATE.mapMarkers.push(marker);
     });
+
+    if (STATE.showTrackTelemetry) drawBoomerangTelemetry(track);
 
     const fitPts = [];
     if (routeLatlngs.length > 1) {
@@ -3483,6 +3626,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Saqlangan ma'lumotlarni yuklash
     loadAll();
+    const teleChk = document.getElementById('chk-track-tele');
+    if (teleChk) teleChk.checked = !!STATE.showTrackTelemetry;
 
     // Haydovchini tanlash
     if (!STATE.currentCar) STATE.currentCar = DRIVERS[0].car;
@@ -3796,6 +3941,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             showToast('Xarita yangilandi', 'info');
         } else {
             showToast('Xarita ochildi. Marshrut uchun GPS YUKLASH bosing.', 'info');
+        }
+    });
+
+    document.getElementById('chk-track-tele')?.addEventListener('change', async (e) => {
+        STATE.showTrackTelemetry = !!(e.target && e.target.checked);
+        try { localStorage.setItem('vm_show_track_tele', STATE.showTrackTelemetry ? '1' : '0'); } catch (_) {}
+        STATE._mapSig = null;
+        if (!STATE.showTrackTelemetry) {
+            removeBoomerangTelemetry();
+            return;
+        }
+        const dd = STATE.currentDate && STATE.data[STATE.currentDate]
+            ? STATE.data[STATE.currentDate][STATE.currentCar]
+            : null;
+        if (!dd) {
+            showToast('Avval kun va avtomobilni tanlang.', 'warn');
+            return;
+        }
+        if (!trackHasTelemetry(dd.points)) {
+            showToast('Vaqt/tezlik GPS dan yuklanmoqda…', 'info');
+            await ensureTrackPoints(dd, { needTelemetry: true });
+        }
+        await refreshMap(dd.stops || null, dd.points || null);
+        if (!trackHasTelemetry(dd.points)) {
+            showToast('Vaqt/tezlik uchun GPS sozlama/sessiya kerak.', 'warn');
         }
     });
 

@@ -98,6 +98,14 @@ const VMOffice = {
     async loadReportIfNeeded(dateVal, force) {
         if (!dateVal) return;
         const hasLocal = STATE.data[dateVal] && Object.keys(STATE.data[dateVal]).length;
+        const carsMissingTrack = (cars) => Object.values(cars || {}).some(rec => {
+            if (!rec || typeof rec !== 'object') return false;
+            // stops bor, trek yo'q — serverdan to'ldirish kerak (har qanday kun)
+            const hasStops = Array.isArray(rec.stops) && rec.stops.length > 0;
+            const pts = rec.points;
+            const hasPts = Array.isArray(pts) && pts.length >= 2;
+            return hasStops && !hasPts;
+        });
         if (hasLocal && !force) {
             const cars = STATE.data[dateVal];
             const needsRecompute = Object.values(cars).some(rec => {
@@ -107,8 +115,11 @@ const VMOffice = {
             if (needsRecompute && typeof recomputeDay === 'function') {
                 try { await recomputeDay(dateVal); } catch (e) { console.warn('recomputeDay:', e); }
             }
-            this.renderFleetBoard();
-            return;
+            // Localda trek bo'lmasa — server hisobotidan points olish (boshqa kunlar uchun)
+            if (!carsMissingTrack(cars)) {
+                this.renderFleetBoard();
+                return;
+            }
         }
         if (hasLocal && force) {
             // Localni oldindan o'chirmaymiz — server muvaffaqiyatsiz bo'lsa kun bo'sh qolmasin
@@ -119,7 +130,28 @@ const VMOffice = {
                 STATE.reviews[dateVal] = d.reviews;
             }
             if (d.report && d.report.cars && typeof d.report.cars === 'object') {
-                STATE.data[dateVal] = d.report.cars;
+                const incoming = d.report.cars;
+                if (hasLocal && !force && carsMissingTrack(STATE.data[dateVal])) {
+                    // Faqat yetishmayotgan trekni qo'shamiz — local stops/ballni yo'qotmaymiz
+                    Object.keys(incoming).forEach((car) => {
+                        const src = incoming[car];
+                        const dst = STATE.data[dateVal][car];
+                        if (!src) return;
+                        if (!dst) {
+                            STATE.data[dateVal][car] = src;
+                            return;
+                        }
+                        const srcPts = Array.isArray(src.points) ? src.points : [];
+                        const dstPts = Array.isArray(dst.points) ? dst.points : [];
+                        if (srcPts.length >= 2 && dstPts.length < 2) {
+                            dst.points = srcPts;
+                        } else if (srcPts.length > dstPts.length) {
+                            dst.points = srcPts;
+                        }
+                    });
+                } else {
+                    STATE.data[dateVal] = incoming;
+                }
                 Object.values(STATE.data[dateVal]).forEach(rec => {
                     if (rec && rec.analysis) rec.analysis._source = 'server';
                 });

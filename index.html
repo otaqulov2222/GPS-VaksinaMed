@@ -925,6 +925,38 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   line-height: 1.2;
 }
 .map-head-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.map-tele-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #c5d4e6;
+  border-radius: 12px;
+  font-size: 11px; font-weight: 700; color: #0b1f3a;
+  letter-spacing: .04em;
+  cursor: pointer; user-select: none;
+  box-shadow: 0 2px 6px rgba(11, 31, 58, 0.04);
+}
+.map-tele-toggle input { accent-color: #1a5fb4; margin: 0; cursor: pointer; }
+.leaflet-tooltip.vm-boom-tip {
+  background: #1a5fb4 !important;
+  border: none !important;
+  color: #fff !important;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 5px 9px !important;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(11, 31, 58, 0.35);
+  white-space: nowrap;
+}
+.leaflet-tooltip.vm-boom-tip b { font-weight: 700; letter-spacing: .01em; }
+.leaflet-tooltip.vm-boom-tip::before {
+  border-right-color: #1a5fb4 !important;
+}
+.leaflet-tooltip.vm-boom-tip.leaflet-tooltip-left::before {
+  border-left-color: #1a5fb4 !important;
+  border-right-color: transparent !important;
+}
 .map-stat {
   min-width: 76px;
   padding: 8px 12px;
@@ -2108,6 +2140,10 @@ input, select, textarea { max-width: 100%; }
           <div class="map-stat"><i>To'xtash</i><b id="map-stat-stops">0</b></div>
           <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
           <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
+          <label class="map-tele-toggle" title="Boomerang uslubi: har bir nuqtada vaqt va tezlik">
+            <input type="checkbox" id="chk-track-tele">
+            <span>Vaqt / tezlik</span>
+          </label>
           <button class="btn btn-light btn-sm" id="btn-refresh-map">Yangilash</button>
         </div>
       </div>
@@ -2390,7 +2426,7 @@ input, select, textarea { max-width: 100%; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 
-<script src="wialon-api.js?v=31"></script>
+<script src="wialon-api.js?v=32"></script>
 
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=8"></script>
@@ -2401,9 +2437,9 @@ input, select, textarea { max-width: 100%; }
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app-m96.js?v=m107"></script>
+<script src="app-m96.js?v=m109"></script>
 
-<script src="office.js?v=16"></script>
+<script src="office.js?v=17"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

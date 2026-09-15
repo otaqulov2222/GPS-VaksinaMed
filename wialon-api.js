@@ -283,9 +283,9 @@ class WialonGPSClient {
         };
     }
 
-    /** GPS xabarlaridan marshrut nuqtalari (lat,lng) — xarita uchun. */
+    /** GPS xabarlaridan marshrut — [lat,lng,t,speed] (Boomerang uslubi). */
     simplifyTrackRaw(raw, maxPts) {
-        const limit = Math.max(40, Math.min(800, maxPts || 400));
+        const limit = Math.max(40, Math.min(900, maxPts || 500));
         if (!raw || !raw.length) return [];
         const haversineM = (a, b) => {
             const R = 6371000;
@@ -300,7 +300,7 @@ class WialonGPSClient {
         for (let i = 0; i < raw.length; i++) {
             const p = raw[i];
             const isEnd = i === 0 || i === raw.length - 1;
-            if (!last || isEnd || haversineM(last, p) >= 40 || (p[2] - last[2]) >= 90) {
+            if (!last || isEnd || haversineM(last, p) >= 25 || (p[2] - last[2]) >= 45) {
                 thinned.push(p);
                 last = p;
             }
@@ -314,7 +314,12 @@ class WialonGPSClient {
             if (reduced[reduced.length - 1] !== lastPt) reduced.push(lastPt);
             out = reduced;
         }
-        return out.map(p => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5]);
+        return out.map(p => [
+            Math.round(p[0] * 1e5) / 1e5,
+            Math.round(p[1] * 1e5) / 1e5,
+            Number(p[2]) || 0,
+            Math.round((Number(p[3]) || 0) * 10) / 10
+        ]);
     }
 
     async fetchTrackPoints(unitId, timeFrom, timeTo, opts) {

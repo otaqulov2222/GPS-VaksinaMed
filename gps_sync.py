@@ -700,8 +700,8 @@ class WialonClient:
         points = self.fetch_track_points(unit_id, date_str)
         return {"stats": stats, "stops": stops, "points": points}
 
-    def fetch_track_points(self, unit_id, date_str, max_pts=400):
-        """GPS xabarlaridan marshrut polyline (lat,lng) — xarita uchun."""
+    def fetch_track_points(self, unit_id, date_str, max_pts=500):
+        """GPS xabarlaridan marshrut: [lat,lng,unix_t,speed_kmh] — Boomerang uslubi."""
         try:
             t_from, t_to = day_bounds_tashkent(date_str)
             resp = self._call(
@@ -730,7 +730,11 @@ class WialonClient:
                 continue
             if lat < 37 or lat > 46 or lng < 55 or lng > 74:
                 continue
-            raw.append((lat, lng, int(m.get("t") or 0)))
+            try:
+                spd = float(pos.get("s") or 0)
+            except (TypeError, ValueError):
+                spd = 0.0
+            raw.append((lat, lng, int(m.get("t") or 0), max(0.0, spd)))
         if not raw:
             return []
 
@@ -745,18 +749,28 @@ class WialonClient:
         last = None
         for i, p in enumerate(raw):
             is_end = i == 0 or i == len(raw) - 1
-            if last is None or is_end or hav_m(last, p) >= 40 or (p[2] - last[2]) >= 90:
+            # Boomerangga yaqinroq: ~25 m yoki ~45 s
+            if last is None or is_end or hav_m(last, p) >= 25 or (p[2] - last[2]) >= 45:
                 thinned.append(p)
                 last = p
         out = thinned
-        limit = max(40, min(800, int(max_pts or 400)))
+        limit = max(40, min(900, int(max_pts or 500)))
         if len(out) > limit:
             step = max(1, int(math.ceil(len(out) / float(limit))))
             reduced = out[::step]
             if reduced[-1] != out[-1]:
                 reduced.append(out[-1])
             out = reduced
-        return [[round(p[0], 5), round(p[1], 5)] for p in out]
+        # [lat, lng, unix_t, speed_kmh] — eski [lat,lng] ham o'qiladi
+        return [
+            [
+                round(p[0], 5),
+                round(p[1], 5),
+                int(p[2] or 0),
+                round(float(p[3] or 0) + 1e-12, 1),
+            ]
+            for p in out
+        ]
 
     @staticmethod
     def cleanup_stats(stats):
