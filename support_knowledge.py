@@ -2,45 +2,49 @@
 """VaksinaMed Yordamchi — to'liq bilim bazasi (FAQ + sahifa qo'llanmalari)."""
 
 KNOWLEDGE = """
-# VaksinaMed Fleet Control — to'liq ichki qo'llanma
+# VaksinaMed Fleet Control — to'liq ichki qo'llanma (yordamchi uchun)
 
-## Umumiy navigatsiya
-- Login (login.html): login + parol → Kirish. Rollar: Admin Pro, Admin, Haydovchi.
-- Staff menyu: Dashboard | Boshqaruv | Profil. Admin panelga Profil → Admin panel orqali.
-- Haydovchi menyu: Kabinet | Profil.
-- Yordamchi (pastdagi chat): tizim tugmalari/bo'limlari haqida savol + skrin.
+## Rollar
+- Admin Pro — barcha: Dashboard, Boshqaruv, Davomat, Admin panel, Telegram, ofis GPS.
+- Admin — Dashboard, Boshqaruv, Davomat, Admin (ko'p funksiyalar).
+- Haydovchi — faqat Kabinet + Profil (+ Davomat Face); o'zgartirish yo'q.
 
-## Dashboard (index.html)
-Maqsad: kunlik GPS kuzatuv, ball, xarita, to'xtashlar.
-Yuqori: GPS yuklash, Excel yuklash, Excel saqlash, PDF, Sozlamalar.
-Chap: Kalendar (oy < > , kun tanlash); GPS tizimi → Ulanish/Yangilash.
-Markaz: haydovchi kartasi; Kunlik ball (katta raqam); marshrut xaritasi; to'xtashlar; Barcha mashinalar jadvali.
-To'xtash qatorida: Ruxsat | Qoidabuzarlik | Bekor — baholash.
-GPS modal: sana, Kecha/Bugun, server/login/parol/token, Shu kunni yuklash.
-Sozlamalar: norma jadvali, JSON saqlash/yuklash, Tozalash, Saqlash.
+## Navigatsiya
+- Login: login + parol → Kirish.
+- Staff: Dashboard | Boshqaruv | Live | Davomat | Profil (Admin panel Profil ichida).
+- Haydovchi: Kabinet | Davomat | Profil.
+- Yordamchi (pastdagi chat): tugma/bo'lim nomi, «qanday…?» savol, skrin, tezkor chip.
 
-## Boshqaruv (fuel.html)
-Chap bo'limlar:
-- Bosh sahifa — oy KPI + GPS bor lekin kunlik km tushmagan jadval
-- Kunlik kiritish — asosiy kiritish
-- Kun hisoboti — 1 kun, barcha mashinalar (+ kun pillari, PDF)
-- Oylik hisobot — oy jami; qator → kunma-kun; PDF jami+kunma-kun
-- Rasmiy hisobot — firma maydonlari + PDF + Shablon Excel
-- Yillik jamlanma — yil oylari + PDF
-- Zapravka reestri — stansiya/zapravka + filter + PDF
-- Gaz akti — gaz hujjati + PDF
-- Hujjat muddatlari — sug'urta/texnik/reklama/gaz ballon + Yangilash
-- Haydovchilar jurnali — kamchilik/maktov, filtr, CSV/Excel/PDF
-- Mashina va narx — park, narx, qo'shish/saqlash/o'chirish
+## Dashboard (bosh sahifa)
+Maqsad: kunlik GPS, ball, xarita, to'xtashlar.
+Yuqori: GPS YUKLASH, EXCEL YUKLASH, EXCEL SAQLASH, PDF, SOZLAMALAR.
+Chap: kalendar (oy, kun); GPS tizimi → Ulanish/Yangilash.
+Markaz: haydovchi kartasi, Kunlik ball, marshrut xaritasi, to'xtashlar jadvali, Barcha mashinalar.
+Xarita: Yangilash; «Vaqt / tezlik» — Boomerang uslubi (nuqtada vaqt + км/ч); legenda; zoom.
+To'xtash: Ruxsat | Qoidabuzarlik | Bekor.
+GPS modal: sana, Kecha/Bugun, login/parol/token, Shu kunni yuklash.
 
-Yuqori: Oy tanlov, Excel yuklab olish, Excel to'ldirish, Zaxira saqlash, Zaxiradan tiklash, Asl ma'lumot.
-Kunlik asboblar: Oldingi oydan qoldiq, Barchasini yangilash, Spidometr to'ldirish, Norma/narx o'zgarishi, Haydovchini kun belgilab almashtirish, GPS dan km, Excel orqali to'ldirish, Saqlash.
+## Admin — dorixonani mashinaga biriktirish (muhim)
+1) Profil → Admin panel (yoki /admin).
+2) «Dorixona biriktirish» kartasiga tushing.
+3) «GPS joylarini yangilash» — hisobotlardan joy nomi + lat/lng keladi (qo'lda yozish shart emas).
+4) Jadvalda joy toping → mashinani tanlang → Biriktirish (yoki pastida: mashina + nom + radius → Biriktirish).
+5) Radius odatda 120 m (40–500). Pastki «Biriktirilgan dorixonalar» — saqlangan ro'yxat.
+6) Kerak bo'lsa: O'tkazish (boshqa mashina), O'chirish, «Geozonalarni o'rganish va qayta hisoblash».
+Natija: Dashboard ball/reja shu biriktirish bo'yicha ishlaydi.
 
-## Haydovchi kabineti (driver.html)
-Faqat ko'rish. Sana, LIVE (bugun avto-yangilanish), KPI, xarita, yoqilg'i, topshiriqlar/dorixona, to'xtashlar, jurnal.
+## Boshqaruv (fuel)
+Chap: Bosh sahifa, Kunlik kiritish, Kun hisoboti, Oylik, Rasmiy, Yillik, Zapravka, Gaz akti, Hujjat muddatlari, Jurnal, Mashina va narx.
+Yuqori: Oy, Excel, Zaxira, Asl ma'lumot. Kunlik: GPS dan km, Saqlash, Norma/narx, Spidometr…
 
-## Admin (admin.html)
-Admin/Shofyor qo'shish, kunlik vazifa, foydalanuvchilar (blok/parol/o'chirish/ko'rish), sessiyalar (Chiqarish), o'z paroli, dorixona biriktirish, GPS joylarini yangilash, geozona o'rganish, Telegram (pro), audit jurnal, Chiqish.
+## Haydovchi kabineti
+Faqat ko'rish: sana, LIVE, KPI, xarita, yoqilg'i, topshiriqlar, to'xtashlar, jurnal.
+
+## Admin boshqa
+Admin/Shofyor qo'shish, kunlik vazifa, foydalanuvchilar (blok/parol/o'chirish/ko'rish), sessiyalar Chiqarish, Telegram (pro), audit.
+
+## Davomat
+Face ID ulash → Keldim / Ketdim. Admin: Dashboard, Hisobot, Xodim (Excel/PDF).
 
 ## Profil
 Hisob, tezkor havolalar, parol almashtirish, Chiqish.
@@ -299,6 +303,7 @@ FAQ_OFFLINE = [
         "a": (
             "Marshrut xaritasi — tanlangan mashina/kun GPS yo'li va to'xtashlar.\n"
             "• Yangilash — xaritani qayta chizadi.\n"
+            "• «Vaqt / tezlik» — Boomerang: har nuqtada vaqt + км/ч yorliqlar.\n"
             "• + / − yoki g'ildirak — zoom. Yaqinlashtirishda ko'cha-ko'cha ko'rinadi.\n"
             "• Legenda: o'z dorixona, boshqa yo'nalish, muammo, ofis, GPS chiziq.\n"
             "Agar fon bo'sh/yozuv chiqsa — sahifani yangilang (Ctrl+F5); tile manbasi OpenStreetMap."
@@ -351,13 +356,117 @@ FAQ_OFFLINE = [
         "a": "Kim tizimda — faol sessiyalar. Chiqarish — foydalanuvchini sessiyadan chiqaradi.",
     },
     {
-        "keys": ["dorixona biriktirish", "gps joylarini", "geozona", "otkazish", "o'tkazish", "radius"],
+        "keys": [
+            "dorixona biriktirish", "dorixonani biriktir", "dorixonani biriktirish",
+            "dorixona biriktiradi", "mashinaga dorixona", "mashinalarga dorixona",
+            "dorixona qoshish", "dorixona qo'shish", "biriktirish dorixona",
+            "gps joylarini", "gps joylarini yangilash", "geozona", "otkazish", "o'tkazish",
+            "radius", "biriktirilgan dorixona", "admin dorixona", "pharmacy",
+            "qanday biriktir", "dorixonani mashinaga", "mashinaga biriktir",
+        ],
         "a": (
-            "Dorixona biriktirish:\n"
-            "• GPS joylarini yangilash — GPS nom/koordinata\n"
-            "• Biriktirish — mashinaga dorixona + radius\n"
-            "• Geozonalarni o'rganish va qayta hisoblash — geozona/hisob\n"
-            "• O'tkazish / O'chirish — boshqa mashinaga yoki olib tashlash"
+            "Dorixonani mashinaga biriktirish (Admin):\n\n"
+            "1) Chap menyu → Profil → Admin panel (yoki to'g'ridan /admin).\n"
+            "2) Pastga tushing: «Dorixona biriktirish» kartasi.\n"
+            "3) «GPS joylarini yangilash» bosing — Boomerang/Wialon hisobotlaridan "
+            "joy nomi va koordinata (lat/lng) avtomatik keladi. Qo'lda yozish shart emas.\n"
+            "4) Jadvalda kerakli joyni toping (yoki yuqorida qidiruv: dorixona nomi / mashina filter).\n"
+            "5) Qatordagi mashinani tanlang → «Biriktirish».\n"
+            "   Yoki pastida: Mashina + Dorixona nomi + Radius (odatda 120 m) → «Biriktirish».\n"
+            "6) Natija pastki jadvalda: «Biriktirilgan dorixonalar». "
+            "Dashboard ball va «o'z dorixonasi» shu ro'yxatdan o'qiydi.\n\n"
+            "Qo'shimcha:\n"
+            "• O'tkazish — dorixonani boshqa mashinaga ko'chirish\n"
+            "• O'chirish — biriktirishni olib tashlash\n"
+            "• Geozonalarni o'rganish va qayta hisoblash — GPS to'xtashlardan geozona/ballni yangilash\n\n"
+            "Eslatma: avval GPS yuklangan kunlar bo'lishi kerak — aks holda GPS joylar ro'yxati bo'sh qoladi."
+        ),
+    },
+    {
+        "keys": [
+            "vaqt tezlik", "vaqt / tezlik", "boomerang", "bumarang", "tezlik yorliq",
+            "km/ch", "км/ч", "nuqtada vaqt", "trek yorliq", "qachon qayerda",
+        ],
+        "a": (
+            "Boomerang uslubi — Dashboard → Marshrut xaritasi:\n"
+            "1) Kun va mashinani tanlang\n"
+            "2) Kerak bo'lsa GPS YUKLASH (shu kun)\n"
+            "3) Xarita yonidagi «Vaqt / tezlik» ni yoqing\n"
+            "4) Zoom qiling — ko'k yo'l bo'ylab qizil nuqta + vaqt va км/ч yorliqlari\n"
+            "O'chirilsa — oddiy marshrut (faqat to'xtash raqamlari) qoladi."
+        ),
+    },
+    {
+        "keys": ["qr ofis", "qr kod", "ofis qr", "qr punch"],
+        "a": (
+            "QR ofis — chap menyu pastidagi havola: ofisga kelish/ketish uchun QR.\n"
+            "Haydovchi skanerlab ofis davomatini belgilashi mumkin. "
+            "Oddiy Dashboard GPS dan alohida."
+        ),
+    },
+    {
+        "keys": ["live", "jonli kuzatuv", "live xarita", "live menyu"],
+        "a": (
+            "Live — hozirgi joylashuv/jonli kuzatuv bo'limi (staff menyuda).\n"
+            "Haydovchi rolida Live yashirilishi mumkin. "
+            "Kunlik tarix (kecha) uchun Dashboard + «Vaqt / tezlik» ishlatiladi."
+        ),
+    },
+    {
+        "keys": ["muammo", "muammoli toxtash", "muammoli to'xtash", "map muammo"],
+        "a": (
+            "Muammo — rejasiz/noma'lum yoki qoidabuzar deb belgilangan to'xtash.\n"
+            "Xaritada qora marker; jadvalda holat. "
+            "Ruxsat bersangiz — muammo yo'qolishi / ball yaxshilanishi mumkin."
+        ),
+    },
+    {
+        "keys": ["ofis", "sklad", "ofis sklad", "tungi ofis"],
+        "a": (
+            "Ofis / sklad — xaritada «O» marker (tungi ofis/sklad to'xtashi).\n"
+            "Admin Pro ofis GPS koordinatasini sozlashi mumkin. "
+            "Haydovchi ofisga kelishi GPS/QR orqali ko'rinadi."
+        ),
+    },
+    {
+        "keys": ["ctrl+f5", "kesh", "sahifa yangilash", "hard refresh", "kod yangilanmadi"],
+        "a": (
+            "Yangi tugma ko'rinmasa: Ctrl+F5 (hard refresh).\n"
+            "Yoki brauzer keshini tozalang. Server yangilangandan keyin ham kerak bo'lishi mumkin."
+        ),
+    },
+    {
+        "keys": ["admin panelga", "admin panel qayer", "qayerda admin", "admin ochish"],
+        "a": (
+            "Admin panel:\n"
+            "1) Chap → Profil\n"
+            "2) Tezkor havolalar → Admin panel (yoki Admin Pro)\n"
+            "To'g'ridan URL: /admin\n"
+            "Haydovchi bu panelni ko'rmaydi."
+        ),
+    },
+    {
+        "keys": ["reja", "dorixona reja", "nechta dorixona", "tashrif reja"],
+        "a": (
+            "Reja — mashinaga biriktirilgan dorixonalar soni / tashrif rejasi.\n"
+            "Biriktirish Admin → Dorixona biriktirish da. "
+            "Dashboard jadvalida reja bajarilishi ko'rinadi; o'tkazib yuborilganlar alohida."
+        ),
+    },
+    {
+        "keys": ["yangilash xarita", "btn-refresh-map", "xaritani yangilash"],
+        "a": (
+            "Xarita «Yangilash» — tanlangan kun/mashina marshrutini qayta chizadi.\n"
+            "Trek yo'q bo'lsa GPS sessiyasi bilan qayta yuklashga urinadi. "
+            "«Vaqt / tezlik» yoqilgan bo'lsa yorliqlar ham qayta chiziladi."
+        ),
+    },
+    {
+        "keys": ["nuqta", "gps nuqta", "nechta nuqta"],
+        "a": (
+            "Nuqta — xarita ustidagi GPS trek nuqtalari soni (yoki to'xtashlar).\n"
+            "Kam nuqta (masalan faqat to'xtashlar) bo'lsa — GPS YUKLASH qiling. "
+            "Ko'p nuqta + «Vaqt / tezlik» = Boomerang ko'rinishi."
         ),
     },
     {
@@ -500,26 +609,37 @@ PAGE_BUTTON_GUIDE = {
         "Markaz:\n"
         "• Haydovchi kartasi (ism, raqam, yo'nalish)\n"
         "• Kunlik ball — katta raqam (masalan 8.0)\n"
-        "• Marshrut xaritasi + Yangilash, to'xtash/nuqta/muammo\n"
+        "• Marshrut xaritasi + Yangilash + «Vaqt / tezlik» (Boomerang)\n"
         "• Barcha to'xtashlar — Ruxsat / Qoidabuzarlik / Bekor\n"
         "• Barcha mashinalar jadvali — qatorni tanlang\n\n"
-        "Aniqroq: «Kunlik ball», «GPS yuklash», «Xarita» deb yozing yoki tezkor tugmani bosing."
+        "Misol savollar: «Dorixonani qanday biriktiraman?», «Vaqt / tezlik nima?», «GPS yuklash».\n"
+        "Aniqroq nom yozing yoki tezkor tugmani bosing."
     ),
     "admin.html": (
-        "Admin panel:\n"
-        "• Admin/Shofyor qo'shish, Kunlik vazifa\n"
+        "Admin panel — foydalanuvchi va dorixona boshqaruvi.\n\n"
+        "• Admin / Shofyor qo'shish, Kunlik vazifa\n"
         "• Foydalanuvchilar: Blok, Parol, O'chirish, Ko'rish\n"
         "• Kim tizimda → Chiqarish\n"
-        "• Dorixona biriktirish, GPS joylar, Geozona\n"
-        "• Telegram, o'z paroli, Chiqish\n"
-        "Qaysi bo'lim? Nomini yozing."
+        "• Dorixona biriktirish (eng muhim):\n"
+        "  GPS joylarini yangilash → mashina tanlash → Biriktirish\n"
+        "  Radius ~120 m; pastki jadval — saqlangan ro'yxat\n"
+        "• Geozonalarni o'rganish, Telegram, o'z paroli, Chiqish\n\n"
+        "Savol: «Dorixonani mashinaga qanday biriktiraman?» — to'liq qadamlar beraman."
+    ),
+    "attendance.html": (
+        "Davomat sahifasi:\n"
+        "• Face ID ulash (birinchi marta)\n"
+        "• Keldim / Ketdim\n"
+        "• Admin: Dashboard (bugun), Hisobot (oy), Xodim — Excel/PDF\n"
+        "Aniq tugma nomini yozing."
     ),
     "driver.html": (
         "Haydovchi kabineti (faqat ko'rish):\n"
         "Sana, LIVE, KPI (km/ball/o'tkazib/qoidabuzarlik), xarita, yoqilg'i, topshiriqlar, to'xtashlar, jurnal.\n"
-        "Ma'lumotni admin Boshqaruvdan kiritadi."
+        "Ma'lumotni admin Boshqaruv / Dashboard dan kiritadi / yuklaydi."
     ),
     "profile.html": (
-        "Profil: hisob, tezkor havolalar (Dashboard/Boshqaruv/Admin/Kabinet), Parolni saqlash, Chiqish."
+        "Profil: hisob, tezkor havolalar (Dashboard/Boshqaruv/Admin/Kabinet), Parolni saqlash, Chiqish.\n"
+        "Admin panel shu yerdan ochiladi."
     ),
 }

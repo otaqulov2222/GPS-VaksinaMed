@@ -14,7 +14,10 @@
   const MAX_API_HIST = 12;
   const WELCOME =
     "Salom! Men VaksinaMed yordamchisiman.\n\n" +
-    "Tugma, bo‘lim yoki skrin haqida so‘rang. Pastdagi tezkor tugmalardan ham foydalanishingiz mumkin.";
+    "Tizimdagi istalgan savolga javob beraman — katta va mayda:\n" +
+    "• «Dorixonani mashinaga qanday biriktiraman?»\n" +
+    "• «Vaqt / tezlik nima?» · «GPS yuklash» · «Kunlik ball»\n\n" +
+    "Yozing, skrin yuboring yoki pastdagi tezkor tugmani bosing.";
 
   const ICON_CHAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>';
   const ICON_SEND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
@@ -50,22 +53,26 @@
     ],
     'index.html': [
       'Kunlik ball nima?',
+      'Vaqt / tezlik nima?',
       'Barcha mashinalar',
       'GPS yuklash',
       'Ulanish',
       'Xarita',
+      'Dorixonani qanday biriktiraman?',
       'Excel saqlash',
       'Sozlamalar',
       'Ruxsat nima?'
     ],
     'admin.html': [
+      'Dorixonani qanday biriktiraman?',
+      'GPS joylarini yangilash',
+      'Geozona nima?',
       'Shofyor qo\'shish',
-      'Dorixona biriktirish',
-      'Geozona',
+      'Kunlik vazifa',
       'Telegram',
       'Blok',
       'Chiqarish',
-      'Kunlik vazifa'
+      'Radius nima?'
     ],
     'driver.html': [
       'LIVE nima?',

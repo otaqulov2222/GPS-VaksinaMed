@@ -32,18 +32,19 @@ OFFTOPIC_REPLY = (
 )
 
 SYSTEM_RULES = """Siz — VaksinaMed Fleet Control (GPS VaksinaMed) ichki yordamchisiz.
-Vazifa: foydalanuvchiga FAQAT shu tizimni tushuntirish.
+Vazifa: foydalanuvchiga FAQAT shu tizimni o'rgatish — hatto eng mayda tugma/qadam ham.
 
 QOIDALAR (majburiy):
-1) Faqat VaksinaMed: Dashboard, Boshqaruv, Davomat, Admin, Haydovchi kabineti, Profil, GPS, yoqilg'i.
+1) Faqat VaksinaMed: Dashboard, Boshqaruv, Davomat, Live, Admin, Haydovchi kabineti, Profil, GPS, yoqilg'i, QR ofis.
 2) Tizimdan tashqari mavzu — qisqa rad eting.
 3) Skrinshot: ko'rinadigan tugma/maydonni aniqlang va vazifasini aniq tushuntiring.
-4) Parol/token/API kalit so'ramang. Admin/Admin Pro panelda foydalanuvchi parollari ko'rinadi (boshqaruv uchun).
-5) GPS: Vercel cron (~10 daq) + Dashboard jim yangilash. GitHub Actions — qo'shimcha.
-6) Davomat hisobot: Hisobot yoki Xodim → Excel / PDF.
-7) Rol: haydovchi — kabinet/profil; admin — Dashboard/Boshqaruv/Davomat/Panel.
-8) Javob o'zbek lotinida, qisqa, 1) 2) 3) qadamlar. Tizim o'zgartirishni va'da qilmang.
-9) Bilim bazasidagi nomlarga amal qiling (Excel yuklash ≠ Excel saqlash; Asl ≠ Zaxira).
+4) Parol/token/API kalit so'ramang. Admin panelda foydalanuvchi parollari boshqaruv uchun ko'rinadi.
+5) «Qanday…?» savollarga 1) 2) 3) qadamlar bilan, menyu yo'li bilan javob bering (masalan: Profil → Admin panel → Dorixona biriktirish).
+6) Mayda savollar ham muhim: bitta tugma, checkbox, jadval ustuni, filter — nima qilishini ayting.
+7) Bilim + FAQ dagi nomlarga amal qiling (Excel yuklash ≠ Excel saqlash; Asl ≠ Zaxira; GPS yuklash ≠ GPS dan km).
+8) Rol: haydovchi — kabinet/profil/davomat (o'zgartirish yo'q); admin — to'liq.
+9) Javob o'zbek lotinida, aniq, professional. Tizim o'zgartirishni va'da qilmang.
+10) Bilmasangiz — yaqin bo'limni ayting va qaysi tugma nomini yozishni so'rang.
 """
 
 
@@ -105,6 +106,10 @@ def _has_system_signal(t: str) -> bool:
         "zaxira", "asl", "ulanish", "ruxsat", "qoidabuzar", "telegram",
         "shofyor", "sessiya", "kalendar", "marshrut", "pdf", "csv",
         "jamlanma", "reestr", "topshiriq", "vazifa", "chip",
+        "biriktir", "radius", "boomerang", "bumarang", "tezlik", "vaqt",
+        "davomat", "face", "keldim", "ketdim", "live", "qr", "ofis",
+        "sklad", "nuqta", "muammo", "yangilash", "zoom", "legenda",
+        "qanday", "qanaqa", "qayer", "qaysi", "nima",
     )
     return any(g in t for g in good)
 
@@ -115,11 +120,50 @@ def looks_offtopic(text: str) -> bool:
         return False
     if _has_system_signal(t):
         return False
+    # «qanday» + tizim konteksti yo'q — lekin faqat qanday yozilsa offtopic emas
+    if t in ("qanday", "qanaqa", "nima", "yordam", "help"):
+        return False
     bad = (
         "vhk", "1c ", "1с", "telegram bot yoz", "kripto", "bitcoin",
         "siyosat", "futbol", "retsept", "dori yoz", "homework", "python dars",
     )
     return any(b in t for b in bad)
+
+
+def _stem(w: str) -> str:
+    """Oddiy o'zbek fe'l/ot ildizi (biriktiradi → biriktir)."""
+    s = (w or "").strip()
+    if len(s) < 5:
+        return s
+    for suf in (
+        "amanmi", "asizmi", "adi", "aman", "asiz", "ishni", "ishga",
+        "moqda", "moq", "ish", "lar", "ning", "dan", "ga", "ni", "da",
+    ):
+        if s.endswith(suf) and len(s) - len(suf) >= 4:
+            return s[: -len(suf)]
+    return s
+
+
+def _part_in_text(part: str, text: str) -> bool:
+    """Kalit qismi matnda yoki so'z ildizida (biriktir → biriktiradi)."""
+    if not part or not text:
+        return False
+    if part in text:
+        return True
+    ps = _stem(part)
+    if len(ps) >= 4 and ps in text:
+        return True
+    if len(part) < 4:
+        return False
+    for w in re.findall(r"[a-z0-9ʻ']+", text):
+        if len(w) < 4:
+            continue
+        ws = _stem(w)
+        if ps and (ws.startswith(ps[:5]) or ps.startswith(ws[:5]) or ws == ps):
+            return True
+        if w.startswith(part) or part.startswith(w):
+            return True
+    return False
 
 
 def _page_key(page: str) -> str:
@@ -132,11 +176,13 @@ def _page_key(page: str) -> str:
         return "driver.html"
     if "profile" in pg:
         return "profile.html"
+    if "attendance" in pg or "davomat" in pg:
+        return "attendance.html"
     return "index.html"
 
 
 def _faq_score(item: dict, text: str) -> int:
-    """Uzun/aniq kalit ustun. So'zma-so'z qisman moslik ham hisoblanadi."""
+    """Uzun/aniq kalit ustun. So'zma-so'z va ildiz moslik ham hisoblanadi."""
     if not text:
         return 0
     score = 0
@@ -145,15 +191,32 @@ def _faq_score(item: dict, text: str) -> int:
         if not kn or len(kn) < 2:
             continue
         if kn in text:
-            # Uzunroq kalit = aniqroq moslik
             score += 4 + min(14, len(kn) // 2)
             continue
         parts = [p for p in kn.split() if len(p) > 2]
-        if len(parts) >= 2 and all(p in text for p in parts):
+        if len(parts) >= 2 and all(_part_in_text(p, text) for p in parts):
             score += 3 + len(parts) * 2
-        elif len(parts) == 1 and parts[0] in text and len(parts[0]) >= 5:
+        elif len(parts) == 1 and _part_in_text(parts[0], text) and len(parts[0]) >= 5:
             score += 2
+        elif len(parts) >= 2:
+            hit = sum(1 for p in parts if _part_in_text(p, text))
+            if hit >= 2:
+                score += 2 + hit
     return score
+
+
+def _faq_pack_for_ai(limit: int = 80) -> str:
+    """AI ga barcha FAQ ni qisqa paket qilib berish."""
+    chunks = []
+    for i, item in enumerate(FAQ_OFFLINE):
+        if i >= limit:
+            break
+        ans = (item.get("a") or "").strip()
+        if not ans:
+            continue
+        keys = ", ".join((item.get("keys") or [])[:6])
+        chunks.append(f"### {keys}\n{ans}")
+    return "\n\n".join(chunks)
 
 
 def _role_note(role: str) -> str:
@@ -220,20 +283,25 @@ def offline_answer(
             "bu nima", "ushbu", "nima degani", "nima uchun", "qanday ishlaydi",
             "ichida", "ichi ", " nima bor", "nimalar bor", "bajaradi",
             "haqida", "malumot", "ma'lumot", "skrin", "screenshot", "rasm",
-            "tushuntir", "yordam",
+            "tushuntir", "yordam", "qanday", "qanaqa", "qayerdan", "qaysi",
+            "o'rgat", "orgat", "ko'rsat", "korsat",
         )
     )
+    howto = any(x in t for x in ("qanday", "qanaqa", "qayerdan", "qilib", "qadam"))
 
     if t in ("salom", "hello", "hi", "assalom", "assalomu alaykum"):
         return (
-            "Salom! Men VaksinaMed yordamchisiman. "
-            "Tugma yoki bo'lim nomini yozing yoki skrin yuboring."
+            "Salom! Men VaksinaMed yordamchisiman.\n"
+            "Istalgan savol: tugma, bo'lim yoki «qanday …?» (masalan: dorixonani mashinaga qanday biriktiraman).\n"
+            "Skrin yoki tezkor chip ham ishlaydi."
         )
 
     best = None
     best_score = 0
     best_msg = 0
     for item in FAQ_OFFLINE:
+        if not (item.get("a") or "").strip():
+            continue
         s_named = _faq_score(item, named) if named else 0
         s_msg = _faq_score(item, t)
         s_img = _faq_score(item, img_t) if img_t else 0
@@ -241,8 +309,10 @@ def offline_answer(
         s_act = 0
         if act and not named and (vague or has_image):
             s_act = _faq_score(item, act)
-        # Skrin OCR / kontekst — kuchliroq
+        # Skrin OCR / kontekst — kuchliroq; how-to savollarga biroz bonus
         score = s_named * 12 + s_msg * 3 + s_img * 8 + s_ctx * 4 + s_act
+        if howto and s_msg >= 3:
+            score += 4
         if score > best_score:
             best_score = score
             best_msg = max(s_msg, s_img, s_ctx)
@@ -254,6 +324,10 @@ def offline_answer(
 
     # 2) Savol yoki skrin matnida kalitlar yetarli
     if best and best_msg >= 4:
+        return best["a"] + _role_note(role)
+
+    # 2b) «Qanday …?» — biroz pastroq chegarada ham to'liq FAQ
+    if howto and best and best_msg >= 2 and best_score >= 6:
         return best["a"] + _role_note(role)
 
     # 3) Skrin + noaniq — FAQ zaif bo'lsa ham eng yaxshi javob
@@ -321,7 +395,7 @@ def _openai_chat(messages: list, timeout: int = 60) -> tuple[str | None, str | N
     payload = {
         "model": _MODEL,
         "temperature": 0.2,
-        "max_tokens": 900,
+        "max_tokens": 1400,
         "messages": messages,
     }
     raw = json.dumps(payload).encode("utf-8")
@@ -403,8 +477,27 @@ def answer_support(
         reply = offline_answer(msg or "", **offline_kw)
         return {"ok": True, "reply": reply, "mode": "offline"}
 
-    # AI yo'li
+    # Kuchli FAQ hit — AI dan oldin aniq qadamli javob (dorixona biriktirish va h.k.)
+    t_check = _norm(msg).replace("'", "")
+    best_item = None
+    best_sc = 0
+    for item in FAQ_OFFLINE:
+        if not (item.get("a") or "").strip():
+            continue
+        sc = _faq_score(item, t_check)
+        if sc > best_sc:
+            best_sc = sc
+            best_item = item
+    if best_item and best_sc >= 8:
+        return {
+            "ok": True,
+            "reply": best_item["a"] + _role_note(role),
+            "mode": "faq",
+        }
+
+    # AI yo'li — to'liq FAQ paketi bilan
     sys = SYSTEM_RULES + "\n\n# BILIM BAZASI\n" + KNOWLEDGE
+    sys += "\n\n# FAQ (batafsil qadamlar)\n" + _faq_pack_for_ai()
     sys += f"\n\nFoydalanuvchi roli: {role}. Joriy sahifa: {page or 'nomalum'}."
     if active:
         sys += f"\nAktiv bo'lim/tugma: {active}."
@@ -412,7 +505,10 @@ def answer_support(
         sys += f"\nSkrindan o'qilgan matn: {img_txt}"
     if labels:
         sys += "\nSahifadagi asosiy yorliqlar: " + ", ".join(labels[:25]) + "."
-
+    sys += (
+        "\nJavobda menyu yo'lini yozing (masalan: Profil → Admin panel → Dorixona biriktirish). "
+        "Mayda savollarga ham aniq javob bering."
+    )
     messages = [{"role": "system", "content": sys}]
     for h in (history or [])[-12:]:
         if not isinstance(h, dict):

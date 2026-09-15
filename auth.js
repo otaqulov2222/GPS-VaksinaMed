@@ -579,10 +579,10 @@ function vmLoadSupportChat() {
     window._vmSupportAssets = true;
     const css = document.createElement('link');
     css.rel = 'stylesheet';
-    css.href = 'support-chat.css?v=15';
+    css.href = 'support-chat.css?v=16';
     document.head.appendChild(css);
     const s = document.createElement('script');
-    s.src = 'support-chat.js?v=11';
+    s.src = 'support-chat.js?v=12';
     s.defer = true;
     document.head.appendChild(s);
 }
