@@ -23,6 +23,7 @@ CHALLENGE_PREFIX = "attendance:chal:"
 QR_TICKET_PREFIX = "attendance:qrticket:"
 
 QR_TICKET_TTL_MIN = 10
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 QR_PREFIX = "VMATT1"
 
 DEFAULT_SETTINGS = {
@@ -828,7 +829,7 @@ class AttendanceStore:
             rec = day.get(uid) if isinstance(day.get(uid), dict) else {}
             inn = self._strip_punch(rec.get("in") if isinstance(rec.get("in"), dict) else None)
             out = self._strip_punch(rec.get("out") if isinstance(rec.get("out"), dict) else None)
-            row = self._row_from_punches(u, date, inn, out)
+            row = self._row_from_punches(u, date, inn, out, rec)
             rows.append(row)
         counts = {
             "total": len(rows),
@@ -925,19 +926,33 @@ class AttendanceStore:
             return "Admin"
         return role or "Xodim"
 
-    def _row_from_punches(self, u: dict, date: str, inn, out) -> dict:
+    def _row_from_punches(self, u: dict, date: str, inn, out, urec: dict | None = None) -> dict:
+        urec = urec if isinstance(urec, dict) else {}
         uid = str(u.get("id") or "")
-        status = "absent"
-        if inn and out:
-            status = "done"
-        elif inn:
-            status = "late" if inn.get("late") else "in"
-        # Display holat: Kechikdi if late minutes or flag
+        status_override = str(urec.get("statusOverride") or "").strip().lower()
+
+        if status_override == "absent":
+            inn = out = None
+            status = "absent"
+        elif status_override == "vacation":
+            inn = out = None
+            status = "vacation"
+        elif status_override == "no_out":
+            out = None
+            status = "in" if inn else "absent"
+        else:
+            status = "absent"
+            if inn and out:
+                status = "done"
+            elif inn:
+                status = "late" if inn.get("late") else "in"
+
         pun = self._punctuality(inn, out)
-        if status != "absent" and (pun["late_in_min"] > 0 or (inn and inn.get("late"))):
+        if status not in ("absent", "vacation") and (pun["late_in_min"] > 0 or (inn and inn.get("late"))):
             status = "late"
-        elif status == "done" or status == "in":
-            status = "done" if out else "in"
+        elif status in ("in", "done") and out:
+            status = "done"
+
         return {
             "userId": uid,
             "username": u.get("username"),
@@ -947,6 +962,8 @@ class AttendanceStore:
             "car": u.get("car") or "",
             "date": date,
             "status": status,
+            "holatMode": self._holat_mode_from_record(urec, inn, out, status),
+            "note": urec.get("manualNote") or "",
             "in": inn,
             "out": out,
             "inAt": self._hhmm_from_iso(inn.get("at") if inn else None),
@@ -955,6 +972,173 @@ class AttendanceStore:
             "enrolled": self.is_enrolled(uid),
             **pun,
         }
+
+    @staticmethod
+    def _holat_mode_from_record(urec: dict, inn, out, status: str) -> str:
+        ov = str((urec or {}).get("statusOverride") or "").strip().lower()
+        if ov == "vacation":
+            return "vacation"
+        if ov == "absent":
+            return "absent"
+        if ov == "no_out":
+            return "no_out"
+        if status == "absent":
+            return "absent"
+        if inn and inn.get("late"):
+            return "late"
+        if inn and not out:
+            return "no_out"
+        if inn:
+            return "present"
+        return "auto"
+
+    def _iso_from_date_hhmm(self, date: str, hhmm: str) -> str | None:
+        p = parse_hhmm(str(hhmm or "").strip())
+        if not p or not DATE_RE.match(str(date or "")):
+            return None
+        h, mi = p
+        try:
+            base = datetime.strptime(date, "%Y-%m-%d")
+            dt = base.replace(hour=h, minute=mi, second=0, tzinfo=TZ)
+            return dt.isoformat(timespec="seconds")
+        except Exception:
+            return None
+
+    def _make_manual_punch(self, iso_at: str, settings: dict, *, kind: str = "in", force_late: bool = False) -> dict:
+        entry = {
+            "at": iso_at,
+            "lat": None,
+            "lng": None,
+            "accuracy": None,
+            "distance_m": None,
+            "late": False,
+            "method": "manual",
+            "note": "Admin tahriri",
+        }
+        if kind == "in":
+            if force_late:
+                entry["late"] = True
+            else:
+                late_after = hhmm_to_min(settings.get("in_late_after"))
+                in_start = hhmm_to_min(settings.get("in_start") or "09:00")
+                in_min = self._min_of_iso(iso_at)
+                if in_min is not None:
+                    if late_after is not None and in_min > late_after:
+                        entry["late"] = True
+                    elif in_start is not None and in_min > in_start:
+                        entry["late"] = True
+        return entry
+
+    def admin_save_record(
+        self,
+        *,
+        editor: dict,
+        user_id: str,
+        date: str,
+        in_time: str = "",
+        out_time: str = "",
+        holat: str = "auto",
+        note: str = "",
+        user_meta: dict | None = None,
+    ) -> tuple[dict | None, str | None]:
+        """Staff: kunlik davomat qatorini qo‘lda tahrirlash."""
+        date = str(date or "").strip()
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+            return None, "Sana noto'g'ri"
+        uid = str(user_id or "").strip()
+        if not uid:
+            return None, "Xodim tanlanmagan"
+
+        holat = str(holat or "auto").strip().lower()
+        meta = user_meta if isinstance(user_meta, dict) else {}
+        settings = self.settings()
+        in_time = str(in_time or "").strip()
+        out_time = str(out_time or "").strip()
+
+        with self.lock:
+            day = self._load(self.day_key(date), {})
+            if not isinstance(day, dict):
+                day = {}
+            urec = day.get(uid)
+            if not isinstance(urec, dict):
+                urec = {
+                    "userId": uid,
+                    "username": str(meta.get("username") or "")[:60],
+                    "name": str(meta.get("name") or "")[:80],
+                    "role": str(meta.get("role") or "")[:20],
+                    "in": None,
+                    "out": None,
+                }
+
+            urec.pop("statusOverride", None)
+
+            if holat in ("absent", "kelmagan"):
+                urec["in"] = None
+                urec["out"] = None
+                urec["statusOverride"] = "absent"
+            elif holat in ("vacation", "tatil"):
+                urec["in"] = None
+                urec["out"] = None
+                urec["statusOverride"] = "vacation"
+            elif holat in ("no_out", "ketish_yoq", "ketish_yo'q"):
+                in_iso = self._iso_from_date_hhmm(date, in_time)
+                if not in_iso:
+                    return None, "Kelish vaqti kerak (HH:MM)"
+                urec["in"] = self._make_manual_punch(
+                    in_iso, settings, kind="in", force_late=False
+                )
+                urec["out"] = None
+                urec["statusOverride"] = "no_out"
+            else:
+                force_late = holat in ("late", "kech")
+                force_present = holat in ("present", "kelgan")
+                in_iso = self._iso_from_date_hhmm(date, in_time) if in_time else None
+                out_iso = self._iso_from_date_hhmm(date, out_time) if out_time else None
+
+                if not in_iso and not out_iso:
+                    urec["in"] = None
+                    urec["out"] = None
+                    urec["statusOverride"] = "absent"
+                else:
+                    if in_iso:
+                        urec["in"] = self._make_manual_punch(
+                            in_iso, settings, kind="in", force_late=force_late
+                        )
+                        if force_present:
+                            urec["in"]["late"] = False
+                    else:
+                        urec["in"] = None
+                    if out_iso:
+                        if not in_iso:
+                            return None, "Ketish uchun avval kelish vaqti kerak"
+                        urec["out"] = self._make_manual_punch(out_iso, settings, kind="out")
+                    else:
+                        urec["out"] = None
+
+            note_s = str(note or "").strip()
+            if note_s:
+                urec["manualNote"] = note_s[:500]
+            else:
+                urec.pop("manualNote", None)
+            urec["editedAt"] = now_tz().isoformat(timespec="seconds")
+            urec["editedBy"] = str(editor.get("username") or editor.get("name") or "")[:60]
+            day[uid] = urec
+            self._save(self.day_key(date), day)
+
+        row = self._row_from_punches(
+            {
+                "id": uid,
+                "username": urec.get("username") or meta.get("username"),
+                "name": urec.get("name") or meta.get("name"),
+                "role": urec.get("role") or meta.get("role"),
+                "car": meta.get("car") or "",
+            },
+            date,
+            self._strip_punch(urec.get("in")),
+            self._strip_punch(urec.get("out")),
+            urec,
+        )
+        return {"ok": True, "date": date, "userId": uid, "record": urec, "row": row}, None
 
     @staticmethod
     def _dates_between(d0: str, d1: str) -> list[str]:
@@ -1026,9 +1210,9 @@ class AttendanceStore:
                 inn = self._strip_punch(urec.get("in") if isinstance(urec.get("in"), dict) else None)
                 out = self._strip_punch(urec.get("out") if isinstance(urec.get("out"), dict) else None)
                 # Multi-day: faqat kelganlarni ko‘rsatish (bo‘sh qatorlarni kesish) — oylik/hafta uchun
-                if show_date_col and not inn and not out:
+                if show_date_col and not inn and not out and not urec.get("statusOverride"):
                     continue
-                rows.append(self._row_from_punches(u, dd, inn, out))
+                rows.append(self._row_from_punches(u, dd, inn, out, urec))
 
         # Kunlik: barcha xodimlar (yo‘qlik ham)
         if not show_date_col:
@@ -1045,7 +1229,7 @@ class AttendanceStore:
             "early_in": sum(1 for r in rows if (r.get("early_in_min") or 0) > 0),
             "early_out": sum(1 for r in rows if (r.get("early_out_min") or 0) > 0),
             "late_out": sum(1 for r in rows if (r.get("late_out_min") or 0) > 0),
-            "present": sum(1 for r in rows if r["status"] != "absent"),
+            "present": sum(1 for r in rows if r["status"] not in ("absent", "vacation")),
             "absent": sum(1 for r in rows if r["status"] == "absent"),
             "shown": len(rows),
             "people": len(users or []),

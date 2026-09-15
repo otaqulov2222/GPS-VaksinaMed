@@ -7,7 +7,7 @@
   window._vmSupportInit = true;
 
   const path = (location.pathname || '').replace(/\\/g, '/');
-  if (path.endsWith('/login.html')) return;
+  if (/\/login(\.html)?$/.test(path)) return;
 
   const STORE_KEY = 'vm_support_chat_v5';
   const MAX_UI_MSGS = 80;
@@ -430,7 +430,7 @@
       const d = await r.json().catch(() => ({}));
       thinking.remove();
       if (r.status === 401) {
-        location.replace('/login.html');
+        location.replace('/login');
         return;
       }
       if (!r.ok || !d.ok) {

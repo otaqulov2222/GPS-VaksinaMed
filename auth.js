@@ -7,7 +7,7 @@ async function vmApi(path, opts) {
     let data = {};
     try { data = await r.json(); } catch (e) { data = {}; }
     if (r.status === 401 && !opt.noRedirect) {
-        location.replace('/login.html');
+        location.replace('/login');
         throw new Error('Kirish talab qilinadi');
     }
     if (!r.ok) throw new Error(data.error || ('Xato ' + r.status));
@@ -27,7 +27,7 @@ async function vmMe() {
 async function vmLogout() {
     try { await vmApi('/api/logout', { method: 'POST', body: '{}', noRedirect: true }); }
     catch (e) {}
-    location.replace('/login.html');
+    location.replace('/login');
 }
 
 function vmNormLabel(s) {
@@ -50,14 +50,14 @@ function vmIsDriver(user) {
 
 function vmGatePage(user) {
     const path = (location.pathname || '').replace(/\\/g, '/');
-    const onDriver = path.endsWith('/driver.html');
-    const onProfile = path.endsWith('/profile.html');
-    const onAttendance = path.endsWith('/attendance.html');
-    const onLogin = path.endsWith('/login.html');
+    const onDriver = /\/driver(\.html)?$/.test(path);
+    const onProfile = /\/profile(\.html)?$/.test(path);
+    const onAttendance = /\/(attendance|davomat)(\.html)?$/.test(path);
+    const onLogin = /\/login(\.html)?$/.test(path);
     if (onLogin) return;
     if (vmIsDriver(user)) {
         // Haydovchi: kabinet + profil + davomat
-        if (!onDriver && !onProfile && !onAttendance) location.replace('/driver.html');
+        if (!onDriver && !onProfile && !onAttendance) location.replace('/driver');
         return;
     }
     if (onDriver && !vmIsStaff(user)) {
@@ -116,25 +116,25 @@ function vmApplyRoleNav(user) {
 
 function vmEnsureLiveNav() {
     const path = (location.pathname || '').replace(/\\/g, '/');
-    const onLive = path.endsWith('/live.html');
+    const onLive = /\/live(\.html)?$/.test(path);
     const staff = vmIsStaff(window.VM_USER);
 
     document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {
-        let link = nav.querySelector('a[href="/live.html"], a[href="live.html"], #nav-live');
+        let link = nav.querySelector('a[href="/live"], a[href="/live.html"], a[href="live.html"], #nav-live');
         if (!link) {
             link = document.createElement('a');
-            link.href = '/live.html';
+            link.href = '/live';
             link.className = 'nav-link';
             link.id = 'nav-live';
             link.textContent = 'Live';
-            const fuel = nav.querySelector('#nav-fuel, a[href="/fuel.html"], a[href="fuel.html"], a[href*="fuel"]');
-            const dav = nav.querySelector('#nav-davomat, a[href="/attendance.html"], a[href*="attendance"]');
+            const fuel = nav.querySelector('#nav-fuel, a[href="/fuel"], a[href="/fuel.html"], a[href="fuel.html"], a[href*="fuel"]');
+            const dav = nav.querySelector('#nav-davomat, a[href="/attendance"], a[href="/attendance.html"], a[href*="attendance"]');
             if (fuel) fuel.insertAdjacentElement('afterend', link);
             else if (dav) dav.insertAdjacentElement('beforebegin', link);
             else nav.appendChild(link);
         } else {
             link.textContent = 'Live';
-            link.href = '/live.html';
+            link.href = '/live';
             link.id = link.id || 'nav-live';
             link.classList.remove('staff-only');
         }
@@ -157,18 +157,18 @@ function vmEnsureLiveNav() {
 
 function vmEnsureDavomatNav() {
     const path = (location.pathname || '').replace(/\\/g, '/');
-    const onAtt = path.endsWith('/attendance.html');
+    const onAtt = /\/(attendance|davomat)(\.html)?$/.test(path);
     const faceOn = !!window._vmFaceEnrolled;
 
     document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {
-        let link = nav.querySelector('a[href="/attendance.html"], a[href="attendance.html"], #nav-davomat');
+        let link = nav.querySelector('a[href="/attendance"], a[href="/attendance.html"], a[href="attendance.html"], #nav-davomat');
         if (!link) {
             link = document.createElement('a');
-            link.href = '/attendance.html';
+            link.href = '/attendance';
             link.className = 'nav-link';
             link.id = 'nav-davomat';
             link.textContent = 'Davomat';
-            const fuel = nav.querySelector('#nav-fuel, a[href="/fuel.html"], a[href="fuel.html"]');
+            const fuel = nav.querySelector('#nav-fuel, a[href="/fuel"], a[href="/fuel.html"], a[href="fuel.html"]');
             if (fuel) fuel.insertAdjacentElement('afterend', link);
             else {
                 const dash = nav.querySelector('a[href="/"], a[href="/index.html"]');
@@ -177,7 +177,7 @@ function vmEnsureDavomatNav() {
             }
         } else {
             link.textContent = 'Davomat';
-            link.href = '/attendance.html';
+            link.href = '/attendance';
         }
         // Haydovchi va staff — hammaga ko'rinsin
         link.removeAttribute('hidden');
@@ -191,7 +191,7 @@ function vmEnsureDavomatNav() {
         // Eski alohida Face tugmasini olib tashlash
         foot.querySelectorAll('a.vm-face-status').forEach((el) => el.remove());
 
-        const profil = foot.querySelector('a[href="/profile.html"], a[href="profile.html"]');
+        const profil = foot.querySelector('a[href="/profile"], a[href="/profile.html"], a[href="profile.html"]');
         if (!profil) return;
 
         profil.classList.add('nav-profil-row');
@@ -247,7 +247,7 @@ function vmApplyChrome(user) {
             panel.style.display = '';
             panel.removeAttribute('hidden');
             panel.textContent = user.role === 'admin_pro' ? 'Admin Pro' : 'Panel';
-            panel.setAttribute('href', '/admin.html');
+            panel.setAttribute('href', '/admin');
         } else {
             panel.style.display = 'none';
             panel.setAttribute('hidden', 'hidden');
@@ -267,7 +267,7 @@ function vmStartHeartbeat() {
     if (window._vmHeartbeat) return;
     window._vmHeartbeat = setInterval(() => {
         fetch('/api/ping', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-            .then(r => { if (r.status === 401) location.replace('/login.html'); })
+            .then(r => { if (r.status === 401) location.replace('/login'); })
             .catch(() => {});
     }, 60000);
 }
@@ -547,7 +547,7 @@ function vmInitHScroll() {
 /** Ichki AI/FAQ yordamchi (login dan tashqari) */
 function vmLoadSupportChat() {
     const path = (location.pathname || '').replace(/\\/g, '/');
-    if (path.endsWith('/login.html')) return;
+    if (/\/login(\.html)?$/.test(path)) return;
     if (window._vmSupportAssets) return;
     window._vmSupportAssets = true;
     const css = document.createElement('link');

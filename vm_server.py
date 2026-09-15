@@ -39,7 +39,7 @@ SEED_PASS = os.environ.get("VM_SEED_PASS", DEFAULT_SEED_PASS)
 SESSIONS_KEY = "auth:sessions"
 SESSION_TOMBS_KEY = "auth:session_tombs"
 
-PUBLIC_PATHS = {"/login.html", "/favicon.ico"}
+PUBLIC_PATHS = {"/login.html", "/login", "/favicon.ico"}
 PUBLIC_PREFIX = ("/fonts/", "/logo/", "/assets/")
 # Frontend assetlar — cookie kutmasdan yuklansin (eski kesh / auth race yo'qoladi)
 PUBLIC_STATIC_EXT = {".js", ".css", ".map", ".woff", ".woff2", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".ico"}
@@ -63,8 +63,30 @@ BLOCKED_NAMES = {
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
+# Toza URL: /fuel → fuel.html (brauzerda .html ko‘rinmasin)
+PAGE_FILE = {
+    "/fuel": "fuel.html",
+    "/live": "live.html",
+    "/attendance": "attendance.html",
+    "/davomat": "attendance.html",
+    "/admin": "admin.html",
+    "/driver": "driver.html",
+    "/profile": "profile.html",
+    "/login": "login.html",
+}
+HTML_CANONICAL = {
+    "fuel.html": "/fuel",
+    "live.html": "/live",
+    "attendance.html": "/attendance",
+    "admin.html": "/admin",
+    "driver.html": "/driver",
+    "profile.html": "/profile",
+    "login.html": "/login",
+    "index.html": "/",
+}
+
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m133"
+VM_BUILD = "m135"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -180,7 +202,7 @@ def find_by_plate(mapping, plate):
 
 def home_for(sess):
     if is_driver(sess):
-        return "/driver.html?vm=%s" % VM_BUILD
+        return "/driver?vm=%s" % VM_BUILD
     # Eski login.html ham shu URL ga o'tadi (d.redirect)
     return "/?vm=%s&t=%d" % (VM_BUILD, int(time.time()))
 
@@ -2752,26 +2774,26 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
       var links=document.querySelectorAll('.nav-rail .nav-links');
       if(!links||!links.length) return;
       links.forEach(function(nav){
-        var link=nav.querySelector('a[href="/live.html"], a[href="live.html"], #nav-live');
+        var link=nav.querySelector('a[href="/live"], a[href="/live.html"], a[href="live.html"], #nav-live');
         if(!link){
           link=document.createElement('a');
-          link.href='/live.html';
+          link.href='/live';
           link.className='nav-link staff-only';
           link.id='nav-live';
           link.textContent='Live';
-          var fuel=nav.querySelector('a[href="/fuel.html"], a[href="fuel.html"]');
-          var dav=nav.querySelector('a[href="/attendance.html"], #nav-davomat');
+          var fuel=nav.querySelector('a[href="/fuel"], a[href="/fuel.html"], a[href="fuel.html"]');
+          var dav=nav.querySelector('a[href="/attendance"], a[href="/attendance.html"], #nav-davomat');
           if(fuel) fuel.insertAdjacentElement('afterend', link);
           else if(dav) dav.insertAdjacentElement('beforebegin', link);
           else nav.appendChild(link);
         } else {
-          link.href='/live.html';
+          link.href='/live';
           link.textContent='Live';
           link.removeAttribute('hidden');
           link.style.display='';
           link.style.visibility='visible';
         }
-        var onLive=(location.pathname||'').indexOf('live.html')>=0;
+        var onLive=/(^|\/)live(\.html)?$/.test(location.pathname||'');
         link.classList.toggle('on', onLive);
       });
     }catch(e){}
@@ -2802,8 +2824,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             html = f.read()
 
         # Live menyu — HTML keshidan mustaqil majburiy inject
-        if 'href="/live.html"' not in html and "href='/live.html'" not in html:
+        if 'href="/live"' not in html and 'href="/live.html"' not in html and "href='/live.html'" not in html:
             for fuel_pat in (
+                '<a class="nav-link" href="/fuel">Boshqaruv</a>',
+                '<a class="nav-link on" href="/fuel" aria-current="page">Boshqaruv</a>',
                 '<a class="nav-link" href="/fuel.html">Boshqaruv</a>',
                 '<a class="nav-link on" href="/fuel.html" aria-current="page">Boshqaruv</a>',
             ):
@@ -2811,7 +2835,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     html = html.replace(
                         fuel_pat,
                         fuel_pat
-                        + '\n      <a class="nav-link" href="/live.html" id="nav-live">Live</a>',
+                        + '\n      <a class="nav-link" href="/live" id="nav-live">Live</a>',
                         1,
                     )
                     break
@@ -3031,6 +3055,16 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path or "/"
+        qs = parsed.query or ""
+
+        # Eski /fuel.html → /fuel (toza manzil)
+        if path.endswith(".html"):
+            name = path.lstrip("/")
+            canon = HTML_CANONICAL.get(name)
+            if canon is not None:
+                loc = canon + (("?" + qs) if qs else "")
+                self.redirect(loc)
+                return
 
         if path.startswith("/api/"):
             self.handle_api_get(path)
@@ -3053,67 +3087,92 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
         sess = None
         # Statik JS/CSS/PNG — session OLMASDAN (tezlik)
-        if self.is_public(path) and path not in ("/login.html",):
-            # login.html alohida (sessiya bo'lsa redirect)
-            if path != "/login.html":
-                return super().do_GET()
+        if self.is_public(path) and path not in ("/login.html", "/login"):
+            return super().do_GET()
 
         sess = self.current_session()
 
-        if path == "/login.html":
+        if path in ("/login", "/login.html"):
             if sess:
                 self.redirect(home_for(sess))
                 return
-            return super().do_GET()
+            return self.serve_page_file("login.html")
 
-        if path in ("/", "/index.html", "/fuel.html", "/live.html"):
+        if path in ("/", "/fuel", "/live"):
             if not sess:
-                self.redirect("/login.html")
+                self.redirect("/login")
                 return
             if is_driver(sess):
-                self.redirect("/driver.html")
+                self.redirect("/driver")
                 return
-            if path == "/fuel.html":
+            if path == "/fuel":
                 return self.serve_patched_html("fuel.html")
-            if path == "/live.html":
+            if path == "/live":
                 return self.serve_patched_html("live.html")
             return self.serve_patched_html("index.html")
 
-        if path == "/attendance.html":
+        if path in ("/attendance", "/davomat"):
             if not sess:
-                self.redirect("/login.html")
+                self.redirect("/login")
                 return
-            return super().do_GET()
+            return self.serve_page_file("attendance.html")
 
-        if path == "/admin.html":
+        if path == "/admin":
             if not sess:
-                self.redirect("/login.html")
+                self.redirect("/login")
                 return
             if not is_staff(sess):
                 self.redirect(home_for(sess))
                 return
-            return super().do_GET()
+            return self.serve_page_file("admin.html")
 
-        if path == "/driver.html":
+        if path == "/driver":
             if not sess:
-                self.redirect("/login.html")
+                self.redirect("/login")
                 return
             if not is_driver(sess) and not is_staff(sess):
                 self.redirect("/")
                 return
-            return super().do_GET()
+            return self.serve_page_file("driver.html")
+
+        if path == "/profile":
+            if not sess:
+                self.redirect("/login")
+                return
+            return self.serve_page_file("profile.html")
 
         if self.is_public(path):
             return super().do_GET()
 
         if not sess:
-            if path.endswith((".html", "/")):
-                self.redirect("/login.html")
+            if path.endswith("/") or path in PAGE_FILE:
+                self.redirect("/login")
             else:
                 self.send_json({"ok": False, "error": "Kirish talab qilinadi"}, 401)
             return
 
         return super().do_GET()
+
+    def serve_page_file(self, filename):
+        """Oddiy HTML sahifa (UTF-8, no-store)."""
+        fp = os.path.join(DIRECTORY, filename)
+        if not os.path.isfile(fp):
+            self.send_error(404, "Not found")
+            return
+        try:
+            with open(fp, "rb") as f:
+                raw = f.read()
+        except OSError:
+            self.send_error(404, "Not found")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("X-VM-Build", VM_BUILD)
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(raw)
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -3158,15 +3217,16 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if path == "/api/live-nav.js":
             js = (
                 "(function(){function go(){try{var ns=document.querySelectorAll('.nav-rail .nav-links');"
-                "ns.forEach(function(nav){var a=nav.querySelector('a[href=\"/live.html\"],#nav-live');"
-                "if(!a){a=document.createElement('a');a.href='/live.html';a.id='nav-live';"
+                "ns.forEach(function(nav){var a=nav.querySelector('a[href=\"/live\"],a[href=\"/live.html\"],#nav-live');"
+                "if(!a){a=document.createElement('a');a.href='/live';a.id='nav-live';"
                 "a.className='nav-link staff-only';a.textContent='Live';"
-                "var f=nav.querySelector('a[href=\"/fuel.html\"]');"
-                "var d=nav.querySelector('a[href=\"/attendance.html\"],#nav-davomat');"
+                "var f=nav.querySelector('a[href=\"/fuel\"],a[href=\"/fuel.html\"]');"
+                "var d=nav.querySelector('a[href=\"/attendance\"],a[href=\"/attendance.html\"],#nav-davomat');"
                 "if(f)f.insertAdjacentElement('afterend',a);"
                 "else if(d)d.insertAdjacentElement('beforebegin',a);else nav.appendChild(a);}"
-                "a.href='/live.html';a.textContent='Live';a.removeAttribute('hidden');"
-                "a.style.display='';a.style.visibility='visible';});"
+                "a.href='/live';a.textContent='Live';a.removeAttribute('hidden');"
+                "a.style.display='';a.style.visibility='visible';"
+                "a.classList.toggle('on',/(^|\\/)live(\\.html)?$/.test(location.pathname||''));});"
                 "}catch(e){}}go();"
                 "document.addEventListener('DOMContentLoaded',go);setInterval(go,30000);})();"
             )
@@ -4537,6 +4597,32 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             pub = dict(saved)
             pub.pop("office_qr_secret", None)
             self.send_json({"ok": True, "settings": pub})
+            return
+
+        if path == "/api/attendance/record":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            uid = str(body.get("userId") or body.get("user_id") or "").strip()
+            users = STORE.list_users(viewer_role=sess.get("role"))
+            meta = next((u for u in users if str(u.get("id")) == uid), {})
+            result, err = ATTENDANCE.admin_save_record(
+                editor=sess,
+                user_id=uid,
+                date=str(body.get("date") or ""),
+                in_time=str(body.get("inTime") or body.get("in_time") or ""),
+                out_time=str(body.get("outTime") or body.get("out_time") or ""),
+                holat=str(body.get("holat") or body.get("status") or "auto"),
+                note=str(body.get("note") or body.get("izoh") or ""),
+                user_meta=meta,
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json(result)
             return
 
         self.send_json({"ok": False, "error": "Not found"}, 404)

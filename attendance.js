@@ -1305,6 +1305,8 @@
       late: 'Kechikdi',
       done: 'Kelgan',
       absent: 'Kelmagan',
+      vacation: "Ta'til",
+      no_out: 'Kelgan',
       future: '—'
     })[s] || s;
   }
@@ -1312,8 +1314,102 @@
   function statusBadgeClass(s) {
     if (s === 'late') return 'late';
     if (s === 'absent') return 'absent';
-    if (s === 'in' || s === 'done') return 'done';
+    if (s === 'vacation') return 'vacation';
+    if (s === 'in' || s === 'done' || s === 'no_out') return 'done';
     return s || '';
+  }
+
+  let hbEditRow = null;
+
+  function bindHbTableActions(box) {
+    if (!box) return;
+    box.querySelectorAll('[data-hb-edit]').forEach((el) => {
+      bindTap(el, () => {
+        try {
+          openHbEditModal(JSON.parse(el.getAttribute('data-hb-edit') || '{}'));
+        } catch (e) {
+          msg('Tahrir ochilmadi', 'err');
+        }
+      });
+    });
+  }
+
+  function refreshHisobotBox(box, data) {
+    if (!box) return;
+    box.innerHTML = renderHisobotHtml(data);
+    bindHbTableActions(box);
+  }
+
+  function openHbEditModal(row) {
+    if (!row || !row.userId) return;
+    hbEditRow = row;
+    const modal = document.getElementById('hb-edit-modal');
+    const sub = document.getElementById('hb-edit-sub');
+    const inEl = document.getElementById('hb-edit-in');
+    const outEl = document.getElementById('hb-edit-out');
+    const holatEl = document.getElementById('hb-edit-holat');
+    const noteEl = document.getElementById('hb-edit-note');
+    if (!modal || !sub || !inEl || !outEl || !holatEl || !noteEl) return;
+    sub.textContent = (row.name || row.username || 'Xodim') + ' · ' + (row.date || '');
+    inEl.value = row.inAt || '';
+    outEl.value = row.outAt || '';
+    holatEl.value = row.holatMode || 'auto';
+    noteEl.value = row.note || '';
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('hb-modal-open');
+    inEl.focus();
+  }
+
+  function closeHbEditModal() {
+    const modal = document.getElementById('hb-edit-modal');
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('hb-modal-open');
+    hbEditRow = null;
+  }
+
+  async function saveHbEditModal() {
+    if (!hbEditRow) return;
+    const inEl = document.getElementById('hb-edit-in');
+    const outEl = document.getElementById('hb-edit-out');
+    const holatEl = document.getElementById('hb-edit-holat');
+    const noteEl = document.getElementById('hb-edit-note');
+    const saveBtn = document.getElementById('hb-edit-save');
+    if (!inEl || !outEl || !holatEl || !noteEl) return;
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      await api('/api/attendance/record', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: hbEditRow.userId,
+          date: hbEditRow.date,
+          inTime: inEl.value.trim(),
+          outTime: outEl.value.trim(),
+          holat: holatEl.value,
+          note: noteEl.value.trim()
+        })
+      });
+      closeHbEditModal();
+      msg('Davomat saqlandi', 'ok');
+      await loadHisobot(true);
+    } catch (e) {
+      msg(e.message || 'Saqlash xato', 'err');
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
+  function initHbEditModal() {
+    const closeBtn = document.getElementById('hb-edit-close');
+    const cancelBtn = document.getElementById('hb-edit-cancel');
+    const saveBtn = document.getElementById('hb-edit-save');
+    const backdrop = document.getElementById('hb-edit-backdrop');
+    if (closeBtn) bindTap(closeBtn, closeHbEditModal);
+    if (cancelBtn) bindTap(cancelBtn, closeHbEditModal);
+    if (backdrop) bindTap(backdrop, closeHbEditModal);
+    if (saveBtn) bindTap(saveBtn, () => saveHbEditModal());
   }
 
   function shiftDateIso(iso, deltaDays) {
@@ -1411,7 +1507,15 @@
               <td class="mono hb-early">${r.early_in_txt ? esc(r.early_in_txt) : '—'}</td>
               <td class="mono hb-early-out">${r.early_out_txt ? esc(r.early_out_txt) : '—'}</td>
               <td class="mono hb-late-out">${r.late_out_txt ? esc(r.late_out_txt) : '—'}</td>
-              <td><button type="button" class="att-link-btn" data-person="${esc(r.userId)}" title="Tahrirlash / oylik">✎</button></td>
+              <td><button type="button" class="att-link-btn hb-edit-btn" data-hb-edit="${esc(JSON.stringify({
+                userId: r.userId,
+                date: r.date,
+                name: r.name || r.username,
+                inAt: r.inAt || '',
+                outAt: r.outAt || '',
+                holatMode: r.holatMode || 'auto',
+                note: r.note || ''
+              }))}" title="Tahrirlash">✎</button></td>
             </tr>`).join('') || `<tr><td colspan="${showDate ? 13 : 12}">Ma’lumot yo‘q</td></tr>`}
         </tbody>
       </table></div>`;
@@ -1968,12 +2072,7 @@
     if (hbStatus) hbStatus.addEventListener('change', () => {
       hisobotStatus = hbStatus.value || 'all';
       const box = document.getElementById('att-report');
-      if (box && HISOBOT) {
-        box.innerHTML = renderHisobotHtml(HISOBOT);
-        box.querySelectorAll('[data-person]').forEach((el) => {
-          bindTap(el, () => openPerson(el.getAttribute('data-person')));
-        });
-      }
+      if (box && HISOBOT) refreshHisobotBox(box, HISOBOT);
     });
     if (hbQ) {
       let t = null;
@@ -1982,12 +2081,7 @@
         clearTimeout(t);
         t = setTimeout(() => {
           const box = document.getElementById('att-report');
-          if (box && HISOBOT) {
-            box.innerHTML = renderHisobotHtml(HISOBOT);
-            box.querySelectorAll('[data-person]').forEach((el) => {
-              bindTap(el, () => openPerson(el.getAttribute('data-person')));
-            });
-          }
+          if (box && HISOBOT) refreshHisobotBox(box, HISOBOT);
         }, 180);
       });
     }
@@ -2551,10 +2645,7 @@
 
     const cacheKey = [period, date, from, to].join('|');
     if (!force && HISOBOT && HISOBOT._cacheKey === cacheKey) {
-      box.innerHTML = renderHisobotHtml(HISOBOT);
-      box.querySelectorAll('[data-person]').forEach((el) => {
-        bindTap(el, () => openPerson(el.getAttribute('data-person')));
-      });
+      refreshHisobotBox(box, HISOBOT);
       return;
     }
     box.innerHTML = `<p class="att-hint">Yuklanmoqda…</p>`;
@@ -2568,10 +2659,7 @@
       const d = await api(url);
       d._cacheKey = cacheKey;
       HISOBOT = d;
-      box.innerHTML = renderHisobotHtml(d);
-      box.querySelectorAll('[data-person]').forEach((el) => {
-        bindTap(el, () => openPerson(el.getAttribute('data-person')));
-      });
+      refreshHisobotBox(box, d);
     } catch (e) {
       box.innerHTML = `<p class="att-hint">${esc(e.message || 'Hisobot xato')}</p>`;
     }
@@ -3406,6 +3494,7 @@
   }
 
   async function boot() {
+    initHbEditModal();
     try {
       const user = await vmMe();
       if (typeof vmApplyChrome === 'function') vmApplyChrome(user);

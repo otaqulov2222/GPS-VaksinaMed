@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shell.css?v=27"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="attendance.css?v=45"/>
+<link rel="stylesheet" href="attendance.css?v=46"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -25,14 +25,14 @@
     </div>
     <nav class="nav-links" id="side-nav">
       <a class="nav-link staff-only" href="/" id="nav-vhk" hidden>Dashboard</a>
-      <a class="nav-link staff-only" href="/fuel.html" id="nav-fuel" hidden>Boshqaruv</a>
-      <a class="nav-link staff-only" href="/live.html" id="nav-live" hidden>Live</a>
-      <a class="nav-link on" href="/attendance.html" id="nav-davomat" aria-current="page">Davomat</a>
-      <a class="nav-link staff-only" href="/admin.html" id="btn-admin-panel" hidden>Admin panel</a>
-      <a class="nav-link driver-only" href="/driver.html" id="nav-driver" hidden>Kabinet</a>
+      <a class="nav-link staff-only" href="/fuel" id="nav-fuel" hidden>Boshqaruv</a>
+      <a class="nav-link staff-only" href="/live" id="nav-live" hidden>Live</a>
+      <a class="nav-link on" href="/attendance" id="nav-davomat" aria-current="page">Davomat</a>
+      <a class="nav-link staff-only" href="/admin" id="btn-admin-panel" hidden>Admin panel</a>
+      <a class="nav-link driver-only" href="/driver" id="nav-driver" hidden>Kabinet</a>
     </nav>
     <div class="nav-foot">
-      <a class="nav-link" href="/profile.html">Profil</a>
+      <a class="nav-link" href="/profile">Profil</a>
     </div>
   </aside>
 
@@ -100,11 +100,55 @@
 
 <canvas id="att-canvas" hidden></canvas>
 
+<div id="hb-edit-modal" class="hb-modal" hidden aria-hidden="true">
+  <div class="hb-modal-backdrop" id="hb-edit-backdrop"></div>
+  <div class="hb-modal-panel" role="dialog" aria-modal="true" aria-labelledby="hb-edit-title">
+    <div class="hb-modal-head">
+      <div>
+        <h3 id="hb-edit-title">Davomat yozish</h3>
+        <p class="hb-modal-sub" id="hb-edit-sub">—</p>
+      </div>
+      <button type="button" class="hb-modal-x" id="hb-edit-close" aria-label="Yopish">&times;</button>
+    </div>
+    <div class="hb-modal-body">
+      <div class="hb-modal-grid">
+        <label class="hb-modal-fld">
+          <span>Kelish (HH:MM)</span>
+          <input type="text" id="hb-edit-in" inputmode="numeric" placeholder="09:05" maxlength="5">
+        </label>
+        <label class="hb-modal-fld">
+          <span>Ketish (HH:MM)</span>
+          <input type="text" id="hb-edit-out" inputmode="numeric" placeholder="18:12" maxlength="5">
+        </label>
+      </div>
+      <label class="hb-modal-fld">
+        <span>Holat</span>
+        <select id="hb-edit-holat">
+          <option value="auto">Avto (vaqtdan)</option>
+          <option value="present">Kelgan</option>
+          <option value="late">Kech</option>
+          <option value="absent">Kelmagan</option>
+          <option value="vacation">Ta'til</option>
+          <option value="no_out">Ketish yo'q</option>
+        </select>
+      </label>
+      <label class="hb-modal-fld">
+        <span>Izoh</span>
+        <input type="text" id="hb-edit-note" placeholder="Ixtiyoriy" maxlength="500">
+      </label>
+    </div>
+    <div class="hb-modal-foot">
+      <button type="button" class="att-btn att-btn-face" id="hb-edit-cancel">Bekor</button>
+      <button type="button" class="att-btn att-btn-in" id="hb-edit-save">Saqlash</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="auth.js?v=35"></script>
-<script src="attendance.js?v=45"></script>
+<script src="attendance.js?v=46"></script>
 </body>
 </html>

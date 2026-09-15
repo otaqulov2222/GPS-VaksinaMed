@@ -908,16 +908,16 @@ body { overflow-x: clip; }
 
       <a class="nav-link" href="/">Dashboard</a>
 
-      <a class="nav-link" href="/fuel.html">Boshqaruv</a>
-      <a class="nav-link" href="/live.html">Live</a>
-      <a class="nav-link" href="/attendance.html" id="nav-davomat">Davomat</a>
+      <a class="nav-link" href="/fuel">Boshqaruv</a>
+      <a class="nav-link" href="/live">Live</a>
+      <a class="nav-link" href="/attendance" id="nav-davomat">Davomat</a>
 
-      <a class="nav-link on" href="/admin.html" aria-current="page">Panel</a>
+      <a class="nav-link on" href="/admin" aria-current="page">Panel</a>
 
     </nav>
 
     <div class="nav-foot">
-      <a class="nav-link" href="/profile.html">Profil</a>
+      <a class="nav-link" href="/profile">Profil</a>
     </div>
 
 </aside>
@@ -1814,7 +1814,7 @@ async function loadAll() {
         ? `<span class="cred">${esc(u.password)}</span>`
         : (u.hasPassword ? `<span class="cred empty">Nomaʼlum*</span>` : '—'));
     const view = u.role === 'driver' && u.car
-      ? `<a class="btn btn-sm" href="/driver.html?car=${encodeURIComponent(u.car)}">Kabinet</a>`
+      ? `<a class="btn btn-sm" href="/driver?car=${encodeURIComponent(u.car)}">Kabinet</a>`
       : '';
     const acts = !canManage
       ? `<div class="row-btns"><button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button></div>`
@@ -3099,7 +3099,7 @@ if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document);
 
   if (!me || (me.role !== 'admin_pro' && me.role !== 'admin')) {
 
-    if (me && me.role === 'driver') location.replace('/driver.html');
+    if (me && me.role === 'driver') location.replace('/driver');
 
     else location.replace('/');
 
