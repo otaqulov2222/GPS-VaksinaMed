@@ -86,7 +86,7 @@ HTML_CANONICAL = {
 }
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m136"
+VM_BUILD = "m137"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -3472,6 +3472,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             s = dict(ATTENDANCE.settings())
             s.pop("office_qr_secret", None)
+            # Ofis lat/lng faqat Admin Pro
+            if sess.get("role") != "admin_pro":
+                office = dict(s.get("office") or {})
+                office.pop("lat", None)
+                office.pop("lng", None)
+                s["office"] = office
+            s["officeCoordsVisible"] = sess.get("role") == "admin_pro"
             self.send_json({"ok": True, "settings": s})
             return
 
@@ -4592,11 +4599,41 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not ATTENDANCE:
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
-            saved = ATTENDANCE.save_settings(body if isinstance(body, dict) else {})
+            patch = body if isinstance(body, dict) else {}
+            # Oddiy admin ofis koordinatasini o'zgartira olmasin
+            if sess.get("role") != "admin_pro" and isinstance(patch.get("office"), dict):
+                patch = dict(patch)
+                office = dict(patch["office"])
+                office.pop("lat", None)
+                office.pop("lng", None)
+                patch["office"] = office
+            saved = ATTENDANCE.save_settings(patch)
             # Sirni javobda yubormaslik
             pub = dict(saved)
             pub.pop("office_qr_secret", None)
+            if sess.get("role") != "admin_pro":
+                office = dict(pub.get("office") or {})
+                office.pop("lat", None)
+                office.pop("lng", None)
+                pub["office"] = office
+            pub["officeCoordsVisible"] = sess.get("role") == "admin_pro"
             self.send_json({"ok": True, "settings": pub})
+            return
+
+        if path == "/api/attendance/geo-check":
+            sess = self.require_user()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            self.send_json(
+                ATTENDANCE.probe_gps(
+                    body.get("lat"),
+                    body.get("lng"),
+                    body.get("accuracy"),
+                )
+            )
             return
 
         if path == "/api/attendance/record":
@@ -4607,8 +4644,17 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
             uid = str(body.get("userId") or body.get("user_id") or "").strip()
+            if not uid:
+                self.send_json({"ok": False, "error": "Xodim tanlanmagan"}, 400)
+                return
             users = STORE.list_users(viewer_role=sess.get("role"))
-            meta = next((u for u in users if str(u.get("id")) == uid), {})
+            meta = next((u for u in users if str(u.get("id")) == uid), None)
+            if not meta:
+                self.send_json(
+                    {"ok": False, "error": "Xodim topilmadi yoki ruxsat yo'q"},
+                    404,
+                )
+                return
             result, err = ATTENDANCE.admin_save_record(
                 editor=sess,
                 user_id=uid,

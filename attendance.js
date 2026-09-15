@@ -38,6 +38,8 @@
   let hisobotQ = '';
   let PERSON = null;
   let geoWatchId = null;
+  let geoProbeTimer = null;
+  let geoProbeSeq = 0;
   let clockId = null;
   let attMap = null;
   let attMapCircle = null;
@@ -158,12 +160,22 @@
 
   function officeInfo() {
     const o = (STATE && STATE.settings && STATE.settings.office) || {};
+    const lat = o.lat != null && o.lat !== '' ? Number(o.lat) : NaN;
+    const lng = o.lng != null && o.lng !== '' ? Number(o.lng) : NaN;
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
     return {
-      lat: Number(o.lat) || 41.219119,
-      lng: Number(o.lng) || 69.272688,
+      hasCoords,
+      lat: hasCoords ? lat : null,
+      lng: hasCoords ? lng : null,
       radius: Math.max(50, Number(o.radius_m) || 100),
       label: o.label || 'VaksinaMed ofis'
     };
+  }
+
+  function canSeeOfficeCoords() {
+    const u = (STATE && STATE.user) || window.VM_USER || {};
+    if (u.role === 'admin_pro') return true;
+    return !!(STATE && STATE.settings && STATE.settings.officeCoordsVisible);
   }
 
   function userDisplayName() {
@@ -237,15 +249,73 @@
 
   function applyGeoFix(lat, lng, accuracy) {
     const off = officeInfo();
-    const dist = haversineM(lat, lng, off.lat, off.lng);
-    const inside = dist <= off.radius;
+    if (off.hasCoords) {
+      const dist = haversineM(lat, lng, off.lat, off.lng);
+      const inside = dist <= off.radius;
+      geoLive = {
+        inside, dist, accuracy: accuracy || null, lat, lng, err: null,
+        status: inside ? 'ok' : 'out'
+      };
+      paintGeoUI();
+      updateAttMap(lat, lng);
+      paintMapOverlay();
+      return;
+    }
+    // Koordinata yashirin — server probe (soxtalashtirishga qarshi)
     geoLive = {
-      inside, dist, accuracy: accuracy || null, lat, lng, err: null,
-      status: inside ? 'ok' : 'out'
+      inside: geoLive && geoLive.inside === true ? true : null,
+      dist: geoLive && geoLive.dist != null ? geoLive.dist : null,
+      accuracy: accuracy || null,
+      lat, lng, err: null,
+      status: (geoLive && geoLive.inside === true) ? 'ok' : 'load'
     };
     paintGeoUI();
     updateAttMap(lat, lng);
     paintMapOverlay();
+    scheduleGeoProbe(lat, lng, accuracy);
+  }
+
+  function scheduleGeoProbe(lat, lng, accuracy) {
+    if (geoProbeTimer) clearTimeout(geoProbeTimer);
+    geoProbeTimer = setTimeout(() => { runGeoProbe(lat, lng, accuracy); }, 350);
+  }
+
+  async function runGeoProbe(lat, lng, accuracy) {
+    const seq = ++geoProbeSeq;
+    try {
+      const r = await api('/api/attendance/geo-check', {
+        method: 'POST',
+        body: JSON.stringify({ lat, lng, accuracy }),
+        noRedirect: true
+      });
+      if (seq !== geoProbeSeq) return;
+      if (geoLive.lat !== lat || geoLive.lng !== lng) return;
+      const inside = !!r.inside;
+      geoLive = {
+        inside,
+        dist: r.distance_m != null ? Number(r.distance_m) : null,
+        accuracy: accuracy || null,
+        lat, lng, err: null,
+        status: inside ? 'ok' : 'out'
+      };
+      if (r.radius_m != null && STATE && STATE.settings && STATE.settings.office) {
+        STATE.settings.office.radius_m = r.radius_m;
+      }
+      paintGeoUI();
+      updateAttMap(lat, lng);
+      paintMapOverlay();
+    } catch (e) {
+      if (seq !== geoProbeSeq) return;
+      geoLive = {
+        inside: false,
+        dist: null,
+        accuracy: accuracy || null,
+        lat, lng,
+        err: (e && e.message) || 'Zona tekshiruvi xato',
+        status: 'err'
+      };
+      paintGeoUI();
+    }
   }
 
   function applyGeoError(err) {
@@ -429,32 +499,37 @@
     const el = document.getElementById('av-map');
     if (!el || !window.L) return;
     const off = officeInfo();
-    attMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([off.lat, off.lng], 16);
+    const startLat = off.hasCoords ? off.lat : (geoLive.lat != null ? geoLive.lat : 41.31);
+    const startLng = off.hasCoords ? off.lng : (geoLive.lng != null ? geoLive.lng : 69.24);
+    attMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([startLat, startLng], off.hasCoords ? 16 : 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19
     }).addTo(attMap);
-    attMapCircle = L.circle([off.lat, off.lng], {
-      radius: off.radius,
-      color: '#1a5fb4',
-      fillColor: '#3b82f6',
-      fillOpacity: 0.12,
-      weight: 2.5,
-      interactive: false
-    }).addTo(attMap);
-    attMapOffice = L.marker([off.lat, off.lng], {
-      icon: pinIcon('Ofis', 'office'),
-      zIndexOffset: 200
-    }).addTo(attMap).bindPopup('<b>' + off.label + '</b><br>Radius: ' + off.radius + ' m');
-    // Popup emas — title tooltip yetarli; marker faqat bitta nuqta
-    styleZoneCircle(geoLive.inside);
+    if (off.hasCoords) {
+      attMapCircle = L.circle([off.lat, off.lng], {
+        radius: off.radius,
+        color: '#1a5fb4',
+        fillColor: '#3b82f6',
+        fillOpacity: 0.12,
+        weight: 2.5,
+        interactive: false
+      }).addTo(attMap);
+      attMapOffice = L.marker([off.lat, off.lng], {
+        icon: pinIcon('Ofis', 'office'),
+        zIndexOffset: 200
+      }).addTo(attMap).bindPopup('<b>' + off.label + '</b><br>Radius: ' + off.radius + ' m');
+      styleZoneCircle(geoLive.inside);
+      try {
+        attMap.fitBounds(attMapCircle.getBounds().pad(0.12));
+      } catch (e) {}
+    } else {
+      attMapCircle = null;
+      attMapOffice = null;
+    }
     setTimeout(() => {
       try { attMap.invalidateSize(); } catch (e) {}
       attachLocateControl();
     }, 80);
-    // Radius toʻliq kórinsin
-    try {
-      attMap.fitBounds(attMapCircle.getBounds().pad(0.12));
-    } catch (e) {}
     if (geoLive.lat != null) updateAttMap(geoLive.lat, geoLive.lng);
     paintMapOverlay();
   }
@@ -479,13 +554,20 @@
 
     try {
       const off = officeInfo();
-      const b = L.latLngBounds([
-        [off.lat, off.lng],
-        [lat, lng]
-      ]);
-      if (attMapCircle) b.extend(attMapCircle.getBounds());
-      if (!attMapFitted) {
-        attMap.fitBounds(b.pad(0.18));
+      if (off.hasCoords) {
+        const b = L.latLngBounds([
+          [off.lat, off.lng],
+          [lat, lng]
+        ]);
+        if (attMapCircle) b.extend(attMapCircle.getBounds());
+        if (!attMapFitted) {
+          attMap.fitBounds(b.pad(0.18));
+          attMapFitted = true;
+        } else {
+          attMap.panTo([lat, lng], { animate: true });
+        }
+      } else if (!attMapFitted) {
+        attMap.setView([lat, lng], 17);
         attMapFitted = true;
       } else {
         attMap.panTo([lat, lng], { animate: true });
@@ -2914,25 +2996,33 @@
           <div class="fld"><label>Ofis nomi</label><input id="s-label" value="${esc(o.label || '')}"></div>
         </div>
         <div class="row2">
-          <div class="fld"><label>Ofis lat</label><input id="s-lat" value="${esc(o.lat || '')}"></div>
-          <div class="fld"><label>Ofis lng</label><input id="s-lng" value="${esc(o.lng || '')}"></div>
-        </div>
-        <div class="row2">
           <div class="fld"><label>Radius (m)</label><input id="s-radius" type="number" value="${esc(o.radius_m || 100)}"></div>
           <div class="fld"></div>
         </div>
+        ${canSeeOfficeCoords() ? `
+        <div class="row2">
+          <div class="fld"><label>Ofis lat</label><input id="s-lat" value="${esc(o.lat || '')}"></div>
+          <div class="fld"><label>Ofis lng</label><input id="s-lng" value="${esc(o.lng || '')}"></div>
+        </div>
+        <p class="att-hint">Koordinata faqat Admin Pro uchun. Oddiy admin ko‘ra olmaydi.</p>
+        ` : `
+        <p class="att-hint">Ofis koordinatasi yashirilgan (faqat Admin Pro sozlaydi). Geozona serverda tekshiriladi.</p>
+        `}
         <button type="button" class="att-btn att-btn-in" id="btn-save-set" style="margin-top:8px">Saqlash</button>
-        <button type="button" class="att-btn att-btn-face" id="btn-here" style="margin-top:8px">Hozirgi joyimni ofis qil</button>
+        ${canSeeOfficeCoords() ? `<button type="button" class="att-btn att-btn-face" id="btn-here" style="margin-top:8px">Hozirgi joyimni ofis qil</button>` : ''}
       `;
       document.getElementById('btn-save-set').onclick = saveSettings;
-      document.getElementById('btn-here').onclick = async () => {
-        try {
-          const g = await getGps();
-          document.getElementById('s-lat').value = String(g.lat);
-          document.getElementById('s-lng').value = String(g.lng);
-          msg('Lat/lng yozildi — Saqlash bosing', 'info');
-        } catch (e) { msg(e.message, 'err'); }
-      };
+      const btnHere = document.getElementById('btn-here');
+      if (btnHere) {
+        btnHere.onclick = async () => {
+          try {
+            const g = await getGps();
+            document.getElementById('s-lat').value = String(g.lat);
+            document.getElementById('s-lng').value = String(g.lng);
+            msg('Lat/lng yozildi — Saqlash bosing', 'info');
+          } catch (e) { msg(e.message, 'err'); }
+        };
+      }
       try {
         await renderOfficeQrPoster(qr);
         const st = document.getElementById('office-qr-status');
@@ -3438,6 +3528,16 @@
 
   async function saveSettings() {
     try {
+      const office = {
+        radius_m: document.getElementById('s-radius').value,
+        label: document.getElementById('s-label').value
+      };
+      const latEl = document.getElementById('s-lat');
+      const lngEl = document.getElementById('s-lng');
+      if (canSeeOfficeCoords() && latEl && lngEl) {
+        office.lat = latEl.value;
+        office.lng = lngEl.value;
+      }
       const body = {
         in_start: document.getElementById('s-in-start').value,
         late_grace_min: Number(document.getElementById('s-grace').value || 15),
@@ -3446,12 +3546,7 @@
         out_end: document.getElementById('s-out-end').value,
         require_face: false,
         require_qr: true,
-        office: {
-          lat: document.getElementById('s-lat').value,
-          lng: document.getElementById('s-lng').value,
-          radius_m: document.getElementById('s-radius').value,
-          label: document.getElementById('s-label').value
-        }
+        office
       };
       await api('/api/attendance/settings', { method: 'POST', body: JSON.stringify(body) });
       msg('Sozlamalar saqlandi', 'ok');

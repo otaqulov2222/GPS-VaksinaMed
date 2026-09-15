@@ -1524,9 +1524,43 @@ class AttendanceStore:
             "settings": self.public_settings(),
         }
 
+    def probe_gps(
+        self,
+        lat: float | None,
+        lng: float | None,
+        accuracy: float | None = None,
+    ) -> dict:
+        """Klientga ofis lat/lng bermasdan ichida/tashqarida tekshiradi."""
+        settings = self.settings()
+        ok, dist, err = self._gps_inside_office(settings, lat, lng, accuracy)
+        office = settings.get("office") or {}
+        try:
+            radius = float(office.get("radius_m") or 100)
+        except (TypeError, ValueError):
+            radius = 100.0
+        out = {
+            "ok": True,
+            "inside": bool(ok),
+            "distance_m": round(float(dist), 1) if dist is not None else None,
+            "radius_m": radius,
+        }
+        if err:
+            out["message"] = err
+        return out
+
     def public_settings(self, user: dict | None = None) -> dict:
         s = self.settings_for_user(user) if user else self.settings()
         office = s.get("office") or {}
+        role = str((user or {}).get("role") or "").strip().lower()
+        # Aniq ofis koordinatasi faqat Admin Pro ga (soxtalashtirishni qiyinlashtirish)
+        office_out = {
+            "label": office.get("label"),
+            "radius_m": office.get("radius_m"),
+        }
+        coords_visible = role == "admin_pro"
+        if coords_visible:
+            office_out["lat"] = office.get("lat")
+            office_out["lng"] = office.get("lng")
         return {
             "enabled": bool(s.get("enabled", True)),
             "require_gps": bool(s.get("require_gps", True)),
@@ -1539,12 +1573,8 @@ class AttendanceStore:
             "late_grace_min": int(s.get("late_grace_min") or 15),
             "out_start": s.get("out_start"),
             "out_end": s.get("out_end"),
-            "office": {
-                "label": office.get("label"),
-                "radius_m": office.get("radius_m"),
-                "lat": office.get("lat"),
-                "lng": office.get("lng"),
-            },
+            "office": office_out,
+            "officeCoordsVisible": coords_visible,
             "serverNow": now_tz().isoformat(timespec="seconds"),
             "today": today_str(),
             "scheduleNote": (
