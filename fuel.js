@@ -825,6 +825,37 @@ async function saveMonth(opts) {
   }
 }
 
+function docsSeedNeedsApply() {
+  const seed = window.VM_DOCS_SEED;
+  if (!seed || typeof seed !== 'object') return false;
+  const docs = STATE.meta.docs || {};
+  const c083 = docs['01 083 XJA'] && docs['01 083 XJA'].insurance;
+  if (!c083 || c083.due !== '2027-09-02') return true;
+  const t331 = docs['01 331 MLA'] && docs['01 331 MLA'].tech;
+  if (!t331 || t331.due !== '2026-06-28') return true;
+  const c844 = docs['01 844 FKA'] && docs['01 844 FKA'].insurance;
+  if (!c844 || c844.due !== '2026-12-14') return true;
+  return false;
+}
+
+async function applyDocsSeedToMeta() {
+  const seed = window.VM_DOCS_SEED;
+  if (!seed || typeof seed !== 'object') return false;
+  if (!docsSeedNeedsApply()) return false;
+  STATE.meta.docs = STATE.meta.docs || {};
+  Object.keys(seed).forEach((plate) => {
+    STATE.meta.docs[plate] = seed[plate];
+  });
+  try {
+    await saveMeta();
+    toast('Hujjat muddatlari skren jadvalidan yuklandi');
+    return true;
+  } catch (e) {
+    console.warn('docs seed save', e);
+    return false;
+  }
+}
+
 async function loadAll() {
   const now = new Date();
   STATE.month = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
@@ -836,6 +867,7 @@ async function loadAll() {
     vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(STATE.month)).catch(() => ({ days: {} }))
   ]);
   STATE.meta = normalizeMeta(meta.meta);
+  await applyDocsSeedToMeta();
   if (typeof applyFleetNameOverrides === 'function') {
     applyFleetNameOverrides(STATE.meta.vehicles || {});
   }
