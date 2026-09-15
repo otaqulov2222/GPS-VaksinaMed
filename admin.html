@@ -2556,21 +2556,16 @@ async function loadPharms() {
 
 
 async function savePharms() {
-
   const d = await vmApi('/api/office/pharmacies', {
-
     method: 'POST',
-
     body: JSON.stringify({ pharmacies: PHARMS })
-
   });
-
   PHARMS = d.pharmacies || PHARMS;
-
   renderPharms();
-
   renderGpsPlaces();
-
+  if (d && d.durable === false) {
+    phNotify('Saqlandi, lekin DB emas (lokal fayl). DATABASE_URL tekshiring.', false);
+  }
 }
 
 

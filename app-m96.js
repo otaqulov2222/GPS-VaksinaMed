@@ -2904,8 +2904,11 @@ async function syncFromGPS(dateVal, cfg, opts) {
         renderCalendar(); renderDriverTabs(); refreshUI();
         if (window.VMOffice) {
             VMOffice.renderFleetBoard();
-            await VMOffice.saveReport(dateVal);
+            const saved = await VMOffice.saveReport(dateVal);
             if (cancelled()) return;
+            if (!saved && !silent) {
+                showToast('GPS yuklandi, lekin serverga yozilmadi — qayta urinib ko\'ring.', 'warn');
+            }
             if (!skipDigest) VMOffice.sendDigest(dateVal);
         }
 
@@ -3845,7 +3848,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Yoqilg'i normalarini saqlash
-    document.getElementById('btn-save-settings')?.addEventListener('click', () => {
+    document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
         document.querySelectorAll('[data-fuel-car]').forEach(row => {
             const car   = row.dataset.fuelCar;
             const gas   = parseFloat(row.querySelector('.fuel-gas')?.value) || 14;
@@ -3855,7 +3858,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             STATE.fuelNorms[car].benzin = ben;
         });
         saveAll();
-        showToast('✅ Sozlamalar saqlandi!', 'success');
+        let ok = true;
+        if (window.VMOffice && typeof VMOffice.saveDashboardSettings === 'function') {
+            ok = await VMOffice.saveDashboardSettings(STATE.fuelNorms);
+        }
+        showToast(ok ? '✅ Sozlamalar bazaga saqlandi!' : '⚠️ Lokal saqlandi, server xato', ok ? 'success' : 'warn');
         document.getElementById('modal-settings').classList.remove('open');
     });
 
@@ -3899,6 +3906,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     renderDriverTabs();
                     refreshUI();
                     showToast('Zaxira yuklandi, serverga sinxronlanmoqda...', 'info');
+                    if (p.fuelNorms && window.VMOffice && typeof VMOffice.saveDashboardSettings === 'function') {
+                        await VMOffice.saveDashboardSettings(STATE.fuelNorms);
+                    }
                     const sync = await syncReportsToServer(dates);
                     showToast(`Zaxira: ${dates.length} kun · server ${sync.ok} ta`, sync.fail ? 'warn' : 'success');
                 } else { showToast('Fayl formati noto\'g\'ri!', 'error'); }

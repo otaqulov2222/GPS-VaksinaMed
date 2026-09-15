@@ -68,8 +68,16 @@ const VMOffice = {
             if (d.gps && typeof d.gps === 'object') {
                 this.gpsStatus = d.gps;
             }
+            this.persistInfo = d.persist || null;
+            if (d.fuelNorms && typeof d.fuelNorms === 'object' && Object.keys(d.fuelNorms).length) {
+                STATE.fuelNorms = Object.assign({}, STATE.fuelNorms || {}, d.fuelNorms);
+                if (typeof saveAll === 'function') saveAll();
+            }
             if (!STATE.pharmacies.length) {
                 STATE.pharmacies = this.seedFromDrivers();
+            }
+            if (d.persist && d.persist.durable === false && typeof showToast === 'function') {
+                showToast('Diqqat: ma\'lumotlar DB emas — faqat lokal fayl. DATABASE_URL tekshiring.', 'warn');
             }
         } catch (e) {
             console.warn('office bootstrap:', e);
@@ -93,6 +101,53 @@ const VMOffice = {
             }
         }
         if (STATE.currentDate) await this.loadReportIfNeeded(STATE.currentDate);
+    },
+
+    async saveReport(dateVal, opts) {
+        opts = opts || {};
+        if (!dateVal || !STATE.data[dateVal]) return false;
+        let lastErr = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const res = await vmApi('/api/office/report', {
+                    method: 'POST',
+                    body: JSON.stringify({ date: dateVal, cars: STATE.data[dateVal] })
+                });
+                if (res && res.durable === false && !opts.silent && typeof showToast === 'function' && !this._warnedNonDurable) {
+                    this._warnedNonDurable = true;
+                    showToast('Saqlandi, lekin DB emas (lokal fayl). Prod uchun DATABASE_URL kerak.', 'warn');
+                }
+                return true;
+            } catch (e) {
+                lastErr = e;
+                await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+            }
+        }
+        console.warn('office save:', lastErr);
+        if (!opts.silent && typeof showToast === 'function') {
+            const msg = (lastErr && (lastErr.message || lastErr.error)) || 'xato';
+            showToast('Serverga saqlanmadi: ' + msg + '. Qayta saqlang / internetni tekshiring.', 'error');
+        }
+        return false;
+    },
+
+    async saveDashboardSettings(fuelNorms) {
+        try {
+            const res = await vmApi('/api/office/dashboard-settings', {
+                method: 'POST',
+                body: JSON.stringify({ fuelNorms: fuelNorms || STATE.fuelNorms || {} })
+            });
+            if (res && res.fuelNorms) {
+                STATE.fuelNorms = Object.assign({}, STATE.fuelNorms || {}, res.fuelNorms);
+            }
+            return !!(res && res.ok !== false);
+        } catch (e) {
+            console.warn('dashboard settings:', e);
+            if (typeof showToast === 'function') {
+                showToast('Normallar serverga yozilmadi: ' + (e.message || e), 'error');
+            }
+            return false;
+        }
     },
 
     async loadReportIfNeeded(dateVal, force) {
@@ -166,18 +221,6 @@ const VMOffice = {
             console.warn('office report:', e);
         }
         this.renderFleetBoard();
-    },
-
-    async saveReport(dateVal) {
-        if (!dateVal || !STATE.data[dateVal]) return;
-        try {
-            await vmApi('/api/office/report', {
-                method: 'POST',
-                body: JSON.stringify({ date: dateVal, cars: STATE.data[dateVal] })
-            });
-        } catch (e) {
-            console.warn('office save:', e);
-        }
     },
 
     reviewOf(dateVal, car, st) {

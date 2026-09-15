@@ -1557,6 +1557,51 @@ class OfficeStore:
                 }
             }
 
+    def dashboard_settings(self):
+        """Dashboard sozlamalari (norma va h.k.) — DB da."""
+        with self.lock:
+            data = self._load("office:settings", {})
+            if not isinstance(data, dict):
+                data = {}
+            norms = data.get("fuelNorms")
+            if not isinstance(norms, dict):
+                norms = {}
+            return {"fuelNorms": norms}
+
+    def save_dashboard_settings(self, body, saved_by=""):
+        body = body or {}
+        with self.lock:
+            data = self._load("office:settings", {})
+            if not isinstance(data, dict):
+                data = {}
+            if "fuelNorms" in body and isinstance(body.get("fuelNorms"), dict):
+                # Mashina normalari + default gas/benzin/diesel
+                clean = {}
+                for k, v in body["fuelNorms"].items():
+                    key = str(k or "").strip()[:40]
+                    if not key:
+                        continue
+                    if isinstance(v, dict):
+                        rec = {}
+                        for nk in ("gas", "benzin", "diesel"):
+                            if nk in v:
+                                try:
+                                    rec[nk] = float(v[nk])
+                                except (TypeError, ValueError):
+                                    pass
+                        if rec:
+                            clean[key] = rec
+                    else:
+                        try:
+                            clean[key] = float(v)
+                        except (TypeError, ValueError):
+                            pass
+                data["fuelNorms"] = clean
+            data["dashSavedAt"] = iso_now()
+            data["dashSavedBy"] = str(saved_by or "")[:40]
+            self._save("office:settings", data)
+        return self.dashboard_settings()
+
     def public_telegram(self):
         tg = self.settings()["telegram"]
         return {
@@ -3573,6 +3618,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "gps": OFFICE.gps_status_public(),
                     "persist": STORE.persist_info(),
                     "vehicles": (OFFICE.fuel_meta() or {}).get("vehicles") or {},
+                    "fuelNorms": (OFFICE.dashboard_settings() or {}).get("fuelNorms") or {},
                 }
             )
             return
@@ -3600,6 +3646,18 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 return
             self.send_json({"ok": True, **OFFICE.gps_config_public()})
+            return
+
+        if path == "/api/office/dashboard-settings":
+            sess = self.require_staff()
+            if not sess:
+                return
+            ds = OFFICE.dashboard_settings()
+            self.send_json({
+                "ok": True,
+                "fuelNorms": ds.get("fuelNorms") or {},
+                "durable": bool(STORE.persist_info().get("durable")),
+            })
             return
 
         if path == "/api/office/gps/live":
@@ -3942,7 +4000,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 return
             items = OFFICE.save_pharmacies(body.get("pharmacies") or [])
-            self.send_json({"ok": True, "pharmacies": items})
+            self.send_json({
+                "ok": True,
+                "pharmacies": items,
+                "durable": bool(STORE.persist_info().get("durable")),
+            })
 
             def _reprocess_pharms():
                 try:
@@ -4091,7 +4153,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
                 return
-            self.send_json({"ok": True, "savedAt": payload.get("savedAt")})
+            self.send_json({
+                "ok": True,
+                "savedAt": payload.get("savedAt"),
+                "durable": bool(STORE.persist_info().get("durable")),
+            })
+            return
+
+        if path == "/api/office/dashboard-settings":
+            sess = self.require_staff()
+            if not sess:
+                return
+            saved = OFFICE.save_dashboard_settings(body, sess.get("username"))
+            self.send_json({
+                "ok": True,
+                "fuelNorms": saved.get("fuelNorms") or {},
+                "durable": bool(STORE.persist_info().get("durable")),
+            })
             return
 
         if path == "/api/office/gps/config":

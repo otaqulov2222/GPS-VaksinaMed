@@ -348,6 +348,7 @@ function writeLocalMonth() {
     localStorage.setItem(localMonthKey(STATE.month), JSON.stringify({
       month: STATE.month,
       savedAt: new Date().toISOString(),
+      dirty: !!STATE.dirty,
       cars: carsToSave(),
       meta: STATE.meta
     }));
@@ -361,6 +362,27 @@ function readLocalMonth(ym) {
   } catch (e) {
     return null;
   }
+}
+
+function parseSavedAt(v) {
+  if (!v) return 0;
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Local faqat saqlanmagan (dirty) o'zgarishlar uchun — aks holda DB ustun. */
+function shouldPreferLocalMonth(local, serverCars, serverSavedAt) {
+  if (!local || !local.dirty) return false;
+  const adopted = adoptCars(serverCars);
+  const localCars = (local && local.cars) || {};
+  const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
+  const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
+  if (localN === 0) return false;
+  if (serverN === 0 && localN > 0) return true;
+  const localAt = parseSavedAt(local && local.savedAt);
+  const serverAt = parseSavedAt(serverSavedAt);
+  if (localAt > 0 && serverAt > 0) return localAt > serverAt + 2000;
+  return serverN === 0;
 }
 
 function mergeCarMaps(primary, secondary) {
@@ -858,27 +880,6 @@ function stripLocalFlags(car) {
 function liquidFuelLabel(fuelType) {
   if (fuelType === 'dizel' || fuelType === 'dizel_gaz') return 'DIZEL (l)';
   return 'BENZIN (l)';
-}
-
-function parseSavedAt(v) {
-  if (!v) return 0;
-  const t = Date.parse(String(v));
-  return Number.isFinite(t) ? t : 0;
-}
-
-/** Local faqat: server bo'sh yoki local aniqroq yangi bo'lsa. */
-function shouldPreferLocalMonth(local, serverCars, serverSavedAt) {
-  const adopted = adoptCars(serverCars);
-  const localCars = (local && local.cars) || {};
-  const serverN = Object.keys(adopted).filter(k => carHasContent(adopted[k])).length;
-  const localN = Object.keys(localCars).filter(k => carHasContent(localCars[k])).length;
-  if (localN === 0) return false;
-  if (serverN === 0 && Object.keys(adopted).length === 0) return true;
-  if (serverN === 0 && localN > 0) return true;
-  const localAt = parseSavedAt(local && local.savedAt);
-  const serverAt = parseSavedAt(serverSavedAt);
-  if (localAt > 0 && serverAt > 0) return localAt > serverAt + 2000;
-  return false;
 }
 
 function syncParamsToMeta(plate, car) {
