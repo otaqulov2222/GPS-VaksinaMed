@@ -101,19 +101,14 @@ function vin(v) {
   if (x === 0) return '0';
   return String(x);
 }
-/** Yoqilg‘i maydonlari — foydalanuvchi yozmagan bo‘lsa ham 1,90 ko‘rinsin */
-const DISP_FRAC_DEFAULT = {
-  gasStart: 2, benzinStart: 2, gasIn: 2, benzinIn: 2,
-  gasNorm: 2, benzinNorm: 2, gasKm: 1, km: 1,
-  mixPct: 0, gasPrice: 0, benzinPrice: 0, odo: 0, odoStart: 0, extra: 0
-};
-/** Ekranda ko'rsatish / yozish — vergul bilan; fracDigits bo'lsa 1,90 saqlanadi */
+/** Ekranda ko'rsatish / yozish — vergul bilan; faqat yozilgan aniqlik (7,6 yoki 1,90) */
 function vinDisp(v, fracDigits) {
   if (v == null || v === '') return '';
   const x = cleanFloat(n(v));
   if (!Number.isFinite(x)) return '';
   let frac = fracDigits;
   if (frac == null || frac < 0 || !Number.isFinite(frac)) {
+    // Aniqlik yozilmagan — son qanday bo'lsa shunday (7.6 → 7,6; ortiqcha 0 yo'q)
     if (x === 0) return '0';
     return String(x).replace('.', ',');
   }
@@ -121,7 +116,7 @@ function vinDisp(v, fracDigits) {
   if (x === 0) return frac > 0 ? ('0,' + '0'.repeat(frac)) : '0';
   return x.toFixed(frac).replace('.', ',');
 }
-/** "1,90" → 2; "7," → null (yozilmoqda); "12" → 0 */
+/** "1,90" → 2; "7,6" → 1; "7," → null (yozilmoqda); "12" → 0 */
 function fracDigitsFromRaw(raw) {
   const s = String(raw ?? '').trim().replace(/\s/g, '');
   if (!s || isTypingDecimal(s)) return null;
@@ -135,14 +130,31 @@ function rememberDispFrac(bag, key, raw) {
   if (!bag._dispFrac || typeof bag._dispFrac !== 'object') bag._dispFrac = {};
   bag._dispFrac[key] = f;
 }
-/** Yozilgan aniqlik (_dispFrac) yoki maydon defaulti (gaz 2 xona) */
+/** Faqat foydalanuvchi yozgan aniqlik — default bilan 7,6 ni 7,60 qilmaymiz */
 function dispFracOf(bag, key) {
-  if (bag && bag._dispFrac && typeof bag._dispFrac === 'object') {
-    const f = bag._dispFrac[key];
-    if (f != null && f >= 0 && Number.isFinite(f)) return Math.floor(f);
-  }
-  if (key && DISP_FRAC_DEFAULT[key] != null) return DISP_FRAC_DEFAULT[key];
-  return null;
+  if (!bag || !bag._dispFrac || typeof bag._dispFrac !== 'object') return null;
+  const f = bag._dispFrac[key];
+  if (f == null || f < 0 || !Number.isFinite(f)) return null;
+  return Math.floor(f);
+}
+/** Eski «hamma maydon 2 xona» iflosini bir marta tozalash */
+function clearDispFracInCars(cars) {
+  Object.keys(cars || {}).forEach((k) => {
+    const car = cars[k];
+    if (!car || typeof car !== 'object') return;
+    delete car._dispFrac;
+    Object.keys(car.days || {}).forEach((d) => {
+      if (car.days[d] && typeof car.days[d] === 'object') delete car.days[d]._dispFrac;
+    });
+  });
+}
+function purgePollutedDispFracOnce(cars) {
+  try {
+    if (localStorage.getItem('vm_fuel_disp_frac_v71') === '1') return false;
+    localStorage.setItem('vm_fuel_disp_frac_v71', '1');
+  } catch (_e) { /* baribir tozalaymiz */ }
+  clearDispFracInCars(cars);
+  return true;
 }
 /** Yozish hali tugamaganmi? (7, yoki 7.) — maydonni qayta yozmaslik */
 function isTypingDecimal(raw) {
@@ -852,6 +864,7 @@ async function loadAll() {
     STATE.cars = mergeCarMaps(adopted, localCars);
   }
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
+  if (purgePollutedDispFracOnce(STATE.cars)) STATE.dirty = true;
   if (applyMetaNormsToCars()) STATE.dirty = true;
   if (repairCorruptFuelQuantities()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
@@ -887,6 +900,7 @@ async function changeMonth(ym) {
     ? mergeCarMaps(adoptCars(localCars), adopted)
     : mergeCarMaps(adopted, localCars);
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
+  if (purgePollutedDispFracOnce(STATE.cars)) STATE.dirty = true;
   if (applyMetaNormsToCars()) STATE.dirty = true;
   if (repairCorruptFuelQuantities()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
