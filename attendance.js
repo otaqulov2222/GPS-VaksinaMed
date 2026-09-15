@@ -29,6 +29,13 @@
   let personId = '';
   let personMonth = '';
   let REPORT = null;
+  let HISOBOT = null;
+  let hisobotPeriod = 'day'; // day | week | month | range
+  let hisobotDate = '';
+  let hisobotFrom = '';
+  let hisobotTo = '';
+  let hisobotStatus = 'all';
+  let hisobotQ = '';
   let PERSON = null;
   let geoWatchId = null;
   let clockId = null;
@@ -166,11 +173,15 @@
 
   function userRoleLabel() {
     const u = (STATE && STATE.user) || window.VM_USER || {};
-    const r = u.role || '';
-    if (r === 'admin_pro') return 'Admin Pro';
-    if (r === 'admin') return 'Admin';
-    if (r === 'driver') return 'Haydovchi';
-    return r || 'Xodim';
+    return roleLabel(u.role);
+  }
+
+  function roleLabel(r) {
+    const role = r || '';
+    if (role === 'admin_pro') return 'Admin Pro';
+    if (role === 'admin') return 'Admin';
+    if (role === 'driver') return 'Haydovchi';
+    return role || 'Xodim';
   }
 
   function fmtClock(d) {
@@ -1288,6 +1299,124 @@
     return `<div class="att-kpi ${tone || ''}"><div class="att-kpi-v">${esc(String(value))}</div><div class="att-kpi-l">${esc(label)}</div></div>`;
   }
 
+  function statusLabel(s) {
+    return ({
+      in: 'Kelgan',
+      late: 'Kechikdi',
+      done: 'Kelgan',
+      absent: 'Kelmagan',
+      future: '—'
+    })[s] || s;
+  }
+
+  function statusBadgeClass(s) {
+    if (s === 'late') return 'late';
+    if (s === 'absent') return 'absent';
+    if (s === 'in' || s === 'done') return 'done';
+    return s || '';
+  }
+
+  function shiftDateIso(iso, deltaDays) {
+    try {
+      const p = String(iso).slice(0, 10).split('-').map(Number);
+      const d = new Date(p[0], p[1] - 1, p[2]);
+      d.setDate(d.getDate() + deltaDays);
+      const pad = (n) => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    } catch (e) {
+      return iso;
+    }
+  }
+
+  function renderHisobotHtml(data) {
+    if (!data) return `<p class="att-hint">Yuklanmoqda…</p>`;
+    const st = data.stats || {};
+    const sched = data.schedule || {};
+    const showDate = !!data.showDateCol;
+    const q = String(hisobotQ || '').trim().toLowerCase();
+    const holat = hisobotStatus || 'all';
+    let rows = (data.rows || []).slice();
+    if (holat !== 'all') {
+      rows = rows.filter((r) => {
+        if (holat === 'late') return r.status === 'late' || (r.late_in_min || 0) > 0;
+        if (holat === 'present') return r.status !== 'absent';
+        if (holat === 'absent') return r.status === 'absent';
+        if (holat === 'early_in') return (r.early_in_min || 0) > 0;
+        if (holat === 'early_out') return (r.early_out_min || 0) > 0;
+        if (holat === 'late_out') return (r.late_out_min || 0) > 0;
+        return true;
+      });
+    }
+    if (q) {
+      rows = rows.filter((r) => {
+        const blob = [r.name, r.username, r.lavozim, r.car, roleLabel(r.role)].join(' ').toLowerCase();
+        return blob.indexOf(q) >= 0;
+      });
+    }
+    const periodTitle = ({
+      day: 'Kunlik davomat',
+      week: 'Haftalik davomat',
+      month: 'Oylik davomat',
+      range: 'Oraliq davomat'
+    })[data.period] || 'Davomat';
+    const rangeTxt = data.period === 'day'
+      ? (data.date || '')
+      : ((data.dateFrom || '') + ' — ' + (data.dateTo || ''));
+
+    return `
+      <div class="hb-meta">
+        <div>
+          <div class="hb-title">${esc(periodTitle)} · ${esc(rangeTxt)}</div>
+          <div class="hb-sub">Ko‘rsatilmoqda: ${rows.length} yozuv · jami bazada ${st.people != null ? st.people : '—'}</div>
+        </div>
+        <div class="hb-stats">
+          <span class="hb-stat warn"><b>${st.late_in || 0}</b> Kech keldi</span>
+          <span class="hb-stat ok"><b>${st.early_in || 0}</b> Erta keldi</span>
+          <span class="hb-stat bad"><b>${st.early_out || 0}</b> Erta ketdi</span>
+          <span class="hb-stat info"><b>${st.late_out || 0}</b> Kech ketdi</span>
+          <span class="hb-stat"><b>Reja</b> ${esc(sched.label || '09:00–18:00')}</span>
+        </div>
+      </div>
+      <div class="scroll-x">
+      <table class="att-table hb-table">
+        <thead>
+          <tr>
+            <th>№</th>
+            ${showDate ? '<th>Sana</th>' : ''}
+            <th>F.I.Sh.</th>
+            <th>Lavozim</th>
+            <th>Holat</th>
+            <th>Kelish</th>
+            <th>Ketish</th>
+            <th>Ishlagan</th>
+            <th>Kech keldi</th>
+            <th>Erta keldi</th>
+            <th>Erta ketdi</th>
+            <th>Kech ketdi</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r, i) => `
+            <tr>
+              <td class="mono">${i + 1}</td>
+              ${showDate ? `<td class="mono">${esc(fmtDate(r.date))}</td>` : ''}
+              <td><b>${esc(r.name || r.username || '—')}</b>${r.car ? `<div class="att-sub">${esc(r.car)}</div>` : ''}</td>
+              <td>${esc(r.lavozim || roleLabel(r.role))}</td>
+              <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status))}</span></td>
+              <td class="mono">${r.inAt ? esc(r.inAt) : '—'}</td>
+              <td class="mono">${r.outAt ? esc(r.outAt) : '—'}</td>
+              <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.inAt && !r.outAt ? '…' : '0:00')}</td>
+              <td class="mono hb-late">${r.late_in_txt ? esc(r.late_in_txt) : '—'}</td>
+              <td class="mono hb-early">${r.early_in_txt ? esc(r.early_in_txt) : '—'}</td>
+              <td class="mono hb-early-out">${r.early_out_txt ? esc(r.early_out_txt) : '—'}</td>
+              <td class="mono hb-late-out">${r.late_out_txt ? esc(r.late_out_txt) : '—'}</td>
+              <td><button type="button" class="att-link-btn" data-person="${esc(r.userId)}" title="Tahrirlash / oylik">✎</button></td>
+            </tr>`).join('') || `<tr><td colspan="${showDate ? 13 : 12}">Ma’lumot yo‘q</td></tr>`}
+        </tbody>
+      </table></div>`;
+  }
+
   function renderBoardHtml(d) {
     const rows = (d && d.rows) || [];
     const c = (d && d.counts) || {};
@@ -1309,9 +1438,9 @@
               <td><b>${esc(r.name || r.username)}</b><div class="att-sub">@${esc(r.username || '')}</div></td>
               <td>${esc(roleLabel(r.role))}</td>
               <td class="mono">${esc(r.car || '—')}</td>
-              <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
-              <td class="mono">${r.in ? punchTime(r.in) + (r.in.late ? ' · kech' : '') : '—'}</td>
-              <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
+              <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status))}</span></td>
+              <td class="mono">${r.inAt || (r.in ? punchTime(r.in) : '—')}${r.late_in_txt ? ' · ' + esc(r.late_in_txt) : ''}</td>
+              <td class="mono">${r.outAt || (r.out ? punchTime(r.out) : '—')}</td>
               <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
               <td><button type="button" class="att-link-btn" data-person="${esc(r.userId)}">Oy</button></td>
             </tr>`).join('') || '<tr><td colspan="8">Bo‘sh</td></tr>'}
@@ -1320,51 +1449,7 @@
   }
 
   function renderReportHtml(rep) {
-    if (!rep) return `<p class="att-hint">Yuklanmoqda…</p>`;
-    const s = rep.summary || {};
-    const people = rep.people || [];
-    const dates = rep.dates || [];
-    return `
-      <div class="att-kpi-row">
-        ${kpiCard('Odam', s.people || 0)}
-        ${kpiCard('QR tayyor', s.enrolled || 0, 'ok')}
-        ${kpiCard('Kelgan kunlar', s.presentDays || 0, 'info')}
-        ${kpiCard('Kechikish', s.lateDays || 0, 'warn')}
-        ${kpiCard('Yo‘qlik', s.absentDays || 0, 'bad')}
-        ${kpiCard('O‘rt. kelish', s.avgArrival || '—')}
-      </div>
-      <p class="att-hint" style="margin:0 0 10px">Qatorni bosing — shaxsiy oylik ochiladi. Bugun: kelgan ${(s.today && s.today.present) || 0} / ${(s.today && s.today.total) || 0}.</p>
-      <div class="scroll-x">
-      <table class="att-table att-table-dense">
-        <thead>
-          <tr>
-            <th>Xodim</th><th>Kun</th><th>Kech</th><th>Yo‘q</th><th>O‘rt. kelish</th><th>Ish soati</th>
-            ${dates.map((d) => `<th class="att-day-h" title="${esc(d)}">${esc(d.slice(8))}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${people.map((p) => {
-            const byDate = {};
-            (p.days || []).forEach((x) => { byDate[x.date] = x; });
-            return `<tr class="att-row-click" data-person="${esc(p.userId)}" title="Oylikni ochish">
-              <td><b>${esc(p.name || p.username)}</b>
-                <div class="att-sub">${esc(roleLabel(p.role))}${p.car ? ' · ' + esc(p.car) : ''}</div>
-              </td>
-              <td class="mono">${p.presentDays}</td>
-              <td class="mono">${p.lateDays}</td>
-              <td class="mono">${p.absentDays}</td>
-              <td class="mono">${esc(p.avgIn || '—')}</td>
-              <td class="mono">${p.worked_sec ? fmtDur(p.worked_sec) : '—'}</td>
-              ${dates.map((d) => {
-                const x = byDate[d];
-                if (!x || x.status === 'absent') return `<td class="att-cell absent" title="${esc(d)}">·</td>`;
-                const cls = x.late ? 'late' : (x.status === 'done' ? 'done' : 'in');
-                return `<td class="att-cell ${cls}" title="${esc(d)} ${esc(x.inAt || '')}">${esc(x.inAt || '✓')}</td>`;
-              }).join('')}
-            </tr>`;
-          }).join('') || '<tr><td colspan="6">Ma’lumot yo‘q</td></tr>'}
-        </tbody>
-      </table></div>`;
+    return renderHisobotHtml(HISOBOT);
   }
 
   function renderPersonHtml(p) {
@@ -1436,6 +1521,9 @@
     if (!boardDate) boardDate = dayInputValue('');
     if (!reportMonth) reportMonth = monthInputValue('');
     if (!personMonth) personMonth = monthInputValue('');
+    if (!hisobotDate) hisobotDate = hisobotPeriod === 'month' ? reportMonth : boardDate;
+    if (!hisobotFrom) hisobotFrom = boardDate;
+    if (!hisobotTo) hisobotTo = boardDate;
 
     const ticketOk = !!activeQrTicket();
     const stepGeo = geoLive.inside === true ? 'done' : (geoLive.status === 'err' || geoLive.status === 'out' ? 'now' : 'wait');
@@ -1717,17 +1805,56 @@
       </div>
 
       <div class="att-panel" id="panel-hisobot" ${uiTab === 'hisobot' ? '' : 'hidden'}>
-        <section class="att-card">
+        <section class="att-card hb-card">
           <div class="att-card-h">
-            <span>Oylik hisobot</span>
-            <div class="att-toolbar">
-              <input type="month" id="report-month" value="${esc(monthInputValue(reportMonth))}">
-              <button type="button" class="att-btn att-btn-face" id="btn-report" style="padding:8px 12px;min-width:0;font-size:12px">Yangilash</button>
-              <button type="button" class="att-btn att-btn-in" id="btn-export-xlsx" style="padding:8px 12px;min-width:0;font-size:12px">Excel</button>
-              <button type="button" class="att-btn att-btn-out" id="btn-export-pdf" style="padding:8px 12px;min-width:0;font-size:12px">PDF</button>
-            </div>
+            <span>Davomat hisoboti</span>
           </div>
-          <div class="att-card-b" id="att-report"><p class="att-hint">Yuklanmoqda…</p></div>
+          <div class="att-card-b">
+            <div class="hb-period" role="tablist" aria-label="Davr turi">
+              <button type="button" class="hb-period-btn ${hisobotPeriod === 'day' ? 'on' : ''}" data-hb-period="day">Kunlik</button>
+              <button type="button" class="hb-period-btn ${hisobotPeriod === 'week' ? 'on' : ''}" data-hb-period="week">Haftalik</button>
+              <button type="button" class="hb-period-btn ${hisobotPeriod === 'month' ? 'on' : ''}" data-hb-period="month">Oylik</button>
+              <button type="button" class="hb-period-btn ${hisobotPeriod === 'range' ? 'on' : ''}" data-hb-period="range">Sanadan–gacha</button>
+            </div>
+            <div class="hb-filters">
+              <label class="hb-fld hb-date-wrap ${hisobotPeriod === 'range' ? 'hidden' : ''}">
+                <span>Sana</span>
+                <div class="hb-date-nav">
+                  <button type="button" class="hb-nav" id="hb-prev" aria-label="Oldingi">‹</button>
+                  <input type="${hisobotPeriod === 'month' ? 'month' : 'date'}" id="hb-date" value="${esc(hisobotPeriod === 'month' ? monthInputValue(hisobotDate || reportMonth) : dayInputValue(hisobotDate || boardDate))}">
+                  <button type="button" class="hb-nav" id="hb-next" aria-label="Keyingi">›</button>
+                </div>
+              </label>
+              <label class="hb-fld ${hisobotPeriod === 'range' ? '' : 'hidden'}">
+                <span>Dan</span>
+                <input type="date" id="hb-from" value="${esc(hisobotFrom || dayInputValue(boardDate))}">
+              </label>
+              <label class="hb-fld ${hisobotPeriod === 'range' ? '' : 'hidden'}">
+                <span>Gacha</span>
+                <input type="date" id="hb-to" value="${esc(hisobotTo || dayInputValue(boardDate))}">
+              </label>
+              <label class="hb-fld">
+                <span>Holat</span>
+                <select id="hb-status">
+                  <option value="all" ${hisobotStatus === 'all' ? 'selected' : ''}>Barchasi</option>
+                  <option value="present" ${hisobotStatus === 'present' ? 'selected' : ''}>Kelgan</option>
+                  <option value="late" ${hisobotStatus === 'late' ? 'selected' : ''}>Kechikdi</option>
+                  <option value="absent" ${hisobotStatus === 'absent' ? 'selected' : ''}>Kelmagan</option>
+                  <option value="early_in" ${hisobotStatus === 'early_in' ? 'selected' : ''}>Erta keldi</option>
+                  <option value="early_out" ${hisobotStatus === 'early_out' ? 'selected' : ''}>Erta ketdi</option>
+                  <option value="late_out" ${hisobotStatus === 'late_out' ? 'selected' : ''}>Kech ketdi</option>
+                </select>
+              </label>
+              <label class="hb-fld hb-search">
+                <span>Qidiruv</span>
+                <input type="search" id="hb-q" placeholder="Ism, lavozim…" value="${esc(hisobotQ)}">
+              </label>
+              <button type="button" class="att-btn att-btn-face" id="btn-report">Yangilash</button>
+              <button type="button" class="att-btn att-btn-in" id="btn-export-xlsx">Excel</button>
+              <button type="button" class="att-btn att-btn-out" id="btn-export-pdf">PDF</button>
+            </div>
+            <div id="att-report"><p class="att-hint">Yuklanmoqda…</p></div>
+          </div>
         </section>
       </div>
 
@@ -1764,14 +1891,10 @@
       paintGeoUI();
     }
     if (staff && uiTab === 'dash') loadBoard();
-    if (staff && uiTab === 'hisobot') loadReport();
+    if (staff && uiTab === 'hisobot') loadHisobot();
     if (staff && uiTab === 'shaxs') loadPersonPanel();
     if (staff && uiTab === 'soz') renderSettings();
     if (working) startLiveTimer();
-  }
-
-  function statusLabel(s) {
-    return ({ in: 'Ishda', late: 'Kechikdi', done: 'To‘liq', absent: 'Yo‘q', future: '—' })[s] || s;
   }
 
   function openPerson(uid) {
@@ -1796,7 +1919,6 @@
     const kOut = document.getElementById('btn-ketdim-main');
     const boardDateEl = document.getElementById('board-date');
     const reportBtn = document.getElementById('btn-report');
-    const reportMonthEl = document.getElementById('report-month');
     const personBtn = document.getElementById('btn-person');
     const personSel = document.getElementById('person-select');
     const personMonthEl = document.getElementById('person-month');
@@ -1813,24 +1935,107 @@
         loadBoard();
       });
     }
+
+    app.querySelectorAll('[data-hb-period]').forEach((btn) => {
+      bindTap(btn, () => {
+        hisobotPeriod = btn.getAttribute('data-hb-period') || 'day';
+        if (hisobotPeriod === 'month' && hisobotDate && hisobotDate.length === 10) {
+          hisobotDate = hisobotDate.slice(0, 7);
+        }
+        if (hisobotPeriod !== 'month' && hisobotDate && hisobotDate.length === 7) {
+          hisobotDate = hisobotDate + '-01';
+        }
+        render();
+      });
+    });
+    const hbDate = document.getElementById('hb-date');
+    const hbFrom = document.getElementById('hb-from');
+    const hbTo = document.getElementById('hb-to');
+    const hbStatus = document.getElementById('hb-status');
+    const hbQ = document.getElementById('hb-q');
+    const hbPrev = document.getElementById('hb-prev');
+    const hbNext = document.getElementById('hb-next');
+    if (hbDate) {
+      hbDate.addEventListener('change', () => {
+        hisobotDate = hbDate.value || hisobotDate;
+        if (hisobotPeriod === 'month') reportMonth = hisobotDate;
+        else boardDate = hisobotDate;
+        loadHisobot(true);
+      });
+    }
+    if (hbFrom) hbFrom.addEventListener('change', () => { hisobotFrom = hbFrom.value || hisobotFrom; loadHisobot(true); });
+    if (hbTo) hbTo.addEventListener('change', () => { hisobotTo = hbTo.value || hisobotTo; loadHisobot(true); });
+    if (hbStatus) hbStatus.addEventListener('change', () => {
+      hisobotStatus = hbStatus.value || 'all';
+      const box = document.getElementById('att-report');
+      if (box && HISOBOT) {
+        box.innerHTML = renderHisobotHtml(HISOBOT);
+        box.querySelectorAll('[data-person]').forEach((el) => {
+          bindTap(el, () => openPerson(el.getAttribute('data-person')));
+        });
+      }
+    });
+    if (hbQ) {
+      let t = null;
+      hbQ.addEventListener('input', () => {
+        hisobotQ = hbQ.value || '';
+        clearTimeout(t);
+        t = setTimeout(() => {
+          const box = document.getElementById('att-report');
+          if (box && HISOBOT) {
+            box.innerHTML = renderHisobotHtml(HISOBOT);
+            box.querySelectorAll('[data-person]').forEach((el) => {
+              bindTap(el, () => openPerson(el.getAttribute('data-person')));
+            });
+          }
+        }, 180);
+      });
+    }
+    if (hbPrev) bindTap(hbPrev, () => {
+      if (hisobotPeriod === 'month') {
+        const m = (hisobotDate || reportMonth || '').slice(0, 7);
+        const [y, mo] = m.split('-').map(Number);
+        const d = new Date(y, mo - 2, 1);
+        hisobotDate = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        reportMonth = hisobotDate;
+      } else {
+        const step = hisobotPeriod === 'week' ? -7 : -1;
+        hisobotDate = shiftDateIso(hisobotDate || boardDate, step);
+        boardDate = hisobotDate;
+      }
+      loadHisobot(true);
+      if (hbDate) hbDate.value = hisobotPeriod === 'month' ? monthInputValue(hisobotDate) : dayInputValue(hisobotDate);
+    });
+    if (hbNext) bindTap(hbNext, () => {
+      if (hisobotPeriod === 'month') {
+        const m = (hisobotDate || reportMonth || '').slice(0, 7);
+        const [y, mo] = m.split('-').map(Number);
+        const d = new Date(y, mo, 1);
+        hisobotDate = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        reportMonth = hisobotDate;
+      } else {
+        const step = hisobotPeriod === 'week' ? 7 : 1;
+        hisobotDate = shiftDateIso(hisobotDate || boardDate, step);
+        boardDate = hisobotDate;
+      }
+      loadHisobot(true);
+      if (hbDate) hbDate.value = hisobotPeriod === 'month' ? monthInputValue(hisobotDate) : dayInputValue(hisobotDate);
+    });
+
     if (reportBtn) bindTap(reportBtn, () => {
-      if (reportMonthEl) reportMonth = reportMonthEl.value || reportMonth;
-      loadReport(true);
+      if (hbDate) hisobotDate = hbDate.value || hisobotDate;
+      if (hbFrom) hisobotFrom = hbFrom.value || hisobotFrom;
+      if (hbTo) hisobotTo = hbTo.value || hisobotTo;
+      loadHisobot(true);
     });
     const xlsxBtn = document.getElementById('btn-export-xlsx');
     const pdfBtn = document.getElementById('btn-export-pdf');
-    if (xlsxBtn) bindTap(xlsxBtn, () => exportReportXlsx());
-    if (pdfBtn) bindTap(pdfBtn, () => exportReportPdf());
+    if (xlsxBtn) bindTap(xlsxBtn, () => exportHisobotXlsx());
+    if (pdfBtn) bindTap(pdfBtn, () => exportHisobotPdf());
     const px = document.getElementById('btn-person-xlsx');
     const pp = document.getElementById('btn-person-pdf');
     if (px) bindTap(px, () => exportPersonXlsx());
     if (pp) bindTap(pp, () => exportPersonPdf());
-    if (reportMonthEl) {
-      reportMonthEl.addEventListener('change', () => {
-        reportMonth = reportMonthEl.value || reportMonth;
-        loadReport(true);
-      });
-    }
     if (personBtn) bindTap(personBtn, () => {
       if (personSel) personId = personSel.value || '';
       if (personMonthEl) personMonth = personMonthEl.value || personMonth;
@@ -2325,6 +2530,166 @@
     msg('PDF yuklandi', 'ok');
   }
 
+  async function loadHisobot(force) {
+    const box = document.getElementById('att-report');
+    if (!box) return;
+    const period = hisobotPeriod || 'day';
+    let date = hisobotDate || boardDate || dayInputValue('');
+    if (period === 'month') {
+      date = monthInputValue(date.length === 7 ? date : (date || reportMonth).slice(0, 7));
+      hisobotDate = date;
+      reportMonth = date;
+    } else if (period !== 'range') {
+      date = dayInputValue(date);
+      hisobotDate = date;
+      boardDate = date;
+    }
+    const from = dayInputValue(hisobotFrom || boardDate);
+    const to = dayInputValue(hisobotTo || boardDate);
+    hisobotFrom = from;
+    hisobotTo = to;
+
+    const cacheKey = [period, date, from, to].join('|');
+    if (!force && HISOBOT && HISOBOT._cacheKey === cacheKey) {
+      box.innerHTML = renderHisobotHtml(HISOBOT);
+      box.querySelectorAll('[data-person]').forEach((el) => {
+        bindTap(el, () => openPerson(el.getAttribute('data-person')));
+      });
+      return;
+    }
+    box.innerHTML = `<p class="att-hint">Yuklanmoqda…</p>`;
+    try {
+      let url = '/api/attendance/hisobot?period=' + encodeURIComponent(period);
+      if (period === 'range') {
+        url += '&from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to);
+      } else {
+        url += '&date=' + encodeURIComponent(date);
+      }
+      const d = await api(url);
+      d._cacheKey = cacheKey;
+      HISOBOT = d;
+      box.innerHTML = renderHisobotHtml(d);
+      box.querySelectorAll('[data-person]').forEach((el) => {
+        bindTap(el, () => openPerson(el.getAttribute('data-person')));
+      });
+    } catch (e) {
+      box.innerHTML = `<p class="att-hint">${esc(e.message || 'Hisobot xato')}</p>`;
+    }
+  }
+
+  async function loadReport(force) {
+    return loadHisobot(force);
+  }
+
+  function filteredHisobotRows() {
+    if (!HISOBOT) return [];
+    const q = String(hisobotQ || '').trim().toLowerCase();
+    const holat = hisobotStatus || 'all';
+    let rows = (HISOBOT.rows || []).slice();
+    if (holat !== 'all') {
+      rows = rows.filter((r) => {
+        if (holat === 'late') return r.status === 'late' || (r.late_in_min || 0) > 0;
+        if (holat === 'present') return r.status !== 'absent';
+        if (holat === 'absent') return r.status === 'absent';
+        if (holat === 'early_in') return (r.early_in_min || 0) > 0;
+        if (holat === 'early_out') return (r.early_out_min || 0) > 0;
+        if (holat === 'late_out') return (r.late_out_min || 0) > 0;
+        return true;
+      });
+    }
+    if (q) {
+      rows = rows.filter((r) => {
+        const blob = [r.name, r.username, r.lavozim, r.car, roleLabel(r.role)].join(' ').toLowerCase();
+        return blob.indexOf(q) >= 0;
+      });
+    }
+    return rows;
+  }
+
+  function exportHisobotXlsx() {
+    if (typeof XLSX === 'undefined') {
+      msg('Excel kutubxonasi yuklanmadi', 'err');
+      return;
+    }
+    if (!HISOBOT) {
+      msg('Avval hisobotni yuklang', 'err');
+      return;
+    }
+    const showDate = !!HISOBOT.showDateCol;
+    const head = ['№'];
+    if (showDate) head.push('Sana');
+    head.push('F.I.Sh.', 'Lavozim', 'Holat', 'Kelish', 'Ketish', 'Ishlagan', 'Kech keldi', 'Erta keldi', 'Erta ketdi', 'Kech ketdi');
+    const rows = [head];
+    filteredHisobotRows().forEach((r, i) => {
+      const line = [i + 1];
+      if (showDate) line.push(r.date || '');
+      line.push(
+        r.name || r.username || '',
+        r.lavozim || roleLabel(r.role),
+        statusLabel(r.status),
+        r.inAt || '',
+        r.outAt || '',
+        r.worked_sec != null ? fmtDur(r.worked_sec) : '',
+        r.late_in_txt || '',
+        r.early_in_txt || '',
+        r.early_out_txt || '',
+        r.late_out_txt || ''
+      );
+      rows.push(line);
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Hisobot');
+    XLSX.writeFile(wb, 'davomat-hisobot.xlsx');
+    msg('Excel yuklandi', 'ok');
+  }
+
+  function exportHisobotPdf() {
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!JsPDF) {
+      msg('PDF kutubxonasi yuklanmadi', 'err');
+      return;
+    }
+    if (!HISOBOT) {
+      msg('Avval hisobotni yuklang', 'err');
+      return;
+    }
+    const doc = new JsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const showDate = !!HISOBOT.showDateCol;
+    const head = ['№'];
+    if (showDate) head.push('Sana');
+    head.push('F.I.Sh.', 'Lavozim', 'Holat', 'Kelish', 'Ketish', 'Ish', 'Kech', 'Erta', 'E.ket', 'K.ket');
+    const body = filteredHisobotRows().map((r, i) => {
+      const line = [String(i + 1)];
+      if (showDate) line.push(r.date || '');
+      line.push(
+        r.name || r.username || '',
+        r.lavozim || roleLabel(r.role),
+        statusLabel(r.status),
+        r.inAt || '—',
+        r.outAt || '—',
+        r.worked_sec != null ? fmtDur(r.worked_sec) : '—',
+        r.late_in_txt || '—',
+        r.early_in_txt || '—',
+        r.early_out_txt || '—',
+        r.late_out_txt || '—'
+      );
+      return line;
+    });
+    doc.setFontSize(12);
+    doc.text('Davomat hisoboti', 40, 36);
+    if (doc.autoTable) {
+      doc.autoTable({
+        startY: 48,
+        head: [head],
+        body,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [26, 95, 180] }
+      });
+    }
+    doc.save('davomat-hisobot.pdf');
+    msg('PDF yuklandi', 'ok');
+  }
+
   async function loadBoard() {
     const box = document.getElementById('att-board');
     if (!box) return;
@@ -2338,31 +2703,6 @@
       });
     } catch (e) {
       box.innerHTML = `<p class="att-hint">${esc(e.message || 'Taxta xato')}</p>`;
-    }
-  }
-
-  async function loadReport(force) {
-    const box = document.getElementById('att-report');
-    if (!box) return;
-    const month = monthInputValue(reportMonth);
-    reportMonth = month;
-    if (!force && REPORT && REPORT.month === month) {
-      box.innerHTML = renderReportHtml(REPORT);
-      box.querySelectorAll('[data-person]').forEach((el) => {
-        bindTap(el, () => openPerson(el.getAttribute('data-person')));
-      });
-      return;
-    }
-    box.innerHTML = `<p class="att-hint">Yuklanmoqda…</p>`;
-    try {
-      const d = await api('/api/attendance/report?month=' + encodeURIComponent(month));
-      REPORT = d;
-      box.innerHTML = renderReportHtml(d);
-      box.querySelectorAll('[data-person]').forEach((el) => {
-        bindTap(el, () => openPerson(el.getAttribute('data-person')));
-      });
-    } catch (e) {
-      box.innerHTML = `<p class="att-hint">${esc(e.message || 'Hisobot xato')}</p>`;
     }
   }
 

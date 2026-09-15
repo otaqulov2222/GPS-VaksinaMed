@@ -828,38 +828,239 @@ class AttendanceStore:
             rec = day.get(uid) if isinstance(day.get(uid), dict) else {}
             inn = self._strip_punch(rec.get("in") if isinstance(rec.get("in"), dict) else None)
             out = self._strip_punch(rec.get("out") if isinstance(rec.get("out"), dict) else None)
-            status = "absent"
-            if inn and out:
-                status = "done"
-            elif inn:
-                status = "late" if inn.get("late") else "in"
-            rows.append(
-                {
-                    "userId": uid,
-                    "username": u.get("username"),
-                    "name": u.get("name"),
-                    "role": u.get("role"),
-                    "car": u.get("car") or "",
-                    "status": status,
-                    "in": inn,
-                    "out": out,
-                    "worked_sec": self._worked_sec(inn, out),
-                    "enrolled": self.is_enrolled(uid),
-                }
-            )
+            row = self._row_from_punches(u, date, inn, out)
+            rows.append(row)
         counts = {
             "total": len(rows),
             "present": sum(1 for r in rows if r["status"] in ("in", "late", "done")),
-            "late": sum(1 for r in rows if r["status"] == "late" or (r.get("in") and r["in"].get("late"))),
+            "late": sum(1 for r in rows if r["status"] == "late" or (r.get("late_in_min") or 0) > 0),
             "done": sum(1 for r in rows if r["status"] == "done"),
             "absent": sum(1 for r in rows if r["status"] == "absent"),
             "working": sum(1 for r in rows if r["status"] in ("in", "late")),
             "enrolled": sum(1 for r in rows if r.get("enrolled")),
+            "late_in": sum(1 for r in rows if (r.get("late_in_min") or 0) > 0),
+            "early_in": sum(1 for r in rows if (r.get("early_in_min") or 0) > 0),
+            "early_out": sum(1 for r in rows if (r.get("early_out_min") or 0) > 0),
+            "late_out": sum(1 for r in rows if (r.get("late_out_min") or 0) > 0),
         }
+        sched = self._schedule_hhmm()
         return {
             "date": date,
             "rows": rows,
             "counts": counts,
+            "schedule": sched,
+            "settings": self.public_settings(),
+        }
+
+    def _schedule_hhmm(self) -> dict:
+        s = self.settings()
+        return {
+            "in_start": s.get("in_start") or "09:00",
+            "out_start": s.get("out_start") or "18:00",
+            "in_late_after": s.get("in_late_after") or "09:15",
+            "label": f"{s.get('in_start') or '09:00'}–{s.get('out_start') or '18:00'}",
+        }
+
+    @staticmethod
+    def _min_of_iso(iso_s) -> int | None:
+        if not iso_s:
+            return None
+        try:
+            t = datetime.fromisoformat(str(iso_s))
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=TZ)
+            t = t.astimezone(TZ)
+            return t.hour * 60 + t.minute
+        except Exception:
+            return None
+
+    @staticmethod
+    def _fmt_min_uz(mins: int | None) -> str:
+        if mins is None or mins <= 0:
+            return ""
+        m = int(mins)
+        h, mi = divmod(m, 60)
+        if h and mi:
+            return f"{h} soat {mi} daq"
+        if h:
+            return f"{h} soat"
+        return f"{mi} daq"
+
+    def _punctuality(self, inn, out, settings: dict | None = None) -> dict:
+        s = settings or self.settings()
+        in_start = hhmm_to_min(s.get("in_start") or "09:00") or 9 * 60
+        out_start = hhmm_to_min(s.get("out_start") or "18:00") or 18 * 60
+        late_in = early_in = early_out = late_out = 0
+        in_min = self._min_of_iso(inn.get("at") if inn else None)
+        out_min = self._min_of_iso(out.get("at") if out else None)
+        if in_min is not None:
+            if in_min > in_start:
+                late_in = in_min - in_start
+            elif in_min < in_start:
+                early_in = in_start - in_min
+        if out_min is not None:
+            if out_min < out_start:
+                early_out = out_start - out_min
+            elif out_min > out_start:
+                late_out = out_min - out_start
+        return {
+            "late_in_min": late_in,
+            "early_in_min": early_in,
+            "early_out_min": early_out,
+            "late_out_min": late_out,
+            "late_in_txt": self._fmt_min_uz(late_in),
+            "early_in_txt": self._fmt_min_uz(early_in),
+            "early_out_txt": self._fmt_min_uz(early_out),
+            "late_out_txt": self._fmt_min_uz(late_out),
+        }
+
+    @staticmethod
+    def _lavozim(u: dict) -> str:
+        role = str(u.get("role") or "")
+        if role == "driver":
+            return "Haydovchi"
+        if role == "admin_pro":
+            return "Admin Pro"
+        if role == "admin":
+            return "Admin"
+        return role or "Xodim"
+
+    def _row_from_punches(self, u: dict, date: str, inn, out) -> dict:
+        uid = str(u.get("id") or "")
+        status = "absent"
+        if inn and out:
+            status = "done"
+        elif inn:
+            status = "late" if inn.get("late") else "in"
+        # Display holat: Kechikdi if late minutes or flag
+        pun = self._punctuality(inn, out)
+        if status != "absent" and (pun["late_in_min"] > 0 or (inn and inn.get("late"))):
+            status = "late"
+        elif status == "done" or status == "in":
+            status = "done" if out else "in"
+        return {
+            "userId": uid,
+            "username": u.get("username"),
+            "name": u.get("name"),
+            "role": u.get("role"),
+            "lavozim": self._lavozim(u),
+            "car": u.get("car") or "",
+            "date": date,
+            "status": status,
+            "in": inn,
+            "out": out,
+            "inAt": self._hhmm_from_iso(inn.get("at") if inn else None),
+            "outAt": self._hhmm_from_iso(out.get("at") if out else None),
+            "worked_sec": self._worked_sec(inn, out),
+            "enrolled": self.is_enrolled(uid),
+            **pun,
+        }
+
+    @staticmethod
+    def _dates_between(d0: str, d1: str) -> list[str]:
+        try:
+            a = datetime.strptime(d0, "%Y-%m-%d").replace(tzinfo=TZ)
+            b = datetime.strptime(d1, "%Y-%m-%d").replace(tzinfo=TZ)
+        except Exception:
+            return []
+        if b < a:
+            a, b = b, a
+        # max 93 days
+        out = []
+        cur = a
+        n = 0
+        while cur <= b and n < 93:
+            out.append(cur.strftime("%Y-%m-%d"))
+            cur += timedelta(days=1)
+            n += 1
+        return out
+
+    def hisobot(self, period: str, users: list, date: str = "", date_from: str = "", date_to: str = "") -> dict:
+        """Kunlik / haftalik / oylik / oralik — xodim qatorlari + kech/erta metrikalari."""
+        today = today_str()
+        period = (period or "day").strip().lower()
+        if period in ("kunlik", "daily"):
+            period = "day"
+        elif period in ("haftalik", "weekly"):
+            period = "week"
+        elif period in ("oylik", "monthly"):
+            period = "month"
+        elif period in ("range", "oralik", "custom", "sanadan"):
+            period = "range"
+
+        if period == "day":
+            d = date if re.match(r"^\d{4}-\d{2}-\d{2}$", str(date or "")) else today
+            dates = [d]
+        elif period == "week":
+            d = date if re.match(r"^\d{4}-\d{2}-\d{2}$", str(date or "")) else today
+            try:
+                base = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=TZ)
+            except Exception:
+                base = now_tz()
+            # Dushanba boshlanish
+            start = base - timedelta(days=base.weekday())
+            dates = [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+            d = dates[0]
+        elif period == "month":
+            month = (date or today)[:7]
+            if not re.match(r"^\d{4}-\d{2}$", month):
+                month = today[:7]
+            dates = [x for x in self._month_dates(month) if x <= today]
+            d = month + "-01"
+        else:
+            df = date_from if re.match(r"^\d{4}-\d{2}-\d{2}$", str(date_from or "")) else today
+            dt = date_to if re.match(r"^\d{4}-\d{2}-\d{2}$", str(date_to or "")) else today
+            dates = [x for x in self._dates_between(df, dt) if x <= today]
+            d = df
+
+        show_date_col = period != "day"
+        rows = []
+        day_cache = {dd: self.day_records(dd) for dd in dates}
+        for dd in dates:
+            day = day_cache.get(dd) or {}
+            for u in users or []:
+                uid = str(u.get("id") or "")
+                if not uid:
+                    continue
+                urec = day.get(uid) if isinstance(day.get(uid), dict) else {}
+                inn = self._strip_punch(urec.get("in") if isinstance(urec.get("in"), dict) else None)
+                out = self._strip_punch(urec.get("out") if isinstance(urec.get("out"), dict) else None)
+                # Multi-day: faqat kelganlarni ko‘rsatish (bo‘sh qatorlarni kesish) — oylik/hafta uchun
+                if show_date_col and not inn and not out:
+                    continue
+                rows.append(self._row_from_punches(u, dd, inn, out))
+
+        # Kunlik: barcha xodimlar (yo‘qlik ham)
+        if not show_date_col:
+            rows.sort(key=lambda r: (
+                0 if r["status"] != "absent" else 1,
+                0 if r["status"] == "late" else 1,
+                str(r.get("name") or r.get("username") or "").lower(),
+            ))
+        else:
+            rows.sort(key=lambda r: (r.get("date") or "", str(r.get("name") or "").lower()), reverse=True)
+
+        stats = {
+            "late_in": sum(1 for r in rows if (r.get("late_in_min") or 0) > 0),
+            "early_in": sum(1 for r in rows if (r.get("early_in_min") or 0) > 0),
+            "early_out": sum(1 for r in rows if (r.get("early_out_min") or 0) > 0),
+            "late_out": sum(1 for r in rows if (r.get("late_out_min") or 0) > 0),
+            "present": sum(1 for r in rows if r["status"] != "absent"),
+            "absent": sum(1 for r in rows if r["status"] == "absent"),
+            "shown": len(rows),
+            "people": len(users or []),
+        }
+        sched = self._schedule_hhmm()
+        return {
+            "period": period,
+            "date": d,
+            "dateFrom": dates[0] if dates else d,
+            "dateTo": dates[-1] if dates else d,
+            "dates": dates,
+            "showDateCol": show_date_col,
+            "schedule": sched,
+            "rows": rows,
+            "stats": stats,
             "settings": self.public_settings(),
         }
 

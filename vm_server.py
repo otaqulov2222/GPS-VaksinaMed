@@ -64,7 +64,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m132"
+VM_BUILD = "m133"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -3357,6 +3357,25 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 month = att_mod.today_str()[:7]
             users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
             self.send_json({"ok": True, **ATTENDANCE.month_report(month, users)})
+            return
+
+        if path == "/api/attendance/hisobot":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            period = (qs.get("period") or ["day"])[0]
+            date = (qs.get("date") or [""])[0]
+            date_from = (qs.get("from") or [""])[0]
+            date_to = (qs.get("to") or [""])[0]
+            users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
+            self.send_json({
+                "ok": True,
+                **ATTENDANCE.hisobot(period, users, date=date, date_from=date_from, date_to=date_to),
+            })
             return
 
         if path == "/api/attendance/person":
