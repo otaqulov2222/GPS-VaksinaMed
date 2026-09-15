@@ -232,11 +232,12 @@ def _place_format(mat, n, bits):
         (7, 8), (5, 8), (4, 8), (3, 8), (2, 8), (1, 8), (0, 8),
     ]
     coords_b = [
-        (n - 1, 8), (n - 2, 8), (n - 3, 8), (n - 4, 8), (n - 5, 8), (n - 6, 8), (n - 7, 8),
-        (8, n - 8), (8, n - 7), (8, n - 6), (8, n - 5), (8, n - 4), (8, n - 3), (8, n - 2), (8, n - 1),
+        (n - 1, 8), (n - 2, 8), (n - 3, 8), (n - 4, 8), (n - 5, 8), (n - 6, 8), (n - 7, 8), (n - 8, 8),
+        (8, n - 7), (8, n - 6), (8, n - 5), (8, n - 4), (8, n - 3), (8, n - 2), (8, n - 1),
     ]
     for i in range(15):
-        bit = (bits >> (14 - i)) & 1
+        # LSB first (bit0 at coords[0]) — aks holda skaner o‘qimaydi
+        bit = (bits >> i) & 1
         x, y = coords_a[i]
         mat[y][x] = bit
         x2, y2 = coords_b[i]
@@ -260,6 +261,7 @@ def encode_matrix(text: str):
                 mat[y][x] = 0
     _fill_data(mat, n, codewords)
     _place_format(mat, n, _format_bits(0))
+    _place_dark(mat, n)  # format ustiga qayta — doim qora
     for y in range(n):
         for x in range(n):
             if mat[y][x] is None:

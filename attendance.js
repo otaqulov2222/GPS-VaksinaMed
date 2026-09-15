@@ -932,7 +932,11 @@
   }
 
   function stopScanLoop() {
-    if (scanLoop) { cancelAnimationFrame(scanLoop); scanLoop = null; }
+    if (scanLoop != null) {
+      try { clearTimeout(scanLoop); } catch (e) {}
+      try { cancelAnimationFrame(scanLoop); } catch (e) {}
+      scanLoop = null;
+    }
   }
 
   function stopCam(clearOverlay) {
@@ -1896,10 +1900,7 @@
       try { await html5Qr.clear(); } catch (e) { /* ignore */ }
       html5Qr = null;
     }
-    if (scanLoop) {
-      cancelAnimationFrame(scanLoop);
-      scanLoop = null;
-    }
+    stopScanLoop();
     stopCam();
   }
 
@@ -2017,42 +2018,56 @@
         startScanPulse();
         html5Qr = new window.Html5Qrcode('qr-reader', { verbose: false });
         const camId = await pickBackCameraId();
+        const formats = (window.Html5QrcodeSupportedFormats)
+          ? [window.Html5QrcodeSupportedFormats.QR_CODE]
+          : undefined;
+        // To‘liq kadr + yuqori fps — qrbox ikkinchi oq ramka va sekinlik berardi
         const config = {
-          fps: 18,
-          qrbox: (viewW, viewH) => {
-            const edge = Math.floor(Math.min(viewW, viewH) * 0.7);
-            return { width: Math.max(180, edge), height: Math.max(180, edge) };
-          },
+          fps: 30,
           aspectRatio: 1,
-          disableFlip: false
+          disableFlip: false,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true }
         };
-        const cameraConfig = camId ? { deviceId: { exact: camId } } : { facingMode: 'environment' };
+        if (formats) config.formatsToSupport = formats;
+        const cameraConfig = camId
+          ? { deviceId: { exact: camId } }
+          : { facingMode: { ideal: 'environment' } };
         await html5Qr.start(cameraConfig, config, (decoded) => accept(decoded), () => {});
+        // Kutubxona oq ramkasini DOM dan ham olib tashlash
+        try {
+          const shade = document.getElementById('qr-shaded-region');
+          if (shade) shade.remove();
+          const dash = document.getElementById('qr-reader__dashboard');
+          if (dash) dash.remove();
+        } catch (eHide) { /* ignore */ }
       };
 
       try {
-        // iPhone: BarcodeDetector ishonchsiz — Html5Qrcode
-        if (!isIosLike() && window.BarcodeDetector) {
+        // Native BarcodeDetector — barcha platformada birinchi (tez)
+        if (window.BarcodeDetector) {
           try {
-            await startCam();
-            if (modal) modal.classList.add('scanning', 'qr-mode');
-            startScanPulse();
-            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-            const tick = async () => {
-              if (settled) return;
-              try {
-                if (video && video.readyState >= 2) {
-                  const codes = await detector.detect(video);
-                  if (codes && codes[0] && codes[0].rawValue) {
-                    accept(codes[0].rawValue);
-                    return;
+            const supported = await window.BarcodeDetector.getSupportedFormats();
+            if (!supported || supported.includes('qr_code')) {
+              await startCam();
+              if (modal) modal.classList.add('scanning', 'qr-mode');
+              startScanPulse();
+              const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+              const tick = async () => {
+                if (settled) return;
+                try {
+                  if (video && video.readyState >= 2) {
+                    const codes = await detector.detect(video);
+                    if (codes && codes[0] && codes[0].rawValue) {
+                      accept(codes[0].rawValue);
+                      return;
+                    }
                   }
-                }
-              } catch (e) { /* keep */ }
-              scanLoop = requestAnimationFrame(() => { setTimeout(tick, 50); });
-            };
-            tick();
-            return;
+                } catch (e) { /* keep */ }
+                scanLoop = setTimeout(tick, 24);
+              };
+              tick();
+              return;
+            }
           } catch (eNative) {
             stopCam();
           }
