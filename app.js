@@ -1738,6 +1738,40 @@ function selectDriver(carKey) {
     refreshUI();
 }
 
+/** Tanlangan mashinaga tegishli dorixonalar — tahlildan alohida ro'yxat */
+function renderCarPharmacyRoster(carKey) {
+    const el = document.getElementById('car-pharmacy-roster');
+    const cnt = document.getElementById('car-pharm-count');
+    if (!el) return;
+    const car = carKey || STATE.currentCar || '';
+    const list = car ? uniquePhNames(ownPharmacyList(car)) : [];
+    if (cnt) {
+        cnt.textContent = car
+            ? (String(car).replace(/^(\d{2})\s+/, '$1/') + ' · ' + list.length + ' ta')
+            : '';
+    }
+    if (!car) {
+        el.innerHTML = `<div class="empty-state">
+            <div class="empty-title">Mashina tanlang</div>
+            <div class="empty-desc">Tanlangan mashinaga biriktirilgan dorixona nomlari shu yerda chiqadi.</div>
+        </div>`;
+        return;
+    }
+    if (!list.length) {
+        el.innerHTML = `<div class="empty-state">
+            <div class="empty-title">Dorixona biriktirilmagan</div>
+            <div class="empty-desc">Boshqaruv → Dorixona biriktirish orqali qo'shing.</div>
+        </div>`;
+        return;
+    }
+    el.innerHTML = `<div class="car-pharm-grid">
+        ${list.map((ph, i) => `<div class="car-pharm-item">
+            <span class="n">${i + 1}</span>
+            <span class="nm">${uiTxt(ph)}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
 // ── 9. ASOSIY UI YANGILASH ──────────────────────────────────
 function refreshUI() {
     const rawDrv = DRIVERS.find(d => d.car === STATE.currentCar);
@@ -1757,6 +1791,8 @@ function refreshUI() {
 
     // Banner
     renderBanner(driver, dayData);
+
+    renderCarPharmacyRoster(STATE.currentCar);
 
     if (window.VMOffice) VMOffice.renderFleetBoard();
 

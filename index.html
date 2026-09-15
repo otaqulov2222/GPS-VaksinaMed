@@ -754,6 +754,39 @@ body {
 
 .ph-row .tm { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 
+.ph-row .ph-st {
+  font-size: 10px; font-weight: 700; letter-spacing: .02em;
+  white-space: nowrap; padding: 2px 7px; border: 1px solid var(--line);
+}
+.ph-row .ph-st.ok { color: var(--ok); background: var(--ok-bg); border-color: #c5d4e6; }
+.ph-row .ph-st.miss { color: var(--warn); background: var(--warn-bg); border-color: #e0d4b8; }
+
+.car-pharm-card .sec-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+}
+.car-pharm-count {
+  font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap;
+}
+.car-pharm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 4px 2px 2px;
+}
+.car-pharm-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: #f7fafc;
+  font-size: 13px; line-height: 1.35;
+}
+.car-pharm-item .n {
+  flex: 0 0 auto;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  color: var(--faint); min-width: 1.4em;
+}
+.car-pharm-item .nm { font-weight: 600; color: var(--ink); }
+
 .ph-note {
 
   border: 1px solid var(--line);
@@ -2079,6 +2112,21 @@ input, select, textarea { max-width: 100%; }
 
 
 
+    <div class="card car-pharm-card" id="car-pharm-card">
+      <div class="sec-head">
+        <h3>Shu mashinaga tegishli dorixonalar</h3>
+        <span class="car-pharm-count" id="car-pharm-count"></span>
+      </div>
+      <div id="car-pharmacy-roster">
+        <div class="empty-state">
+          <div class="empty-title">Mashina tanlang</div>
+          <div class="empty-desc">Tanlangan mashinaga biriktirilgan dorixona nomlari shu yerda chiqadi.</div>
+        </div>
+      </div>
+    </div>
+
+
+
     <div class="two-col">
 
       <div class="card">
@@ -2437,7 +2485,7 @@ input, select, textarea { max-width: 100%; }
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app-m96.js?v=m111"></script>
+<script src="app-m96.js?v=m113"></script>
 
 <script src="office.js?v=18"></script>
 
