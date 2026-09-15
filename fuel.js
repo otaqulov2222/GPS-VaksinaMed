@@ -659,6 +659,24 @@ function markDirty() {
   STATE.saveTimer = setTimeout(() => { saveMonth().catch(() => {}); }, 800);
 }
 
+/** Yozilayotgan o'nlik (7,) — avto-saqlashni to'xtatish, maydonni buzmaslik */
+function markTypingPause() {
+  STATE.dirty = true;
+  clearTimeout(STATE.saveTimer);
+  STATE.saveTimer = null;
+  setSaveStatus('Yozilmoqda…', 'busy');
+}
+
+function isParamInputFocused() {
+  const ae = document.activeElement;
+  return !!(ae && ae.getAttribute && ae.getAttribute('data-p') && ae.getAttribute('data-p') !== 'fuelType');
+}
+
+function isDailyInputFocused() {
+  const ae = document.activeElement;
+  return !!(ae && ae.closest && ae.closest('#daily-body') && ae.getAttribute('data-f'));
+}
+
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -729,8 +747,13 @@ async function saveMonth(opts) {
         const verified = d.verified ? ' ✓' : '';
         setSaveStatus('Saqlandi ' + (d.savedAt || '') + where + verified, d.durable === false ? 'warn' : 'ok');
         if (STATE.car) {
-          writeParams();
-          renderDailyTable();
+          // Fokusdagi maydonni qayta yozmaslik — "7," → "7" bo'lib ketmasin
+          writeParams({ skipFocused: true });
+          if (!isDailyInputFocused() && !isParamInputFocused()) {
+            renderDailyTable();
+          } else {
+            schedulePaintCalc(true);
+          }
         }
         lastErr = null;
         break;
@@ -1059,14 +1082,21 @@ function readParamsIntoCar() {
   });
 }
 
-function writeParams() {
+function writeParams(opts) {
+  opts = opts || {};
+  const skipFocused = !!opts.skipFocused;
+  const ae = document.activeElement;
   const car = getCar(STATE.car);
   ['gasNorm','benzinNorm','odoStart','gasStart','benzinStart','gasPrice','benzinPrice','mixPct'].forEach(k => {
     const el = document.getElementById('p-' + k);
-    if (el) el.value = (car[k] == null || car[k] === '') ? '' : vinDisp(car[k]);
+    if (!el) return;
+    // Foydalanuvchi hozir shu maydonda yozayotgan bo'lsa — tegilmasin
+    if (skipFocused && ae === el) return;
+    if (ae === el && (isTypingDecimal(el.value) || String(el.value || '').includes(','))) return;
+    el.value = (car[k] == null || car[k] === '') ? '' : vinDisp(car[k]);
   });
   const ft = document.getElementById('p-fuelType');
-  if (ft) ft.value = car.fuelType || 'mixed';
+  if (ft && ae !== ft) ft.value = car.fuelType || 'mixed';
   applyFuelTypeUi(car.fuelType || 'mixed');
   const info = vehicleInfo(STATE.car);
   document.getElementById('car-title').textContent = plateDisp(info.car) + ' — ' + (info.name || info.short || '');
@@ -4314,9 +4344,9 @@ function bind() {
         markDirty();
         return;
       }
-      // Yozish paytida maydonni qayta yozmaslik (vergul / kursor sakramasin)
+      // Yozish paytida: avto-saqlash kutsin — "7," ni "7" qilib yubormasin
       if (isTypingDecimal(el.value)) {
-        markDirty();
+        markTypingPause();
         return;
       }
       readParamsIntoCar();
@@ -4324,10 +4354,10 @@ function bind() {
       const car = getCar(STATE.car);
       if (key === 'gasPrice' || key === 'benzinPrice') {
         syncDayPricesFromCar(car);
-        renderDailyTable();
+        if (!isParamInputFocused()) renderDailyTable();
       } else if (key === 'odoStart') {
         syncOdoChainFromKm(car, { force: true });
-        renderDailyTable();
+        if (!isParamInputFocused()) renderDailyTable();
       } else if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct') {
         schedulePaintCalc(true);
       } else if (key === 'gasStart' || key === 'benzinStart') {
@@ -4378,7 +4408,7 @@ function bind() {
     const f = el.getAttribute('data-f');
     if (!d || !f) return;
     if (f !== 'mode' && f !== 'station' && f !== 'extraWhy' && f !== 'note' && isTypingDecimal(el.value)) {
-      markDirty();
+      markTypingPause();
       return;
     }
     const car = getCar(STATE.car);
