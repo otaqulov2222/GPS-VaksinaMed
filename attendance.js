@@ -1321,16 +1321,29 @@
 
   let hbEditRow = null;
 
+  function parseHbEditPayload(raw) {
+    const s = String(raw || '').trim();
+    if (!s) throw new Error('empty');
+    try {
+      return JSON.parse(decodeURIComponent(s));
+    } catch (e1) {
+      return JSON.parse(s);
+    }
+  }
+
   function bindHbTableActions(box) {
     if (!box) return;
-    box.querySelectorAll('[data-hb-edit]').forEach((el) => {
-      bindTap(el, () => {
-        try {
-          openHbEditModal(JSON.parse(el.getAttribute('data-hb-edit') || '{}'));
-        } catch (e) {
-          msg('Tahrir ochilmadi', 'err');
-        }
-      });
+    if (box._hbEditDelegated) return;
+    box._hbEditDelegated = true;
+    box.addEventListener('click', (ev) => {
+      const el = ev.target && ev.target.closest ? ev.target.closest('[data-hb-edit]') : null;
+      if (!el || !box.contains(el)) return;
+      ev.preventDefault();
+      try {
+        openHbEditModal(parseHbEditPayload(el.getAttribute('data-hb-edit')));
+      } catch (e) {
+        msg('Tahrir ochilmadi', 'err');
+      }
     });
   }
 
@@ -1341,7 +1354,10 @@
   }
 
   function openHbEditModal(row) {
-    if (!row || !row.userId) return;
+    if (!row || !row.userId) {
+      msg('Tahrir ochilmadi (xodim topilmadi)', 'err');
+      return;
+    }
     hbEditRow = row;
     const modal = document.getElementById('hb-edit-modal');
     const sub = document.getElementById('hb-edit-sub');
@@ -1507,7 +1523,7 @@
               <td class="mono hb-early">${r.early_in_txt ? esc(r.early_in_txt) : '—'}</td>
               <td class="mono hb-early-out">${r.early_out_txt ? esc(r.early_out_txt) : '—'}</td>
               <td class="mono hb-late-out">${r.late_out_txt ? esc(r.late_out_txt) : '—'}</td>
-              <td><button type="button" class="att-link-btn hb-edit-btn" data-hb-edit="${esc(JSON.stringify({
+              <td><button type="button" class="att-link-btn hb-edit-btn" data-hb-edit="${encodeURIComponent(JSON.stringify({
                 userId: r.userId,
                 date: r.date,
                 name: r.name || r.username,
