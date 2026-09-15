@@ -3634,6 +3634,74 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "places": OFFICE.pharmacy_place_suggestions(days)})
             return
 
+        if path == "/api/office/geocode/reverse":
+            sess = self.require_staff()
+            if not sess:
+                return
+            try:
+                lat = float((qs.get("lat") or [""])[0])
+                lng = float((qs.get("lng") or [""])[0])
+            except (TypeError, ValueError):
+                self.send_json({"ok": False, "error": "lat/lng kerak"}, 400)
+                return
+            if abs(lat) > 90 or abs(lng) > 180:
+                self.send_json({"ok": False, "error": "Koordinata oraligʻi notoʻgʻri"}, 400)
+                return
+            try:
+                q = urllib.parse.urlencode(
+                    {
+                        "format": "jsonv2",
+                        "lat": f"{lat:.7f}",
+                        "lon": f"{lng:.7f}",
+                        "accept-language": "uz,ru,en",
+                        "zoom": "18",
+                    }
+                )
+                req = urllib.request.Request(
+                    "https://nominatim.openstreetmap.org/reverse?" + q,
+                    headers={
+                        "User-Agent": "VaksinaMed-GPS/1.0 (admin pharmacy assign)",
+                        "Accept": "application/json",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+                data = json.loads(raw) if raw else {}
+                addr = data.get("address") if isinstance(data.get("address"), dict) else {}
+                named = (
+                    data.get("name")
+                    or addr.get("amenity")
+                    or addr.get("shop")
+                    or addr.get("building")
+                    or addr.get("road")
+                    or ""
+                )
+                display = str(data.get("display_name") or "")
+                short = str(named or (display.split(",")[0] if display else "")).strip()
+                if not short:
+                    short = f"Joy {lat:.5f}, {lng:.5f}"
+                self.send_json(
+                    {
+                        "ok": True,
+                        "name": short[:120],
+                        "detail": display[:240],
+                        "lat": lat,
+                        "lng": lng,
+                    }
+                )
+            except Exception as e:
+                self.send_json(
+                    {
+                        "ok": True,
+                        "name": f"Joy {lat:.5f}, {lng:.5f}",
+                        "detail": "",
+                        "lat": lat,
+                        "lng": lng,
+                        "warn": str(e)[:120],
+                    }
+                )
+            return
+
         if path == "/api/office/gps/status":
             sess = self.require_user()
             if not sess:

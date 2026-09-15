@@ -651,6 +651,28 @@ tr.ph-new td { animation: phFlash 1.8s ease; }
   padding: 6px 0;
 }
 .ph-manual .ph-manual-body { padding: 8px 0 4px; }
+.ph-found-box {
+  border: 1px solid var(--line);
+  background: #f0f7ff;
+  border-radius: 10px;
+  padding: 12px;
+}
+.ph-found-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.ph-found-meta {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
 
 .section-label {
   font-size: 12px;
@@ -1466,30 +1488,37 @@ body { overflow-x: clip; }
           <details>
             <summary>Qoʻlda qoʻshish (ixtiyoriy)</summary>
             <div class="ph-manual-body">
-              <div class="grid2" style="margin-bottom:8px">
-                <div class="field" style="margin:0">
-                  <label>Mashina</label>
-                  <select id="ph-car"></select>
-                </div>
-                <div class="field" style="margin:0">
-                  <label>Dorixona nomi</label>
-                  <input id="ph-name" list="ph-gps-list" placeholder="GPS dan tanlang yoki yozing">
-                  <datalist id="ph-gps-list"></datalist>
-                </div>
+              <div class="field" style="margin:0 0 10px">
+                <label>Koordinata (lat, lng)</label>
+                <input id="ph-coords" placeholder="40.831642, 68.665708" autocomplete="off">
+                <p class="muted" style="margin:6px 0 0;font-size:12px;line-height:1.4">
+                  Google / xaritadan koordinatani nusxa qilib qoʻying — tizim joy nomini topadi.
+                </p>
               </div>
-              <div class="grid2" style="margin-bottom:12px">
-                <div class="field" style="margin:0">
-                  <label>Kenglik (GPS avto)</label>
-                  <input id="ph-lat" type="number" step="0.000001" placeholder="GPS toʻldiradi" readonly>
-                </div>
-                <div class="field" style="margin:0">
-                  <label>Uzunlik (GPS avto)</label>
-                  <input id="ph-lng" type="number" step="0.000001" placeholder="GPS toʻldiradi" readonly>
-                </div>
-              </div>
-              <div class="flex-actions" style="margin-top:0">
-                <button class="btn btn-gold" type="button" id="btn-ph-add">Bitta biriktirish</button>
+              <div class="flex-actions" style="margin:0 0 12px">
+                <button class="btn btn-gold" type="button" id="btn-ph-find">Lokatsiyani topish</button>
                 <button class="btn" type="button" id="btn-ph-learn">Geozonalarni oʻrganish</button>
+              </div>
+              <div id="ph-found-box" class="ph-found-box" hidden>
+                <div class="ph-found-title">Topilgan joy</div>
+                <div class="muted" id="ph-found-src" style="margin-bottom:8px;font-size:12px"></div>
+                <div class="grid2" style="margin-bottom:8px">
+                  <div class="field" style="margin:0">
+                    <label>Mashina</label>
+                    <select id="ph-car"></select>
+                  </div>
+                  <div class="field" style="margin:0">
+                    <label>Dorixona nomi</label>
+                    <input id="ph-name" list="ph-gps-list" placeholder="Nomni tekshiring yoki tuzating">
+                    <datalist id="ph-gps-list"></datalist>
+                  </div>
+                </div>
+                <div class="ph-found-meta mono" id="ph-found-meta"></div>
+                <input type="hidden" id="ph-lat">
+                <input type="hidden" id="ph-lng">
+                <div class="flex-actions" style="margin-top:12px">
+                  <button class="btn btn-gold" type="button" id="btn-ph-add">Biriktirish</button>
+                </div>
               </div>
             </div>
           </details>
@@ -2609,28 +2638,118 @@ async function savePharms() {
 
 
 
-function fillCoordsFromGpsName(name) {
+function phHaversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
 
-  const hit = GPS_PLACES.find(p => String(p.name || '').toLowerCase() === String(name || '').toLowerCase());
+function parsePhCoords(raw) {
+  const s = String(raw || '').trim().replace(/;/g, ',');
+  const m = s.match(/(-?\d+(?:[.,]\d+)?)\s*[, ]\s*(-?\d+(?:[.,]\d+)?)/);
+  if (!m) return null;
+  const lat = Number(String(m[1]).replace(',', '.'));
+  const lng = Number(String(m[2]).replace(',', '.'));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
 
-  const latEl = document.getElementById('ph-lat');
+function findNearestGpsPlace(lat, lng, maxM) {
+  maxM = maxM == null ? 200 : maxM;
+  let best = null;
+  let bestD = Infinity;
+  (GPS_PLACES || []).forEach((p) => {
+    if (p.lat == null || p.lng == null) return;
+    const d = phHaversineM(lat, lng, Number(p.lat), Number(p.lng));
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  });
+  if (!best || bestD > maxM) return null;
+  return { place: best, distM: Math.round(bestD) };
+}
 
-  const lngEl = document.getElementById('ph-lng');
-
-  if (!hit || hit.lat == null || hit.lng == null) {
-
-    if (latEl) latEl.value = '';
-
-    if (lngEl) lngEl.value = '';
-
-    return;
-
+async function reverseGeocodeName(lat, lng) {
+  try {
+    const d = await vmApi(
+      '/api/office/geocode/reverse?lat=' + encodeURIComponent(lat)
+      + '&lng=' + encodeURIComponent(lng)
+    );
+    return {
+      name: String(d.name || '').trim() || ('Joy ' + lat.toFixed(5) + ', ' + lng.toFixed(5)),
+      detail: String(d.detail || d.warn || '').trim()
+    };
+  } catch (_e) {
+    return {
+      name: 'Joy ' + lat.toFixed(5) + ', ' + lng.toFixed(5),
+      detail: 'Nomni qoʻlda yozing'
+    };
   }
+}
 
+function showPhFound(info) {
+  const box = document.getElementById('ph-found-box');
+  const src = document.getElementById('ph-found-src');
+  const meta = document.getElementById('ph-found-meta');
+  const nameEl = document.getElementById('ph-name');
+  const latEl = document.getElementById('ph-lat');
+  const lngEl = document.getElementById('ph-lng');
+  const carEl = document.getElementById('ph-car');
+  const target = document.getElementById('ph-target-car');
+  if (!box) return;
+  box.hidden = false;
+  if (latEl) latEl.value = info.lat;
+  if (lngEl) lngEl.value = info.lng;
+  if (nameEl) nameEl.value = info.name || '';
+  if (src) src.textContent = info.source || '';
+  if (meta) {
+    meta.textContent = Number(info.lat).toFixed(6) + ', ' + Number(info.lng).toFixed(6)
+      + (info.extra ? (' · ' + info.extra) : '');
+  }
+  if (carEl && target && target.value) carEl.value = target.value;
+}
+
+async function lookupPhByCoords() {
+  hide('msg-ph');
+  const raw = (document.getElementById('ph-coords') || {}).value || '';
+  const parsed = parsePhCoords(raw);
+  if (!parsed) throw new Error('Koordinata notoʻgʻri. Masalan: 40.831642, 68.665708');
+  const near = findNearestGpsPlace(parsed.lat, parsed.lng, 200);
+  if (near && near.place && near.place.name) {
+    showPhFound({
+      lat: near.place.lat != null ? near.place.lat : parsed.lat,
+      lng: near.place.lng != null ? near.place.lng : parsed.lng,
+      name: near.place.name,
+      source: 'GPS toʻxtashlaridan topildi · ~' + near.distM + ' m',
+      extra: near.place.count ? (near.place.count + ' marta') : ''
+    });
+    return;
+  }
+  const geo = await reverseGeocodeName(parsed.lat, parsed.lng);
+  showPhFound({
+    lat: parsed.lat,
+    lng: parsed.lng,
+    name: geo.name,
+    source: 'Xaritadan topildi (OpenStreetMap)',
+    extra: geo.detail ? geo.detail.slice(0, 120) : ''
+  });
+}
+
+function fillCoordsFromGpsName(name) {
+  const hit = GPS_PLACES.find(p => String(p.name || '').toLowerCase() === String(name || '').toLowerCase());
+  const latEl = document.getElementById('ph-lat');
+  const lngEl = document.getElementById('ph-lng');
+  if (!hit || hit.lat == null || hit.lng == null) {
+    return;
+  }
   if (latEl) latEl.value = hit.lat;
-
   if (lngEl) lngEl.value = hit.lng;
-
 }
 
 
@@ -2794,52 +2913,59 @@ async function assignPharmaciesBulk(places, car) {
 
 
 document.getElementById('btn-ph-add').addEventListener('click', async () => {
-
   hide('msg-ph');
-
   const name = document.getElementById('ph-name').value.trim();
-
-  const car = document.getElementById('ph-car').value;
-
-  fillCoordsFromGpsName(name);
-
+  const car = document.getElementById('ph-car').value
+    || (document.getElementById('ph-target-car') || {}).value
+    || '';
   const latRaw = document.getElementById('ph-lat').value;
-
   const lngRaw = document.getElementById('ph-lng').value;
-
   try {
-
-    await assignPharmacy(name, car, latRaw === '' ? null : latRaw, lngRaw === '' ? null : lngRaw);
-
+    if (!latRaw || !lngRaw) throw new Error('Avval koordinata boʻyicha lokatsiyani toping');
+    await assignPharmacy(name, car, latRaw, lngRaw);
     document.getElementById('ph-name').value = '';
-
     document.getElementById('ph-lat').value = '';
-
     document.getElementById('ph-lng').value = '';
-
-    phNotify('"' + name + '" → ' + carLabel(car) + '. Pastki jadvalda koʻring. Dashboard yangilanganda hisobga olinadi.');
-
+    const coords = document.getElementById('ph-coords');
+    if (coords) coords.value = '';
+    const box = document.getElementById('ph-found-box');
+    if (box) box.hidden = true;
+    phNotify('"' + name + '" → ' + carLabel(car) + '. Pastki jadvalda koʻring.');
   } catch (err) {
-
     phNotify(err.message, false);
-
   }
-
 });
 
+const btnPhFind = document.getElementById('btn-ph-find');
+if (btnPhFind && btnPhFind.dataset.bound !== '1') {
+  btnPhFind.dataset.bound = '1';
+  btnPhFind.addEventListener('click', async () => {
+    btnPhFind.disabled = true;
+    const old = btnPhFind.textContent;
+    btnPhFind.textContent = 'Qidirilmoqda…';
+    try {
+      await lookupPhByCoords();
+      show('msg-ph', 'Lokatsiya topildi — nomni tekshirib «Biriktirish» bosing.', true);
+    } catch (err) {
+      phNotify(err.message, false);
+      show('msg-ph', err.message, false);
+    } finally {
+      btnPhFind.disabled = false;
+      btnPhFind.textContent = old || 'Lokatsiyani topish';
+    }
+  });
+}
 
-
-document.getElementById('ph-name').addEventListener('change', () => {
-
-  fillCoordsFromGpsName(document.getElementById('ph-name').value.trim());
-
-});
-
-document.getElementById('ph-name').addEventListener('input', () => {
-
-  fillCoordsFromGpsName(document.getElementById('ph-name').value.trim());
-
-});
+const phCoords = document.getElementById('ph-coords');
+if (phCoords && phCoords.dataset.bound !== '1') {
+  phCoords.dataset.bound = '1';
+  phCoords.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (btnPhFind) btnPhFind.click();
+    }
+  });
+}
 
 
 
