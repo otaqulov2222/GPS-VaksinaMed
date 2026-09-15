@@ -654,6 +654,7 @@ function calcCar(car) {
     rows.push({
       d, km, gasKm: split.gasKm, liqKm: split.liqKm,
       odo: src.odo, mode: src.mode, station: src.station,
+      mixPct: clampMixPct(mix),
       gasIn: src.gasIn, gasPrice, gasSum: cleanFloat(src.gasIn * gasPrice),
       benzinIn: src.benzinIn, benzinPrice: benPrice, benzinSum: cleanFloat(src.benzinIn * benPrice),
       gasUsed: cleanFloat(gasUsed), benUsed: cleanFloat(benUsed), gasR, benR, gasNorm, benNorm,
@@ -935,13 +936,24 @@ function readCarsTableToMeta() {
     const rec = ensureVehicleMeta(plate);
     tr.querySelectorAll('[data-v]').forEach(el => {
       const k = el.getAttribute('data-v');
-      rec[k] = (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') ? el.value : n(el.value);
+      if (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') {
+        rec[k] = el.value;
+      } else if (k === 'mixLiqPct') {
+        rec.mixPct = clampMixPct(100 - n(el.value));
+      } else if (k === 'mixPct') {
+        rec.mixPct = clampMixPct(el.value);
+      } else {
+        rec[k] = n(el.value);
+      }
       if (k === 'name') {
         const nm = String(el.value || '').trim();
         rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).pop() || '')) || rec.short;
       }
       if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
         getCar(plate)[k] = rec[k];
+      }
+      if (k === 'mixPct' || k === 'mixLiqPct') {
+        getCar(plate).mixPct = rec.mixPct;
       }
     });
   });
@@ -995,6 +1007,7 @@ function syncParamsToMeta(plate, car) {
   rec.gasPrice = n(car.gasPrice);
   rec.benzinPrice = n(car.benzinPrice);
   if (car.fuelType) rec.fuelType = car.fuelType;
+  if (car.mixPct != null && car.mixPct !== '') rec.mixPct = clampMixPct(car.mixPct);
 }
 
 /** Meta (Mashina va narx) — faqat bo'sh norma/tipni to'ldirish (oy qiymatini bosib yubormaslik). */
@@ -1032,12 +1045,16 @@ function repairDizelGazFuelTypes() {
 
   const fixRec = (rec) => {
     if (!rec || typeof rec !== 'object') return false;
-    if (rec.fuelType === 'dizel') {
+    let ch = false;
+    if (rec.fuelType !== 'dizel_gaz') {
       rec.fuelType = 'dizel_gaz';
-      if (!(n(rec.mixPct) > 0)) rec.mixPct = 70;
-      return true;
+      ch = true;
     }
-    return false;
+    if (!(n(rec.mixPct) > 0) && rec.mixPct !== 0) {
+      rec.mixPct = 70;
+      ch = true;
+    }
+    return ch;
   };
 
   Object.keys(STATE.cars || {}).forEach((plate) => {
@@ -1137,6 +1154,12 @@ function applyCarField(plate, el) {
   const k = el.getAttribute('data-v');
   if (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') {
     rec[k] = el.value;
+  } else if (k === 'mixLiqPct') {
+    rememberDispFrac(rec, k, el.value);
+    rec.mixPct = clampMixPct(100 - n(el.value));
+  } else if (k === 'mixPct') {
+    rememberDispFrac(rec, k, el.value);
+    rec.mixPct = clampMixPct(el.value);
   } else {
     rememberDispFrac(rec, k, el.value);
     rec[k] = n(el.value);
@@ -1145,9 +1168,13 @@ function applyCarField(plate, el) {
     const nm = String(el.value || '').trim();
     rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).pop() || '')) || rec.short;
   }
-  if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
+  if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType' || k === 'mixPct' || k === 'mixLiqPct') {
     const car = getCar(plate);
-    car[k] = rec[k];
+    if (k === 'mixLiqPct' || k === 'mixPct') {
+      car.mixPct = rec.mixPct;
+    } else {
+      car[k] = rec[k];
+    }
     if (rec._dispFrac && rec._dispFrac[k] != null) {
       if (!car._dispFrac) car._dispFrac = {};
       car._dispFrac[k] = rec._dispFrac[k];
@@ -1187,9 +1214,35 @@ function readParamsIntoCar() {
       car[k] = el.value;
       return;
     }
+    if (k === 'mixLiqPct') {
+      rememberDispFrac(car, k, el.value);
+      syncMixPctPair(car, 'mixLiqPct', el.value);
+      return;
+    }
     rememberDispFrac(car, k, el.value);
+    if (k === 'mixPct') {
+      syncMixPctPair(car, 'mixPct', el.value);
+      return;
+    }
     car[k] = n(el.value);
   });
+}
+
+function clampMixPct(v) {
+  const x = n(v);
+  if (!Number.isFinite(x)) return 70;
+  return Math.max(0, Math.min(100, x));
+}
+function mixLiqPctOf(car) {
+  return cleanFloat(100 - clampMixPct(car && car.mixPct));
+}
+function syncMixPctPair(car, fromKey, raw) {
+  if (!car) return;
+  if (fromKey === 'mixLiqPct') {
+    car.mixPct = clampMixPct(100 - n(raw));
+  } else {
+    car.mixPct = clampMixPct(raw);
+  }
 }
 
 function writeParams(opts) {
@@ -1200,11 +1253,17 @@ function writeParams(opts) {
   ['gasNorm','benzinNorm','odoStart','gasStart','benzinStart','gasPrice','benzinPrice','mixPct'].forEach(k => {
     const el = document.getElementById('p-' + k);
     if (!el) return;
-    // Foydalanuvchi hozir shu maydonda yozayotgan bo'lsa — tegilmasin
     if (skipFocused && ae === el) return;
     if (ae === el && (isTypingDecimal(el.value) || String(el.value || '').endsWith(',') || String(el.value || '').endsWith('.'))) return;
     el.value = (car[k] == null || car[k] === '') ? '' : vinDisp(car[k], dispFracOf(car, k));
   });
+  const liqMix = document.getElementById('p-mixLiqPct');
+  if (liqMix) {
+    if (!(skipFocused && ae === liqMix) && !(ae === liqMix && (isTypingDecimal(liqMix.value) || String(liqMix.value || '').endsWith(',') || String(liqMix.value || '').endsWith('.')))) {
+      const liq = mixLiqPctOf(car);
+      liqMix.value = vinDisp(liq, dispFracOf(car, 'mixLiqPct') != null ? dispFracOf(car, 'mixLiqPct') : dispFracOf(car, 'mixPct'));
+    }
+  }
   const ft = document.getElementById('p-fuelType');
   if (ft && ae !== ft) ft.value = car.fuelType || 'mixed';
   applyFuelTypeUi(car.fuelType || 'mixed');
@@ -1248,6 +1307,7 @@ function applyFuelTypeUi(ft) {
   setLbl('lbl-benzinNorm', liqName + ' normasi (100 km)');
   setLbl('lbl-benzinStart', liqName + ' oy boshi qoldiq (' + liqUnit + ')');
   setLbl('lbl-benzinPrice', '1 ' + liqUnit + ' ' + liqName.toLowerCase() + ' narxi (so\'m)');
+  setLbl('lbl-mixLiqPct', 'Aralashda ' + liqName.toLowerCase() + ' foizi (%)');
   setLbl('th-liq-in', 'Olingan ' + liqName.toLowerCase() + ' (' + liqUnit + ')');
   setLbl('th-liq-price', '1 ' + liqUnit + ' narxi');
   setLbl('th-liq-sum', liqName + ' summa');
@@ -1255,6 +1315,8 @@ function applyFuelTypeUi(ft) {
   setLbl('th-liq-rem', liqName + ' qoldiq');
   setLbl('th-liq-km', liqName + ' km');
   setLbl('th-gas-km', 'Gaz km');
+  setLbl('th-mix-gaz', 'Aralash gaz %');
+  setLbl('th-mix-liq', 'Aralash ' + liqName.toLowerCase() + ' %');
 
   const hint = document.getElementById('fuel-type-hint');
   if (hint) {
@@ -1330,6 +1392,8 @@ function dailyJamiHtml(rows) {
       <td><span class="out" data-j="odo">${t.odo ? fmtNum(t.odo) : ''}</span></td>
       <td></td>
       <td></td>
+      <td></td>
+      <td></td>
       <td><span class="out" data-j="gasIn">${t.gasIn ? fmtNum(t.gasIn) : ''}</span></td>
       <td></td>
       <td><span class="out" data-j="gasSum">${t.gasIn ? money(t.gasSum) : ''}</span></td>
@@ -1403,6 +1467,8 @@ function renderDailyTable() {
       <td><span class="out" data-liq-km="${r.d}">${r.liqKm ? fmtNum(r.liqKm) : ''}</span></td>
       <td><input data-d="${r.d}" data-f="odo" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.odo, dispFracOf(src, 'odo'))}"></td>
       <td>${modeSelect(r.d, src.mode)}</td>
+      <td><span class="out" data-mix-gaz>${r.mode === 'aralash' ? fmtNum(r.mixPct) : ''}</span></td>
+      <td><span class="out" data-mix-liq>${r.mode === 'aralash' ? fmtNum(cleanFloat(100 - r.mixPct)) : ''}</span></td>
       <td>${stationSelect(r.d, src.station)}</td>
       <td><input data-d="${r.d}" data-f="gasIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.gasIn, dispFracOf(src, 'gasIn'))}"></td>
       <td><input data-d="${r.d}" data-f="gasPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.gasPrice, dispFracOf(src, 'gasPrice'))}"></td>
@@ -1442,9 +1508,14 @@ function paintCalc() {
     if (!r) return;
     const liq = tr.querySelector('[data-liq-km]');
     if (liq) liq.textContent = r.liqKm ? fmtNum(r.liqKm) : '';
-    const outs = tr.querySelectorAll('.out:not([data-liq-km])');
+    const mixG = tr.querySelector('[data-mix-gaz]');
+    const mixL = tr.querySelector('[data-mix-liq]');
+    if (mixG) mixG.textContent = r.mode === 'aralash' ? fmtNum(r.mixPct) : '';
+    if (mixL) mixL.textContent = r.mode === 'aralash' ? fmtNum(cleanFloat(100 - n(r.mixPct))) : '';
     // outs after liqKm: gasSum, benzinSum, gasUsed, benUsed, gasR, benR
-    const spans = [...tr.querySelectorAll('td > span.out')];
+    const spans = [...tr.querySelectorAll('td > span.out')].filter(el =>
+      !el.hasAttribute('data-mix-gaz') && !el.hasAttribute('data-mix-liq')
+    );
     // order: liqKm, gasSum, benSum, gasUsed, benUsed, gasR, benR
     if (spans[0]) spans[0].textContent = r.liqKm ? fmtNum(r.liqKm) : '';
     if (spans[1]) spans[1].textContent = r.gasIn ? money(r.gasSum) : '';
@@ -2136,9 +2207,12 @@ function renderCars() {
         <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
           <table class="gtable" id="cars-edit-table">
-            <thead><tr><th></th><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th></th></tr></thead>
+            <thead><tr><th></th><th>№</th><th>Raqam</th><th>Marka</th><th>Haydovchi</th><th>Karta</th><th>Yoqilg'i</th><th>Gaz norma</th><th>Benzin / Dizel norma</th><th>Gaz narxi</th><th>Benzin / Dizel narxi</th><th>Aralash gaz %</th><th>Aralash dizel/benzin %</th><th></th></tr></thead>
             <tbody>${list.map((f, i) => {
               const hasHist = !!lastNameHistory(f);
+              const carRec = getCar(f.car);
+              const mixG = clampMixPct(carRec.mixPct != null ? carRec.mixPct : (f.mixPct != null ? f.mixPct : 70));
+              const mixL = cleanFloat(100 - mixG);
               return `<tr class="car-sum-row${STATE.carsOpenPlate === f.car ? ' open' : ''}" data-plate="${esc(f.car)}">
               <td class="car-caret" title="Buyruq tarixini ochish">${caretSvg}</td>
               <td>${i + 1}${hasHist ? ' <span style="color:#1a5fb4;font-size:10px;">●</span>' : ''}</td>
@@ -2160,6 +2234,8 @@ function renderCars() {
               <td><input data-v="benzinNorm" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.benzinNorm, dispFracOf(f, 'benzinNorm'))}" title="${['dizel','dizel_gaz'].includes(f.fuelType) ? 'Dizel norma' : 'Benzin norma'}"></td>
               <td><input data-v="gasPrice" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.gasPrice, dispFracOf(f, 'gasPrice'))}"></td>
               <td><input data-v="benzinPrice" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.benzinPrice, dispFracOf(f, 'benzinPrice'))}"></td>
+              <td><input data-v="mixPct" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(mixG)}" title="Aralashda gaz foizi"></td>
+              <td><input data-v="mixLiqPct" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(mixL)}" title="Aralashda dizel/benzin foizi (100 − gaz)"></td>
               <td>${(window.VmEatDelete && VmEatDelete.markup({ className: 'car-hide eat-del--sm' })) || `<button type="button" class="btn btn-ink btn-sm car-hide">O'chirish</button>`}</td>
             </tr>`;
             }).join('')}</tbody>
@@ -2228,9 +2304,19 @@ function renderCars() {
       el.addEventListener('change', () => {
         applyCarField(plate, el);
         const k = el.getAttribute('data-v');
-        if (['gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice'].includes(k)) {
+        if (['gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice', 'mixPct', 'mixLiqPct'].includes(k)) {
           const rec = ensureVehicleMeta(plate);
-          el.value = vinDisp(n(el.value), dispFracOf(rec, k));
+          const car = getCar(plate);
+          if (k === 'mixPct' || k === 'mixLiqPct') {
+            const mixG = clampMixPct(car.mixPct);
+            const mixL = cleanFloat(100 - mixG);
+            const gEl = tr.querySelector('[data-v="mixPct"]');
+            const lEl = tr.querySelector('[data-v="mixLiqPct"]');
+            if (gEl) gEl.value = vinDisp(mixG);
+            if (lEl) lEl.value = vinDisp(mixL);
+          } else {
+            el.value = vinDisp(n(el.value), dispFracOf(rec, k));
+          }
         }
         const st = document.getElementById('nv-save-st');
         if (st) st.textContent = 'Saqlanmoqda...';
@@ -2238,10 +2324,20 @@ function renderCars() {
       });
       el.addEventListener('blur', () => {
         const k = el.getAttribute('data-v');
-        if (!['gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice'].includes(k)) return;
+        if (!['gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice', 'mixPct', 'mixLiqPct'].includes(k)) return;
         if (isTypingDecimal(el.value)) return;
         applyCarField(plate, el);
-        el.value = vinDisp(n(el.value), dispFracOf(ensureVehicleMeta(plate), k));
+        const car = getCar(plate);
+        if (k === 'mixPct' || k === 'mixLiqPct') {
+          const mixG = clampMixPct(car.mixPct);
+          const mixL = cleanFloat(100 - mixG);
+          const gEl = tr.querySelector('[data-v="mixPct"]');
+          const lEl = tr.querySelector('[data-v="mixLiqPct"]');
+          if (gEl) gEl.value = vinDisp(mixG);
+          if (lEl) lEl.value = vinDisp(mixL);
+        } else {
+          el.value = vinDisp(n(el.value), dispFracOf(ensureVehicleMeta(plate), k));
+        }
       });
     });
     const renameBtn = tr.querySelector('.drv-rename-btn');
@@ -4469,7 +4565,7 @@ function bind() {
       } else if (key === 'odoStart') {
         syncOdoChainFromKm(car, { force: true });
         if (!isParamInputFocused()) renderDailyTable();
-      } else if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct') {
+      } else if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct' || key === 'mixLiqPct') {
         schedulePaintCalc(true);
       } else if (key === 'gasStart' || key === 'benzinStart') {
         car._balManual = true;
@@ -4495,13 +4591,20 @@ function bind() {
         car.benzinStart = clampBal(car.benzinStart);
         el.value = vinDisp(car.benzinStart, dispFracOf(car, key));
       } else if (key === 'mixPct') {
-        car.mixPct = Math.max(0, Math.min(100, n(car.mixPct) || 0));
+        syncMixPctPair(car, 'mixPct', car.mixPct);
         el.value = vinDisp(car.mixPct, dispFracOf(car, key));
+        const liqEl = document.getElementById('p-mixLiqPct');
+        if (liqEl) liqEl.value = vinDisp(mixLiqPctOf(car), dispFracOf(car, 'mixLiqPct'));
+      } else if (key === 'mixLiqPct') {
+        syncMixPctPair(car, 'mixLiqPct', el.value);
+        el.value = vinDisp(mixLiqPctOf(car), dispFracOf(car, key));
+        const gazEl = document.getElementById('p-mixPct');
+        if (gazEl) gazEl.value = vinDisp(car.mixPct, dispFracOf(car, 'mixPct'));
       } else {
         el.value = (car[key] == null || car[key] === '') ? '' : vinDisp(car[key], dispFracOf(car, key));
       }
       syncParamsToMeta(STATE.car, car);
-      if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct' || key === 'gasStart' || key === 'benzinStart') {
+      if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct' || key === 'mixLiqPct' || key === 'gasStart' || key === 'benzinStart') {
         schedulePaintCalc(true);
       }
       markDirty();

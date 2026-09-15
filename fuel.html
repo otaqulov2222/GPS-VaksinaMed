@@ -371,7 +371,7 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: .04em;
 }
 
-table.dtable { border-collapse: collapse; min-width: 1780px; width: 100%; }
+table.dtable { border-collapse: collapse; min-width: 1960px; width: 100%; }
 table.dtable th, table.dtable td {
   border: 1px solid #d7e3f0; padding: 4px 5px; font-size: 11px; vertical-align: middle;
 }
@@ -1828,6 +1828,8 @@ table.dtable td.day {
 
           <div class="fld fuel-mix"><label>Aralashda gaz foizi (%)</label><input id="p-mixPct" data-p="mixPct" type="text" inputmode="decimal" autocomplete="off"></div>
 
+          <div class="fld fuel-mix"><label id="lbl-mixLiqPct">Aralashda dizel / benzin foizi (%)</label><input id="p-mixLiqPct" data-p="mixLiqPct" type="text" inputmode="decimal" autocomplete="off" title="Gaz foizi bilan yig‘indisi 100%"></div>
+
           <div class="fld"><label>Yoqilg'i turi</label>
 
             <select id="p-fuelType" data-p="fuelType">
@@ -1897,6 +1899,10 @@ table.dtable td.day {
             <th>Spidometr (km)</th>
 
             <th>Nimada yurdi</th>
+
+            <th id="th-mix-gaz">Aralash gaz %</th>
+
+            <th id="th-mix-liq">Aralash dizel %</th>
 
             <th>Zapravka nomi</th>
 
@@ -2159,7 +2165,7 @@ table.dtable td.day {
 <script src="auth.js?v=37"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="ph-delete-btn.js?v=3"></script>
-<script src="fuel.js?v=72"></script>
+<script src="fuel.js?v=73"></script>
 <script src="journal.js?v=13"></script>
 </body>
 </html>
