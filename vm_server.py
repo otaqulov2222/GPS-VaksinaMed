@@ -86,7 +86,7 @@ HTML_CANONICAL = {
 }
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m137"
+VM_BUILD = "m138"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -2104,8 +2104,8 @@ class OfficeStore:
         if not isinstance(rec, dict):
             return None
         days = rec.get("days") if isinstance(rec.get("days"), dict) else {}
-        gas_r = as_num(rec.get("gasStart"))
-        ben_r = as_num(rec.get("benzinStart"))
+        gas_r = max(0.0, as_num(rec.get("gasStart")))
+        ben_r = max(0.0, as_num(rec.get("benzinStart")))
         odo_prev = as_num(rec.get("odoStart"))
         gas_norm0 = as_num(rec.get("gasNorm"), 12)
         ben_norm0 = as_num(rec.get("benzinNorm"), 4)
@@ -2169,8 +2169,8 @@ class OfficeStore:
                     ben_used = liq_km * ben_norm / 100.0
             gas_in = as_num(src.get("gasIn"))
             ben_in = as_num(src.get("benzinIn"))
-            gas_r = gas_r + gas_in - gas_used
-            ben_r = ben_r + ben_in - ben_used
+            gas_r = max(0.0, gas_r + gas_in - gas_used)
+            ben_r = max(0.0, ben_r + ben_in - ben_used)
             last = {
                 "km": km,
                 "gasKm": gas_km if gas_km is not None else 0.0,
@@ -2771,10 +2771,18 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
   }
   function ensureLiveNav(){
     try{
+      var u=window.VM_USER;var role=u&&u.role;
+      var staff=role==='admin'||role==='admin_pro';
+      var drv=role==='driver';
       var links=document.querySelectorAll('.nav-rail .nav-links');
       if(!links||!links.length) return;
       links.forEach(function(nav){
         var link=nav.querySelector('a[href="/live"], a[href="/live.html"], a[href="live.html"], #nav-live');
+        if(drv||(u&&!staff)){ if(link) link.remove(); return; }
+        if(!u){
+          if(link){ link.classList.add('staff-only'); link.setAttribute('hidden','hidden'); }
+          return;
+        }
         if(!link){
           link=document.createElement('a');
           link.href='/live';
@@ -2789,6 +2797,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         } else {
           link.href='/live';
           link.textContent='Live';
+          link.classList.add('staff-only');
           link.removeAttribute('hidden');
           link.style.display='';
           link.style.visibility='visible';
@@ -3216,16 +3225,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/live-nav.js":
             js = (
-                "(function(){function go(){try{var ns=document.querySelectorAll('.nav-rail .nav-links');"
-                "ns.forEach(function(nav){var a=nav.querySelector('a[href=\"/live\"],a[href=\"/live.html\"],#nav-live');"
+                "(function(){function go(){try{"
+                "var u=window.VM_USER;var role=u&&u.role;"
+                "var staff=role==='admin'||role==='admin_pro';"
+                "var drv=role==='driver';"
+                "var ns=document.querySelectorAll('.nav-rail .nav-links');"
+                "ns.forEach(function(nav){"
+                "var a=nav.querySelector('a[href=\"/live\"],a[href=\"/live.html\"],#nav-live');"
+                "if(drv||(u&&!staff)){if(a)a.remove();return;}"
+                "if(!u){if(a){a.classList.add('staff-only');a.setAttribute('hidden','hidden');}return;}"
                 "if(!a){a=document.createElement('a');a.href='/live';a.id='nav-live';"
                 "a.className='nav-link staff-only';a.textContent='Live';"
                 "var f=nav.querySelector('a[href=\"/fuel\"],a[href=\"/fuel.html\"]');"
                 "var d=nav.querySelector('a[href=\"/attendance\"],a[href=\"/attendance.html\"],#nav-davomat');"
                 "if(f)f.insertAdjacentElement('afterend',a);"
                 "else if(d)d.insertAdjacentElement('beforebegin',a);else nav.appendChild(a);}"
-                "a.href='/live';a.textContent='Live';a.removeAttribute('hidden');"
-                "a.style.display='';a.style.visibility='visible';"
+                "a.href='/live';a.textContent='Live';a.classList.add('staff-only');"
+                "a.removeAttribute('hidden');a.style.display='';a.style.visibility='visible';"
                 "a.classList.toggle('on',/(^|\\/)live(\\.html)?$/.test(location.pathname||''));});"
                 "}catch(e){}}go();"
                 "document.addEventListener('DOMContentLoaded',go);setInterval(go,30000);})();"

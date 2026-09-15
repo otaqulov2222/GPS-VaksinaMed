@@ -362,7 +362,7 @@
       if (geoLive.status === 'ok') {
         if (ticketOk) {
           gate.className = 'av-gate-banner on ok';
-          gate.textContent = 'Ofis QR tasdiqlandi — Keldim / Ketdim avtomatik yoziladi.';
+          gate.textContent = 'Ofis QR tasdiqlandi — Keldim yoki Ketdim tugmasini bosing.';
         } else {
           gate.className = 'av-gate-banner';
           gate.textContent = '';
@@ -418,21 +418,22 @@
       const nextKind = !today.in ? 'in' : (today.in && !today.out ? 'out' : null);
       goBtn.disabled = done || !inside || !nextKind;
       goBtn.setAttribute('data-next', nextKind || '');
-      goBtn.setAttribute('data-action', ticketOk ? 'punch' : 'scan');
+      // Hech qachon avto-punch: ticket bo‘lsa ham faqat tanlash / skaner
+      goBtn.setAttribute('data-action', ticketOk ? 'choose' : 'scan');
       const lab = goBtn.querySelector('span');
       const sub = goBtn.querySelector('small');
       if (lab) {
         if (done) lab.textContent = 'Bugun yakunlangan';
         else if (!inside) lab.textContent = 'Ofisga keling';
         else if (!ticketOk) lab.textContent = 'Ofis QR skanerlash';
-        else lab.textContent = nextKind === 'out' ? 'Ketdimni tasdiqlash' : 'Keldimni tasdiqlash';
+        else lab.textContent = 'Keldim / Ketdim tanlash';
       }
       if (sub) {
         sub.textContent = !inside
           ? (off.label + ' · ' + off.radius + ' m')
           : (!ticketOk
             ? 'Devordagi ofis QR ni skanerlang'
-            : (nextKind === 'out' ? 'QR tasdiqlandi — Ketdim' : 'QR tasdiqlandi — Keldim'));
+            : 'Tugmalardan birini bosing — avtomatik yozilmaydi');
       }
     }
   }
@@ -2258,9 +2259,19 @@
     const cont = document.getElementById('av-continue');
     if (cont) bindTap(cont, () => {
       const action = cont.getAttribute('data-action') || 'scan';
-      const kind = cont.getAttribute('data-next') || (!((STATE.today || {}).in) ? 'in' : 'out');
-      if (action === 'punch' && activeQrTicket()) confirmPunch(kind);
-      else startQrScanFlow();
+      // Avto-punch yo‘q: ticket bor → tanlash oynasi; yo‘q → skaner
+      if (action === 'choose' && activeQrTicket()) {
+        const kind = nextPunchKind() || 'in';
+        openModal(
+          kind === 'out' ? 'Ketdim' : 'Keldim',
+          'Keldim yoki Ketdim tugmasini bosing',
+          { qrMode: true, kind }
+        );
+        pendingKind = null;
+        showFidActions();
+        return;
+      }
+      startQrScanFlow();
     });
 
     app.querySelectorAll('[data-person]').forEach((el) => {

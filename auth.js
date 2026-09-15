@@ -139,13 +139,27 @@ function vmEnsureLiveNav() {
     const path = (location.pathname || '').replace(/\\/g, '/');
     const onLive = /\/live(\.html)?$/.test(path);
     const staff = vmIsStaff(window.VM_USER);
+    const drv = vmIsDriver(window.VM_USER);
 
     document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {
         let link = nav.querySelector('a[href="/live"], a[href="/live.html"], a[href="live.html"], #nav-live');
+        // Haydovchi: Live umuman bo‘lmasin
+        if (drv || (!staff && window.VM_USER)) {
+            if (link) link.remove();
+            return;
+        }
+        if (!staff && !window.VM_USER) {
+            // Hali login yuklanmagan — Live inject qilma
+            if (link) {
+                link.classList.add('staff-only');
+                link.setAttribute('hidden', 'hidden');
+            }
+            return;
+        }
         if (!link) {
             link = document.createElement('a');
             link.href = '/live';
-            link.className = 'nav-link';
+            link.className = 'nav-link staff-only';
             link.id = 'nav-live';
             link.textContent = 'Live';
             const fuel = nav.querySelector('#nav-fuel, a[href="/fuel"], a[href="/fuel.html"], a[href="fuel.html"], a[href*="fuel"]');
@@ -157,19 +171,11 @@ function vmEnsureLiveNav() {
             link.textContent = 'Live';
             link.href = '/live';
             link.id = link.id || 'nav-live';
-            link.classList.remove('staff-only');
+            link.classList.add('staff-only');
         }
-        // Live — staff uchun doim ko‘rinsin (staff-only class bo‘lsa ham)
-        if (staff || onLive) {
-            link.classList.remove('staff-only');
-            link.removeAttribute('hidden');
-            link.style.display = '';
-            link.style.visibility = 'visible';
-            link.style.opacity = '1';
-        } else if (!staff) {
-            link.setAttribute('hidden', 'hidden');
-            link.style.display = 'none';
-        }
+        link.removeAttribute('hidden');
+        link.style.display = '';
+        link.style.visibility = 'visible';
         link.classList.toggle('on', onLive);
         if (onLive) link.setAttribute('aria-current', 'page');
         else link.removeAttribute('aria-current');

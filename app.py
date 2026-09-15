@@ -341,13 +341,18 @@ async def handle(request: Request, full_path: str = ""):
     if path == "/api/live-nav.js" and request.method in ("GET", "HEAD"):
         js = (
             "(function(){function go(){try{var ns=document.querySelectorAll('.nav-rail .nav-links');"
-            "ns.forEach(function(nav){var a=nav.querySelector('a[href=\"/live\"],a[href=\"/live.html\"],#nav-live');"
+            "ns.forEach(function(nav){var u=window.VM_USER;var role=u&&u.role;"
+            "var staff=role==='admin'||role==='admin_pro';var drv=role==='driver';"
+            "var a=nav.querySelector('a[href=\"/live\"],a[href=\"/live.html\"],#nav-live');"
+            "if(drv||(u&&!staff)){if(a)a.remove();return;}"
+            "if(!u){if(a){a.classList.add('staff-only');a.setAttribute('hidden','hidden');}return;}"
             "if(!a){a=document.createElement('a');a.href='/live';a.id='nav-live';"
             "a.className='nav-link staff-only';a.textContent='Live';"
             "var f=nav.querySelector('a[href=\"/fuel\"],a[href=\"/fuel.html\"]');"
             "var d=nav.querySelector('a[href=\"/attendance\"],a[href=\"/attendance.html\"],#nav-davomat');"
             "if(f)f.insertAdjacentElement('afterend',a);else if(d)d.insertAdjacentElement('beforebegin',a);else nav.appendChild(a);}"
-            "a.href='/live';a.textContent='Live';a.removeAttribute('hidden');a.style.display='';a.style.visibility='visible';"
+            "a.href='/live';a.textContent='Live';a.classList.add('staff-only');"
+            "a.removeAttribute('hidden');a.style.display='';a.style.visibility='visible';"
             "a.classList.toggle('on',/(^|\\/)live(\\.html)?$/.test(location.pathname||''));});"
             "}catch(e){}}go();document.addEventListener('DOMContentLoaded',go);setInterval(go,30000);})();"
         )

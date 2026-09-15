@@ -1037,6 +1037,9 @@ button.pw-eye,
 .pw-eye svg { width: 18px; height: 18px; display: block; pointer-events: none; }
 
 /* Rol menyusi — yashirin havolalar miltillamasin */
+.nav-rail a.nav-link[hidden],
+.nav-rail .nav-link[hidden],
+.nav-rail button.nav-link[hidden],
 .staff-only[hidden],
 .driver-only[hidden],
 a.staff-only[hidden],

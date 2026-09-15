@@ -16,7 +16,7 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-<link rel="stylesheet" href="shell.css?v=27"/>
+<link rel="stylesheet" href="shell.css?v=30"/>
 
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -550,7 +550,6 @@ body.app-body {
 
     <div class="nav-foot">
       <a class="nav-link" href="/profile">Profil</a>
-      <button type="button" class="nav-link nav-logout" id="btn-logout">Chiqish</button>
     </div>
 
 </aside>
@@ -642,7 +641,7 @@ body.app-body {
 <script src="uz-latin.js?v=1"></script>
 <script src="fleet-data.js?v=8"></script>
 
-<script src="auth.js?v=36"></script>
+<script src="auth.js?v=37"></script>
 
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=1"></script>
@@ -749,7 +748,7 @@ function updateLiveFromDay(day, opts) {
     'is-on',
     'Jonli kabinet',
     ageLabel + ' · har daqiqada tekshiriladi · GPS ~3 daqiqada yangilanadi',
-    'LIVE'
+    'GPS'
   );
 }
 
@@ -1000,7 +999,7 @@ async function refreshGpsFromServer(opts) {
         'is-on',
         'Jonli kabinet',
         "GPS yaqinda yangilangan · qayta so'rov ~" + (r.retryIn || 60) + " s dan keyin",
-        'LIVE'
+        'GPS'
       );
     }
     return r;
@@ -1090,9 +1089,8 @@ function paint(day) {
   if (!fuel) {
     fb.innerHTML = "<div class=\"empty\">Bu kun uchun yoqilg'i yozuvi yo'q</div>";
   } else {
-    const gasR = Number(fuel.gasR || 0);
-    const benR = Number(fuel.benR || 0);
-    const neg = (gasR < -0.01 || benR < -0.01) ? ' is-neg' : '';
+    const gasR = Math.max(0, Number(fuel.gasR || 0));
+    const benR = Math.max(0, Number(fuel.benR || 0));
     fb.innerHTML = `
       <div class="fuel-grid">
         <div class="fuel-cell"><span class="lab">Rejim</span><span class="val">${esc(modeLabel(fuel.mode))}</span></div>
@@ -1100,7 +1098,7 @@ function paint(day) {
         <div class="fuel-cell"><span class="lab">Sarf gaz</span><span class="val">${Number(fuel.gasUsed||0).toFixed(2)} m³</span></div>
         <div class="fuel-cell"><span class="lab">Sarf benzin/dizel</span><span class="val">${Number(fuel.benUsed||0).toFixed(2)} l</span></div>
         <div class="fuel-cell"><span class="lab">Olingan gaz / benzin</span><span class="val">${Number(fuel.gasIn||0).toFixed(2)} / ${Number(fuel.benzinIn||0).toFixed(2)}</span></div>
-        <div class="fuel-cell${neg}"><span class="lab">Qoldiq gaz / benzin</span><span class="val">${gasR.toFixed(2)} / ${benR.toFixed(2)}</span></div>
+        <div class="fuel-cell"><span class="lab">Qoldiq gaz / benzin</span><span class="val">${gasR.toFixed(2)} / ${benR.toFixed(2)}</span></div>
         ${fuel.station ? `<div class="fuel-cell" style="grid-column:1/-1"><span class="lab">Zapravka</span><span class="val">${esc(fuel.station)}</span></div>` : ''}
       </div>`;
   }
