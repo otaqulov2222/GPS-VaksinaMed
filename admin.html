@@ -1449,7 +1449,7 @@ body { overflow-x: clip; }
 
             <label>Radius, m</label>
 
-            <input id="ph-radius" type="number" value="120" min="40" max="500">
+            <input id="ph-radius" type="text" inputmode="numeric" autocomplete="off" value="120">
 
           </div>
 
@@ -2744,7 +2744,7 @@ async function assignPharmacy(name, car, lat, lng) {
 
       lng: lng == null || lng === '' ? null : Number(lng),
 
-      radiusM: Number(document.getElementById('ph-radius').value) || 120,
+      radiusM: Math.max(40, Math.min(500, parseInt(String(document.getElementById('ph-radius').value || '').replace(/[^\d]/g, ''), 10) || 120)),
 
       aliases: []
 

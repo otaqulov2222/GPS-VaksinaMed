@@ -3704,8 +3704,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-save-settings')?.addEventListener('click', () => {
         document.querySelectorAll('[data-fuel-car]').forEach(row => {
             const car   = row.dataset.fuelCar;
-            const gas   = parseFloat(row.querySelector('.fuel-gas')?.value) || 14;
-            const ben   = parseFloat(row.querySelector('.fuel-ben')?.value) || 12;
+            const gas   = parseUiDecimal(row.querySelector('.fuel-gas')?.value, 14);
+            const ben   = parseUiDecimal(row.querySelector('.fuel-ben')?.value, 12);
             if (!STATE.fuelNorms[car]) STATE.fuelNorms[car] = {};
             STATE.fuelNorms[car].gas    = gas;
             STATE.fuelNorms[car].benzin = ben;
@@ -3852,6 +3852,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 function renderFuelNormsTable() {
     const tbody = document.getElementById('fuel-norms-table');
     if (!tbody) return;
+    const disp = (v) => {
+        const x = Number(v);
+        if (!Number.isFinite(x)) return '';
+        return String(x).replace('.', ',');
+    };
     tbody.innerHTML = DRIVERS.map(d => {
         const ui = typeof resolveDriver === 'function' ? resolveDriver(d.car, d) : d;
         const norm = STATE.fuelNorms[d.car] || STATE.fuelNorms;
@@ -3860,12 +3865,21 @@ function renderFuelNormsTable() {
         return `<tr data-fuel-car="${d.car}">
             <td style="font-size:13px;font-weight:600;">${ui.shortName}</td>
             <td style="font-size:12px;color:#5a7190;font-family:monospace;">${d.car}</td>
-            <td><input class="fuel-gas" type="number" value="${gas}" min="5" max="30" step="0.5"
+            <td><input class="fuel-gas" type="text" inputmode="decimal" autocomplete="off" value="${disp(gas)}"
                 style="width:70px;padding:5px 8px;border:1.5px solid #c5d4e6;border-radius:7px;font-family:inherit;font-size:13px;"></td>
-            <td><input class="fuel-ben" type="number" value="${ben}" min="5" max="30" step="0.5"
+            <td><input class="fuel-ben" type="text" inputmode="decimal" autocomplete="off" value="${disp(ben)}"
                 style="width:70px;padding:5px 8px;border:1.5px solid #c5d4e6;border-radius:7px;font-family:inherit;font-size:13px;"></td>
         </tr>`;
     }).join('');
+}
+
+function parseUiDecimal(v, fallback) {
+    let s = String(v ?? '').trim().replace(/\s/g, '').replace(/\u00a0/g, '');
+    if (!s) return fallback;
+    if (/^\d+[.,]$/.test(s)) s = s.slice(0, -1);
+    else if (/^\d+,\d+$/.test(s)) s = s.replace(',', '.');
+    const x = Number(s);
+    return Number.isFinite(x) ? x : fallback;
 }
 
 // Global funksiyalar (HTML onclick uchun)

@@ -65,8 +65,12 @@ function n(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   let s = String(v ?? '').trim().replace(/\s/g, '').replace(/\u00a0/g, '');
   if (!s) return 0;
+  // Yozish jarayoni: "7," / "7." — hali tugallanmagan o'nlik
+  if (/^\d+[.,]$/.test(s)) s = s.slice(0, -1);
+  // ",5" / ".5"
+  else if (/^[.,]\d+$/.test(s)) s = '0' + s.replace(',', '.');
   // 1.516.071,50 / 1.516.071 — kamida 2 ta minglik guruhi (15.456 NI o'zgartirmaslik!)
-  if (/^\d{1,3}(\.\d{3}){2,}(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3}){2,}(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
   // 1.516,07 — minglik nuqta + o'nlik vergul
   else if (/^\d{1,3}(\.\d{3})+(,\d+)$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
   // 1,516,071.50 yoki 1,516,071 — AQSH minglik (2+ vergul guruhi)
@@ -89,12 +93,26 @@ function fmtNum(v) {
 }
 function fmt(v) { return fmtNum(v); }
 function money(v) { return fmtNum(v); }
+/** Input value (saqlash/hisob) — nuqta bilan */
 function vin(v) {
   if (v == null || v === '') return '';
   const x = cleanFloat(n(v));
   if (!Number.isFinite(x)) return '';
   if (x === 0) return '0';
   return String(x);
+}
+/** Ekranda ko'rsatish / yozish — vergul bilan (7,6) */
+function vinDisp(v) {
+  if (v == null || v === '') return '';
+  const x = cleanFloat(n(v));
+  if (!Number.isFinite(x)) return '';
+  if (x === 0) return '0';
+  return String(x).replace('.', ',');
+}
+/** Yozish hali tugamaganmi? (7, yoki 7.) — maydonni qayta yozmaslik */
+function isTypingDecimal(raw) {
+  const s = String(raw ?? '').trim();
+  return /^\d*[.,]$/.test(s) || /^[.,]\d*$/.test(s);
 }
 function daysInMonth(ym) {
   const [y, m] = String(ym).split('-').map(Number);
@@ -1045,7 +1063,7 @@ function writeParams() {
   const car = getCar(STATE.car);
   ['gasNorm','benzinNorm','odoStart','gasStart','benzinStart','gasPrice','benzinPrice','mixPct'].forEach(k => {
     const el = document.getElementById('p-' + k);
-    if (el) el.value = car[k] ?? '';
+    if (el) el.value = (car[k] == null || car[k] === '') ? '' : vinDisp(car[k]);
   });
   const ft = document.getElementById('p-fuelType');
   if (ft) ft.value = car.fuelType || 'mixed';
@@ -1240,23 +1258,23 @@ function renderDailyTable() {
     const gasKmVal = src.gasKm != null ? src.gasKm : (r.mode === 'gaz' ? src.km : (r.mode === 'aralash' ? r.gasKm : ''));
     return `<tr>
       <td class="day">${r.d}</td>
-      <td><input data-d="${r.d}" data-f="km" type="number" step="0.01" value="${vin(src.km)}" title="Jami km"></td>
-      <td><input data-d="${r.d}" data-f="gasKm" type="number" step="0.01" value="${vin(gasKmVal)}" title="Shu kunda gazda yurgan km"></td>
+      <td><input data-d="${r.d}" data-f="km" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.km)}" title="Jami km"></td>
+      <td><input data-d="${r.d}" data-f="gasKm" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(gasKmVal)}" title="Shu kunda gazda yurgan km"></td>
       <td><span class="out" data-liq-km="${r.d}">${r.liqKm ? fmtNum(r.liqKm) : ''}</span></td>
-      <td><input data-d="${r.d}" data-f="odo" type="number" step="0.1" value="${vin(src.odo)}"></td>
+      <td><input data-d="${r.d}" data-f="odo" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.odo)}"></td>
       <td>${modeSelect(r.d, src.mode)}</td>
       <td>${stationSelect(r.d, src.station)}</td>
-      <td><input data-d="${r.d}" data-f="gasIn" type="number" step="0.0001" value="${vin(src.gasIn)}"></td>
-      <td><input data-d="${r.d}" data-f="gasPrice" type="number" step="1" value="${vin(r.gasPrice)}"></td>
+      <td><input data-d="${r.d}" data-f="gasIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.gasIn)}"></td>
+      <td><input data-d="${r.d}" data-f="gasPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.gasPrice)}"></td>
       <td><span class="out">${r.gasIn ? money(r.gasSum) : ''}</span></td>
-      <td><input data-d="${r.d}" data-f="benzinIn" type="number" step="0.0001" value="${vin(src.benzinIn)}"></td>
-      <td><input data-d="${r.d}" data-f="benzinPrice" type="number" step="1" value="${vin(r.benzinPrice)}"></td>
+      <td><input data-d="${r.d}" data-f="benzinIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.benzinIn)}"></td>
+      <td><input data-d="${r.d}" data-f="benzinPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.benzinPrice)}"></td>
       <td><span class="out">${r.benzinIn ? money(r.benzinSum) : ''}</span></td>
       <td><span class="out">${(r.gasKm || r.gasUsed) ? fmtNum(r.gasUsed) : ''}</span></td>
       <td><span class="out">${(r.liqKm || r.benUsed) ? fmtNum(r.benUsed) : ''}</span></td>
       <td><span class="out ${remainClass(r.gasR)}">${(r.km || r.gasIn) ? fmtNum(r.gasR) : ''}</span></td>
       <td><span class="out ${remainClass(r.benR)}">${(r.km || r.benzinIn) ? fmtNum(r.benR) : ''}</span></td>
-      <td><input data-d="${r.d}" data-f="extra" type="number" step="1" value="${vin(src.extra)}"></td>
+      <td><input data-d="${r.d}" data-f="extra" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.extra)}"></td>
       <td><input class="w-note" data-d="${r.d}" data-f="extraWhy" value="${esc(src.extraWhy)}"></td>
       <td><input class="w-note" data-d="${r.d}" data-f="note" value="${esc(src.note)}"></td>
     </tr>`;
@@ -1998,10 +2016,10 @@ function renderCars() {
                 <option value="benzin"${f.fuelType==='benzin'?' selected':''}>Benzin</option>
                 <option value="dizel"${f.fuelType==='dizel'?' selected':''}>Dizel</option>
               </select></td>
-              <td><input data-v="gasNorm" type="number" step="0.1" value="${vin(f.gasNorm)}"></td>
-              <td><input data-v="benzinNorm" type="number" step="0.1" value="${vin(f.benzinNorm)}" title="${['dizel','dizel_gaz'].includes(f.fuelType) ? 'Dizel norma' : 'Benzin norma'}"></td>
-              <td><input data-v="gasPrice" type="number" step="1" value="${vin(f.gasPrice)}"></td>
-              <td><input data-v="benzinPrice" type="number" step="1" value="${vin(f.benzinPrice)}"></td>
+              <td><input data-v="gasNorm" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.gasNorm)}"></td>
+              <td><input data-v="benzinNorm" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.benzinNorm)}" title="${['dizel','dizel_gaz'].includes(f.fuelType) ? 'Dizel norma' : 'Benzin norma'}"></td>
+              <td><input data-v="gasPrice" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.gasPrice)}"></td>
+              <td><input data-v="benzinPrice" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.benzinPrice)}"></td>
               <td>${(window.VmEatDelete && VmEatDelete.markup({ className: 'car-hide eat-del--sm' })) || `<button type="button" class="btn btn-ink btn-sm car-hide">O'chirish</button>`}</td>
             </tr>`;
             }).join('')}</tbody>
@@ -2069,9 +2087,20 @@ function renderCars() {
       if (el.getAttribute('data-v') === 'name') return;
       el.addEventListener('change', () => {
         applyCarField(plate, el);
+        const k = el.getAttribute('data-v');
+        if (['gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice'].includes(k)) {
+          el.value = vinDisp(n(el.value));
+        }
         const st = document.getElementById('nv-save-st');
         if (st) st.textContent = 'Saqlanmoqda...';
         scheduleMetaSave();
+      });
+      el.addEventListener('blur', () => {
+        const k = el.getAttribute('data-v');
+        if (!['gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice'].includes(k)) return;
+        if (isTypingDecimal(el.value)) return;
+        applyCarField(plate, el);
+        el.value = vinDisp(n(el.value));
       });
     });
     const renameBtn = tr.querySelector('.drv-rename-btn');
@@ -4277,30 +4306,60 @@ function bind() {
   document.querySelectorAll('[data-p]').forEach(el => {
     el.addEventListener('input', () => {
       const key = el.getAttribute('data-p');
+      if (key === 'fuelType') {
+        readParamsIntoCar();
+        syncParamsToMeta(STATE.car, getCar(STATE.car));
+        applyFuelTypeUi(el.value);
+        renderDailyTable();
+        markDirty();
+        return;
+      }
+      // Yozish paytida maydonni qayta yozmaslik (vergul / kursor sakramasin)
+      if (isTypingDecimal(el.value)) {
+        markDirty();
+        return;
+      }
       readParamsIntoCar();
       syncParamsToMeta(STATE.car, getCar(STATE.car));
       const car = getCar(STATE.car);
-      if (key === 'fuelType') {
-        applyFuelTypeUi(el.value);
-        renderDailyTable();
-      } else if (key === 'gasPrice' || key === 'benzinPrice') {
+      if (key === 'gasPrice' || key === 'benzinPrice') {
         syncDayPricesFromCar(car);
         renderDailyTable();
       } else if (key === 'odoStart') {
-        // Oy boshi o‘zgasa — kunlik spidometrni 26000+km qilib qayta hisoblash
         syncOdoChainFromKm(car, { force: true });
         renderDailyTable();
       } else if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct') {
         schedulePaintCalc(true);
       } else if (key === 'gasStart' || key === 'benzinStart') {
-        // Foydalanuvchi qo‘lda yozdi — avto-o‘tkazma qayta bosmasin
         car._balManual = true;
         if (key === 'gasStart') car.gasStart = clampBal(car.gasStart);
         if (key === 'benzinStart') car.benzinStart = clampBal(car.benzinStart);
-        el.value = key === 'gasStart' ? vin(car.gasStart) : vin(car.benzinStart);
         schedulePaintCalc(true);
       } else {
         schedulePaintCalc();
+      }
+      markDirty();
+    });
+    el.addEventListener('blur', () => {
+      const key = el.getAttribute('data-p');
+      if (!key || key === 'fuelType') return;
+      readParamsIntoCar();
+      const car = getCar(STATE.car);
+      if (key === 'gasStart') {
+        car.gasStart = clampBal(car.gasStart);
+        el.value = vinDisp(car.gasStart);
+      } else if (key === 'benzinStart') {
+        car.benzinStart = clampBal(car.benzinStart);
+        el.value = vinDisp(car.benzinStart);
+      } else if (key === 'mixPct') {
+        car.mixPct = Math.max(0, Math.min(100, n(car.mixPct) || 0));
+        el.value = vinDisp(car.mixPct);
+      } else {
+        el.value = (car[key] == null || car[key] === '') ? '' : vinDisp(car[key]);
+      }
+      syncParamsToMeta(STATE.car, car);
+      if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct' || key === 'gasStart' || key === 'benzinStart') {
+        schedulePaintCalc(true);
       }
       markDirty();
     });
@@ -4318,6 +4377,10 @@ function bind() {
     const d = el.getAttribute('data-d');
     const f = el.getAttribute('data-f');
     if (!d || !f) return;
+    if (f !== 'mode' && f !== 'station' && f !== 'extraWhy' && f !== 'note' && isTypingDecimal(el.value)) {
+      markDirty();
+      return;
+    }
     const car = getCar(STATE.car);
     const row = ensureDay(car, d);
     row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
@@ -4329,7 +4392,7 @@ function bind() {
     }
     const syncGasKmInput = (val) => {
       const gInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="gasKm"]');
-      if (gInp && gInp !== el) gInp.value = val === '' || val == null ? '' : String(val);
+      if (gInp && gInp !== el) gInp.value = val === '' || val == null ? '' : vinDisp(val);
     };
     if (f === 'mode') {
       const km = n(row.km);
@@ -4361,7 +4424,7 @@ function bind() {
         row.km = cleanFloat(n(row.odo) - prev);
         row.kmSrc = 'odo';
         const kmInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="km"]');
-        if (kmInp) kmInp.value = vin(row.km);
+        if (kmInp) kmInp.value = vinDisp(row.km);
         if (row.mode === 'gaz') {
           row.gasKm = row.km;
           syncGasKmInput(row.km);
@@ -4382,6 +4445,26 @@ function bind() {
   document.getElementById('daily-body').addEventListener('change', e => {
     if (e.target.tagName === 'SELECT') e.target.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  document.getElementById('daily-body').addEventListener('blur', e => {
+    const el = e.target;
+    if (!el || el.tagName !== 'INPUT') return;
+    const f = el.getAttribute('data-f');
+    if (!f || f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') return;
+    const d = el.getAttribute('data-d');
+    if (!d) return;
+    const car = getCar(STATE.car);
+    const row = ensureDay(car, d);
+    if (f === 'gasKm') {
+      const raw = String(el.value || '').trim();
+      row.gasKm = raw === '' ? null : n(raw);
+      el.value = row.gasKm == null ? '' : vinDisp(row.gasKm);
+    } else {
+      row[f] = n(el.value);
+      el.value = vinDisp(row[f]);
+    }
+    schedulePaintCalc();
+    markDirty();
+  }, true);
   document.getElementById('month-input').addEventListener('change', e => changeMonth(e.target.value));
   document.getElementById('btn-save').onclick = saveMonth;
   document.getElementById('btn-recalc').onclick = () => {
