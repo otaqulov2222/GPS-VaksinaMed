@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shell.css?v=27"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="attendance.css?v=38"/>
+<link rel="stylesheet" href="attendance.css?v=39"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -69,21 +69,21 @@
     </div>
 
     <div class="fid-viewport" id="fid-viewport">
-      <div class="fid-grid"></div>
+      <div class="fid-grid" aria-hidden="true"></div>
       <video id="att-cam" class="fid-video" playsinline muted autoplay></video>
-      <canvas id="att-overlay" class="fid-overlay"></canvas>
+      <canvas id="att-overlay" class="fid-overlay" hidden></canvas>
       <div class="fid-ring" aria-hidden="true"></div>
       <div class="fid-brackets" aria-hidden="true">
         <i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>
       </div>
       <div class="fid-scanline" id="fid-scanline" aria-hidden="true"></div>
-      <div class="fid-vignette"></div>
+      <div class="fid-vignette" aria-hidden="true"></div>
     </div>
 
     <div class="fid-meta">
-      <div class="fid-status" id="fid-status">LOADING...</div>
+      <div class="fid-status" id="fid-status">Kameraga ruxsat…</div>
       <div class="fid-seg" id="fid-seg" aria-hidden="true"></div>
-      <p class="fid-hint" id="fid-hint">Ofis QR kodini markazga tuting</p>
+      <p class="fid-hint" id="fid-hint">Ofis QR kodini ramka ichiga tuting</p>
       <div class="fid-actions" id="fid-actions" hidden>
         <button type="button" class="fid-btn fid-btn-in" id="fid-keldim">Keldim</button>
         <button type="button" class="fid-btn fid-btn-out" id="fid-ketdim">Ketdim</button>
@@ -103,6 +103,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="auth.js?v=35"></script>
-<script src="attendance.js?v=38"></script>
+<script src="attendance.js?v=39"></script>
 </body>
 </html>

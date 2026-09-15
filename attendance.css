@@ -853,13 +853,13 @@ body.fid-lock { overflow: hidden; }
     max-height: min(48dvh, 420px);
     border-radius: 16px;
   }
-  /* Telefonda tabiiy selfie: zoom-out + yuz ovalga mos */
-  .fid-video {
+  /* Telefonda Face ID uslubi — faqat Face rejimida */
+  .fid-modal:not(.qr-mode) .fid-video {
     transform: scaleX(-1) scale(0.68);
     object-position: center 36%;
     filter: saturate(0.7) brightness(0.88) contrast(1.05) hue-rotate(140deg);
   }
-  .fid-overlay {
+  .fid-modal:not(.qr-mode) .fid-overlay {
     transform: scaleX(-1) scale(0.68);
   }
   .fid-ring {
@@ -2464,5 +2464,74 @@ body.fid-lock { overflow: hidden; }
     box-shadow: 0 3px 10px rgba(11, 31, 58, 0.2) !important;
   }
   .att-tab.on .att-tab-ico { color: #7dd3fc !important; opacity: 1; }
+}
+
+/* —— Ofis QR skaner: Face ID emas, tez to‘rtburchak ramka —— */
+.fid-modal.qr-mode .fid-ring { display: none !important; }
+.fid-modal.qr-mode .fid-overlay { display: none !important; }
+.fid-modal.qr-mode .fid-grid { opacity: 0.2; }
+.fid-modal.qr-mode .fid-vignette {
+  background: radial-gradient(ellipse 88% 78% at 50% 48%, transparent 40%, rgba(2, 8, 18, 0.5) 100%);
+}
+.fid-modal.qr-mode .fid-viewport {
+  aspect-ratio: 1 / 1;
+  max-height: min(58vh, 440px);
+  border-radius: 16px;
+  border-color: rgba(62, 203, 255, 0.42);
+}
+.fid-modal.qr-mode .fid-video {
+  transform: none !important;
+  object-fit: cover !important;
+  object-position: center center !important;
+  filter: none !important;
+  opacity: 1;
+}
+.fid-modal.qr-mode .fid-brackets {
+  left: 11%;
+  right: 11%;
+  top: 11%;
+  bottom: 11%;
+}
+.fid-modal.qr-mode .fid-brackets i {
+  width: 30px;
+  height: 30px;
+  border-color: #5ad0ff;
+}
+.fid-modal.qr-mode .fid-scanline {
+  left: 13%;
+  right: 13%;
+}
+.fid-modal.qr-mode.scanning .fid-scanline { opacity: 1; }
+.fid-modal.qr-mode .fid-status {
+  font-size: 14px;
+  letter-spacing: 0.14em;
+}
+.fid-modal.qr-mode .fid-hint {
+  font-size: 13px;
+  color: #9eb6ce;
+  max-width: 28em;
+  margin-left: auto;
+  margin-right: auto;
+}
+#qr-reader,
+#qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border: 0 !important;
+}
+#qr-reader img { display: none !important; }
+
+@media (max-width: 480px) {
+  .fid-modal.qr-mode .fid-viewport {
+    max-height: min(52dvh, 380px);
+    min-height: 220px;
+    aspect-ratio: 1 / 1;
+  }
+  .fid-modal.qr-mode .fid-video {
+    transform: none !important;
+    filter: none !important;
+    object-position: center center !important;
+  }
 }
 

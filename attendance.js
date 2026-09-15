@@ -52,6 +52,42 @@
   const btnCancel = document.getElementById('fid-cancel');
   let pendingKind = null;
   let flowRetry = null;
+  let scanPulseId = null;
+  let qrLibWarm = false;
+
+  function warmQrLib() {
+    if (qrLibWarm || window.Html5Qrcode || window.BarcodeDetector) return;
+    qrLibWarm = true;
+    loadScriptOnce(HTML5_QR).catch(() => {});
+  }
+
+  function stopScanPulse() {
+    if (scanPulseId) {
+      clearInterval(scanPulseId);
+      scanPulseId = null;
+    }
+  }
+
+  function startScanPulse() {
+    stopScanPulse();
+    let p = 28;
+    scanPulseId = setInterval(() => {
+      p = p >= 78 ? 32 : p + 3;
+      setFidUI({
+        status: 'SCANNING…',
+        hint: 'Ofis QR ni ramka ichiga tuting',
+        progress: p,
+        tone: 'scan'
+      });
+    }, 280);
+  }
+
+  function nextPunchKind() {
+    const today = (STATE && STATE.today) || {};
+    if (!today.in) return 'in';
+    if (today.in && !today.out) return 'out';
+    return null;
+  }
 
   function activeQrTicket() {
     const t = qrTicketLocal || (STATE && STATE.qrTicket) || null;
@@ -223,7 +259,7 @@
       if (geoLive.status === 'ok') {
         if (ticketOk) {
           gate.className = 'av-gate-banner on ok';
-          gate.textContent = 'Ofis QR tasdiqlandi — endi Keldim / Ketdim bosing.';
+          gate.textContent = 'Ofis QR tasdiqlandi — Keldim / Ketdim avtomatik yoziladi.';
         } else {
           gate.className = 'av-gate-banner';
           gate.textContent = '';
@@ -744,20 +780,32 @@
     if (!window.isSecureContext) {
       throw new Error('Joylashuv faqat HTTPS da ishlaydi');
     }
-    // Safari ba'zan Permissions API ni "denied" deb yolg'on ko'rsatadi —
-    // shuning uchun avval baribir getCurrentPosition chaqiramiz (prompt chiqishi mumkin).
+    // Watchdan yangi joylashuv bo'lsa — kutmasdan ishlatamiz (QR tezligi)
+    if (
+      geoLive &&
+      geoLive.lat != null &&
+      geoLive.lng != null &&
+      geoLive.inside === true &&
+      (geoLive.accuracy == null || geoLive.accuracy <= 120)
+    ) {
+      return {
+        lat: geoLive.lat,
+        lng: geoLive.lng,
+        accuracy: geoLive.accuracy
+      };
+    }
     try {
       return await getGpsOnce({
         enableHighAccuracy: false,
-        timeout: 15000,
-        maximumAge: 0
+        timeout: 8000,
+        maximumAge: 15000
       });
     } catch (e1) {
       try {
         return await getGpsOnce({
           enableHighAccuracy: true,
-          timeout: 20000,
-          maximumAge: 0
+          timeout: 12000,
+          maximumAge: 5000
         });
       } catch (e2) {
         const code = (e2 && e2.code) || (e1 && e1.code);
@@ -767,11 +815,13 @@
     }
   }
 
-  function openModal(title, sub) {
+  function openModal(title, sub, opts) {
     if (!modal) return;
+    opts = opts || {};
     modal.hidden = false;
     modal.setAttribute('aria-hidden', 'false');
     modal.classList.add('open');
+    modal.classList.toggle('qr-mode', !!opts.qrMode);
     document.body.classList.add('fid-lock');
     modalOpen = true;
     pendingScan = null;
@@ -779,9 +829,14 @@
     hideRetry();
     const t = document.getElementById('fid-title');
     const s = document.getElementById('fid-sub');
-    if (t) t.textContent = title || 'FACE ID';
-    if (s) s.textContent = sub || '';
-    setFidUI({ status: 'LOADING…', hint: 'Ruxsatlar va kamera…', progress: 0, tone: 'load' });
+    if (t) t.textContent = title || (opts.qrMode ? 'OFIS QR' : 'FACE ID');
+    if (s) s.textContent = sub || (opts.qrMode ? 'Devordagi ofis QR kodini ramkaga tuting' : '');
+    setFidUI({
+      status: opts.qrMode ? 'KAMERA…' : 'LOADING…',
+      hint: opts.qrMode ? 'Kameraga ruxsat bering' : 'Ruxsatlar va kamera…',
+      progress: 0,
+      tone: 'load'
+    });
     modal.classList.remove('ok', 'err', 'warn', 'scanning');
   }
 
@@ -790,6 +845,7 @@
       try { abortScan(); } catch (e) {}
       abortScan = null;
     }
+    stopScanPulse();
     stopQrScanner().catch(() => {});
     stopCam();
     pendingScan = null;
@@ -801,7 +857,7 @@
     if (holder) holder.remove();
     if (video) video.style.display = '';
     if (!modal) return;
-    modal.classList.remove('open', 'ok', 'err', 'warn', 'scanning');
+    modal.classList.remove('open', 'ok', 'err', 'warn', 'scanning', 'qr-mode');
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('fid-lock');
@@ -1824,14 +1880,18 @@
     }
     busy = true;
     clearMsg();
-    openModal('OFIS QR', 'Devordagi ofis QR kodini ramkaga tuting');
+    warmQrLib();
+    openModal('OFIS QR', 'Devordagi ofis QR kodini ramkaga tuting', { qrMode: true });
     flowRetry = () => startQrScanFlow();
+    let autoKind = null;
     try {
-      setFidUI({ status: 'JOYLASHUV…', hint: 'Joylashuv tekshirilmoqda', progress: 10, tone: 'load' });
-      const gps = await getGps();
-      setFidUI({ status: 'KAMERA…', hint: 'Kameraga ruxsat bering', progress: 25, tone: 'load' });
+      // GPS va kamera parallel — oldin GPS kutib sekinlashmasin
+      const gpsPromise = getGps();
+      setFidUI({ status: 'SCANNING…', hint: 'Ofis QR ni ramka ichiga tuting', progress: 30, tone: 'load' });
       const payload = await scanOfficeQrPayload();
-      setFidUI({ status: 'TEKSHIRUV…', hint: 'Ofis QR tasdiqlanmoqda', progress: 80, tone: 'load' });
+      stopScanPulse();
+      setFidUI({ status: 'TEKSHIRUV…', hint: 'Ofis QR va joylashuv tasdiqlanmoqda', progress: 85, tone: 'load' });
+      const gps = await gpsPromise;
       const r = await api('/api/attendance/qr/verify', {
         method: 'POST',
         body: JSON.stringify({
@@ -1848,17 +1908,27 @@
       };
       if (STATE) STATE.qrTicket = qrTicketLocal;
       await stopQrScanner();
+      autoKind = nextPunchKind();
+      const punchLabel = autoKind === 'out' ? 'Ketdim' : 'Keldim';
       setFidUI({
         status: 'SUCCESS',
-        hint: r.message || 'Ofis QR tasdiqlandi — endi Keldim / Ketdim',
+        hint: autoKind
+          ? ('QR tasdiqlandi — ' + punchLabel + ' yozilmoqda…')
+          : (r.message || 'Ofis QR tasdiqlandi'),
         progress: 100,
         tone: 'ok'
       });
-      await new Promise((x) => setTimeout(x, 700));
-      closeModal();
-      msg(r.message || 'QR tasdiqlandi', 'ok');
       paintGeoUI();
+      if (autoKind) {
+        busy = false;
+        await confirmPunch(autoKind);
+        return;
+      }
+      await new Promise((x) => setTimeout(x, 500));
+      closeModal();
+      msg(r.message || 'QR tasdiqlandi — bugun yakunlangan', 'ok');
     } catch (e) {
+      stopScanPulse();
       await stopQrScanner();
       const text = e.message || 'QR xato';
       if (modal) { modal.classList.add('err'); modal.classList.remove('ok', 'scanning'); }
@@ -1877,6 +1947,7 @@
         if (settled) return;
         settled = true;
         abortScan = null;
+        stopScanPulse();
         if (err) reject(err);
         else resolve(val);
       };
@@ -1886,7 +1957,7 @@
         const text = String(raw || '').trim();
         if (!text) return;
         if (!/VMATT1\.\d+\./.test(text)) {
-          setFidUI({ status: 'QR…', hint: 'Bu ofis QR emas — to‘g‘ri kodni tuting', progress: 40, tone: 'warn' });
+          setFidUI({ status: 'QR…', hint: 'Bu ofis QR emas — to‘g‘ri kodni tuting', progress: 45, tone: 'warn' });
           return;
         }
         done(null, text);
@@ -1895,8 +1966,8 @@
       try {
         if (window.BarcodeDetector) {
           await startCam();
-          if (modal) modal.classList.add('scanning');
-          setFidUI({ status: 'SCANNING…', hint: 'Ofis QR ni ramkaga tuting', progress: 40, tone: 'scan' });
+          if (modal) modal.classList.add('scanning', 'qr-mode');
+          startScanPulse();
           const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
           const tick = async () => {
             if (settled) return;
@@ -1909,7 +1980,7 @@
                 }
               }
             } catch (e) { /* keep scanning */ }
-            scanLoop = requestAnimationFrame(() => { setTimeout(tick, 120); });
+            scanLoop = requestAnimationFrame(() => { setTimeout(tick, 40); });
           };
           tick();
           return;
@@ -1922,21 +1993,26 @@
         if (!holder && vp) {
           holder = document.createElement('div');
           holder.id = 'qr-reader';
-          holder.style.cssText = 'position:absolute;inset:0;z-index:5;overflow:hidden';
+          holder.style.cssText = 'position:absolute;inset:0;z-index:5;overflow:hidden;background:#020b14';
           vp.appendChild(holder);
         }
         if (video) video.style.display = 'none';
-        if (modal) modal.classList.add('scanning');
-        setFidUI({ status: 'SCANNING…', hint: 'Ofis QR ni ramkaga tuting', progress: 40, tone: 'scan' });
+        if (modal) modal.classList.add('scanning', 'qr-mode');
+        startScanPulse();
         html5Qr = new window.Html5Qrcode('qr-reader');
-        const box = Math.max(120, Math.min(
-          240,
-          Math.floor((holder.clientWidth || 280) * 0.72),
-          Math.floor((holder.clientHeight || 280) * 0.72)
+        const side = Math.max(200, Math.min(
+          320,
+          Math.floor((holder.clientWidth || 300) * 0.88),
+          Math.floor((holder.clientHeight || 300) * 0.88)
         ));
         await html5Qr.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: box, height: box } },
+          { facingMode: { ideal: 'environment' } },
+          {
+            fps: 24,
+            qrbox: { width: side, height: side },
+            aspectRatio: 1,
+            disableFlip: false
+          },
           (decoded) => accept(decoded),
           () => {}
         );
@@ -1976,7 +2052,7 @@
         progress: 90,
         tone: 'ok'
       });
-      if (!modalOpen) openModal(kind === 'in' ? 'KELDIM' : 'KETDIM', 'Davomat yozilmoqda');
+      if (!modalOpen) openModal(kind === 'in' ? 'KELDIM' : 'KETDIM', 'Davomat yozilmoqda', { qrMode: true });
       const gps = await getGps();
       const r = await api('/api/attendance/punch', {
         method: 'POST',
@@ -2913,6 +2989,7 @@
       vmGatePage(user);
       await reload();
       probeGeoOnBoot();
+      warmQrLib();
     } catch (e) {
       app.innerHTML = `<p class="att-loading">${esc(e.message || 'Xato')}</p>`;
     }
