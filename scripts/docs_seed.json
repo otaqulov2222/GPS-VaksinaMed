@@ -1,5 +1,5 @@
 {
-  "_comment": "Hujjat muddatlari — plate kalitlari FLEET bilan moslashadi (import skripti).",
+  "_comment": "Hujjat muddatlari — plate kalitlari FLEET bilan moslashadi (import skripti). Skren 2026-09-15.",
   "docs": {
     "01 043 KMA": {
       "insurance": { "due": "2027-06-18", "months": 12 },
@@ -8,7 +8,7 @@
       "cylinder": { "due": "2027-07-14", "months": 12 }
     },
     "01 083 XJA": {
-      "insurance": { "due": "2026-09-04", "months": 12 },
+      "insurance": { "due": "2027-09-02", "months": 12 },
       "tech": { "due": "2026-11-03", "months": 12 },
       "ads": { "due": "2027-05-28", "months": 12 },
       "cylinder": { "due": "", "months": 12 }
@@ -117,7 +117,7 @@
     },
     "01 331 MLA": {
       "insurance": { "due": "2027-06-29", "months": 12 },
-      "tech": { "due": "2027-06-28", "months": 12 },
+      "tech": { "due": "2026-06-28", "months": 12 },
       "ads": { "due": "2027-07-03", "months": 12 },
       "cylinder": { "due": "2029-06-13", "months": 36 }
     },
