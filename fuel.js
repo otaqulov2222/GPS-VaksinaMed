@@ -101,13 +101,48 @@ function vin(v) {
   if (x === 0) return '0';
   return String(x);
 }
-/** Ekranda ko'rsatish / yozish — vergul bilan (7,6) */
-function vinDisp(v) {
+/** Yoqilg‘i maydonlari — foydalanuvchi yozmagan bo‘lsa ham 1,90 ko‘rinsin */
+const DISP_FRAC_DEFAULT = {
+  gasStart: 2, benzinStart: 2, gasIn: 2, benzinIn: 2,
+  gasNorm: 2, benzinNorm: 2, gasKm: 1, km: 1,
+  mixPct: 0, gasPrice: 0, benzinPrice: 0, odo: 0, odoStart: 0, extra: 0
+};
+/** Ekranda ko'rsatish / yozish — vergul bilan; fracDigits bo'lsa 1,90 saqlanadi */
+function vinDisp(v, fracDigits) {
   if (v == null || v === '') return '';
   const x = cleanFloat(n(v));
   if (!Number.isFinite(x)) return '';
-  if (x === 0) return '0';
-  return String(x).replace('.', ',');
+  let frac = fracDigits;
+  if (frac == null || frac < 0 || !Number.isFinite(frac)) {
+    if (x === 0) return '0';
+    return String(x).replace('.', ',');
+  }
+  frac = Math.max(0, Math.min(10, Math.floor(frac)));
+  if (x === 0) return frac > 0 ? ('0,' + '0'.repeat(frac)) : '0';
+  return x.toFixed(frac).replace('.', ',');
+}
+/** "1,90" → 2; "7," → null (yozilmoqda); "12" → 0 */
+function fracDigitsFromRaw(raw) {
+  const s = String(raw ?? '').trim().replace(/\s/g, '');
+  if (!s || isTypingDecimal(s)) return null;
+  const m = s.match(/[.,](\d+)$/);
+  return m ? m[1].length : 0;
+}
+function rememberDispFrac(bag, key, raw) {
+  if (!bag || !key) return;
+  const f = fracDigitsFromRaw(raw);
+  if (f == null) return;
+  if (!bag._dispFrac || typeof bag._dispFrac !== 'object') bag._dispFrac = {};
+  bag._dispFrac[key] = f;
+}
+/** Yozilgan aniqlik (_dispFrac) yoki maydon defaulti (gaz 2 xona) */
+function dispFracOf(bag, key) {
+  if (bag && bag._dispFrac && typeof bag._dispFrac === 'object') {
+    const f = bag._dispFrac[key];
+    if (f != null && f >= 0 && Number.isFinite(f)) return Math.floor(f);
+  }
+  if (key && DISP_FRAC_DEFAULT[key] != null) return DISP_FRAC_DEFAULT[key];
+  return null;
 }
 /** Yozish hali tugamaganmi? (7, yoki 7.) — maydonni qayta yozmaslik */
 function isTypingDecimal(raw) {
@@ -904,7 +939,12 @@ function flushFormToState() {
     const f = el.getAttribute('data-f');
     if (!d || !f || !STATE.car) return;
     const row = ensureDay(getCar(STATE.car), d);
-    row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
+    if (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') {
+      row[f] = el.value;
+      return;
+    }
+    rememberDispFrac(row, f, el.value);
+    row[f] = n(el.value);
     if ((f === 'km' || f === 'odo') && n(el.value) && row.kmSrc !== 'gps' && row.kmSrc !== 'odo') {
       row.kmSrc = 'user';
     }
@@ -915,6 +955,14 @@ function stripLocalFlags(car) {
   const out = Object.assign({}, car);
   delete out._fromServer;
   delete out._replaceDays;
+  // _dispFrac saqlanadi — "1,90" qayta yuklanganda ham to‘liq ko‘rinsin
+  if (out.days && typeof out.days === 'object') {
+    const days = {};
+    Object.keys(out.days).forEach((d) => {
+      days[d] = Object.assign({}, out.days[d]);
+    });
+    out.days = days;
+  }
   return out;
 }
 
@@ -1040,15 +1088,25 @@ function scheduleMetaSave() {
 function applyCarField(plate, el) {
   const rec = ensureVehicleMeta(plate);
   const k = el.getAttribute('data-v');
-  rec[k] = (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') ? el.value : n(el.value);
+  if (k === 'name' || k === 'brand' || k === 'card' || k === 'fuelType') {
+    rec[k] = el.value;
+  } else {
+    rememberDispFrac(rec, k, el.value);
+    rec[k] = n(el.value);
+  }
   if (k === 'name') {
     const nm = String(el.value || '').trim();
     rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).pop() || '')) || rec.short;
   }
   if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
-    getCar(plate)[k] = rec[k];
+    const car = getCar(plate);
+    car[k] = rec[k];
+    if (rec._dispFrac && rec._dispFrac[k] != null) {
+      if (!car._dispFrac) car._dispFrac = {};
+      car._dispFrac[k] = rec._dispFrac[k];
+    }
     if (k === 'gasPrice' || k === 'benzinPrice' || k === 'gasNorm' || k === 'benzinNorm') {
-      syncDayPricesFromCar(getCar(plate));
+      syncDayPricesFromCar(car);
     }
     markDirty();
   }
@@ -1078,7 +1136,12 @@ function readParamsIntoCar() {
   const car = getCar(STATE.car);
   document.querySelectorAll('[data-p]').forEach(el => {
     const k = el.getAttribute('data-p');
-    car[k] = k === 'fuelType' ? el.value : n(el.value);
+    if (k === 'fuelType') {
+      car[k] = el.value;
+      return;
+    }
+    rememberDispFrac(car, k, el.value);
+    car[k] = n(el.value);
   });
 }
 
@@ -1092,8 +1155,8 @@ function writeParams(opts) {
     if (!el) return;
     // Foydalanuvchi hozir shu maydonda yozayotgan bo'lsa — tegilmasin
     if (skipFocused && ae === el) return;
-    if (ae === el && (isTypingDecimal(el.value) || String(el.value || '').includes(','))) return;
-    el.value = (car[k] == null || car[k] === '') ? '' : vinDisp(car[k]);
+    if (ae === el && (isTypingDecimal(el.value) || String(el.value || '').endsWith(',') || String(el.value || '').endsWith('.'))) return;
+    el.value = (car[k] == null || car[k] === '') ? '' : vinDisp(car[k], dispFracOf(car, k));
   });
   const ft = document.getElementById('p-fuelType');
   if (ft && ae !== ft) ft.value = car.fuelType || 'mixed';
@@ -1288,23 +1351,23 @@ function renderDailyTable() {
     const gasKmVal = src.gasKm != null ? src.gasKm : (r.mode === 'gaz' ? src.km : (r.mode === 'aralash' ? r.gasKm : ''));
     return `<tr>
       <td class="day">${r.d}</td>
-      <td><input data-d="${r.d}" data-f="km" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.km)}" title="Jami km"></td>
-      <td><input data-d="${r.d}" data-f="gasKm" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(gasKmVal)}" title="Shu kunda gazda yurgan km"></td>
+      <td><input data-d="${r.d}" data-f="km" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.km, dispFracOf(src, 'km'))}" title="Jami km"></td>
+      <td><input data-d="${r.d}" data-f="gasKm" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(gasKmVal, dispFracOf(src, 'gasKm'))}" title="Shu kunda gazda yurgan km"></td>
       <td><span class="out" data-liq-km="${r.d}">${r.liqKm ? fmtNum(r.liqKm) : ''}</span></td>
-      <td><input data-d="${r.d}" data-f="odo" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.odo)}"></td>
+      <td><input data-d="${r.d}" data-f="odo" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.odo, dispFracOf(src, 'odo'))}"></td>
       <td>${modeSelect(r.d, src.mode)}</td>
       <td>${stationSelect(r.d, src.station)}</td>
-      <td><input data-d="${r.d}" data-f="gasIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.gasIn)}"></td>
-      <td><input data-d="${r.d}" data-f="gasPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.gasPrice)}"></td>
+      <td><input data-d="${r.d}" data-f="gasIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.gasIn, dispFracOf(src, 'gasIn'))}"></td>
+      <td><input data-d="${r.d}" data-f="gasPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.gasPrice, dispFracOf(src, 'gasPrice'))}"></td>
       <td><span class="out">${r.gasIn ? money(r.gasSum) : ''}</span></td>
-      <td><input data-d="${r.d}" data-f="benzinIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.benzinIn)}"></td>
-      <td><input data-d="${r.d}" data-f="benzinPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.benzinPrice)}"></td>
+      <td><input data-d="${r.d}" data-f="benzinIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.benzinIn, dispFracOf(src, 'benzinIn'))}"></td>
+      <td><input data-d="${r.d}" data-f="benzinPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.benzinPrice, dispFracOf(src, 'benzinPrice'))}"></td>
       <td><span class="out">${r.benzinIn ? money(r.benzinSum) : ''}</span></td>
       <td><span class="out">${(r.gasKm || r.gasUsed) ? fmtNum(r.gasUsed) : ''}</span></td>
       <td><span class="out">${(r.liqKm || r.benUsed) ? fmtNum(r.benUsed) : ''}</span></td>
       <td><span class="out ${remainClass(r.gasR)}">${(r.km || r.gasIn) ? fmtNum(r.gasR) : ''}</span></td>
       <td><span class="out ${remainClass(r.benR)}">${(r.km || r.benzinIn) ? fmtNum(r.benR) : ''}</span></td>
-      <td><input data-d="${r.d}" data-f="extra" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.extra)}"></td>
+      <td><input data-d="${r.d}" data-f="extra" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.extra, dispFracOf(src, 'extra'))}"></td>
       <td><input class="w-note" data-d="${r.d}" data-f="extraWhy" value="${esc(src.extraWhy)}"></td>
       <td><input class="w-note" data-d="${r.d}" data-f="note" value="${esc(src.note)}"></td>
     </tr>`;
@@ -2046,10 +2109,10 @@ function renderCars() {
                 <option value="benzin"${f.fuelType==='benzin'?' selected':''}>Benzin</option>
                 <option value="dizel"${f.fuelType==='dizel'?' selected':''}>Dizel</option>
               </select></td>
-              <td><input data-v="gasNorm" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.gasNorm)}"></td>
-              <td><input data-v="benzinNorm" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.benzinNorm)}" title="${['dizel','dizel_gaz'].includes(f.fuelType) ? 'Dizel norma' : 'Benzin norma'}"></td>
-              <td><input data-v="gasPrice" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.gasPrice)}"></td>
-              <td><input data-v="benzinPrice" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.benzinPrice)}"></td>
+              <td><input data-v="gasNorm" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.gasNorm, dispFracOf(f, 'gasNorm'))}"></td>
+              <td><input data-v="benzinNorm" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.benzinNorm, dispFracOf(f, 'benzinNorm'))}" title="${['dizel','dizel_gaz'].includes(f.fuelType) ? 'Dizel norma' : 'Benzin norma'}"></td>
+              <td><input data-v="gasPrice" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.gasPrice, dispFracOf(f, 'gasPrice'))}"></td>
+              <td><input data-v="benzinPrice" type="text" inputmode="decimal" autocomplete="off" class="vm-dec" value="${vinDisp(f.benzinPrice, dispFracOf(f, 'benzinPrice'))}"></td>
               <td>${(window.VmEatDelete && VmEatDelete.markup({ className: 'car-hide eat-del--sm' })) || `<button type="button" class="btn btn-ink btn-sm car-hide">O'chirish</button>`}</td>
             </tr>`;
             }).join('')}</tbody>
@@ -2119,7 +2182,8 @@ function renderCars() {
         applyCarField(plate, el);
         const k = el.getAttribute('data-v');
         if (['gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice'].includes(k)) {
-          el.value = vinDisp(n(el.value));
+          const rec = ensureVehicleMeta(plate);
+          el.value = vinDisp(n(el.value), dispFracOf(rec, k));
         }
         const st = document.getElementById('nv-save-st');
         if (st) st.textContent = 'Saqlanmoqda...';
@@ -2130,7 +2194,7 @@ function renderCars() {
         if (!['gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice'].includes(k)) return;
         if (isTypingDecimal(el.value)) return;
         applyCarField(plate, el);
-        el.value = vinDisp(n(el.value));
+        el.value = vinDisp(n(el.value), dispFracOf(ensureVehicleMeta(plate), k));
       });
     });
     const renameBtn = tr.querySelector('.drv-rename-btn');
@@ -4373,19 +4437,21 @@ function bind() {
     el.addEventListener('blur', () => {
       const key = el.getAttribute('data-p');
       if (!key || key === 'fuelType') return;
+      const raw = el.value;
+      rememberDispFrac(getCar(STATE.car), key, raw);
       readParamsIntoCar();
       const car = getCar(STATE.car);
       if (key === 'gasStart') {
         car.gasStart = clampBal(car.gasStart);
-        el.value = vinDisp(car.gasStart);
+        el.value = vinDisp(car.gasStart, dispFracOf(car, key));
       } else if (key === 'benzinStart') {
         car.benzinStart = clampBal(car.benzinStart);
-        el.value = vinDisp(car.benzinStart);
+        el.value = vinDisp(car.benzinStart, dispFracOf(car, key));
       } else if (key === 'mixPct') {
         car.mixPct = Math.max(0, Math.min(100, n(car.mixPct) || 0));
-        el.value = vinDisp(car.mixPct);
+        el.value = vinDisp(car.mixPct, dispFracOf(car, key));
       } else {
-        el.value = (car[key] == null || car[key] === '') ? '' : vinDisp(car[key]);
+        el.value = (car[key] == null || car[key] === '') ? '' : vinDisp(car[key], dispFracOf(car, key));
       }
       syncParamsToMeta(STATE.car, car);
       if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct' || key === 'gasStart' || key === 'benzinStart') {
@@ -4413,7 +4479,12 @@ function bind() {
     }
     const car = getCar(STATE.car);
     const row = ensureDay(car, d);
-    row[f] = (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') ? el.value : n(el.value);
+    if (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') {
+      row[f] = el.value;
+    } else {
+      rememberDispFrac(row, f, el.value);
+      row[f] = n(el.value);
+    }
     if (f === 'km' || f === 'odo') row.kmSrc = 'user';
     if (f === 'odo') row.odoSrc = 'user';
     if (f === 'gasKm') {
@@ -4422,7 +4493,7 @@ function bind() {
     }
     const syncGasKmInput = (val) => {
       const gInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="gasKm"]');
-      if (gInp && gInp !== el) gInp.value = val === '' || val == null ? '' : vinDisp(val);
+      if (gInp && gInp !== el) gInp.value = val === '' || val == null ? '' : vinDisp(val, dispFracOf(row, 'gasKm'));
     };
     if (f === 'mode') {
       const km = n(row.km);
@@ -4454,7 +4525,7 @@ function bind() {
         row.km = cleanFloat(n(row.odo) - prev);
         row.kmSrc = 'odo';
         const kmInp = document.querySelector('#daily-body input[data-d="' + d + '"][data-f="km"]');
-        if (kmInp) kmInp.value = vinDisp(row.km);
+        if (kmInp) kmInp.value = vinDisp(row.km, dispFracOf(row, 'km'));
         if (row.mode === 'gaz') {
           row.gasKm = row.km;
           syncGasKmInput(row.km);
@@ -4484,13 +4555,14 @@ function bind() {
     if (!d) return;
     const car = getCar(STATE.car);
     const row = ensureDay(car, d);
+    const raw = String(el.value || '').trim();
+    rememberDispFrac(row, f, raw);
     if (f === 'gasKm') {
-      const raw = String(el.value || '').trim();
       row.gasKm = raw === '' ? null : n(raw);
-      el.value = row.gasKm == null ? '' : vinDisp(row.gasKm);
+      el.value = row.gasKm == null ? '' : vinDisp(row.gasKm, dispFracOf(row, f));
     } else {
       row[f] = n(el.value);
-      el.value = vinDisp(row[f]);
+      el.value = vinDisp(row[f], dispFracOf(row, f));
     }
     schedulePaintCalc();
     markDirty();
