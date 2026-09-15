@@ -89,7 +89,19 @@
 
   function pageName() {
     const p = path.split('/').pop() || '';
-    return p || 'index.html';
+    if (!p || p === 'index.html') return 'index.html';
+    if (p.endsWith('.html')) return p;
+    const map = {
+      live: 'live.html',
+      fuel: 'fuel.html',
+      attendance: 'attendance.html',
+      davomat: 'attendance.html',
+      admin: 'admin.html',
+      driver: 'driver.html',
+      profile: 'profile.html',
+      login: 'login.html',
+    };
+    return map[p] || p + '.html';
   }
 
   function nowTime() {

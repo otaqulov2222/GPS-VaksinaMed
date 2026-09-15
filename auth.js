@@ -1,3 +1,24 @@
+/** Brauzer manzilidan .html ni olib tashlash */
+(function vmCanonicalUrl() {
+    try {
+        const path = (location.pathname || '').replace(/\\/g, '/');
+        const m = path.match(/^\/([^/?#]+)\.html$/i);
+        if (!m) return;
+        const map = {
+            index: '/',
+            live: '/live',
+            fuel: '/fuel',
+            attendance: '/attendance',
+            admin: '/admin',
+            driver: '/driver',
+            profile: '/profile',
+            login: '/login',
+        };
+        const dest = map[m[1].toLowerCase()];
+        if (dest != null) location.replace(dest + location.search + location.hash);
+    } catch (e) {}
+})();
+
 'use strict';
 
 async function vmApi(path, opts) {

@@ -201,6 +201,7 @@ body.app-body::before {
 
 /* Profil qatori: chapda Profil, o‘ngda Face holati (tugma emas) */
 .nav-rail a.nav-link.nav-profil-row,
+.nav-rail a.nav-link[href="/profile"].nav-profil-row,
 .nav-rail a.nav-link[href="/profile.html"].nav-profil-row {
   display: flex !important;
   align-items: center;
@@ -1044,6 +1045,8 @@ a.driver-only[hidden] {
 }
 
 /* profil page link */
+a.nav-link[href="/profile"].on,
+a.nav-link[href="/profile"][aria-current="page"],
 a.nav-link[href="/profile.html"].on,
 a.nav-link[href="/profile.html"][aria-current="page"] {
   background: linear-gradient(135deg, #1a5fb4 0%, #2a74c9 100%) !important;
