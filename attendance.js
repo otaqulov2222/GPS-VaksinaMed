@@ -1910,13 +1910,13 @@
     clearMsg();
     warmQrLib();
     const kind = forcedKind || nextPunchKind() || 'in';
-    pendingKind = kind;
+    pendingKind = null;
     openModal(
-      kind === 'out' ? 'Ketdim — QR scanner' : 'Keldim — QR scanner',
+      'Ofis QR scanner',
       'Ofis QR kodini yashil ramka ichiga tuting',
-      { qrMode: true, kind }
+      { qrMode: true }
     );
-    flowRetry = () => startQrScanFlow(kind);
+    flowRetry = () => startQrScanFlow(forcedKind);
     try {
       const gpsPromise = getGps().catch((e) => e);
       setFidUI({
@@ -1953,17 +1953,25 @@
       geoLive.lat = gpsOrErr.lat;
       geoLive.lng = gpsOrErr.lng;
       geoLive.accuracy = gpsOrErr.accuracy;
-      const autoKind = nextPunchKind() || kind;
+      // Avto-punch yo‘q — foydalanuvchi Keldim/Ketdim ni o‘zi bosadi
+      pendingKind = null;
+      const tEl = document.getElementById('fid-title');
+      const sEl = document.getElementById('fid-sub');
+      if (tEl) tEl.textContent = 'Ofis QR tasdiqlandi';
+      if (sEl) sEl.textContent = 'Endi Keldim yoki Ketdim ni tanlang';
       setFidUI({
-        status: 'Muvaffaqiyatli',
-        hint: (autoKind === 'out' ? 'Ketdim' : 'Keldim') + ' yozilmoqda…',
+        status: 'Tayyor',
+        hint: 'Keldim yoki Ketdim tugmasini bosing',
         progress: null,
         tone: 'ok'
       });
-      if (modal) modal.classList.add('ok');
+      if (modal) {
+        modal.classList.add('ok');
+        modal.classList.remove('scanning', 'err');
+      }
       paintGeoUI();
       busy = false;
-      await confirmPunch(autoKind);
+      showFidActions();
       return;
     } catch (e) {
       stopScanPulse();
