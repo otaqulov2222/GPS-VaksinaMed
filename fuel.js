@@ -866,6 +866,7 @@ async function loadAll() {
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   if (purgePollutedDispFracOnce(STATE.cars)) STATE.dirty = true;
   if (applyMetaNormsToCars()) STATE.dirty = true;
+  if (repairDizelGazFuelTypes()) STATE.dirty = true;
   if (repairCorruptFuelQuantities()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
   STATE.dayRep = Math.min(now.getDate(), daysInMonth(STATE.month));
@@ -902,6 +903,7 @@ async function changeMonth(ym) {
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   if (purgePollutedDispFracOnce(STATE.cars)) STATE.dirty = true;
   if (applyMetaNormsToCars()) STATE.dirty = true;
+  if (repairDizelGazFuelTypes()) STATE.dirty = true;
   if (repairCorruptFuelQuantities()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
   STATE.dirty = preferLocal || STATE.dirty;
@@ -1014,6 +1016,37 @@ function applyMetaNormsToCars() {
       car.fuelType = info.fuelType;
       changed = true;
     }
+  });
+  return changed;
+}
+
+/** Parkda dizel_gaz bo‘lgan mashinalar (844, 331…) — meta/oyda «dizel» qolib ketganini tuzatish */
+function repairDizelGazFuelTypes() {
+  let changed = false;
+  const want = {};
+  (DEFAULT_FLEET || []).forEach((d) => {
+    if (d && d.fuelType === 'dizel_gaz' && d.car) want[plateCompact(d.car)] = true;
+  });
+  // Norma seed bilan mos (fleet yangilanmaguncha ham)
+  ['01 844 FKA', '01 331 MLA'].forEach((p) => { want[plateCompact(p)] = true; });
+
+  const fixRec = (rec) => {
+    if (!rec || typeof rec !== 'object') return false;
+    if (rec.fuelType === 'dizel') {
+      rec.fuelType = 'dizel_gaz';
+      if (!(n(rec.mixPct) > 0)) rec.mixPct = 70;
+      return true;
+    }
+    return false;
+  };
+
+  Object.keys(STATE.cars || {}).forEach((plate) => {
+    if (!want[plateCompact(plate)]) return;
+    if (fixRec(STATE.cars[plate])) changed = true;
+  });
+  Object.keys((STATE.meta && STATE.meta.vehicles) || {}).forEach((plate) => {
+    if (!want[plateCompact(plate)]) return;
+    if (fixRec(STATE.meta.vehicles[plate])) changed = true;
   });
   return changed;
 }
