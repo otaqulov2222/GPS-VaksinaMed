@@ -2611,6 +2611,16 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
     def current_session(self):
         return STORE.get_session(self.read_sid())
 
+    def send_bytes(self, data, content_type="application/octet-stream", code=200, cache="no-store"):
+        raw = data if isinstance(data, (bytes, bytearray)) else bytes(data or b"")
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", cache)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(raw)
+
     def send_json(self, obj, code=200, set_cookie=None, clear_cookie=False):
         raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
@@ -3394,6 +3404,26 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
             self.send_json({"ok": True, **ATTENDANCE.get_office_qr()})
+            return
+
+        if path == "/api/attendance/qr/image":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            try:
+                scale = int((q.get("scale") or ["10"])[0])
+            except (TypeError, ValueError):
+                scale = 10
+            try:
+                png = ATTENDANCE.office_qr_png(scale=scale)
+            except Exception as e:
+                self.send_json({"ok": False, "error": f"QR PNG: {e}"}, 500)
+                return
+            self.send_bytes(png, content_type="image/png", cache="no-store")
             return
 
         if path == "/api/users":

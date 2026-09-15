@@ -261,6 +261,12 @@ class AttendanceStore:
             "require_qr": bool(s.get("require_qr", True)),
         }
 
+    def office_qr_png(self, scale: int = 10) -> bytes:
+        """CDN kerak emas — lokal QR PNG (ofis plakat / yuklash)."""
+        from qr_pure import make_qr_png
+
+        return make_qr_png(self.office_qr_payload(), scale=max(4, min(int(scale or 10), 20)))
+
     def rotate_office_qr(self) -> dict:
         with self.lock:
             raw = self._load(SETTINGS_KEY, {})
@@ -325,7 +331,7 @@ class AttendanceStore:
             acc_f = float(accuracy) if accuracy is not None else None
         except (TypeError, ValueError):
             acc_f = None
-        if acc_f is not None and acc_f > 150:
+        if acc_f is not None and acc_f > 220:
             return False, None, (
                 f"Joylashuv aniq emas ({int(acc_f)} m). "
                 "Ochig'roq joyda qayta urinib ko'ring."

@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shell.css?v=27"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="attendance.css?v=39"/>
+<link rel="stylesheet" href="attendance.css?v=42"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -58,40 +58,42 @@
   </div>
 </div>
 
-<div id="fid-modal" class="fid-modal" hidden aria-hidden="true">
+<div id="fid-modal" class="fid-modal qr-mode" hidden aria-hidden="true">
   <div class="fid-backdrop"></div>
-  <div class="fid-panel" role="dialog" aria-modal="true" aria-labelledby="fid-title">
-    <button type="button" class="fid-close" id="fid-close" aria-label="Yopish">&times;</button>
-    <div class="fid-head">
-      <div class="fid-kicker">VAKSINAMED OFFICE QR</div>
-      <h2 id="fid-title" class="fid-title">OFIS QR</h2>
-      <p class="fid-sub" id="fid-sub">Devordagi kodni skanerlang</p>
+  <div class="fid-panel oq-panel" role="dialog" aria-modal="true" aria-labelledby="fid-title">
+    <div class="oq-top">
+      <span class="oq-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zm4 4h3v3h-3zm-4 0h.01"/></svg>
+        QR
+      </span>
+      <button type="button" class="oq-close" id="fid-close" aria-label="Yopish">&times;</button>
+    </div>
+    <div class="oq-head">
+      <h2 id="fid-title" class="oq-title">Keldim — QR scanner</h2>
+      <p class="oq-sub" id="fid-sub">Ofis QR kodini yashil ramka ichiga tuting</p>
     </div>
 
-    <div class="fid-viewport" id="fid-viewport">
-      <div class="fid-grid" aria-hidden="true"></div>
-      <video id="att-cam" class="fid-video" playsinline muted autoplay></video>
+    <div class="fid-viewport oq-viewport" id="fid-viewport">
+      <video id="att-cam" class="fid-video oq-video" playsinline muted autoplay></video>
       <canvas id="att-overlay" class="fid-overlay" hidden></canvas>
-      <div class="fid-ring" aria-hidden="true"></div>
-      <div class="fid-brackets" aria-hidden="true">
+      <div class="oq-frame" aria-hidden="true">
         <i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>
+        <span class="oq-laser"></span>
       </div>
-      <div class="fid-scanline" id="fid-scanline" aria-hidden="true"></div>
-      <div class="fid-vignette" aria-hidden="true"></div>
+      <div id="qr-reader" class="oq-reader" hidden></div>
     </div>
 
-    <div class="fid-meta">
-      <div class="fid-status" id="fid-status">Kameraga ruxsat…</div>
-      <div class="fid-seg" id="fid-seg" aria-hidden="true"></div>
-      <p class="fid-hint" id="fid-hint">Ofis QR kodini ramka ichiga tuting</p>
-      <div class="fid-actions" id="fid-actions" hidden>
-        <button type="button" class="fid-btn fid-btn-in" id="fid-keldim">Keldim</button>
-        <button type="button" class="fid-btn fid-btn-out" id="fid-ketdim">Ketdim</button>
-      </div>
-      <div class="fid-retry-wrap" id="fid-retry-wrap" hidden>
-        <button type="button" class="fid-btn fid-btn-retry" id="fid-retry">Qayta urinish</button>
-        <button type="button" class="fid-btn fid-btn-cancel" id="fid-cancel">Yopish</button>
-      </div>
+    <p class="oq-foot" id="fid-hint">QR kodni yashil burchakli ramka ichiga tuting</p>
+    <div class="oq-status" id="fid-status">Kamera ochilmoqda…</div>
+    <div class="fid-seg" id="fid-seg" hidden aria-hidden="true"></div>
+
+    <div class="fid-actions" id="fid-actions" hidden>
+      <button type="button" class="fid-btn fid-btn-in" id="fid-keldim">Keldim</button>
+      <button type="button" class="fid-btn fid-btn-out" id="fid-ketdim">Ketdim</button>
+    </div>
+    <div class="fid-retry-wrap" id="fid-retry-wrap" hidden>
+      <button type="button" class="fid-btn fid-btn-retry" id="fid-retry">Qayta urinish</button>
+      <button type="button" class="fid-btn fid-btn-cancel" id="fid-cancel">Yopish</button>
     </div>
   </div>
 </div>
@@ -103,6 +105,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="auth.js?v=35"></script>
-<script src="attendance.js?v=39"></script>
+<script src="attendance.js?v=42"></script>
 </body>
 </html>

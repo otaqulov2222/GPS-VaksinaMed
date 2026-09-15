@@ -2466,72 +2466,220 @@ body.fid-lock { overflow: hidden; }
   .att-tab.on .att-tab-ico { color: #7dd3fc !important; opacity: 1; }
 }
 
-/* —— Ofis QR skaner: Face ID emas, tez to‘rtburchak ramka —— */
-.fid-modal.qr-mode .fid-ring { display: none !important; }
-.fid-modal.qr-mode .fid-overlay { display: none !important; }
-.fid-modal.qr-mode .fid-grid { opacity: 0.2; }
-.fid-modal.qr-mode .fid-vignette {
-  background: radial-gradient(ellipse 88% 78% at 50% 48%, transparent 40%, rgba(2, 8, 18, 0.5) 100%);
+/* —— Ofis QR skaner (VAKSINA HR uslubi: toza yashil ramka) —— */
+.fid-modal.qr-mode {
+  background: #0a1628;
+  padding: 0;
+  align-items: stretch;
 }
-.fid-modal.qr-mode .fid-viewport {
-  aspect-ratio: 1 / 1;
-  max-height: min(58vh, 440px);
-  border-radius: 16px;
-  border-color: rgba(62, 203, 255, 0.42);
+.fid-modal.qr-mode .fid-backdrop {
+  background: #0a1628;
 }
-.fid-modal.qr-mode .fid-video {
-  transform: none !important;
-  object-fit: cover !important;
-  object-position: center center !important;
-  filter: none !important;
-  opacity: 1;
+.fid-modal.qr-mode .fid-panel.oq-panel,
+.fid-modal.qr-mode .oq-panel {
+  background: #0a1628;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  max-width: 100%;
+  width: 100%;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  padding:
+    max(12px, env(safe-area-inset-top, 0px))
+    16px
+    max(18px, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.fid-modal.qr-mode .fid-brackets {
-  left: 11%;
-  right: 11%;
-  top: 11%;
-  bottom: 11%;
+.fid-modal.qr-mode .fid-close,
+.fid-modal.qr-mode .fid-kicker,
+.fid-modal.qr-mode .fid-ring,
+.fid-modal.qr-mode .fid-grid,
+.fid-modal.qr-mode .fid-brackets,
+.fid-modal.qr-mode .fid-scanline,
+.fid-modal.qr-mode .fid-vignette,
+.fid-modal.qr-mode .fid-overlay,
+.fid-modal.qr-mode .fid-seg {
+  display: none !important;
 }
-.fid-modal.qr-mode .fid-brackets i {
-  width: 30px;
+
+.oq-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.oq-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 30px;
-  border-color: #5ad0ff;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.1);
+  color: #e8eef6;
+  font: 700 12px/1 'IBM Plex Sans', sans-serif;
+  letter-spacing: 0.04em;
 }
-.fid-modal.qr-mode .fid-scanline {
-  left: 13%;
-  right: 13%;
+.oq-badge svg { opacity: 0.9; }
+.oq-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
 }
-.fid-modal.qr-mode.scanning .fid-scanline { opacity: 1; }
-.fid-modal.qr-mode .fid-status {
-  font-size: 14px;
-  letter-spacing: 0.14em;
+.oq-head { flex-shrink: 0; margin: 4px 0 2px; }
+.oq-title,
+.fid-modal.qr-mode #fid-title {
+  margin: 0;
+  color: #fff;
+  font: 700 22px/1.2 'IBM Plex Sans', sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
 }
-.fid-modal.qr-mode .fid-hint {
-  font-size: 13px;
-  color: #9eb6ce;
-  max-width: 28em;
-  margin-left: auto;
-  margin-right: auto;
+.oq-sub,
+.fid-modal.qr-mode #fid-sub {
+  margin: 8px 0 0;
+  color: rgba(232,238,246,0.72);
+  font: 500 14px/1.4 'IBM Plex Sans', sans-serif;
 }
-#qr-reader,
-#qr-reader video {
+
+.fid-modal.qr-mode .oq-viewport,
+.fid-modal.qr-mode #fid-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  width: min(100%, 420px);
+  margin: 8px auto;
+  aspect-ratio: 1 / 1;
+  max-height: min(58dvh, 440px);
+  min-height: 240px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #111827;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: none;
+}
+.fid-modal.qr-mode .oq-video,
+.fid-modal.qr-mode .fid-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transform: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+  scale: none;
+}
+
+.oq-frame {
+  position: absolute;
+  inset: 14%;
+  z-index: 6;
+  pointer-events: none;
+}
+.oq-frame i {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-color: #22c55e;
+  border-style: solid;
+  filter: drop-shadow(0 0 4px rgba(34,197,94,0.55));
+}
+.oq-frame .tl { top: 0; left: 0; border-width: 4px 0 0 4px; border-radius: 6px 0 0 0; }
+.oq-frame .tr { top: 0; right: 0; border-width: 4px 4px 0 0; border-radius: 0 6px 0 0; }
+.oq-frame .bl { bottom: 0; left: 0; border-width: 0 0 4px 4px; border-radius: 0 0 0 6px; }
+.oq-frame .br { bottom: 0; right: 0; border-width: 0 4px 4px 0; border-radius: 0 0 6px 0; }
+.oq-frame::before,
+.oq-frame::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  height: 1px;
+  background: rgba(255,255,255,0.35);
+}
+.oq-frame::before { top: 0; }
+.oq-frame::after { bottom: 0; }
+.oq-laser {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 2px;
+  background: #22c55e;
+  box-shadow: 0 0 10px 2px rgba(34,197,94,0.55);
+  transform: translateY(-50%);
+  animation: oqLaser 1.8s ease-in-out infinite;
+}
+@keyframes oqLaser {
+  0%, 100% { top: 12%; opacity: 0.55; }
+  50% { top: 88%; opacity: 1; }
+}
+.fid-modal.qr-mode.ok .oq-frame i { border-color: #4ade80; }
+.fid-modal.qr-mode.err .oq-frame i { border-color: #f87171; }
+
+.oq-reader {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  background: #0b1220;
+}
+.oq-reader video {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
   border: 0 !important;
 }
-#qr-reader img { display: none !important; }
+.oq-reader img { display: none !important; }
+
+.oq-foot,
+.fid-modal.qr-mode #fid-hint {
+  margin: 4px auto 0;
+  text-align: center;
+  color: rgba(232,238,246,0.78);
+  font: 500 13px/1.4 'IBM Plex Sans', sans-serif;
+  max-width: 28em;
+}
+.oq-status,
+.fid-modal.qr-mode #fid-status {
+  margin: 2px auto 0;
+  text-align: center;
+  color: #86efac;
+  font: 600 13px/1.3 'IBM Plex Sans', sans-serif;
+  letter-spacing: 0.02em;
+  text-shadow: none;
+}
+.fid-modal.qr-mode #fid-status.err { color: #fca5a5; }
+.fid-modal.qr-mode #fid-status.warn { color: #fcd34d; }
+.fid-modal.qr-mode #fid-status.ok { color: #86efac; }
+.fid-modal.qr-mode #fid-status.load,
+.fid-modal.qr-mode #fid-status.scan { color: #93c5fd; }
+
+.fid-modal.qr-mode .fid-retry-wrap,
+.fid-modal.qr-mode .fid-actions {
+  margin-top: 8px;
+}
 
 @media (max-width: 480px) {
-  .fid-modal.qr-mode .fid-viewport {
-    max-height: min(52dvh, 380px);
-    min-height: 220px;
-    aspect-ratio: 1 / 1;
+  .fid-modal.qr-mode .oq-viewport,
+  .fid-modal.qr-mode #fid-viewport {
+    width: 100%;
+    max-height: min(54dvh, 400px);
+    min-height: 250px;
   }
-  .fid-modal.qr-mode .fid-video {
-    transform: none !important;
-    filter: none !important;
-    object-position: center center !important;
-  }
+  .oq-title,
+  .fid-modal.qr-mode #fid-title { font-size: 20px; }
 }
 

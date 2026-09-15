@@ -70,16 +70,38 @@
 
   function startScanPulse() {
     stopScanPulse();
-    let p = 28;
+    let n = 0;
+    const phrases = [
+      'QR qidirilmoqda…',
+      'Ramkaga tuting…',
+      'Yashil burchak ichiga…'
+    ];
     scanPulseId = setInterval(() => {
-      p = p >= 78 ? 32 : p + 3;
+      n = (n + 1) % phrases.length;
       setFidUI({
-        status: 'SCANNING…',
-        hint: 'Ofis QR ni ramka ichiga tuting',
-        progress: p,
+        status: phrases[n],
+        hint: 'QR kodni yashil burchakli ramka ichiga tuting',
+        progress: null,
         tone: 'scan'
       });
-    }, 280);
+    }, 900);
+  }
+
+  function isIosLike() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent || '')
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  async function pickBackCameraId() {
+    try {
+      if (!window.Html5Qrcode || !Html5Qrcode.getCameras) return null;
+      const cams = await Html5Qrcode.getCameras();
+      if (!cams || !cams.length) return null;
+      const back = cams.find((c) => /back|rear|environment|orqa|world/i.test(c.label || ''));
+      return (back || cams[cams.length - 1] || cams[0]).id;
+    } catch (e) {
+      return null;
+    }
   }
 
   function nextPunchKind() {
@@ -818,10 +840,12 @@
   function openModal(title, sub, opts) {
     if (!modal) return;
     opts = opts || {};
+    const kind = opts.kind || nextPunchKind() || 'in';
+    const punchTitle = kind === 'out' ? 'Ketdim — QR scanner' : 'Keldim — QR scanner';
     modal.hidden = false;
     modal.setAttribute('aria-hidden', 'false');
     modal.classList.add('open');
-    modal.classList.toggle('qr-mode', !!opts.qrMode);
+    modal.classList.add('qr-mode');
     document.body.classList.add('fid-lock');
     modalOpen = true;
     pendingScan = null;
@@ -829,12 +853,16 @@
     hideRetry();
     const t = document.getElementById('fid-title');
     const s = document.getElementById('fid-sub');
-    if (t) t.textContent = title || (opts.qrMode ? 'OFIS QR' : 'FACE ID');
-    if (s) s.textContent = sub || (opts.qrMode ? 'Devordagi ofis QR kodini ramkaga tuting' : '');
+    if (t) t.textContent = title || (opts.qrMode !== false ? punchTitle : 'FACE ID');
+    if (s) {
+      s.textContent = sub || (opts.qrMode !== false
+        ? 'Ofis QR kodini yashil ramka ichiga tuting'
+        : '');
+    }
     setFidUI({
-      status: opts.qrMode ? 'KAMERA…' : 'LOADING…',
-      hint: opts.qrMode ? 'Kameraga ruxsat bering' : 'Ruxsatlar va kamera…',
-      progress: 0,
+      status: 'Kamera ochilmoqda…',
+      hint: 'QR kodni yashil burchakli ramka ichiga tuting',
+      progress: null,
       tone: 'load'
     });
     modal.classList.remove('ok', 'err', 'warn', 'scanning');
@@ -854,10 +882,14 @@
     hideFidActions();
     hideRetry();
     const holder = document.getElementById('qr-reader');
-    if (holder) holder.remove();
+    if (holder) {
+      holder.hidden = true;
+      holder.innerHTML = '';
+    }
     if (video) video.style.display = '';
     if (!modal) return;
-    modal.classList.remove('open', 'ok', 'err', 'warn', 'scanning', 'qr-mode');
+    modal.classList.remove('open', 'ok', 'err', 'warn', 'scanning');
+    // qr-mode class HTML da doimiy — olib tashlanmasin
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('fid-lock');
@@ -1871,34 +1903,41 @@
     stopCam();
   }
 
-  async function startQrScanFlow() {
+  async function startQrScanFlow(forcedKind) {
     if (busy) return;
-    if (geoLive.inside !== true) {
-      msg('Faqat ofis radiusida QR skanerlash mumkin', 'err');
-      startGeoWatch();
-      return;
-    }
     busy = true;
     clearMsg();
     warmQrLib();
-    openModal('OFIS QR', 'Devordagi ofis QR kodini ramkaga tuting', { qrMode: true });
-    flowRetry = () => startQrScanFlow();
-    let autoKind = null;
+    const kind = forcedKind || nextPunchKind() || 'in';
+    pendingKind = kind;
+    openModal(
+      kind === 'out' ? 'Ketdim — QR scanner' : 'Keldim — QR scanner',
+      'Ofis QR kodini yashil ramka ichiga tuting',
+      { qrMode: true, kind }
+    );
+    flowRetry = () => startQrScanFlow(kind);
     try {
-      // GPS va kamera parallel — oldin GPS kutib sekinlashmasin
-      const gpsPromise = getGps();
-      setFidUI({ status: 'SCANNING…', hint: 'Ofis QR ni ramka ichiga tuting', progress: 30, tone: 'load' });
+      const gpsPromise = getGps().catch((e) => e);
+      setFidUI({
+        status: 'QR qidirilmoqda…',
+        hint: 'QR kodni yashil burchakli ramka ichiga tuting',
+        progress: null,
+        tone: 'scan'
+      });
       const payload = await scanOfficeQrPayload();
       stopScanPulse();
-      setFidUI({ status: 'TEKSHIRUV…', hint: 'Ofis QR va joylashuv tasdiqlanmoqda', progress: 85, tone: 'load' });
-      const gps = await gpsPromise;
+      setFidUI({ status: 'Tasdiqlanmoqda…', hint: 'Ofis QR va joylashuv', progress: null, tone: 'load' });
+      const gpsOrErr = await gpsPromise;
+      if (!gpsOrErr || gpsOrErr instanceof Error || gpsOrErr.lat == null) {
+        throw new Error((gpsOrErr && gpsOrErr.message) || 'Joylashuv olinmadi — ofis zonasida qayta urining');
+      }
       const r = await api('/api/attendance/qr/verify', {
         method: 'POST',
         body: JSON.stringify({
           payload,
-          lat: gps.lat,
-          lng: gps.lng,
-          accuracy: gps.accuracy
+          lat: gpsOrErr.lat,
+          lng: gpsOrErr.lng,
+          accuracy: gpsOrErr.accuracy
         })
       });
       qrTicketLocal = {
@@ -1908,31 +1947,29 @@
       };
       if (STATE) STATE.qrTicket = qrTicketLocal;
       await stopQrScanner();
-      autoKind = nextPunchKind();
-      const punchLabel = autoKind === 'out' ? 'Ketdim' : 'Keldim';
+      geoLive.inside = true;
+      geoLive.status = 'ok';
+      geoLive.lat = gpsOrErr.lat;
+      geoLive.lng = gpsOrErr.lng;
+      geoLive.accuracy = gpsOrErr.accuracy;
+      const autoKind = nextPunchKind() || kind;
       setFidUI({
-        status: 'SUCCESS',
-        hint: autoKind
-          ? ('QR tasdiqlandi — ' + punchLabel + ' yozilmoqda…')
-          : (r.message || 'Ofis QR tasdiqlandi'),
-        progress: 100,
+        status: 'Muvaffaqiyatli',
+        hint: (autoKind === 'out' ? 'Ketdim' : 'Keldim') + ' yozilmoqda…',
+        progress: null,
         tone: 'ok'
       });
+      if (modal) modal.classList.add('ok');
       paintGeoUI();
-      if (autoKind) {
-        busy = false;
-        await confirmPunch(autoKind);
-        return;
-      }
-      await new Promise((x) => setTimeout(x, 500));
-      closeModal();
-      msg(r.message || 'QR tasdiqlandi — bugun yakunlangan', 'ok');
+      busy = false;
+      await confirmPunch(autoKind);
+      return;
     } catch (e) {
       stopScanPulse();
       await stopQrScanner();
       const text = e.message || 'QR xato';
       if (modal) { modal.classList.add('err'); modal.classList.remove('ok', 'scanning'); }
-      setFidUI({ status: 'FAILED', hint: text, progress: 0, tone: 'err' });
+      setFidUI({ status: 'FAILED', hint: text, progress: null, tone: 'err' });
       msg(text, 'err');
       showRetry(text);
     } finally {
@@ -1956,66 +1993,71 @@
       const accept = (raw) => {
         const text = String(raw || '').trim();
         if (!text) return;
-        if (!/VMATT1\.\d+\./.test(text)) {
-          setFidUI({ status: 'QR…', hint: 'Bu ofis QR emas — to‘g‘ri kodni tuting', progress: 45, tone: 'warn' });
+        if (!/VMATT1\.\d+\./i.test(text)) {
+          setFidUI({
+            status: 'Noto‘g‘ri QR',
+            hint: 'Bu ofis QR emas — to‘g‘ri kodni tuting',
+            progress: null,
+            tone: 'warn'
+          });
           return;
         }
         done(null, text);
       };
 
-      try {
-        if (window.BarcodeDetector) {
-          await startCam();
-          if (modal) modal.classList.add('scanning', 'qr-mode');
-          startScanPulse();
-          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-          const tick = async () => {
-            if (settled) return;
-            try {
-              if (video && video.readyState >= 2) {
-                const codes = await detector.detect(video);
-                if (codes && codes[0] && codes[0].rawValue) {
-                  accept(codes[0].rawValue);
-                  return;
-                }
-              }
-            } catch (e) { /* keep scanning */ }
-            scanLoop = requestAnimationFrame(() => { setTimeout(tick, 40); });
-          };
-          tick();
-          return;
-        }
-
+      const startHtml5 = async () => {
         await loadScriptOnce(HTML5_QR);
-        if (!window.Html5Qrcode) throw new Error('QR skaner yuklanmadi');
-        const vp = document.getElementById('fid-viewport');
-        let holder = document.getElementById('qr-reader');
-        if (!holder && vp) {
-          holder = document.createElement('div');
-          holder.id = 'qr-reader';
-          holder.style.cssText = 'position:absolute;inset:0;z-index:5;overflow:hidden;background:#020b14';
-          vp.appendChild(holder);
-        }
+        if (!window.Html5Qrcode) throw new Error('QR skaner yuklanmadi — internetni tekshiring');
+        const holder = document.getElementById('qr-reader');
+        if (!holder) throw new Error('QR oyna topilmadi');
+        holder.hidden = false;
+        holder.innerHTML = '';
         if (video) video.style.display = 'none';
         if (modal) modal.classList.add('scanning', 'qr-mode');
         startScanPulse();
-        html5Qr = new window.Html5Qrcode('qr-reader');
-        const side = Math.max(200, Math.min(
-          320,
-          Math.floor((holder.clientWidth || 300) * 0.88),
-          Math.floor((holder.clientHeight || 300) * 0.88)
-        ));
-        await html5Qr.start(
-          { facingMode: { ideal: 'environment' } },
-          {
-            fps: 24,
-            qrbox: { width: side, height: side },
-            aspectRatio: 1,
-            disableFlip: false
+        html5Qr = new window.Html5Qrcode('qr-reader', { verbose: false });
+        const camId = await pickBackCameraId();
+        const config = {
+          fps: 18,
+          qrbox: (viewW, viewH) => {
+            const edge = Math.floor(Math.min(viewW, viewH) * 0.7);
+            return { width: Math.max(180, edge), height: Math.max(180, edge) };
           },
-          (decoded) => accept(decoded),
-          () => {}
-        );
+          aspectRatio: 1,
+          disableFlip: false
+        };
+        const cameraConfig = camId ? { deviceId: { exact: camId } } : { facingMode: 'environment' };
+        await html5Qr.start(cameraConfig, config, (decoded) => accept(decoded), () => {});
+      };
+
+      try {
+        // iPhone: BarcodeDetector ishonchsiz — Html5Qrcode
+        if (!isIosLike() && window.BarcodeDetector) {
+          try {
+            await startCam();
+            if (modal) modal.classList.add('scanning', 'qr-mode');
+            startScanPulse();
+            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+            const tick = async () => {
+              if (settled) return;
+              try {
+                if (video && video.readyState >= 2) {
+                  const codes = await detector.detect(video);
+                  if (codes && codes[0] && codes[0].rawValue) {
+                    accept(codes[0].rawValue);
+                    return;
+                  }
+                }
+              } catch (e) { /* keep */ }
+              scanLoop = requestAnimationFrame(() => { setTimeout(tick, 50); });
+            };
+            tick();
+            return;
+          } catch (eNative) {
+            stopCam();
+          }
+        }
+        await startHtml5();
       } catch (e) {
         done(e);
       }
@@ -2487,10 +2529,10 @@
     throw new Error('QR kutubxonasi yuklanmadi');
   }
 
-  function loadImage(src) {
+  function loadImage(src, opts) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      if (!opts || opts.cors !== false) img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error('QR rasm yuklanmadi'));
       img.src = src;
@@ -2693,7 +2735,30 @@
     ctx.fill();
   }
 
-  async function makeQrBitmap(payload, size) {
+  async function makeQrBitmapFromServer(size, version) {
+    const tmp = document.createElement('canvas');
+    tmp.width = size;
+    tmp.height = size;
+    const ctx = tmp.getContext('2d');
+    const scale = Math.max(8, Math.min(16, Math.round(size / 40)));
+    const url = '/api/attendance/qr/image?scale=' + scale +
+      '&v=' + encodeURIComponent(String(version || 1)) +
+      '&t=' + Date.now();
+    const img = await loadImage(url, { cors: false });
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(img, 0, 0, size, size);
+    return tmp;
+  }
+
+  async function makeQrBitmap(payload, size, meta) {
+    // 1) Same-origin server PNG — CDN/DNS kerak emas (ofis plakat asosiy yo‘l)
+    try {
+      return await makeQrBitmapFromServer(size, meta && meta.version);
+    } catch (e0) {
+      console.warn('Server QR PNG fallback:', e0);
+    }
+
     const tmp = document.createElement('canvas');
     tmp.width = size;
     tmp.height = size;
@@ -2793,7 +2858,7 @@
     roundRect(ctx, qx - 18, qy - 18, qrSize + 36, qrSize + 36, 28);
     ctx.fill();
 
-    const qrBmp = await makeQrBitmap(payload, qrSize);
+    const qrBmp = await makeQrBitmap(payload, qrSize, qr);
     ctx.drawImage(qrBmp, qx, qy, qrSize, qrSize);
 
     // Faqat bitta brend satri
