@@ -2091,47 +2091,188 @@ function renderStats(data) {
     set('stat-stoptime', s.totalStop !== '—' ? s.totalStop : '—');
 }
 
+function escAttr(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 function reviewBtnHtml(idx, rev) {
     const cur = rev && rev.status;
+    const note = rev && rev.note ? String(rev.note) : '';
+    const noteHtml = note
+        ? `<div class="rev-note" title="${escAttr(note)}">${escAttr(uiTxt(note))}</div>`
+        : '';
     return `<span class="rev-btns">
         <button type="button" class="rev-btn${cur === 'allowed' ? ' on-ok' : ''}" data-rev="allowed" data-i="${idx}">Ruxsat</button>
         <button type="button" class="rev-btn${cur === 'violation' ? ' on-bad' : ''}" data-rev="violation" data-i="${idx}">Qoidabuzarlik</button>
         ${cur ? `<button type="button" class="rev-btn" data-rev="" data-i="${idx}">Bekor</button>` : ''}
-    </span>`;
+    </span>${noteHtml}`;
 }
 
-function pickPharmacyDialog(names) {
+/** Admin ruxsat / qoidabuzarlik oynasi — dorixona + izoh */
+function openReviewDialog(opts) {
+    opts = opts || {};
+    const mode = opts.mode === 'violation' ? 'violation' : 'allowed';
+    const st = opts.stop || {};
+    const names = Array.isArray(opts.names) ? opts.names : [];
+    let selected = opts.preselect != null ? String(opts.preselect) : '';
+    if (selected && names.length && !names.some(n => String(n) === selected)) {
+        selected = '';
+    }
+
     return new Promise((resolve) => {
         const old = document.getElementById('vm-ph-pick-modal');
         if (old) old.remove();
+
         const bg = document.createElement('div');
         bg.id = 'vm-ph-pick-modal';
-        bg.className = 'modal-bg open';
-        bg.style.zIndex = '400';
-        const list = (names || []).map((n, i) =>
-            `<button type="button" class="btn btn-light" data-ph="${i}" style="width:100%;margin:4px 0;justify-content:flex-start;text-align:left">${i + 1}. ${String(n).replace(/</g, '&lt;')}</button>`
-        ).join('');
+        bg.className = 'modal-bg open vm-review-modal';
+        bg.style.zIndex = '900';
+
+        const place = uiTxt(st.place || 'Nomaʼlum joy');
+        const when = [st.inTime, st.outTime].filter(Boolean).join(' → ') || '—';
+        const dur = st.duration || (st.durSec ? Math.round(st.durSec / 60) + ' daq' : '—');
+        const coords = (st.lat != null && st.lng != null)
+            ? (Number(st.lat).toFixed(5) + ', ' + Number(st.lng).toFixed(5))
+            : '';
+
+        const isAllow = mode === 'allowed';
+        const title = isAllow ? 'Ruxsat berish' : 'Qoidabuzarlik belgilash';
+        const sub = isAllow
+            ? 'Toʻxtashni tasdiqlang: dorixona tanlang va vaziyat haqida izoh yozing.'
+            : 'Bu toʻxtashni qoidabuzarlik deb belgilang va sababini yozing.';
+        const confirmLabel = isAllow ? 'Ruxsat berish' : 'Qoidabuzarlik qilish';
+
+        const phBlock = isAllow ? `
+          <div class="vmr-section">
+            <div class="vmr-label">Dorixona <span class="vmr-opt">(geozona oʻrganish uchun)</span></div>
+            <input type="search" class="vmr-search" id="vmr-search" placeholder="Qidiruv: nom yozing…" autocomplete="off">
+            <div class="vmr-list" id="vmr-list" role="listbox" aria-label="Dorixonalar"></div>
+            <label class="vmr-skip">
+              <input type="radio" name="vmr-ph" value="" id="vmr-ph-none">
+              <span><b>Nomsiz ruxsat</b> — geozona oʻrganilmaydi, faqat jarima olinadi</span>
+            </label>
+          </div>` : '';
+
         bg.innerHTML = `
-          <div class="modal-card" style="max-width:420px;width:min(94vw,420px);padding:18px" role="dialog" aria-modal="true">
-            <h3 style="margin:0 0 8px;font-size:16px">Dorixona tanlang</h3>
-            <p style="margin:0 0 12px;font-size:12px;color:var(--muted)">Ruxsat uchun qaysi dorixona ekanini belgilang.</p>
-            <div style="max-height:46vh;overflow:auto">${list || '<p class="muted">Ro‘yxat bo‘sh</p>'}</div>
-            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-              <button type="button" class="btn btn-ink" id="vm-ph-skip">Nomsiz ruxsat</button>
-              <button type="button" class="btn btn-light" id="vm-ph-cancel">Bekor</button>
+          <div class="modal-card vmr-card" role="dialog" aria-modal="true" aria-labelledby="vmr-title">
+            <div class="vmr-head">
+              <div>
+                <div class="vmr-kicker">${isAllow ? 'ADMIN TASDIQ' : 'ADMIN OGOHLANTIRISH'}</div>
+                <h3 id="vmr-title">${title}</h3>
+                <p class="vmr-sub">${sub}</p>
+              </div>
+              <button type="button" class="vmr-x" id="vmr-cancel" aria-label="Yopish">×</button>
+            </div>
+            <div class="vmr-ctx">
+              <div class="vmr-ctx-row"><span>Joy</span><b>${escAttr(place)}</b></div>
+              <div class="vmr-ctx-row"><span>Vaqt</span><b>${escAttr(when)}</b></div>
+              <div class="vmr-ctx-row"><span>Davomiylik</span><b>${escAttr(dur)}</b></div>
+              ${coords ? `<div class="vmr-ctx-row"><span>Koordinata</span><b class="mono">${escAttr(coords)}</b></div>` : ''}
+            </div>
+            ${phBlock}
+            <div class="vmr-section">
+              <div class="vmr-label">Admin izohi <span class="vmr-req">*</span></div>
+              <textarea id="vmr-note" class="vmr-note" rows="3" maxlength="400"
+                placeholder="${isAllow
+                    ? 'Masalan: buyurtma topshirildi, mijoz kutdi, yoʻl taʼmiri…'
+                    : 'Masalan: ruxsatsiz uzoq toʻxtash, shaxsiy ish…'}"></textarea>
+              <div class="vmr-hint" id="vmr-hint">Kamida 5 belgi yozing — keyin kim ruxsat bergani aniq boʻladi.</div>
+            </div>
+            <div class="vmr-actions">
+              <button type="button" class="btn btn-light" id="vmr-cancel-2">Bekor</button>
+              <button type="button" class="btn ${isAllow ? 'btn-ok' : 'btn-ink'}" id="vmr-confirm">${confirmLabel}</button>
             </div>
           </div>`;
+
         document.body.appendChild(bg);
-        const done = (val) => { try { bg.remove(); } catch (e) {} resolve(val); };
-        bg.addEventListener('click', (e) => { if (e.target === bg) done(null); });
-        bg.querySelector('#vm-ph-cancel')?.addEventListener('click', () => done(null));
-        bg.querySelector('#vm-ph-skip')?.addEventListener('click', () => done(''));
-        bg.querySelectorAll('[data-ph]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const i = Number(btn.getAttribute('data-ph'));
-                done(names[i] || '');
+
+        const listEl = bg.querySelector('#vmr-list');
+        const searchEl = bg.querySelector('#vmr-search');
+        const noteEl = bg.querySelector('#vmr-note');
+        const hintEl = bg.querySelector('#vmr-hint');
+        const noneEl = bg.querySelector('#vmr-ph-none');
+
+        const fold = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е');
+
+        function renderList(q) {
+            if (!listEl) return;
+            const qq = fold(q || '');
+            const filtered = names.filter(n => !qq || fold(n).includes(qq));
+            if (!filtered.length) {
+                listEl.innerHTML = '<div class="vmr-empty">Mos dorixona topilmadi</div>';
+                return;
+            }
+            listEl.innerHTML = filtered.map((n, i) => {
+                const on = selected && String(n) === selected ? ' on' : '';
+                return `<button type="button" class="vmr-item${on}" data-ph="${escAttr(n)}" role="option">
+                  <span class="vmr-num">${i + 1}</span>
+                  <span class="vmr-name">${escAttr(uiTxt(n))}</span>
+                </button>`;
+            }).join('');
+            listEl.querySelectorAll('[data-ph]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    selected = btn.getAttribute('data-ph') || '';
+                    if (noneEl) noneEl.checked = false;
+                    renderList(searchEl ? searchEl.value : '');
+                });
             });
+        }
+
+        if (isAllow) {
+            if (!selected) {
+                if (noneEl) noneEl.checked = true;
+            }
+            renderList('');
+            if (searchEl) {
+                searchEl.addEventListener('input', () => renderList(searchEl.value));
+            }
+            if (noneEl) {
+                noneEl.addEventListener('change', () => {
+                    if (noneEl.checked) {
+                        selected = '';
+                        renderList(searchEl ? searchEl.value : '');
+                    }
+                });
+            }
+        }
+
+        const done = (val) => {
+            try { bg.remove(); } catch (e) {}
+            resolve(val);
+        };
+        const cancel = () => done(null);
+
+        bg.addEventListener('click', (e) => { if (e.target === bg) cancel(); });
+        bg.querySelector('#vmr-cancel')?.addEventListener('click', cancel);
+        bg.querySelector('#vmr-cancel-2')?.addEventListener('click', cancel);
+
+        bg.querySelector('#vmr-confirm')?.addEventListener('click', () => {
+            const note = String(noteEl && noteEl.value || '').trim();
+            if (note.length < 5) {
+                if (hintEl) {
+                    hintEl.textContent = 'Izoh majburiy — kamida 5 belgi yozing.';
+                    hintEl.classList.add('bad');
+                }
+                if (noteEl) noteEl.focus();
+                return;
+            }
+            let phName = selected;
+            if (isAllow && noneEl && noneEl.checked) phName = '';
+            if (isAllow && !phName && !(noneEl && noneEl.checked) && names.length) {
+                if (hintEl) {
+                    hintEl.textContent = 'Dorixona tanlang yoki «Nomsiz ruxsat»ni belgilang.';
+                    hintEl.classList.add('bad');
+                }
+                return;
+            }
+            done({ phName: isAllow ? phName : '', note });
         });
+
+        setTimeout(() => { if (noteEl) noteEl.focus(); }, 40);
     });
 }
 
@@ -2147,28 +2288,32 @@ function bindReviewClicks(root) {
         const bag = STATE.data[STATE.currentDate];
         let rec = bag && bag[STATE.currentCar];
         if (!rec && bag && VMOffice.recForPlate) rec = VMOffice.recForPlate(bag, STATE.currentCar);
-        // Jadval prepareStopsList tartibida — indeksi shu ro'yxatdan
         const st = rec && prepareStopsList(rec.stops || [])[i];
         if (!st) return;
-        if (status === 'allowed') {
-            const names = VMOffice.ownNames(STATE.currentCar);
-            let phName = st.phName || '';
-            if (!phName && names.length) {
-                const pick = await pickPharmacyDialog(names);
-                if (pick == null) return;
-                phName = pick;
-            }
-            if (!phName) {
-                showToast('Dorixona tanlanmadi — geozona o\'rganilmaydi', 'warn');
+
+        if (status === 'allowed' || status === 'violation') {
+            const names = status === 'allowed' ? VMOffice.ownNames(STATE.currentCar) : [];
+            const decision = await openReviewDialog({
+                mode: status,
+                stop: st,
+                names,
+                preselect: st.phName || ''
+            });
+            if (decision == null) return;
+            const phName = decision.phName || '';
+            const note = decision.note || '';
+            if (status === 'allowed' && !phName) {
+                showToast('Nomsiz ruxsat — geozona oʻrganilmaydi', 'warn');
             }
             btn.disabled = true;
             try {
-                await VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status, phName);
+                await VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status, phName, note);
             } finally {
                 btn.disabled = false;
             }
             return;
         }
+
         btn.disabled = true;
         try {
             await VMOffice.setReview(STATE.currentDate, STATE.currentCar, st, status);
@@ -2267,8 +2412,9 @@ function renderPharmacy(data) {
             ${allowedIdx.map(i => {
                 const s = data.stops[i];
                 const rev = window.VMOffice ? VMOffice.reviewOf(dateVal, car, s) : null;
+                const phLab = (rev && rev.phName) ? uiTxt(rev.phName) : '';
                 return `<div class="ph-row ph-rev">
-                <span class="nm">${uiTxt(s.place)}</span>
+                <span class="nm">${uiTxt(s.place)}${phLab ? ` <small class="rev-ph">→ ${phLab}</small>` : ''}</span>
                 <span class="tm">${s.duration || ''}</span>
                 ${reviewBtnHtml(i, rev)}
             </div>`;

@@ -1256,7 +1256,7 @@ class OfficeStore:
             if status in ("allowed", "violation"):
                 entry = {
                     "status": status,
-                    "note": str((rec or {}).get("note") or "")[:200],
+                    "note": str((rec or {}).get("note") or "")[:400],
                     "by": str((rec or {}).get("by") or "")[:40],
                     "at": iso_now(),
                 }

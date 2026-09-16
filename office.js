@@ -256,7 +256,7 @@ const VMOffice = {
         return !!(st && st.isProblem);
     },
 
-    async setReview(dateVal, car, st, status, phName) {
+    async setReview(dateVal, car, st, status, phName, note) {
         const key = vmStopKey(dateVal, car, st);
         const body = {
             date: dateVal,
@@ -267,6 +267,8 @@ const VMOffice = {
             lng: st && st.lng != null ? st.lng : undefined,
         };
         if (phName) body.phName = phName;
+        const noteTxt = String(note || '').trim().slice(0, 400);
+        if (noteTxt) body.note = noteTxt;
         try {
             const d = await vmApi('/api/office/reviews', {
                 method: 'POST',
