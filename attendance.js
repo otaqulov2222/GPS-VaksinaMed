@@ -3166,6 +3166,71 @@
     return rows;
   }
 
+  function hisobotExportMeta() {
+    const d = HISOBOT || {};
+    const st = d.stats || {};
+    const sched = d.schedule || {};
+    const periodTitle = ({
+      day: 'Kunlik davomat',
+      week: 'Haftalik davomat',
+      month: 'Oylik davomat',
+      range: 'Oraliq davomat'
+    })[d.period] || 'Davomat hisoboti';
+    const rangeTxt = d.period === 'day'
+      ? (d.date || '')
+      : ((d.dateFrom || '') + ' — ' + (d.dateTo || ''));
+    return {
+      brand: 'VAKSINA MED · DAVOMAT',
+      title: periodTitle,
+      range: rangeTxt,
+      schedule: sched.label || '09:00–18:00',
+      stats: st,
+      showDate: !!d.showDateCol,
+      generated: (typeof dayInputValue === 'function' ? dayInputValue('') : new Date().toISOString().slice(0, 10))
+    };
+  }
+
+  function xStyle(partial) {
+    return Object.assign({
+      font: { name: 'Calibri', sz: 10, color: { rgb: '0F172A' } },
+      alignment: { vertical: 'center', horizontal: 'left', wrapText: true },
+      border: {
+        top: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        left: { style: 'thin', color: { rgb: 'E2E8F0' } },
+        right: { style: 'thin', color: { rgb: 'E2E8F0' } }
+      }
+    }, partial || {});
+  }
+
+  function xCell(v, style) {
+    const isNum = typeof v === 'number' && Number.isFinite(v);
+    const cell = { v: v == null ? '' : v, t: isNum ? 'n' : 's' };
+    if (!isNum) cell.v = String(cell.v);
+    if (style) cell.s = style;
+    return cell;
+  }
+
+  function applyColWidths(ws, widths) {
+    ws['!cols'] = widths.map((w) => ({ wch: w }));
+  }
+
+  function applyRowHeights(ws, map) {
+    ws['!rows'] = ws['!rows'] || [];
+    Object.keys(map).forEach((k) => {
+      ws['!rows'][Number(k)] = { hpt: map[k] };
+    });
+  }
+
+  function statusFillRgb(status) {
+    const s = String(status || '');
+    if (s === 'absent' || s === 'Kelmagan') return 'FEE2E2';
+    if (s === 'late' || s === 'Kechikdi') return 'FFEDD5';
+    if (s === 'present' || s === 'ok' || s === 'Kelgan' || s === 'Ishda') return 'DCFCE7';
+    if (s === 'working') return 'DBEAFE';
+    return 'F8FAFC';
+  }
+
   function exportHisobotXlsx() {
     if (typeof XLSX === 'undefined') {
       msg('Excel kutubxonasi yuklanmadi', 'err');
@@ -3175,31 +3240,140 @@
       msg('Avval hisobotni yuklang', 'err');
       return;
     }
-    const showDate = !!HISOBOT.showDateCol;
-    const head = ['№'];
-    if (showDate) head.push('Sana');
-    head.push('F.I.Sh.', 'Lavozim', 'Holat', 'Kelish', 'Ketish', 'Ishlagan', 'Kech keldi', 'Erta keldi', 'Erta ketdi', 'Kech ketdi');
-    const rows = [head];
-    filteredHisobotRows().forEach((r, i) => {
-      const line = [i + 1];
-      if (showDate) line.push(r.date || '');
-      line.push(
-        r.name || r.username || '',
-        r.lavozim || roleLabel(r.role),
-        statusLabel(r.status),
-        r.inAt || '',
-        r.outAt || '',
-        r.worked_sec != null ? fmtDur(r.worked_sec) : '',
-        r.late_in_txt || '',
-        r.early_in_txt || '',
-        r.early_out_txt || '',
-        r.late_out_txt || ''
-      );
-      rows.push(line);
+    const meta = hisobotExportMeta();
+    const rowsData = filteredHisobotRows();
+    const st = meta.stats || {};
+    const colCount = meta.showDate ? 11 : 10;
+    const lastCol = colCount - 1;
+
+    const headLabels = ['№'];
+    if (meta.showDate) headLabels.push('Sana');
+    headLabels.push('F.I.Sh.', 'Lavozim', 'Holat', 'Kelish', 'Ketish', 'Ishlagan', 'Kech keldi', 'Erta keldi', 'Erta ketdi', 'Kech ketdi');
+
+    const brandStyle = xStyle({
+      font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '0B1F3A' } },
+      alignment: { horizontal: 'left', vertical: 'center' },
+      border: {
+        top: { style: 'thin', color: { rgb: '0B1F3A' } },
+        bottom: { style: 'thin', color: { rgb: '0B1F3A' } },
+        left: { style: 'thin', color: { rgb: '0B1F3A' } },
+        right: { style: 'thin', color: { rgb: '0B1F3A' } }
+      }
     });
+    const titleStyle = xStyle({
+      font: { name: 'Calibri', sz: 16, bold: true, color: { rgb: '0B1F3A' } },
+      fill: { patternType: 'solid', fgColor: { rgb: 'EFF6FF' } },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    });
+    const subStyle = xStyle({
+      font: { name: 'Calibri', sz: 10, color: { rgb: '475569' } },
+      fill: { patternType: 'solid', fgColor: { rgb: 'F8FAFC' } }
+    });
+    const kpiStyle = xStyle({
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '1E3A5F' } },
+      fill: { patternType: 'solid', fgColor: { rgb: 'F1F5F9' } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    });
+    const headStyle = xStyle({
+      font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { patternType: 'solid', fgColor: { rgb: '1A5FB4' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+    });
+    const center = { horizontal: 'center', vertical: 'center', wrapText: true };
+
+    const aoa = [];
+    // Row 0 — brand
+    aoa.push(Array.from({ length: colCount }, (_, i) =>
+      xCell(i === 0 ? meta.brand : '', brandStyle)
+    ));
+    // Row 1 — title
+    aoa.push(Array.from({ length: colCount }, (_, i) =>
+      xCell(i === 0 ? (meta.title + (meta.range ? '  ·  ' + meta.range : '')) : '', titleStyle)
+    ));
+    // Row 2 — meta
+    aoa.push(Array.from({ length: colCount }, (_, i) =>
+      xCell(
+        i === 0
+          ? ('Yaratilgan: ' + (meta.generated || '') + '  |  Reja: ' + meta.schedule + '  |  Yozuvlar: ' + rowsData.length)
+          : '',
+        subStyle
+      )
+    ));
+    // Row 3 — KPIs
+    const kpiLine = [
+      'Kech keldi: ' + (st.late_in || 0),
+      'Erta keldi: ' + (st.early_in || 0),
+      'Erta ketdi: ' + (st.early_out || 0),
+      'Kech ketdi: ' + (st.late_out || 0),
+      'Jami: ' + (st.people != null ? st.people : rowsData.length)
+    ];
+    aoa.push(Array.from({ length: colCount }, (_, i) =>
+      xCell(kpiLine[i] || '', kpiStyle)
+    ));
+    // Row 4 — blank
+    aoa.push(Array.from({ length: colCount }, () => xCell('', xStyle({
+      fill: { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } },
+      border: {
+        top: { style: 'thin', color: { rgb: 'FFFFFF' } },
+        bottom: { style: 'thin', color: { rgb: 'FFFFFF' } },
+        left: { style: 'thin', color: { rgb: 'FFFFFF' } },
+        right: { style: 'thin', color: { rgb: 'FFFFFF' } }
+      }
+    }))));
+    // Row 5 — headers
+    aoa.push(headLabels.map((h) => xCell(h, headStyle)));
+
+    rowsData.forEach((r, i) => {
+      const zebra = i % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+      const statusTxt = statusLabel(r.status);
+      const base = xStyle({
+        fill: { patternType: 'solid', fgColor: { rgb: zebra } },
+        alignment: center
+      });
+      const nameStyle = xStyle({
+        fill: { patternType: 'solid', fgColor: { rgb: zebra } },
+        font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0F172A' } },
+        alignment: { horizontal: 'left', vertical: 'center' }
+      });
+      const statusStyle = xStyle({
+        fill: { patternType: 'solid', fgColor: { rgb: statusFillRgb(r.status) } },
+        font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '0F172A' } },
+        alignment: center
+      });
+      const line = [xCell(i + 1, base)];
+      if (meta.showDate) line.push(xCell(r.date || '', base));
+      line.push(
+        xCell(r.name || r.username || '', nameStyle),
+        xCell(r.lavozim || roleLabel(r.role), base),
+        xCell(statusTxt, statusStyle),
+        xCell(r.inAt || '—', base),
+        xCell(r.outAt || '—', base),
+        xCell(r.worked_sec != null ? fmtDur(r.worked_sec) : '—', base),
+        xCell(r.late_in_txt || '—', base),
+        xCell(r.early_in_txt || '—', base),
+        xCell(r.early_out_txt || '—', base),
+        xCell(r.late_out_txt || '—', base)
+      );
+      aoa.push(line);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: lastCol } }
+    ];
+    const widths = meta.showDate
+      ? [5, 12, 22, 14, 12, 10, 10, 10, 11, 11, 11]
+      : [5, 22, 14, 12, 10, 10, 10, 11, 11, 11];
+    applyColWidths(ws, widths);
+    applyRowHeights(ws, { 0: 24, 1: 28, 2: 20, 3: 22, 5: 26 });
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Hisobot');
-    XLSX.writeFile(wb, 'davomat-hisobot.xlsx');
+    XLSX.utils.book_append_sheet(wb, ws, 'Hisobot');
+    const fname = 'davomat-hisobot-' + String(meta.range || meta.generated || 'export').replace(/[^\d\-]+/g, '_').slice(0, 32) + '.xlsx';
+    XLSX.writeFile(wb, fname);
     msg('Excel yuklandi', 'ok');
   }
 
@@ -3213,14 +3387,53 @@
       msg('Avval hisobotni yuklang', 'err');
       return;
     }
+    const meta = hisobotExportMeta();
+    const st = meta.stats || {};
     const doc = new JsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-    const showDate = !!HISOBOT.showDateCol;
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 28;
+
+    // Header bar
+    doc.setFillColor(11, 31, 58);
+    doc.rect(0, 0, pageW, 52, 'F');
+    doc.setFillColor(26, 95, 180);
+    doc.rect(0, 52, pageW, 3, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.text(meta.brand, margin, 20);
+    doc.setFontSize(15);
+    doc.text(meta.title, margin, 40);
+    doc.setFontSize(9);
+    doc.text(meta.range || '', pageW - margin, 40, { align: 'right' });
+
+    // KPI chips
+    let y = 68;
+    doc.setFontSize(8);
+    const chips = [
+      { label: 'Kech keldi', val: st.late_in || 0, rgb: [245, 158, 11] },
+      { label: 'Erta keldi', val: st.early_in || 0, rgb: [22, 163, 74] },
+      { label: 'Erta ketdi', val: st.early_out || 0, rgb: [220, 38, 38] },
+      { label: 'Kech ketdi', val: st.late_out || 0, rgb: [124, 58, 237] },
+      { label: 'Reja', val: meta.schedule, rgb: [30, 64, 175] }
+    ];
+    let x = margin;
+    chips.forEach((c) => {
+      const txt = c.label + ': ' + c.val;
+      const w = doc.getTextWidth(txt) + 16;
+      doc.setFillColor(c.rgb[0], c.rgb[1], c.rgb[2]);
+      doc.roundedRect(x, y, w, 16, 3, 3, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.text(txt, x + 8, y + 11);
+      x += w + 8;
+    });
+
     const head = ['№'];
-    if (showDate) head.push('Sana');
+    if (meta.showDate) head.push('Sana');
     head.push('F.I.Sh.', 'Lavozim', 'Holat', 'Kelish', 'Ketish', 'Ish', 'Kech', 'Erta', 'E.ket', 'K.ket');
     const body = filteredHisobotRows().map((r, i) => {
       const line = [String(i + 1)];
-      if (showDate) line.push(r.date || '');
+      if (meta.showDate) line.push(r.date || '');
       line.push(
         r.name || r.username || '',
         r.lavozim || roleLabel(r.role),
@@ -3235,18 +3448,66 @@
       );
       return line;
     });
-    doc.setFontSize(12);
-    doc.text('Davomat hisoboti', 40, 36);
+
     if (doc.autoTable) {
       doc.autoTable({
-        startY: 48,
+        startY: 96,
         head: [head],
         body,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [26, 95, 180] }
+        margin: { left: margin, right: margin },
+        styles: {
+          fontSize: 8,
+          cellPadding: 4,
+          lineColor: [226, 232, 240],
+          lineWidth: 0.4,
+          textColor: [15, 23, 42],
+          valign: 'middle'
+        },
+        headStyles: {
+          fillColor: [26, 95, 180],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 28 }
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const holatIdx = meta.showDate ? 4 : 3;
+          if (data.column.index === holatIdx) {
+            const v = String(data.cell.raw || '');
+            if (/Kelmagan|absent/i.test(v)) {
+              data.cell.styles.fillColor = [254, 226, 226];
+              data.cell.styles.fontStyle = 'bold';
+            } else if (/Kech|late/i.test(v)) {
+              data.cell.styles.fillColor = [255, 237, 213];
+              data.cell.styles.fontStyle = 'bold';
+            } else if (/Kelgan|Ishda|present|ok/i.test(v)) {
+              data.cell.styles.fillColor = [220, 252, 231];
+            }
+          }
+        },
+        didDrawPage: (data) => {
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text(
+            'VAKSINA MED · Davomat hisoboti · ' + (meta.generated || ''),
+            margin,
+            pageH - 14
+          );
+          doc.text(
+            'Sahifa ' + doc.internal.getNumberOfPages(),
+            pageW - margin,
+            pageH - 14,
+            { align: 'right' }
+          );
+        }
       });
     }
-    doc.save('davomat-hisobot.pdf');
+    const fname = 'davomat-hisobot-' + String(meta.range || meta.generated || 'export').replace(/[^\d\-]+/g, '_').slice(0, 32) + '.pdf';
+    doc.save(fname);
     msg('PDF yuklandi', 'ok');
   }
 
