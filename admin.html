@@ -863,38 +863,15 @@ tbody tr:hover td { background: #f8fafc; }
   border-color: #86efac;
   color: #047857;
 }
-.u-act-danger,
-.u-acts .eat-del {
-  border-color: #f0c4c4 !important;
-  color: #b42318 !important;
-  background: #fff !important;
-  box-shadow: none !important;
-  min-width: 0 !important;
-  width: 100%;
-  height: 32px !important;
-  padding: 0 4px !important;
-  font-size: 10px !important;
-  gap: 3px !important;
+.u-act-del {
+  background: #fff5f5;
+  border-color: #f0b4b4;
+  color: #b42318;
 }
-.u-acts .eat-del__label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-.u-acts .eat-del__icon,
-.u-acts .eat-del__svg {
-  width: 16px !important;
-  height: 16px !important;
-  flex: 0 0 auto;
-}
-.u-acts .eat-del {
-  position: relative;
-}
-.u-acts .eat-del:hover {
-  background: #fef2f2 !important;
-  border-color: #f0a8a8 !important;
+.u-act-del:hover {
+  background: #fee2e2;
+  border-color: #e89a9a;
+  color: #912018;
 }
 .users-table td.amal {
   min-width: 236px;
@@ -2010,7 +1987,6 @@ async function loadAll() {
     const view = u.role === 'driver' && u.car
       ? `<a class="u-act" href="/driver?car=${encodeURIComponent(u.car)}">Kabinet</a>`
       : '';
-    const delBtn = VmEatDelete.markup({ 'data-act': 'del', 'data-id': u.id, 'data-name': displayName || u.username, className: 'eat-del--sm' });
     const acts = !canManage
       ? `<div class="u-acts">
           <div class="u-acts-main">
@@ -2020,13 +1996,13 @@ async function loadAll() {
         </div>`
       : `<div class="u-acts">
           <div class="u-acts-main">
-            <button class="u-act u-act-copy" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
+            <button class="u-act u-act-del" type="button" data-act="del" data-id="${u.id}" data-name="${esc(displayName || u.username)}">Oʻchir</button>
             <button class="u-act u-act-save" type="button" data-act="save" data-id="${u.id}">Saqlash</button>
           </div>
           <div class="u-acts-more${view ? '' : ' u-acts-more-2'}">
             <button class="u-act" type="button" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
             ${view}
-            ${delBtn}
+            <button class="u-act u-act-copy" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
           </div>
         </div>`;
     return `<tr data-uid="${esc(u.id)}">
@@ -2308,14 +2284,9 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
     } else if (act === 'del') {
 
       const who = btn.getAttribute('data-name') || id;
-      const ok = await VmEatDelete.run(btn, {
-        confirm: who + ' — loginni butunlay o‘chirish? Bu amalni qaytarib bo‘lmaydi.',
-        action: async () => {
-          await vmApi('/api/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
-          show('msg-users', 'O‘chirildi: ' + who, true);
-        }
-      });
-      if (!ok) return;
+      if (!confirm(who + ' — loginni butunlay o‘chirish? Bu amalni qaytarib bo‘lmaydi.')) return;
+      await vmApi('/api/users/delete', { method: 'POST', body: JSON.stringify({ id }) });
+      show('msg-users', 'O‘chirildi: ' + who, true);
 
     } else if (act === 'reset') {
 
