@@ -2119,7 +2119,7 @@
       </div>
 
       <div class="att-panel" id="panel-bugun" ${uiTab === 'bugun' ? '' : 'hidden'}>
-        <div class="av-studio av-pro">
+        <div class="av-studio av-pro av-atlas">
 
           <section class="av-stage">
             <div class="av-stage-main">
@@ -2149,6 +2149,64 @@
               </div>
             </div>
           </section>
+
+          <div class="av-gate-banner" id="av-gate-banner">Joylashuv tekshirilmoqda…</div>
+
+          <div class="av-action-band">
+            <section class="av-punch-card av-punch-card-pro">
+              <div class="av-punch-card-h">
+                <span>Stamp paneli</span>
+                <span class="av-qr-pill ${gateOk ? 'on' : ''}" id="av-qr-pill">${needQr ? (ticketOk ? 'QR faol' : 'QR kutilyapti') : (geoLive.inside ? 'Zona OK' : 'Zona kutilyapti')}</span>
+              </div>
+              <p class="av-punch-hint">${needQr ? 'Zona → QR → Keldi/Ketdi.' : 'Ofis radiusiga kiring — Keldim / Ketdim ochiladi. QR kerak emas.'}</p>
+              <div class="av-punch-row">
+                <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
+                  <span class="ico">IN</span>
+                  <div class="tag">Keldi</div>
+                  <div class="time">${inn ? punchTime(inn) : '—'}</div>
+                  <div class="plan">Rejada ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn ? ' · o‘z vaqtida' : '')}</div>
+                </button>
+                <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
+                  <span class="ico">OUT</span>
+                  <div class="tag">Ketdi</div>
+                  <div class="time">${out ? punchTime(out) : '—'}</div>
+                  <div class="plan">Rejada ${esc(s.out_start || '18:00')}</div>
+                </button>
+              </div>
+              <button type="button" class="av-continue" id="av-continue" disabled>
+                <span>Ofisga keling</span>
+                <small>${needQr ? 'Zona ichida QR skanerlash' : 'Radius ichida stamp ochiladi'}</small>
+              </button>
+              <p class="av-ticket-hint" id="av-qr-ticket-hint">${needQr
+                ? (ticketOk ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim.' : 'QR hali skanerlanmagan.')
+                : (geoLive.inside ? 'Radius ichidasiz — Keldim / Ketdim ochiq.' : 'Ofis radiusiga kiring — tugmalar ochiladi.')}</p>
+            </section>
+
+            <section class="av-map-card">
+              <div class="av-map-h">
+                <div>
+                  <div class="av-map-kicker">Live geofence</div>
+                  <h3>${esc(off.label)}</h3>
+                  <div class="av-map-sub">Faqat yashil doira ichida Keldim / Ketdim ochiladi</div>
+                </div>
+                <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
+              </div>
+              <div class="av-map-wrap">
+                <div class="av-map" id="av-map"></div>
+                <div class="av-map-legend">
+                  <span><i class="lg-office"></i> Ofis</span>
+                  <span><i class="lg-zone"></i> ${esc(String(off.radius))} m</span>
+                  <span><i class="lg-you"></i> Siz</span>
+                  <span><i class="lg-acc"></i> Aniqlik</span>
+                  <span><i class="lg-route"></i> Yo‘l</span>
+                </div>
+              </div>
+              <div class="av-map-foot">
+                <span id="av-geo-dist">Radius <b>${esc(String(off.radius))}</b> m</span>
+                <button type="button" class="att-btn att-btn-face" id="btn-geo-check">Qayta tekshirish</button>
+              </div>
+            </section>
+          </div>
 
           <section class="av-pulse-row">
             <div class="av-pulse-card">
@@ -2214,75 +2272,6 @@
             </div>
           </div>
 
-          <div class="av-gate-banner" id="av-gate-banner">Joylashuv tekshirilmoqda…</div>
-
-          <div class="av-workbench av-workbench-pro">
-            <section class="av-map-card">
-              <div class="av-map-h">
-                <div>
-                  <div class="av-map-kicker">Live geofence</div>
-                  <h3>${esc(off.label)}</h3>
-                  <div class="av-map-sub">Faqat yashil doira ichida Keldim / Ketdim ochiladi</div>
-                </div>
-                <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
-              </div>
-              <div class="av-map-wrap">
-                <div class="av-map" id="av-map"></div>
-                <div class="av-map-legend">
-                  <span><i class="lg-office"></i> Ofis</span>
-                  <span><i class="lg-zone"></i> ${esc(String(off.radius))} m</span>
-                  <span><i class="lg-you"></i> Siz</span>
-                  <span><i class="lg-acc"></i> Aniqlik</span>
-                  <span><i class="lg-route"></i> Yo‘l</span>
-                </div>
-              </div>
-              <div class="av-map-foot">
-                <span id="av-geo-dist">Radius <b>${esc(String(off.radius))}</b> m</span>
-                <button type="button" class="att-btn att-btn-face" id="btn-geo-check">Qayta tekshirish</button>
-              </div>
-            </section>
-
-            <div class="av-side">
-              <section class="av-punch-card av-punch-card-pro">
-                <div class="av-punch-card-h">
-                  <span>Stamp paneli</span>
-                  <span class="av-qr-pill ${gateOk ? 'on' : ''}" id="av-qr-pill">${needQr ? (ticketOk ? 'QR faol' : 'QR kutilyapti') : (geoLive.inside ? 'Zona OK' : 'Zona kutilyapti')}</span>
-                </div>
-                <p class="av-punch-hint">${needQr ? 'Zona → QR → Keldi/Ketdi.' : 'Ofis radiusiga kiring — Keldim / Ketdim ochiladi. QR kerak emas.'}</p>
-                <div class="av-punch-row">
-                  <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
-                    <span class="ico">IN</span>
-                    <div class="tag">Keldi</div>
-                    <div class="time">${inn ? punchTime(inn) : '—'}</div>
-                    <div class="plan">Rejada ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn ? ' · o‘z vaqtida' : '')}</div>
-                  </button>
-                  <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
-                    <span class="ico">OUT</span>
-                    <div class="tag">Ketdi</div>
-                    <div class="time">${out ? punchTime(out) : '—'}</div>
-                    <div class="plan">Rejada ${esc(s.out_start || '18:00')}</div>
-                  </button>
-                </div>
-                <button type="button" class="av-continue" id="av-continue" disabled>
-                  <span>Ofisga keling</span>
-                  <small>${needQr ? 'Zona ichida QR skanerlash' : 'Radius ichida stamp ochiladi'}</small>
-                </button>
-                <p class="av-ticket-hint" id="av-qr-ticket-hint">${needQr
-                  ? (ticketOk ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim.' : 'QR hali skanerlanmagan.')
-                  : (geoLive.inside ? 'Radius ichidasiz — Keldim / Ketdim ochiq.' : 'Ofis radiusiga kiring — tugmalar ochiladi.')}</p>
-              </section>
-
-              <section class="av-howto">
-                <h3>Qanday ishlaydi</h3>
-                <ul>
-                  <li><b>1.</b> Ofis ${esc(String(off.radius))} m ichiga kiring (telefonda GPS)</li>
-                  ${needQr ? '<li><b>2.</b> Devordagi ofis QR ni skanerlang</li><li><b>3.</b> Keldim / Ketdim ni bosing</li>' : '<li><b>2.</b> Keldim / Ketdim tugmasini bosing</li>'}
-                </ul>
-                <div class="av-howto-note">${esc(s.scheduleNote || '')}</div>
-              </section>
-            </div>
-          </div>
-
           <div class="att-msg" id="att-msg"></div>
           <div class="att-geo-box" id="att-geo-box" hidden>
             <div class="att-geo-title">Joylashuv kerak</div>
@@ -2291,38 +2280,54 @@
             <button type="button" class="att-btn att-btn-in" id="btn-geo-check-2">Joylashuvni tekshirish</button>
           </div>
 
-          <section class="av-hist av-hist-pro">
-            <div class="av-hist-h">
-              <div>
-                <h3>Soʻnggi yozuvlar</h3>
-                <p class="av-hist-sub">Shaxsiy stamp jurnal</p>
+          <div class="av-side" style="display:grid;gap:12px;grid-template-columns:1fr">
+            <section class="av-howto">
+              <h3>Qanday ishlaydi</h3>
+              <ul>
+                <li><b>1.</b> Ofis ${esc(String(off.radius))} m ichiga kiring (telefonda GPS)</li>
+                ${needQr ? '<li><b>2.</b> Devordagi ofis QR ni skanerlang</li><li><b>3.</b> Keldim / Ketdim ni bosing</li>' : '<li><b>2.</b> Keldim / Ketdim tugmasini bosing</li>'}
+              </ul>
+              <div class="av-howto-note">${esc(s.scheduleNote || '')}</div>
+            </section>
+
+            <section class="av-hist av-hist-pro">
+              <div class="av-hist-h">
+                <div>
+                  <h3>Soʻnggi yozuvlar</h3>
+                  <p class="av-hist-sub">Shaxsiy stamp jurnal</p>
+                </div>
               </div>
-            </div>
-            <div class="av-hist-b">
-              ${history.length ? `
-                <div class="scroll-x">
-                <table class="att-table">
-                  <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish vaqti</th><th>Holat</th></tr></thead>
-                  <tbody>
-                    ${history.slice(0, 10).map((r) => `
-                      <tr>
-                        <td>${fmtDate(r.date)}</td>
-                        <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
-                        <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
-                        <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
-                        <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
-                      </tr>`).join('')}
-                  </tbody>
-                </table></div>
-              ` : `<div class="av-empty">Hali yozuv yoʻq. Ofisda QR skanerlab birinchi stampni qoʻying.</div>`}
-            </div>
-          </section>
+              <div class="av-hist-b">
+                ${history.length ? `
+                  <div class="scroll-x">
+                  <table class="att-table">
+                    <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish vaqti</th><th>Holat</th></tr></thead>
+                    <tbody>
+                      ${history.slice(0, 10).map((r) => `
+                        <tr>
+                          <td>${fmtDate(r.date)}</td>
+                          <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
+                          <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
+                          <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
+                          <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
+                        </tr>`).join('')}
+                    </tbody>
+                  </table></div>
+                ` : `<div class="av-empty">Hali yozuv yoʻq. Ofis zonasida birinchi stampni qoʻying.</div>`}
+              </div>
+            </section>
+          </div>
         </div>
       </div>
 
       <div class="att-panel" id="panel-tarix" ${uiTab === 'tarix' ? '' : 'hidden'}>
-        <section class="att-card">
-          <div class="att-card-h">Mening davomatim</div>
+        <section class="att-sheet">
+          <div class="att-panel-head">
+            <div>
+              <h2>Mening davomatim</h2>
+              <p>Shaxsiy kelish / ketish tarixi</p>
+            </div>
+          </div>
           <div class="att-card-b">
             ${history.length ? `
               <div class="scroll-x">
@@ -2346,9 +2351,12 @@
 
       ${staff ? `
       <div class="att-panel" id="panel-dash" ${uiTab === 'dash' ? '' : 'hidden'}>
-        <section class="att-card">
-          <div class="att-card-h">
-            <span>Jamoa dashboard</span>
+        <section class="att-sheet">
+          <div class="att-panel-head">
+            <div>
+              <h2>Jamoa dashboard</h2>
+              <p>Kunlik holat — kim keldi, kim kechikdi</p>
+            </div>
             <div class="att-toolbar">
               <input type="date" id="board-date" value="${esc(dayInputValue(boardDate))}">
               <button type="button" class="att-btn att-btn-face" id="btn-board" style="padding:8px 12px;min-width:0;font-size:12px">Yangilash</button>
@@ -2359,9 +2367,12 @@
       </div>
 
       <div class="att-panel" id="panel-hisobot" ${uiTab === 'hisobot' ? '' : 'hidden'}>
-        <section class="att-card hb-card">
-          <div class="att-card-h">
-            <span>Davomat hisoboti</span>
+        <section class="att-sheet hb-card">
+          <div class="att-panel-head">
+            <div>
+              <h2>Davomat hisoboti</h2>
+              <p>Kunlik, haftalik, oylik va oraliq export</p>
+            </div>
           </div>
           <div class="att-card-b">
             <div class="hb-period" role="tablist" aria-label="Davr turi">
@@ -2413,9 +2424,12 @@
       </div>
 
       <div class="att-panel" id="panel-shaxs" ${uiTab === 'shaxs' ? '' : 'hidden'}>
-        <section class="att-card">
-          <div class="att-card-h">
-            <span>Xodim tahlili</span>
+        <section class="att-sheet">
+          <div class="att-panel-head">
+            <div>
+              <h2>Xodim tahlili</h2>
+              <p>Kunlik kelish/ketish va oylik statistika</p>
+            </div>
             <div class="att-toolbar">
               <select id="person-select"><option value="">— tanlang —</option></select>
               <input type="month" id="person-month" value="${esc(monthInputValue(personMonth))}">
@@ -2429,8 +2443,13 @@
       </div>
 
       <div class="att-panel" id="panel-soz" ${uiTab === 'soz' ? '' : 'hidden'}>
-        <section class="att-card">
-          <div class="att-card-h">Sozlamalar</div>
+        <section class="att-sheet">
+          <div class="att-panel-head">
+            <div>
+              <h2>Sozlamalar</h2>
+              <p>Ofis geozona, jadval va QR</p>
+            </div>
+          </div>
           <div class="att-card-b att-settings" id="att-settings"></div>
         </section>
       </div>

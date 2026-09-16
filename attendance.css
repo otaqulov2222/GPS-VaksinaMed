@@ -1,4 +1,4 @@
-/* Davomat Ã¢ÂÂ VaksinaMed (app-shell bilan mos) */
+/* Davomat ÃÂ¢ÃÂÃÂ VaksinaMed (app-shell bilan mos) */
 :root {
   --att-ink: #0b1f3a;
   --att-muted: #5a7190;
@@ -853,7 +853,7 @@ body.fid-lock { overflow: hidden; }
     max-height: min(48dvh, 420px);
     border-radius: 16px;
   }
-  /* Telefonda Face ID uslubi Ã¢ÂÂ faqat Face rejimida */
+  /* Telefonda Face ID uslubi ÃÂ¢ÃÂÃÂ faqat Face rejimida */
   .fid-modal:not(.qr-mode) .fid-video {
     transform: scaleX(-1) scale(0.68);
     object-position: center 36%;
@@ -923,7 +923,7 @@ body.fid-lock { overflow: hidden; }
     overflow-wrap: anywhere;
     padding: 0 8px;
   }
-  /* Xato/retry: kamera joyini qisqartir Ã¢ÂÂ tugmalar koÃ¢ÂÂrinsin */
+  /* Xato/retry: kamera joyini qisqartir ÃÂ¢ÃÂÃÂ tugmalar koÃÂ¢ÃÂÃÂrinsin */
   .fid-modal.err .fid-viewport,
   .fid-modal:has(#fid-retry-wrap:not([hidden])) .fid-viewport {
     flex: 0 0 auto;
@@ -936,7 +936,7 @@ body.fid-lock { overflow: hidden; }
   .att-chip { font-size: 10px; padding: 5px 9px; }
   .att-timer-val { font-size: 26px; }
   .att-main { padding: 12px 12px 16px; }
-  /* Mobil: bitta qator ikon + qisqa yozuv Ã¢ÂÂ 2 qator pill emas */
+  /* Mobil: bitta qator ikon + qisqa yozuv ÃÂ¢ÃÂÃÂ 2 qator pill emas */
   .att-tabs {
     position: sticky;
     top: var(--shell-sticky-top, var(--shell-topbar-h, 52px));
@@ -1019,7 +1019,7 @@ body.fid-lock { overflow: hidden; }
     flex-direction: column;
   }
   .av-workbench-pro > .av-side { order: -1; }
-  /* Stage ixcham Ã¢ÂÂ sticky bilan ekranni yemasin */
+  /* Stage ixcham ÃÂ¢ÃÂÃÂ sticky bilan ekranni yemasin */
   .av-stage {
     padding: 14px 14px 12px !important;
     gap: 10px !important;
@@ -1261,7 +1261,7 @@ body.fid-lock { overflow: hidden; }
   .att-btn { min-height: 48px; }
 }
 
-/* ===== Davomat Studio (Bugun) Ã¢ÂÂ ofis + Face oqimi ===== */
+/* ===== Davomat Studio (Bugun) ÃÂ¢ÃÂÃÂ ofis + Face oqimi ===== */
 .av-studio { display: grid; gap: 14px; }
 .av-workbench {
   display: grid;
@@ -1490,7 +1490,7 @@ body.fid-lock { overflow: hidden; }
   background: #e8eef5;
 }
 .av-map-wrap { position: relative; }
-/* Leaflet locate Ã¢ÂÂ bitta tugma, leaflet-bar yoÃ¢ÂÂq (dublikat chegara chiqmasin) */
+/* Leaflet locate ÃÂ¢ÃÂÃÂ bitta tugma, leaflet-bar yoÃÂ¢ÃÂÃÂq (dublikat chegara chiqmasin) */
 .av-locate-ctrl {
   border: 0 !important;
   background: transparent !important;
@@ -1807,7 +1807,7 @@ body.fid-lock { overflow: hidden; }
 
 .leaflet-container { font: inherit; }
 
-/* Ã¢ÂÂÃ¢ÂÂ Davomat polish: steps, dayline, hero Ã¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Davomat polish: steps, dayline, hero ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 .av-kicker {
   font-size: 10px;
   font-weight: 700;
@@ -2429,7 +2429,7 @@ body.fid-lock { overflow: hidden; }
   max-width: 1240px;
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Mobil tab rail (oxirgi qoida Ã¢ÂÂ oldingi wrap/pill stillarni yutadi) Ã¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Mobil tab rail (oxirgi qoida ÃÂ¢ÃÂÃÂ oldingi wrap/pill stillarni yutadi) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 @media (max-width: 640px) {
   .att-tabs {
     position: sticky !important;
@@ -2493,7 +2493,7 @@ body.fid-lock { overflow: hidden; }
   .att-tab.on .att-tab-ico { color: #7dd3fc !important; opacity: 1; }
 }
 
-/* Ã¢ÂÂÃ¢ÂÂ Ofis QR skaner (VAKSINA HR uslubi: toza yashil ramka) Ã¢ÂÂÃ¢ÂÂ */
+/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Ofis QR skaner (VAKSINA HR uslubi: toza yashil ramka) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
 .fid-modal.qr-mode {
   background: #0a1628;
   padding: 0;
@@ -2660,7 +2660,7 @@ body.fid-lock { overflow: hidden; }
 }
 .oq-reader img { display: none !important; }
 
-/* Kutubxonaning oq ramkasini oÃ¢ÂÂchirish Ã¢ÂÂ faqat bitta yashil burchak */
+/* Kutubxonaning oq ramkasini oÃÂ¢ÃÂÃÂchirish ÃÂ¢ÃÂÃÂ faqat bitta yashil burchak */
 #qr-shaded-region,
 #qr-reader__dashboard,
 #qr-reader__dashboard_section,
@@ -2720,7 +2720,7 @@ body.fid-lock { overflow: hidden; }
 }
 
 
-/* ÂÂ Hisobot (kunlik jadval) ÂÂ */
+/* ÃÂÃÂ Hisobot (kunlik jadval) ÃÂÃÂ */
 .hb-card .att-card-b { padding-top: 12px; }
 .hb-period {
   display: flex;
@@ -2931,4 +2931,496 @@ body.hb-modal-open { overflow: hidden; }
 .att-badge.vacation { background: #e0e7ff; color: #3730a3; }
 @media (max-width: 520px) {
   .hb-modal-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   VAKSINA ATLAS â Davomat visual redesign (overrides)
+   ============================================================ */
+:root {
+  --atlas-navy: #0b1f3a;
+  --atlas-blue: #1a5fb4;
+  --atlas-blue-soft: #2a74c9;
+  --atlas-paper: rgba(255, 255, 255, 0.92);
+  --atlas-paper-solid: #f7fafc;
+  --atlas-line: rgba(11, 31, 58, 0.12);
+  --atlas-muted: #5a7190;
+  --atlas-ok: #15803d;
+  --atlas-warn: #b45309;
+  --atlas-radius: 20px;
+  --atlas-display: 'Fraunces', 'IBM Plex Sans', Georgia, serif;
+}
+
+.att-main {
+  padding: 18px 18px 48px;
+  max-width: 1120px;
+}
+
+/* ---- Tabs: segmented ---- */
+.att-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--atlas-line);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.att-tabs::-webkit-scrollbar { display: none; }
+.att-tab {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--atlas-muted);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font: 650 12px/1 'IBM Plex Sans', system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  transition: background .18s ease, color .18s ease, transform .15s ease;
+  min-height: 42px;
+}
+.att-tab-ico { display: block; width: 15px; height: 15px; opacity: 0.85; }
+.att-tab:hover { color: var(--atlas-navy); background: rgba(11, 31, 58, 0.04); }
+.att-tab.on {
+  background: var(--atlas-navy);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(11, 31, 58, 0.18);
+}
+.att-tab.on .att-tab-ico { opacity: 1; }
+@media (max-width: 720px) {
+  .att-tab-lbl { display: none; }
+  .att-tab-abbr { display: inline; font-weight: 700; letter-spacing: 0.04em; }
+  .att-tab { padding: 10px 12px; }
+}
+
+/* ---- Panel fade ---- */
+.att-panel {
+  animation: atlasPanelIn .18s ease;
+}
+@keyframes atlasPanelIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Sheet wrappers for staff tabs ---- */
+.att-sheet {
+  background: var(--atlas-paper);
+  border: 1px solid var(--atlas-line);
+  border-radius: var(--atlas-radius);
+  box-shadow: 0 8px 24px rgba(11, 31, 58, 0.06);
+  overflow: hidden;
+}
+.att-panel-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--atlas-line);
+  background: linear-gradient(180deg, #fff, var(--atlas-paper-solid));
+}
+.att-panel-head h2 {
+  margin: 0;
+  font-family: var(--atlas-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--atlas-navy);
+  line-height: 1.15;
+}
+.att-panel-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--atlas-muted);
+}
+.att-panel-head .att-toolbar { margin: 0; }
+
+.att-card {
+  background: var(--atlas-paper);
+  border: 1px solid var(--atlas-line);
+  border-radius: var(--atlas-radius);
+  box-shadow: 0 8px 24px rgba(11, 31, 58, 0.06);
+}
+.att-card-h {
+  background: linear-gradient(180deg, #fff, var(--atlas-paper-solid));
+  border-bottom-color: var(--atlas-line);
+  letter-spacing: 0.06em;
+}
+
+.att-badge {
+  border-radius: 8px !important;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  padding: 4px 8px !important;
+}
+
+.att-table th {
+  background: #f0f5fa;
+  border-bottom: 1px solid var(--atlas-line);
+}
+.att-table tbody tr:hover td {
+  background: rgba(26, 95, 180, 0.04);
+}
+
+.att-kpi {
+  border-radius: 14px;
+  border: 1px solid var(--atlas-line);
+  box-shadow: none;
+  background: #fff;
+}
+
+/* ---- Studio ---- */
+.av-studio.av-pro,
+.av-studio.av-atlas {
+  gap: 16px;
+}
+
+.av-stage {
+  border-radius: 24px;
+  min-height: 0;
+  box-shadow: 0 16px 40px rgba(11, 31, 58, 0.2);
+  background:
+    radial-gradient(ellipse 80% 70% at 0% 0%, rgba(42, 116, 201, 0.42), transparent 58%),
+    radial-gradient(ellipse 55% 50% at 100% 100%, rgba(26, 95, 180, 0.22), transparent 50%),
+    linear-gradient(148deg, #071525 0%, #0b1f3a 48%, #123050 100%);
+  animation: atlasStageIn .28s ease both;
+}
+@keyframes atlasStageIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.av-stage-mark {
+  letter-spacing: 0.2em;
+  color: #9ec0e4;
+}
+.av-stage-title {
+  font-family: var(--atlas-display) !important;
+  font-weight: 560 !important;
+  font-size: clamp(28px, 4.2vw, 40px) !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1.08 !important;
+  margin-top: 10px !important;
+}
+.av-stage-title em {
+  font-style: italic;
+  color: #b8d4f0;
+  font-weight: 500;
+}
+.av-stage-lead {
+  max-width: 38ch;
+  opacity: 0.88;
+}
+.av-status-chip,
+.av-date-pill {
+  border-radius: 10px !important;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.av-stage-clock .ring {
+  border-width: 1.5px;
+  box-shadow: none !important;
+  filter: none !important;
+}
+.av-stage-clock .ring.live {
+  animation: atlasRingPulse 2.2s ease-in-out infinite;
+}
+@keyframes atlasRingPulse {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.03); }
+}
+.av-stage-clock .clock-box,
+.av-stage-clock .work-box {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+/* Action band: punch + map first */
+.av-action-band {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.25fr);
+  gap: 14px;
+  align-items: stretch;
+}
+@media (max-width: 980px) {
+  .av-action-band { grid-template-columns: 1fr; }
+}
+
+.av-punch-card-pro {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--atlas-radius);
+  background: var(--atlas-paper);
+  border: 1px solid var(--atlas-line);
+  box-shadow: 0 8px 22px rgba(11, 31, 58, 0.06);
+}
+.av-punch-card-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.av-qr-pill {
+  border-radius: 8px !important;
+  font: 650 10px/1 'IBM Plex Mono', monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 9px;
+  background: #eef3f8;
+  color: var(--atlas-muted);
+  border: 1px solid var(--atlas-line);
+}
+.av-qr-pill.on {
+  background: #ecfdf5;
+  color: var(--atlas-ok);
+  border-color: #a7f3d0;
+}
+
+.av-punch {
+  border-radius: 16px;
+  box-shadow: none;
+  border-width: 1.5px;
+}
+.av-punch:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(11, 31, 58, 0.1);
+}
+.av-punch .ico {
+  border-radius: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.av-continue {
+  width: 100%;
+  margin-top: auto;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 0;
+  background: var(--atlas-navy);
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 700 14px/1.2 'IBM Plex Sans', system-ui, sans-serif;
+  transition: background .15s ease, opacity .15s ease;
+}
+.av-continue small {
+  font: 500 11px/1.3 'IBM Plex Sans', system-ui, sans-serif;
+  opacity: 0.72;
+}
+.av-continue:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.av-continue:not(:disabled):hover { background: #123050; }
+
+.av-map-card {
+  border-radius: var(--atlas-radius);
+  background: var(--atlas-paper);
+  border: 1px solid var(--atlas-line);
+  box-shadow: 0 8px 22px rgba(11, 31, 58, 0.06);
+  overflow: hidden;
+}
+.av-map-kicker {
+  font: 700 10px/1 'IBM Plex Mono', monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--atlas-blue);
+  margin-bottom: 4px;
+}
+.av-map-h h3 {
+  font-family: var(--atlas-display);
+  font-size: 18px !important;
+  letter-spacing: -0.02em !important;
+  text-transform: none !important;
+  font-weight: 600 !important;
+}
+.av-geo-badge {
+  border-radius: 8px !important;
+}
+.av-map-wrap .av-map {
+  min-height: 240px;
+}
+@media (max-width: 980px) {
+  .av-map-wrap .av-map { min-height: 200px; }
+}
+
+/* Pulse metrics â flat sheets */
+.av-pulse-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 900px) {
+  .av-pulse-row { grid-template-columns: 1fr 1fr; }
+}
+.av-pulse-card {
+  border-radius: 14px;
+  border: 1px solid var(--atlas-line);
+  background: #fff;
+  box-shadow: none;
+  padding: 14px 14px 12px;
+}
+.av-pulse-card .k {
+  font: 700 10px/1 'IBM Plex Mono', monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--atlas-muted);
+}
+.av-pulse-card .v {
+  margin-top: 8px;
+  font: 700 28px/1 'IBM Plex Mono', monospace;
+  color: var(--atlas-navy);
+  letter-spacing: -0.02em;
+}
+.av-pulse-card .v-sm {
+  margin-top: 8px;
+  font: 650 14px/1.25 'IBM Plex Sans', system-ui, sans-serif;
+  color: #fff;
+}
+.av-pulse-card .s {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--atlas-muted);
+}
+.av-pulse-card.warn { background: #fffbeb; border-color: #f6d98a; }
+.av-pulse-card.ok { background: #f0fdf4; border-color: #a7f3d0; }
+.av-pulse-card.navy {
+  background: linear-gradient(145deg, #0b1f3a, #123050);
+  border-color: #0b1f3a;
+  color: #fff;
+}
+
+/* Week timeline */
+.av-week-card {
+  border-radius: var(--atlas-radius);
+  border: 1px solid var(--atlas-line);
+  background: var(--atlas-paper);
+  box-shadow: none;
+  padding: 16px 16px 14px;
+}
+.av-week-h h3 {
+  font-family: var(--atlas-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.av-week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.av-week-day {
+  border-radius: 12px;
+  border: 1px solid var(--atlas-line);
+  background: #fff;
+  padding: 10px 6px;
+  text-align: center;
+  transition: border-color .15s ease, background .15s ease;
+}
+.av-week-day.today {
+  border-color: var(--atlas-blue);
+  background: #eff6ff;
+  box-shadow: inset 0 0 0 1px rgba(26, 95, 180, 0.2);
+}
+
+/* Steps rail */
+.av-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.av-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--atlas-line);
+  background: #fff;
+}
+.av-step .n {
+  font: 700 12px/1 'IBM Plex Mono', monospace;
+  letter-spacing: 0.08em;
+  color: var(--atlas-muted);
+}
+.av-step b { display: block; font-size: 13px; color: var(--atlas-navy); }
+.av-step small { color: var(--atlas-muted); font-size: 11px; }
+.av-step.done { border-color: #86efac; background: #f0fdf4; }
+.av-step.done .n { color: var(--atlas-ok); }
+.av-step.now {
+  border-color: var(--atlas-blue);
+  background: #eff6ff;
+}
+.av-step.now .n { color: var(--atlas-blue); }
+
+.av-journey {
+  border-radius: var(--atlas-radius);
+  border: 1px solid var(--atlas-line);
+  background: #fff;
+  padding: 16px;
+}
+.av-hist-pro,
+.av-howto {
+  border-radius: var(--atlas-radius);
+  border: 1px solid var(--atlas-line);
+  background: var(--atlas-paper);
+  box-shadow: none;
+  padding: 16px 18px;
+}
+.av-hist-pro .av-hist-b { padding-top: 8px; }
+.av-howto ul { margin: 10px 0 0; padding-left: 18px; }
+.av-howto li { margin: 6px 0; font-size: 13px; color: var(--atlas-navy); line-height: 1.4; }
+.av-howto-note { margin-top: 12px; font-size: 12px; color: var(--atlas-muted); }
+.av-hist-h h3,
+.av-howto h3 {
+  font-family: var(--atlas-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.av-gate-banner {
+  border-radius: 12px;
+  border: 1px solid var(--atlas-line);
+}
+
+.hb-period {
+  background: rgba(255,255,255,0.8);
+  border-radius: 12px;
+  padding: 4px;
+  border: 1px solid var(--atlas-line);
+}
+.hb-period-btn {
+  border-radius: 10px !important;
+}
+.hb-period-btn.on {
+  background: var(--atlas-navy) !important;
+  color: #fff !important;
+}
+
+@media (max-width: 640px) {
+  .att-main { padding: 12px 12px 88px; }
+  .av-stage-main { padding: 22px 18px 18px; }
+  .av-stage-clock { padding: 0 18px 18px; }
+  .av-punch-card-pro {
+    position: sticky;
+    bottom: 10px;
+    z-index: 5;
+  }
 }
