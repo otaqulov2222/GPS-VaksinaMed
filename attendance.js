@@ -45,13 +45,20 @@
   let attMapCircle = null;
   let attMapUser = null;
   let attMapAcc = null; // GPS aniqlik doirasi
-  let attMapLink = null; // Ofis ↔ Siz chizig'i
+  let attMapLink = null; // legacy
+  let attMapRouteGlow = null;
+  let attMapRoute = null;
   let attMapOffice = null;
   let attMapFitted = false;
+  let routeTimer = null;
+  let routeSeq = 0;
+  let routeCacheKey = '';
+  let routeCacheLatLngs = null;
   let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle', ts: 0 };
   let attMethod = 'qr';
   const GEO_SOFT_MAX = 280;
   const GEO_COARSE_REJECT = 1200; // undan yomon fix — yaxshi fix bor bo'lsa rad etiladi
+  const OSRM_ROUTE = 'https://router.project-osrm.org/route/v1/driving/';
 
   const modal = document.getElementById('fid-modal');
   const video = document.getElementById('att-cam');
@@ -560,8 +567,12 @@
     attMapUser = null;
     attMapAcc = null;
     attMapLink = null;
+    attMapRouteGlow = null;
+    attMapRoute = null;
     attMapOffice = null;
     attMapFitted = false;
+    routeCacheKey = '';
+    routeCacheLatLngs = null;
   }
 
   function pinIcon(label, kind) {
@@ -712,22 +723,12 @@
       });
     }
 
-    // Ofis ↔ Siz chizig'i
+    // Yo'l bo'ylab ko'k marshrut (to'g'ri chiziq emas)
     const off = officeInfo();
     if (off.hasCoords) {
-      const pts = [[off.lat, off.lng], [lat, lng]];
-      if (!attMapLink) {
-        attMapLink = L.polyline(pts, {
-          color: inside ? '#16a34a' : '#f59e0b',
-          weight: 2,
-          opacity: 0.85,
-          dashArray: '6 8',
-          interactive: false
-        }).addTo(attMap);
-      } else {
-        attMapLink.setLatLngs(pts);
-        attMapLink.setStyle({ color: inside ? '#16a34a' : '#f59e0b' });
-      }
+      scheduleRoadRoute(lat, lng, off.lat, off.lng, inside);
+    } else {
+      clearRoadRoute();
     }
 
     try {
@@ -735,11 +736,13 @@
         const b = L.latLngBounds([[off.lat, off.lng], [lat, lng]]);
         if (attMapCircle) b.extend(attMapCircle.getBounds());
         if (attMapAcc) b.extend(attMapAcc.getBounds());
+        if (attMapRoute) {
+          try { b.extend(attMapRoute.getBounds()); } catch (e) {}
+        }
         if (!attMapFitted) {
           attMap.fitBounds(b.pad(0.22));
           attMapFitted = true;
         } else {
-          // Foydalanuvchini doim ko'rinadigan qilib ushlash
           if (!attMap.getBounds().contains([lat, lng])) {
             attMap.panTo([lat, lng], { animate: true });
           }
@@ -752,6 +755,114 @@
       }
     } catch (e) {}
     paintMapOverlay();
+  }
+
+  function clearRoadRoute() {
+    if (routeTimer) {
+      clearTimeout(routeTimer);
+      routeTimer = null;
+    }
+    if (attMapRoute) {
+      try { attMap.removeLayer(attMapRoute); } catch (e) {}
+      attMapRoute = null;
+    }
+    if (attMapRouteGlow) {
+      try { attMap.removeLayer(attMapRouteGlow); } catch (e) {}
+      attMapRouteGlow = null;
+    }
+    if (attMapLink) {
+      try { attMap.removeLayer(attMapLink); } catch (e) {}
+      attMapLink = null;
+    }
+    routeCacheKey = '';
+    routeCacheLatLngs = null;
+  }
+
+  function routeKey(lat, lng, olat, olng) {
+    // ~30 m grid — ortiqcha so'rovlarni kamaytiradi
+    const r = (v) => (Math.round(Number(v) * 3000) / 3000).toFixed(4);
+    return r(lat) + ',' + r(lng) + '>' + r(olat) + ',' + r(olng);
+  }
+
+  function paintRoadRoute(latLngs, inside) {
+    if (!attMap || !window.L || !latLngs || latLngs.length < 2) return;
+    const mainColor = inside ? '#15803d' : '#2563eb';
+    const glowColor = inside ? '#86efac' : '#93c5fd';
+    if (!attMapRouteGlow) {
+      attMapRouteGlow = L.polyline(latLngs, {
+        color: glowColor,
+        weight: 12,
+        opacity: 0.35,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: false
+      }).addTo(attMap);
+    } else {
+      attMapRouteGlow.setLatLngs(latLngs);
+      attMapRouteGlow.setStyle({ color: glowColor });
+    }
+    if (!attMapRoute) {
+      attMapRoute = L.polyline(latLngs, {
+        color: mainColor,
+        weight: 5,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: false
+      }).addTo(attMap);
+    } else {
+      attMapRoute.setLatLngs(latLngs);
+      attMapRoute.setStyle({ color: mainColor });
+    }
+    // Eski to'g'ri chiziqni olib tashlash
+    if (attMapLink) {
+      try { attMap.removeLayer(attMapLink); } catch (e) {}
+      attMapLink = null;
+    }
+  }
+
+  function scheduleRoadRoute(lat, lng, olat, olng, inside) {
+    if (!attMap || !window.L) return;
+    const dist = haversineM(lat, lng, olat, olng);
+    // Ofis ichida yoki juda yaqin — marshrut kerak emas
+    if (inside || dist < 80) {
+      clearRoadRoute();
+      return;
+    }
+    const key = routeKey(lat, lng, olat, olng);
+    if (key === routeCacheKey && routeCacheLatLngs && routeCacheLatLngs.length > 1) {
+      paintRoadRoute(routeCacheLatLngs, inside);
+      return;
+    }
+    if (routeTimer) clearTimeout(routeTimer);
+    routeTimer = setTimeout(() => {
+      fetchRoadRoute(lat, lng, olat, olng, inside, key);
+    }, 450);
+  }
+
+  async function fetchRoadRoute(lat, lng, olat, olng, inside, key) {
+    const seq = ++routeSeq;
+    try {
+      const url =
+        OSRM_ROUTE +
+        olng + ',' + olat + ';' + lng + ',' + lat +
+        '?overview=full&geometries=geojson&steps=false';
+      const res = await fetch(url, { method: 'GET' });
+      if (!res.ok) throw new Error('route http');
+      const data = await res.json();
+      if (seq !== routeSeq) return;
+      const coords = data && data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates;
+      if (!coords || !coords.length) throw new Error('empty');
+      // GeoJSON: [lng, lat] → Leaflet [lat, lng]
+      const latLngs = coords.map((c) => [c[1], c[0]]);
+      routeCacheKey = key;
+      routeCacheLatLngs = latLngs;
+      paintRoadRoute(latLngs, inside);
+    } catch (e) {
+      if (seq !== routeSeq) return;
+      // Fallback: yumshoq to'g'ri chiziq (faqat agar marshrut olinmasa)
+      paintRoadRoute([[olat, olng], [lat, lng]], inside);
+    }
   }
 
   function forceCenterOnMe(lat, lng) {
@@ -2121,6 +2232,7 @@
                   <span><i class="lg-zone"></i> ${esc(String(off.radius))} m</span>
                   <span><i class="lg-you"></i> Siz</span>
                   <span><i class="lg-acc"></i> Aniqlik</span>
+                  <span><i class="lg-route"></i> Yo‘l</span>
                 </div>
               </div>
               <div class="av-map-foot">
