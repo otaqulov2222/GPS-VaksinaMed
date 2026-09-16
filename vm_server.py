@@ -1761,14 +1761,26 @@ class OfficeStore:
             def _doc_compact(p):
                 return re.sub(r"[\s/\-_]+", "", str(p or "")).upper()
 
+            def _norm_due(v):
+                """Muddat tugash sanasi — qanday kelsa shunday (oy qo'shilmaydi)."""
+                s = str(v or "").strip()
+                if not s:
+                    return ""
+                if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+                    return s[:10]
+                m = re.match(r"^(\d{1,2})[./](\d{1,2})[./](\d{4})$", s)
+                if m:
+                    return "%s-%02d-%02d" % (m.group(3), int(m.group(2)), int(m.group(1)))
+                return s[:10]
+
             def _merge_doc_item(old_item, new_item):
                 out = {}
                 for key in ("insurance", "tech", "ads", "cylinder"):
                     od = old_item.get(key) if isinstance(old_item.get(key), dict) else {}
                     nd = new_item.get(key) if isinstance(new_item.get(key), dict) else {}
-                    old_due = str(od.get("due") or "")[:10]
-                    new_due = str(nd.get("due") or "")[:10]
-                    # Bo'sh due eski qiymatni o'chirmasin (seed/race)
+                    old_due = _norm_due(od.get("due"))
+                    new_due = _norm_due(nd.get("due"))
+                    # Bo'sh due eski qiymatni o'chirmasin; yangi sana o'zgarmasdan yoziladi
                     due = new_due if new_due else old_due
                     months = int(as_num(nd.get("months"), as_num(od.get("months"), 12)))
                     if months < 1:
@@ -1791,7 +1803,7 @@ class OfficeStore:
                     if months > 60:
                         months = 60
                     item[key] = {
-                        "due": str(d.get("due") or "")[:10],
+                        "due": _norm_due(d.get("due")),
                         "months": months,
                     }
                 p = str(plate).strip()[:32]

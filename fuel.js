@@ -250,11 +250,42 @@ function addDays(ymd, nDays) {
   d.setDate(d.getDate() + nDays);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
+/** Hujjat muddati: YYYY-MM-DD yoki DD.MM.YYYY → YYYY-MM-DD */
+function normalizeDueYmd(v) {
+  const s = String(v || '').trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+  if (m) {
+    return m[3] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');
+  }
+  const t = Date.parse(s);
+  if (!Number.isFinite(t)) return '';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function dueDisp(ymd) {
+  const s = normalizeDueYmd(ymd);
+  if (!s) return '';
+  const p = s.split('-');
+  return p.length === 3 ? (p[2] + '.' + p[1] + '.' + p[0]) : s;
+}
+/** Ekrandagi muddat tugash sanasidan qolgan kun (oy qo'shilmaydi). */
 function daysLeft(due) {
-  if (!due) return null;
+  const ymd = normalizeDueYmd(due);
+  if (!ymd) return null;
   const a = new Date(todayYmd() + 'T00:00:00');
-  const b = new Date(due + 'T00:00:00');
+  const b = new Date(ymd + 'T00:00:00');
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
   return Math.round((b - a) / 86400000);
+}
+function addMonthsYmd(ymd, months) {
+  const base = normalizeDueYmd(ymd) || todayYmd();
+  const d = new Date(base + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return todayYmd();
+  d.setMonth(d.getMonth() + (n(months) || 0));
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 function toast(msg) {
   const el = document.getElementById('toast');
@@ -918,24 +949,21 @@ function ensureDocsRec(plate) {
 }
 
 function mergeDocPlateRecs(a, b) {
+  // a = asosiy (canonical / foydalanuvchi yozuvi), b = dublikat
+  // b faqat BO'SH maydonni to'ldiradi — keyingi sanani "yutkazib" 2027→2028 qilmasin
   const out = Object.assign({}, a || {});
-  DOC_KEYS.forEach((dk) => {
-    const k = dk.k;
-    const ar = (a && a[k]) || {};
-    const br = (b && b[k]) || {};
-    const aDue = String(ar.due || '').trim();
-    const bDue = String(br.due || '').trim();
-    // Bo'sh due boyitilganini bosib yubormasin
-    let due = aDue || bDue;
-    if (aDue && bDue) {
-      // Ikkalasi bor: keyingi muddatni saqlash (yangilangan)
-      due = aDue >= bDue ? aDue : bDue;
-    }
-    const months = n(ar.months) > 0 ? n(ar.months) : (n(br.months) > 0 ? n(br.months) : 12);
-    if (due || n(ar.months) || n(br.months) || ar.due === '' || br.due === '') {
-      out[k] = { due, months };
-    }
-  });
+    DOC_KEYS.forEach((dk) => {
+      const k = dk.k;
+      const ar = (a && a[k]) || {};
+      const br = (b && b[k]) || {};
+      const aDue = normalizeDueYmd(ar.due);
+      const bDue = normalizeDueYmd(br.due);
+      const due = aDue || bDue;
+      const months = n(ar.months) > 0 ? n(ar.months) : (n(br.months) > 0 ? n(br.months) : 12);
+      if (due || aDue === '' || bDue === '' || n(ar.months) || n(br.months)) {
+        out[k] = { due, months };
+      }
+    });
   return out;
 }
 
@@ -946,20 +974,39 @@ function normalizeDocsMap() {
     STATE.meta.docs = {};
     return false;
   }
-  const out = {};
-  let changed = false;
+  const groups = {};
   Object.keys(map).forEach((k) => {
     const rec = map[k];
     if (!rec || typeof rec !== 'object') return;
     const canon = canonicalPlate(k) || String(k || '').trim();
     if (!canon) return;
-    if (canon !== k) changed = true;
-    if (!out[canon]) {
-      out[canon] = Object.assign({}, rec);
-      return;
-    }
-    out[canon] = mergeDocPlateRecs(out[canon], rec);
-    changed = true;
+    const ck = plateCompact(canon);
+    if (!groups[ck]) groups[ck] = [];
+    groups[ck].push({ key: k, canon, rec });
+  });
+  const out = {};
+  let changed = false;
+  Object.keys(groups).forEach((ck) => {
+    const items = groups[ck];
+    // Fleet canonical kalit asosiy — foydalanuvchi yozuvi shu yerda
+    const primary = items.find((it) => it.key === it.canon) || items[0];
+    let merged = Object.assign({}, primary.rec);
+    items.forEach((it) => {
+      if (it.key === primary.key) return;
+      merged = mergeDocPlateRecs(merged, it.rec);
+      changed = true;
+    });
+    if (primary.key !== primary.canon) changed = true;
+    if (items.length > 1) changed = true;
+    // Due larni normalizatsiya — hisoblash bir xil bo'lsin
+    DOC_KEYS.forEach((dk) => {
+      const block = merged[dk.k];
+      if (!block || typeof block !== 'object') return;
+      const nd = normalizeDueYmd(block.due);
+      if (nd !== String(block.due || '').trim()) changed = true;
+      block.due = nd;
+    });
+    out[primary.canon] = merged;
   });
   STATE.meta.docs = out;
   return changed;
@@ -1798,7 +1845,7 @@ function collectDocAlerts() {
   fleet().forEach(f => {
     const rec = docsRecForPlate(f.car);
     DOC_KEYS.forEach(dk => {
-      const due = rec[dk.k] && rec[dk.k].due;
+      const due = normalizeDueYmd(rec[dk.k] && rec[dk.k].due);
       const left = daysLeft(due);
       if (left == null) return;
       if (left <= 45) out.push({ car: f.car, name: f.short, title: dk.t, due, left });
@@ -1810,13 +1857,20 @@ function collectDocAlerts() {
 
 function renderDocsBadge() {
   const alerts = collectDocAlerts();
-  const hot = alerts.filter(d => d.left <= 15);
-  const count = hot.length || alerts.filter(d => d.left <= 45).length;
+  // Qizil badge: faqat muddati o'tgan yoki ≤15 kun qolgan
+  const hot = alerts.filter(d => d.left < 0 || d.left <= 15);
   const el = document.getElementById('docs-badge');
   if (!el) return;
-  if (!count) { el.style.display = 'none'; return; }
+  if (!hot.length) {
+    el.style.display = 'none';
+    el.removeAttribute('title');
+    return;
+  }
   el.style.display = 'inline-flex';
-  el.textContent = count + ' hujjat muddati!';
+  el.textContent = hot.length + ' hujjat muddati!';
+  el.title = hot.map(a =>
+    plateDisp(a.car) + ' · ' + a.title + ' · ' + (a.left < 0 ? ('o\'tgan ' + Math.abs(a.left) + ' kun') : (a.left + ' kun'))
+  ).join('\n');
 }
 
 function mobSwipeHint() {
@@ -2360,7 +2414,8 @@ async function renderYear() {
 
 function docCell(car, key, rec) {
   const d = rec[key] || { due: '', months: 12 };
-  const left = daysLeft(d.due);
+  const due = normalizeDueYmd(d.due);
+  const left = daysLeft(due);
   let cls = '', lab = 'kiritilmagan';
   if (left != null) {
     lab = left < 0 ? ('muddati o\'tgan ' + Math.abs(left) + ' kun') : (left + ' kun');
@@ -2370,26 +2425,35 @@ function docCell(car, key, rec) {
     else cls = 'st-ok';
   }
   return `<td>
-    <input type="date" data-doc="${esc(car)}" data-k="${key}" data-f="due" value="${esc(d.due || '')}">
+    <input type="date" data-doc="${esc(car)}" data-k="${key}" data-f="due" value="${esc(due)}" title="Muddat tugash sanasi — qanday kiritilsa shunday saqlanadi">
     <div class="doc-row">
-      <input type="number" min="1" max="60" data-doc="${esc(car)}" data-k="${key}" data-f="months" value="${d.months || 12}" style="width:56px;height:26px;">
+      <input type="number" min="1" max="60" data-doc="${esc(car)}" data-k="${key}" data-f="months" value="${d.months || 12}" style="width:56px;height:26px;" title="Faqat «Bugundan» uchun davr (oy)">
       <span class="muted">oy</span>
-      <button type="button" class="btn btn-ink btn-sm doc-renew" data-doc="${esc(car)}" data-k="${key}">Yangilash</button>
+      <button type="button" class="btn btn-ink btn-sm doc-renew" data-doc="${esc(car)}" data-k="${key}" title="Kiritilgan sanaga oy QO'SHMAYDI. Bugundan yangi muddat belgilaydi (bugun + N oy)">Bugundan</button>
     </div>
-    <div class="badge ${cls}" style="margin-top:4px;height:auto;padding:3px 6px;">${esc(lab)}</div>
+    <div class="badge ${cls}" style="margin-top:4px;height:auto;padding:3px 6px;" title="${due ? ('Muddat: ' + dueDisp(due)) : ''}">${esc(lab)}</div>
   </td>`;
 }
 
 function renderDocs() {
   const today = todayYmd();
   const alerts = collectDocAlerts();
+  const hot = alerts.filter(d => d.left < 0 || d.left <= 15);
+  const warn = alerts.filter(d => d.left > 15 && d.left <= 45);
   document.getElementById('panel-docs').innerHTML = `
-    <div class="card"><div class="card-h"><h3>Hujjat muddatlari hisoboti — ${esc(today.split('-').reverse().join('.'))}</h3></div>
+    <div class="card"><div class="card-h"><h3>Hujjat muddatlari hisoboti — ${esc(dueDisp(today))}</h3></div>
       <div class="card-b">
-        <div class="hint">Muddat va davr (oy) ni qo'lda kiriting. <b>Yangilash</b> tugmasi muddatni shu davrga siljitadi (muddati o'tgan bo'lsa — bugundan). Yashil &gt;45 kun, sariq &lt;45, och qizil &lt;15, <b>qizil (puls)</b> — muddati o'tgan.</div>
-        ${alerts.length ? `<div class="alert-box">${alerts.slice(0, 12).map(a =>
-          `<div><b>${esc(plateDisp(a.car))}</b> ${esc(a.name)} — ${esc(a.title)} → ${a.left < 0 ? 'muddati o\'tgan' : (a.left + ' kun qoldi')}</div>`
+        <div class="hint">
+          <b>Sana = muddat tugash kuni.</b> Kalendardan tanlang — aynan shu sana saqlanadi, tizim oy qo‘shmaydi.
+          Pastdagi kunlar faqat shu sanadan hisoblanadi (masalan 28.06.2027 → shu kungacha qolgan kun).
+          <b>Bugundan</b> — faqat yangi muddat kerak bo‘lganda: bugun + N oy (eski sanaga qo‘shilmaydi).
+        </div>
+        ${hot.length ? `<div class="alert-box">${hot.map(a =>
+          `<div><b>${esc(plateDisp(a.car))}</b> ${esc(a.name)} — ${esc(a.title)} → ${a.left < 0 ? ('muddati o\'tgan ' + Math.abs(a.left) + ' kun') : (a.left + ' kun qoldi')} <span class="muted">(${esc(dueDisp(a.due))})</span></div>`
         ).join('')}</div>` : ''}
+        ${warn.length ? `<div class="hint" style="margin-top:8px">45 kun ichida: ${warn.slice(0, 8).map(a =>
+          esc(plateDisp(a.car)) + ' ' + esc(a.title) + ' (' + a.left + ' kun, ' + dueDisp(a.due) + ')'
+        ).join(' · ')}</div>` : ''}
         <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
           <table class="gtable">
@@ -2410,10 +2474,19 @@ function renderDocs() {
       const dest = ensureDocsRec(plate);
       if (!dest) return;
       if (!dest[k]) dest[k] = { due: '', months: 12 };
-      dest[k][f] = f === 'months' ? (n(el.value) || 12) : el.value;
+      if (f === 'months') {
+        dest[k].months = Math.max(1, Math.min(60, n(el.value) || 12));
+      } else {
+        // Muddat tugash sanasi — ekrandagidek, hech narsa qo'shilmasin
+        dest[k].due = normalizeDueYmd(el.value);
+      }
       try {
         await saveMeta();
-        toast('Hujjat saqlandi');
+        const due = dest[k].due;
+        const left = daysLeft(due);
+        toast(due
+          ? ('Muddat: ' + dueDisp(due) + (left != null ? (' · ' + (left < 0 ? ('o\'tgan ' + Math.abs(left)) : left) + ' kun') : ''))
+          : 'Sana tozalandi');
       } catch (err) {
         toast(err.message || 'Hujjat saqlanmadi');
         return;
@@ -2429,22 +2502,24 @@ function renderDocs() {
       if (!plate || !k) return;
       const dest = ensureDocsRec(plate);
       if (!dest) return;
-      const rec = dest[k] || { due: todayYmd(), months: 12 };
-      const months = n(rec.months) || 12;
-      // Muddati o'tgan / bo'sh → bugundan; aks holda joriy muddatdan siljitish
-      let base = String(rec.due || '').trim();
-      const left = daysLeft(base);
-      if (!base || left == null || left < 0) base = todayYmd();
-      const d = new Date(base + 'T00:00:00');
-      d.setMonth(d.getMonth() + months);
-      rec.due = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-      rec.months = months;
-      dest[k] = rec;
+      const td = btn.closest('td');
+      const monthsEl = td && td.querySelector('[data-f="months"]');
+      const months = Math.max(1, Math.min(60, n(monthsEl && monthsEl.value) || 12));
+      // MUHIM: eski sanaga oy QO'SHILMAYDI — faqat bugundan yangi muddat
+      const next = addMonthsYmd(todayYmd(), months);
+      if (!confirm(
+        plateDisp(plate) + '\n\n' +
+        'Yangi muddat tugashi:\nbugun + ' + months + ' oy\n→ ' + dueDisp(next) +
+        '\n\n(Eski sanaga oy qo\'shilmaydi.)\nDavom etasizmi?'
+      )) return;
+      if (!dest[k]) dest[k] = { due: '', months: 12 };
+      dest[k].due = next;
+      dest[k].months = months;
       try {
         await saveMeta();
-        toast('Yangilandi: ' + plateDisp(plate) + ' → ' + rec.due.split('-').reverse().join('.'));
+        toast('Muddat: ' + dueDisp(next) + ' · ' + daysLeft(next) + ' kun');
       } catch (err) {
-        toast(err.message || 'Yangilanmadi');
+        toast(err.message || 'Saqlanmadi');
         return;
       }
       renderDocsBadge();
