@@ -249,35 +249,39 @@
 
   function applyGeoFix(lat, lng, accuracy) {
     const off = officeInfo();
+    const acc = accuracy != null && Number.isFinite(Number(accuracy)) ? Number(accuracy) : null;
     if (off.hasCoords) {
       const dist = haversineM(lat, lng, off.lat, off.lng);
-      const inside = dist <= off.radius;
+      // Binoda GPS ±120 m gacha yumshoq zona (server bilan bir xil)
+      const soft = acc != null && acc > 0 ? Math.min(acc, 120) : 0;
+      const inside = dist <= (off.radius + soft);
       geoLive = {
-        inside, dist, accuracy: accuracy || null, lat, lng, err: null,
-        status: inside ? 'ok' : 'out'
+        inside, dist, accuracy: acc, lat, lng, err: null,
+        status: inside ? 'ok' : 'out',
+        message: null
       };
       paintGeoUI();
       updateAttMap(lat, lng);
       paintMapOverlay();
-      return;
+    } else {
+      geoLive = {
+        inside: geoLive && geoLive.inside === true ? true : null,
+        dist: geoLive && geoLive.dist != null ? geoLive.dist : null,
+        accuracy: acc, lat, lng, err: null,
+        status: (geoLive && geoLive.inside === true) ? 'ok' : 'load',
+        message: null
+      };
+      paintGeoUI();
+      updateAttMap(lat, lng);
+      paintMapOverlay();
     }
-    // Koordinata yashirin — server probe (soxtalashtirishga qarshi)
-    geoLive = {
-      inside: geoLive && geoLive.inside === true ? true : null,
-      dist: geoLive && geoLive.dist != null ? geoLive.dist : null,
-      accuracy: accuracy || null,
-      lat, lng, err: null,
-      status: (geoLive && geoLive.inside === true) ? 'ok' : 'load'
-    };
-    paintGeoUI();
-    updateAttMap(lat, lng);
-    paintMapOverlay();
-    scheduleGeoProbe(lat, lng, accuracy);
+    // Server yakuniy manba — har doim
+    scheduleGeoProbe(lat, lng, acc);
   }
 
   function scheduleGeoProbe(lat, lng, accuracy) {
     if (geoProbeTimer) clearTimeout(geoProbeTimer);
-    geoProbeTimer = setTimeout(() => { runGeoProbe(lat, lng, accuracy); }, 350);
+    geoProbeTimer = setTimeout(() => { runGeoProbe(lat, lng, accuracy); }, 280);
   }
 
   async function runGeoProbe(lat, lng, accuracy) {
@@ -291,30 +295,46 @@
       if (seq !== geoProbeSeq) return;
       if (geoLive.lat !== lat || geoLive.lng !== lng) return;
       const inside = !!r.inside;
+      const dist = r.distance_m != null ? Number(r.distance_m) : null;
       geoLive = {
         inside,
-        dist: r.distance_m != null ? Number(r.distance_m) : null,
-        accuracy: accuracy || null,
-        lat, lng, err: null,
-        status: inside ? 'ok' : 'out'
+        dist: Number.isFinite(dist) ? dist : null,
+        accuracy: accuracy != null ? Number(accuracy) : null,
+        lat, lng,
+        err: inside ? null : (r.message || null),
+        status: inside ? 'ok' : 'out',
+        message: r.message || null
       };
       if (r.radius_m != null && STATE && STATE.settings && STATE.settings.office) {
         STATE.settings.office.radius_m = r.radius_m;
+      }
+      if (r.office_lat != null && r.office_lng != null && STATE && STATE.settings) {
+        STATE.settings.office = STATE.settings.office || {};
+        const prevLat = STATE.settings.office.lat;
+        STATE.settings.office.lat = r.office_lat;
+        STATE.settings.office.lng = r.office_lng;
+        if (!attMapOffice || prevLat == null) {
+          try { initAttMap(); } catch (e) {}
+        }
       }
       paintGeoUI();
       updateAttMap(lat, lng);
       paintMapOverlay();
     } catch (e) {
       if (seq !== geoProbeSeq) return;
-      geoLive = {
-        inside: false,
-        dist: null,
-        accuracy: accuracy || null,
-        lat, lng,
-        err: (e && e.message) || 'Zona tekshiruvi xato',
-        status: 'err'
-      };
-      paintGeoUI();
+      // Server xato — klient hisobini saqlab qolamiz
+      if (geoLive.inside == null) {
+        geoLive = {
+          inside: false,
+          dist: geoLive.dist,
+          accuracy: accuracy != null ? Number(accuracy) : null,
+          lat, lng,
+          err: (e && e.message) || 'Zona tekshiruvi xato',
+          status: 'err',
+          message: null
+        };
+        paintGeoUI();
+      }
     }
   }
 
@@ -322,7 +342,8 @@
     geoLive = {
       inside: false, dist: null, accuracy: null, lat: null, lng: null,
       err: err && err.message ? err.message : 'Joylashuv olinmadi',
-      status: 'err'
+      status: 'err',
+      message: null
     };
     paintGeoUI();
     styleZoneCircle(null);
@@ -343,6 +364,7 @@
     const canIn = !today.in && !done;
     const canOut = !!today.in && !today.out;
     const inside = geoLive.inside === true;
+    const accTxt = geoLive.accuracy != null ? Math.round(geoLive.accuracy) : null;
 
     if (badge) {
       badge.className = 'av-geo-badge ' + (geoLive.status === 'ok' ? 'ok' : (geoLive.status === 'out' || geoLive.status === 'err' ? 'bad' : 'load'));
@@ -352,11 +374,13 @@
       else badge.textContent = 'Joylashuv…';
     }
     if (distEl) {
-      if (geoLive.dist != null) {
-        distEl.innerHTML = 'Siz ofis markazidan <b>' + Math.round(geoLive.dist) + ' m</b> · Radius <b>' + off.radius + ' m</b>';
-      } else {
-        distEl.innerHTML = 'Ofis: <b>' + esc(off.label) + '</b> · Radius <b>' + off.radius + ' m</b>';
+      const bits = [];
+      if (geoLive.dist != null && Number.isFinite(Number(geoLive.dist))) {
+        bits.push('Markazdan <b>' + Math.round(geoLive.dist) + ' m</b>');
       }
+      bits.push('Radius <b>' + off.radius + ' m</b>');
+      if (accTxt != null) bits.push('GPS ±' + accTxt + ' m');
+      distEl.innerHTML = bits.join(' · ') || ('Ofis: <b>' + esc(off.label) + '</b>');
     }
     if (gate) {
       if (geoLive.status === 'ok') {
@@ -364,12 +388,19 @@
           gate.className = 'av-gate-banner on ok';
           gate.textContent = 'Ofis QR tasdiqlandi — Keldim yoki Ketdim tugmasini bosing.';
         } else {
-          gate.className = 'av-gate-banner';
-          gate.textContent = '';
+          gate.className = 'av-gate-banner on ok';
+          gate.textContent = 'Siz ofis zonasidasiz. Devordagi QR ni skanerlang, keyin Keldim.';
         }
       } else if (geoLive.status === 'out') {
         gate.className = 'av-gate-banner on';
-        gate.textContent = 'Davomat faqat ofis radiusida. Hozir ~' + Math.round(geoLive.dist || 0) + ' m uzoqdasiz — ofis zonasiga kiring.';
+        if (geoLive.message || geoLive.err) {
+          gate.textContent = geoLive.message || geoLive.err;
+        } else if (geoLive.dist != null && Number.isFinite(Number(geoLive.dist))) {
+          gate.textContent = 'Davomat faqat ofis radiusida. Markazdan ~' +
+            Math.round(geoLive.dist) + ' m (radius ' + off.radius + ' m). «Qayta tekshirish» bosing.';
+        } else {
+          gate.textContent = 'Joylashuv ofis zonasi bilan mos kelmadi. «Qayta tekshirish» bosing.';
+        }
       } else if (geoLive.status === 'err') {
         gate.className = 'av-gate-banner on';
         gate.textContent = geoLive.err || 'Joylashuvni yoqing — ofisga kirganingizda tugmalar ochiladi.';

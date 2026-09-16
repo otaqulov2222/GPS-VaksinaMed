@@ -332,24 +332,40 @@ class AttendanceStore:
             acc_f = float(accuracy) if accuracy is not None else None
         except (TypeError, ValueError):
             acc_f = None
-        if acc_f is not None and acc_f > 220:
-            return False, None, (
-                f"Joylashuv aniq emas ({int(acc_f)} m). "
-                "Ochig'roq joyda qayta urinib ko'ring."
-            )
+        if acc_f is not None and (acc_f < 0 or acc_f > 50000):
+            acc_f = None
         try:
             olat = float(office.get("lat"))
             olng = float(office.get("lng"))
             radius = float(office.get("radius_m") or 100)
         except (TypeError, ValueError):
             return False, None, "Ofis geozonasi sozlanmagan"
+        radius = max(50.0, min(5000.0, radius))
         dist = haversine_m(lat_f, lng_f, olat, olng)
-        if dist > radius:
+
+        # Binoda GPS aniqligi yomon bo‘lishi mumkin — avval masofani hisobla.
+        # Soft zona: radius + min(accuracy, 120) (maks. +120 m).
+        soft = 0.0
+        if acc_f is not None and acc_f > 0:
+            soft = min(float(acc_f), 120.0)
+        limit = radius + soft
+
+        if dist <= radius:
+            return True, dist, None
+        if dist <= limit:
+            # Aniqlik past, lekin ofis atrofida — ichida deb qabul
+            return True, dist, None
+
+        # Aniqlik juda past va hatto soft zona tashqarida
+        if acc_f is not None and acc_f > 350 and dist > radius:
             return False, dist, (
-                f"Ofis zonasi tashqarisida ({int(dist)} m). "
-                f"Radius: {int(radius)} m."
+                f"Joylashuv aniq emas ({int(acc_f)} m). "
+                f"Ofis markazidan ~{int(dist)} m. Deraza yonida «Qayta tekshirish»."
             )
-        return True, dist, None
+        return False, dist, (
+            f"Ofis zonasi tashqarisida (~{int(dist)} m). "
+            f"Radius: {int(radius)} m."
+        )
 
     def qr_ticket_key(self, user_id: str) -> str:
         return QR_TICKET_PREFIX + str(user_id)
@@ -1546,21 +1562,23 @@ class AttendanceStore:
         }
         if err:
             out["message"] = err
+        try:
+            out["office_lat"] = float(office.get("lat"))
+            out["office_lng"] = float(office.get("lng"))
+        except (TypeError, ValueError):
+            pass
         return out
 
     def public_settings(self, user: dict | None = None) -> dict:
         s = self.settings_for_user(user) if user else self.settings()
         office = s.get("office") or {}
-        role = str((user or {}).get("role") or "").strip().lower()
-        # Aniq ofis koordinatasi faqat Admin Pro ga (soxtalashtirishni qiyinlashtirish)
+        # Xarita va live zona uchun koordinata kerak (punch baribir serverda tekshiriladi)
         office_out = {
             "label": office.get("label"),
             "radius_m": office.get("radius_m"),
+            "lat": office.get("lat"),
+            "lng": office.get("lng"),
         }
-        coords_visible = role == "admin_pro"
-        if coords_visible:
-            office_out["lat"] = office.get("lat")
-            office_out["lng"] = office.get("lng")
         return {
             "enabled": bool(s.get("enabled", True)),
             "require_gps": bool(s.get("require_gps", True)),
@@ -1574,7 +1592,7 @@ class AttendanceStore:
             "out_start": s.get("out_start"),
             "out_end": s.get("out_end"),
             "office": office_out,
-            "officeCoordsVisible": coords_visible,
+            "officeCoordsVisible": True,
             "serverNow": now_tz().isoformat(timespec="seconds"),
             "today": today_str(),
             "scheduleNote": (

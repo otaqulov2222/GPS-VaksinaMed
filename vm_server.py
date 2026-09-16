@@ -3533,13 +3533,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             s = dict(ATTENDANCE.settings())
             s.pop("office_qr_secret", None)
-            # Ofis lat/lng faqat Admin Pro
-            if sess.get("role") != "admin_pro":
-                office = dict(s.get("office") or {})
-                office.pop("lat", None)
-                office.pop("lng", None)
-                s["office"] = office
-            s["officeCoordsVisible"] = sess.get("role") == "admin_pro"
+            # O‘qish: xarita uchun lat/lng hammaga. Yozish: faqat Admin Pro (POST da).
+            s["officeCoordsVisible"] = True
             self.send_json({"ok": True, "settings": s})
             return
 
@@ -4773,12 +4768,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             # Sirni javobda yubormaslik
             pub = dict(saved)
             pub.pop("office_qr_secret", None)
-            if sess.get("role") != "admin_pro":
-                office = dict(pub.get("office") or {})
-                office.pop("lat", None)
-                office.pop("lng", None)
-                pub["office"] = office
-            pub["officeCoordsVisible"] = sess.get("role") == "admin_pro"
+            pub["officeCoordsVisible"] = True
             self.send_json({"ok": True, "settings": pub})
             return
 
