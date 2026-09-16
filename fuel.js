@@ -470,11 +470,27 @@ function mergeCarMaps(primary, secondary) {
 }
 
 function getCar(plate) {
-  if (!STATE.cars[plate]) STATE.cars[plate] = blankCar(vehicleInfo(plate));
-  if (!STATE.cars[plate].days) STATE.cars[plate].days = {};
-  if (!STATE.cars[plate].changes) STATE.cars[plate].changes = [];
-  if (!STATE.cars[plate].driverChanges) STATE.cars[plate].driverChanges = [];
-  return STATE.cars[plate];
+  const canon = canonicalPlate(plate) || String(plate || '').trim();
+  // Bir xil mashina turli yozuvda (01/269 KMA vs 01 269 KMA) — bitta kalitga yig'ish
+  if (plate && STATE.cars[plate] && plate !== canon) {
+    if (!STATE.cars[canon]) {
+      STATE.cars[canon] = STATE.cars[plate];
+    } else {
+      const a = STATE.cars[plate];
+      const b = STATE.cars[canon];
+      STATE.cars[canon] = Object.assign({}, a, b, {
+        days: Object.assign({}, a.days || {}, b.days || {}),
+        changes: (b.changes && b.changes.length ? b.changes : a.changes) || [],
+        driverChanges: (b.driverChanges && b.driverChanges.length ? b.driverChanges : a.driverChanges) || []
+      });
+    }
+    delete STATE.cars[plate];
+  }
+  if (!STATE.cars[canon]) STATE.cars[canon] = blankCar(vehicleInfo(canon));
+  if (!STATE.cars[canon].days) STATE.cars[canon].days = {};
+  if (!STATE.cars[canon].changes) STATE.cars[canon].changes = [];
+  if (!STATE.cars[canon].driverChanges) STATE.cars[canon].driverChanges = [];
+  return STATE.cars[canon];
 }
 
 function driverOnDay(info, car, day) {
@@ -890,12 +906,11 @@ async function loadAll() {
   const adopted = adoptCars(serverCars);
   const localCars = (local && local.cars) || {};
   const preferLocal = shouldPreferLocalMonth(local, serverCars, month.data && month.data.savedAt);
-  if (preferLocal) {
-    STATE.cars = mergeCarMaps(adoptCars(localCars), adopted);
-    STATE.dirty = true;
-  } else {
-    STATE.cars = mergeCarMaps(adopted, localCars);
-  }
+  STATE.cars = preferLocal
+    ? mergeCarMaps(adoptCars(localCars), adopted)
+    : mergeCarMaps(adopted, localCars);
+  STATE.cars = normalizeCarMap(STATE.cars);
+  if (preferLocal) STATE.dirty = true;
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   if (purgePollutedDispFracOnce(STATE.cars)) STATE.dirty = true;
   if (applyMetaNormsToCars()) STATE.dirty = true;
@@ -904,6 +919,7 @@ async function loadAll() {
   STATE.gpsKm = gps.days || {};
   STATE.dayRep = Math.min(now.getDate(), daysInMonth(STATE.month));
   if (!STATE.car) STATE.car = (fleet()[0] && fleet()[0].car) || '';
+  else STATE.car = canonicalPlate(STATE.car) || STATE.car;
   setMonthLabel();
   await autoChainMonth();
   if (syncAllCarsDayPrices()) STATE.dirty = true;
@@ -933,13 +949,15 @@ async function changeMonth(ym) {
   STATE.cars = preferLocal
     ? mergeCarMaps(adoptCars(localCars), adopted)
     : mergeCarMaps(adopted, localCars);
+  STATE.cars = normalizeCarMap(STATE.cars);
+  if (preferLocal) STATE.dirty = true;
   Object.keys(STATE.cars).forEach(k => { STATE.cars[k]._fromServer = true; });
   if (purgePollutedDispFracOnce(STATE.cars)) STATE.dirty = true;
   if (applyMetaNormsToCars()) STATE.dirty = true;
   if (repairDizelGazFuelTypes()) STATE.dirty = true;
   if (repairCorruptFuelQuantities()) STATE.dirty = true;
   STATE.gpsKm = gps.days || {};
-  STATE.dirty = preferLocal || STATE.dirty;
+  if (STATE.car) STATE.car = canonicalPlate(STATE.car) || STATE.car;
   STATE.dayRep = 1;
   setMonthLabel();
   await autoChainMonth();
@@ -1140,16 +1158,29 @@ function carsToSave(opts) {
   }
   const out = {};
   Object.keys(STATE.cars || {}).forEach(k => {
-    const stripped = stripLocalFlags(STATE.cars[k]);
-    if (STATE.cars[k] && STATE.cars[k]._replaceDays) stripped.replaceDays = true;
-    out[k] = stripped;
+    const canon = canonicalPlate(k) || k;
+    const src = STATE.cars[k];
+    if (!src) return;
+    const stripped = stripLocalFlags(src);
+    if (src._replaceDays) stripped.replaceDays = true;
+    if (!out[canon]) {
+      out[canon] = stripped;
+      return;
+    }
+    const prev = out[canon];
+    out[canon] = Object.assign({}, prev, stripped, {
+      days: Object.assign({}, prev.days || {}, stripped.days || {}),
+      replaceDays: !!(prev.replaceDays || stripped.replaceDays)
+    });
   });
   if (STATE.car) {
-    const stripped = stripLocalFlags(getCar(STATE.car));
-    if (STATE.cars[STATE.car] && STATE.cars[STATE.car]._replaceDays) stripped.replaceDays = true;
-    out[STATE.car] = stripped;
+    const canon = canonicalPlate(STATE.car) || STATE.car;
+    const src = getCar(canon);
+    const stripped = stripLocalFlags(src);
+    if (src._replaceDays) stripped.replaceDays = true;
+    out[canon] = stripped;
   }
-  return out;
+  return normalizeCarMap(out);
 }
 
 async function saveMeta() {
@@ -3103,6 +3134,11 @@ function cellStr(v) {
   return String(v).trim();
 }
 
+/** Excel katagi bor-yo'qligi (0 ham qiymat — bo'sh emas) */
+function excelCellPresent(v) {
+  return v !== '' && v != null;
+}
+
 function isJamiRow(row) {
   const t = cellStr(row && row[0]).toLowerCase();
   if (/жами|jami|итого|total/.test(t)) return true;
@@ -3507,11 +3543,12 @@ function rowHasWaybillData(row) {
   if (isJamiRow(row) || isColumnIndexRow(row) || isWaybillSubHeaderRow(row)) return false;
   const day = n(row[0]);
   const hasDay = day >= 1 && day <= 31;
-  const hasFuel = n(row[3]) || n(row[4]) || cellStr(row[2]);
-  const hasKm = n(row[9]) || n(row[10]);
-  const hasBal = (row[5] !== '' && row[5] != null) || (row[6] !== '' && row[6] != null);
+  // 0 ham ma'lumot: Exceldagi nollar o'tkazib yuborilmasin
+  const hasFuel = excelCellPresent(row[3]) || excelCellPresent(row[4]) || !!cellStr(row[2]);
+  const hasKm = excelCellPresent(row[9]) || excelCellPresent(row[10]);
+  const hasBal = excelCellPresent(row[5]) || excelCellPresent(row[6]);
   // Kun raqamisiz = faqat zapravka (stansiya yoki operatsiya №). Jami qatori o'tmasin.
-  if (!hasDay) return !!(cellStr(row[2]) || (n(row[1]) > 100 && (n(row[3]) || n(row[4]))));
+  if (!hasDay) return !!(cellStr(row[2]) || (n(row[1]) > 100 && (excelCellPresent(row[3]) || excelCellPresent(row[4]))));
   return !!(hasFuel || hasKm || hasBal);
 }
 
@@ -3578,53 +3615,59 @@ function parseWaybillAoa(aoa, carHint) {
 
     const gasIn = sanitizeDailyFill(row[3], 'gaz');
     const benzinIn = sanitizeDailyFill(row[4], diesel ? 'dizel' : 'benzin');
-    const gKm = n(row[9]);
-    const bKm = n(row[10]);
+    const hasGKm = excelCellPresent(row[9]);
+    const hasBKm = excelCellPresent(row[10]);
+    const gKm = hasGKm ? n(row[9]) : null;
+    const bKm = hasBKm ? n(row[10]) : null;
     const station = cellStr(row[2]);
     const prev = days[d] || {};
+    const hasGasIn = excelCellPresent(row[3]);
+    const hasBenIn = excelCellPresent(row[4]);
+    const hasExtra = excelCellPresent(row[13]);
 
     const day = {
       station: station || prev.station || '',
-      gasIn: n(prev.gasIn) + gasIn,
-      benzinIn: n(prev.benzinIn) + benzinIn,
+      gasIn: n(prev.gasIn) + (hasGasIn ? gasIn : 0),
+      benzinIn: n(prev.benzinIn) + (hasBenIn ? benzinIn : 0),
       km: n(prev.km),
       mode: prev.mode || 'gaz',
-      extra: n(prev.extra) + n(row[13])
+      extra: n(prev.extra) + (hasExtra ? n(row[13]) : 0)
     };
     if (prev.station && station && prev.station !== station) {
       day.station = prev.station + ' + ' + station;
     }
     if (prev.gasKm != null) day.gasKm = prev.gasKm;
 
-    // Excel: 10-ustun gaz km, 11-ustun benzin km → jami = ikkalasi yig'indisi
-    if (gKm > 0 || bKm > 0) {
-      day.km = gKm + bKm;
-      if (gKm > 0 && bKm > 0) {
+    // Excel: 10-ustun gaz km, 11-ustun benzin km → jami = ikkalasi yig'indisi (0 ham)
+    if (hasGKm || hasBKm) {
+      day.km = n(gKm) + n(bKm);
+      day.kmSrc = 'user';
+      if (n(gKm) > 0 && n(bKm) > 0) {
         day.mode = 'aralash';
-        day.gasKm = gKm;
-      } else if (bKm > 0) {
+        day.gasKm = n(gKm);
+      } else if (n(bKm) > 0 || (hasBKm && !hasGKm)) {
         day.mode = diesel ? 'dizel' : 'benzin';
-        delete day.gasKm;
+        day.gasKm = 0;
       } else {
         day.mode = 'gaz';
-        delete day.gasKm;
+        day.gasKm = day.km;
       }
     }
 
-    if (!(gKm > 0 || bKm > 0)) {
+    if (!(hasGKm || hasBKm)) {
       if (n(day.gasIn) && n(day.benzinIn)) day.mode = 'aralash';
       else if (n(day.benzinIn) && !n(day.gasIn)) day.mode = diesel ? 'dizel' : 'benzin';
       else if (n(day.gasIn)) day.mode = 'gaz';
     }
 
-    if (day.km) day.kmSrc = 'user';
+    if (day.km != null && day.km !== '') day.kmSrc = day.kmSrc || 'user';
 
     if (firstFilled) {
-      if (row[5] !== '' && row[5] != null) params.gasStart = sanitizeStartBal(row[5], 'gaz');
-      if (row[6] !== '' && row[6] != null) params.benzinStart = sanitizeStartBal(row[6], diesel ? 'dizel' : 'benzin');
-      if (n(row[7])) params.gasNorm = n(row[7]);
-      if (n(row[8])) params.benzinNorm = n(row[8]);
-      if (params.gasStart != null || params.benzinStart != null || params.gasNorm || params.benzinNorm) {
+      if (excelCellPresent(row[5])) params.gasStart = sanitizeStartBal(row[5], 'gaz');
+      if (excelCellPresent(row[6])) params.benzinStart = sanitizeStartBal(row[6], diesel ? 'dizel' : 'benzin');
+      if (excelCellPresent(row[7])) params.gasNorm = n(row[7]);
+      if (excelCellPresent(row[8])) params.benzinNorm = n(row[8]);
+      if (params.gasStart != null || params.benzinStart != null || params.gasNorm != null || params.benzinNorm != null) {
         firstFilled = false;
       }
     }
@@ -3659,17 +3702,21 @@ function parseKunlikAoa(aoa) {
     else if (/benzin|бензин/.test(modeRaw)) mode = 'benzin';
     else if (/aralash|аралаш|смеш/.test(modeRaw)) mode = 'aralash';
     const day = {
-      km: n(row[1]),
-      odo: n(row[2]),
+      km: excelCellPresent(row[1]) ? n(row[1]) : 0,
+      odo: excelCellPresent(row[2]) ? n(row[2]) : 0,
       mode,
       station: cellStr(row[4]),
-      gasIn: n(row[5]),
-      benzinIn: n(row[7]),
-      extra: n(row[13]),
+      gasIn: excelCellPresent(row[5]) ? n(row[5]) : 0,
+      benzinIn: excelCellPresent(row[7]) ? n(row[7]) : 0,
+      extra: excelCellPresent(row[13]) ? n(row[13]) : 0,
       note: cellStr(row[14])
     };
-    if (day.km) day.kmSrc = 'user';
-    if (!day.km && !day.odo && !day.gasIn && !day.benzinIn && !day.station) continue;
+    if (excelCellPresent(row[1])) day.kmSrc = 'user';
+    // Bo'sh qator emas: kun + kamida bitta katak (0 ham hisob)
+    const any =
+      excelCellPresent(row[1]) || excelCellPresent(row[2]) || excelCellPresent(row[5]) ||
+      excelCellPresent(row[7]) || excelCellPresent(row[13]) || day.station || day.note || mode;
+    if (!any) continue;
     days[d] = day;
   }
   if (!Object.keys(days).length) return null;
@@ -3773,43 +3820,75 @@ function applyExcelImport(parsed, plate, replaceDays) {
     car._replaceDays = true;
   }
   const p = parsed.params || {};
-  if (p.gasNorm) car.gasNorm = p.gasNorm;
-  if (p.benzinNorm) car.benzinNorm = p.benzinNorm;
+  if (p.gasNorm != null && p.gasNorm !== '') car.gasNorm = n(p.gasNorm);
+  if (p.benzinNorm != null && p.benzinNorm !== '') car.benzinNorm = n(p.benzinNorm);
   if (p.gasStart != null && p.gasStart !== '') car.gasStart = n(p.gasStart);
   if (p.benzinStart != null && p.benzinStart !== '') car.benzinStart = n(p.benzinStart);
-  if (p.gasPrice) car.gasPrice = n(p.gasPrice);
-  if (p.benzinPrice) car.benzinPrice = n(p.benzinPrice);
-  if (p.odoStart) car.odoStart = p.odoStart;
+  if (p.gasPrice != null && p.gasPrice !== '') car.gasPrice = n(p.gasPrice);
+  if (p.benzinPrice != null && p.benzinPrice !== '') car.benzinPrice = n(p.benzinPrice);
+  if (p.odoStart != null && p.odoStart !== '') car.odoStart = n(p.odoStart);
   const hasGaz = n(p.gasStart) || n(p.gasNorm) || Object.values(parsed.days || {}).some(d => n(d.gasIn) || n(d.gasKm));
   const hasBen = n(p.benzinStart) || n(p.benzinNorm) || Object.values(parsed.days || {}).some(d => n(d.benzinIn));
   if (hasGaz && hasBen) car.fuelType = 'mixed';
   else if (hasBen && !hasGaz) car.fuelType = car.fuelType === 'dizel' ? 'dizel' : 'benzin';
   else if (hasGaz && !hasBen) car.fuelType = 'gaz';
   let nDays = 0;
-  Object.keys(parsed.days).forEach(k => {
+  Object.keys(parsed.days || {}).forEach(k => {
     const d = Number(k);
-    const src = parsed.days[k];
+    const src = parsed.days[k] || {};
     const row = ensureDay(car, d);
     let touched = false;
-    if (src.km) { row.km = src.km; row.kmSrc = src.kmSrc || 'user'; touched = true; }
-    if (src.gasKm != null && src.gasKm !== '') { row.gasKm = n(src.gasKm); touched = true; }
-    if (src.odo) { row.odo = src.odo; touched = true; }
-    if (src.mode) { row.mode = src.mode; touched = true; }
-    if (src.station) {
-      row.station = src.station;
+    // 0 ham yoziladi — Exceldagi nol tizimda ham nol bo'lsin
+    if (src.km != null && src.km !== '') {
+      row.km = n(src.km);
+      row.kmSrc = src.kmSrc || 'user';
+      touched = true;
+    }
+    if (src.gasKm != null && src.gasKm !== '') {
+      row.gasKm = n(src.gasKm);
+      touched = true;
+    }
+    if (src.odo != null && src.odo !== '') {
+      row.odo = n(src.odo);
+      touched = true;
+    }
+    if (src.mode) {
+      row.mode = src.mode;
+      touched = true;
+    }
+    if (src.station != null && String(src.station).trim() !== '') {
+      row.station = String(src.station).trim();
       STATE.meta.stations = STATE.meta.stations || [];
-      if (!STATE.meta.stations.includes(src.station)) STATE.meta.stations.push(src.station);
+      if (!STATE.meta.stations.includes(row.station)) STATE.meta.stations.push(row.station);
       touched = true;
     }
-    if (src.gasIn) { row.gasIn = sanitizeDailyFill(src.gasIn, 'gaz'); touched = true; }
-    if (src.benzinIn) {
-      row.benzinIn = sanitizeDailyFill(src.benzinIn, (car.fuelType === 'dizel' || car.fuelType === 'dizel_gaz') ? 'dizel' : 'benzin');
+    if (src.gasIn != null && src.gasIn !== '') {
+      row.gasIn = sanitizeDailyFill(src.gasIn, 'gaz');
       touched = true;
     }
-    if (src.gasPrice) row.gasPrice = src.gasPrice;
-    if (src.benzinPrice) row.benzinPrice = src.benzinPrice;
-    if (src.extra) { row.extra = src.extra; touched = true; }
-    if (src.note) { row.note = src.note; touched = true; }
+    if (src.benzinIn != null && src.benzinIn !== '') {
+      row.benzinIn = sanitizeDailyFill(
+        src.benzinIn,
+        (car.fuelType === 'dizel' || car.fuelType === 'dizel_gaz') ? 'dizel' : 'benzin'
+      );
+      touched = true;
+    }
+    if (src.gasPrice != null && src.gasPrice !== '') {
+      row.gasPrice = n(src.gasPrice);
+      touched = true;
+    }
+    if (src.benzinPrice != null && src.benzinPrice !== '') {
+      row.benzinPrice = n(src.benzinPrice);
+      touched = true;
+    }
+    if (src.extra != null && src.extra !== '') {
+      row.extra = n(src.extra);
+      touched = true;
+    }
+    if (src.note != null && String(src.note).trim() !== '') {
+      row.note = String(src.note).trim();
+      touched = true;
+    }
     if (touched) nDays += 1;
   });
   syncParamsToMeta(plate, car);
@@ -4585,11 +4664,18 @@ function bind() {
   document.getElementById('chips').addEventListener('click', e => {
     const c = e.target.closest('.chip-car');
     if (!c) return;
+    // Avval joriy mashina (jumladan yozilayotgan 7, / 0) DOM → state
+    flushFormToState();
     readParamsIntoCar();
-    syncDayPricesFromCar(getCar(STATE.car));
-    syncParamsToMeta(STATE.car, getCar(STATE.car));
-    markDirty();
-    STATE.car = c.getAttribute('data-car');
+    if (STATE.car) {
+      syncDayPricesFromCar(getCar(STATE.car));
+      syncParamsToMeta(STATE.car, getCar(STATE.car));
+    }
+    const next = canonicalPlate(c.getAttribute('data-car') || '') || c.getAttribute('data-car');
+    if (next && next !== STATE.car) {
+      markDirty();
+      STATE.car = next;
+    }
     syncDayPricesFromCar(getCar(STATE.car));
     writeParams();
     renderChips();
