@@ -316,10 +316,11 @@ const PHARMACY_ALIASES = {
 
 function normPh(s) {
     if (!s) return '';
-    return s.toLowerCase()
+    if (typeof uzSearchFold === 'function') return uzSearchFold(s);
+    return String(s).toLowerCase()
         .replace(/ё/g,'е').replace(/қ/g,'к').replace(/ў/g,'у')
         .replace(/ҳ/g,'х').replace(/ғ/g,'г').replace(/ң/g,'н')
-        .replace(/['`'']/g,'').replace(/\s+/g,' ').trim();
+        .replace(/['`'']/g,'').replace(/[^a-z0-9а-я]+/gi, '').trim();
 }
 
 /** Server yoki eski yozuvlardan kelgan score/stops ni xavfsiz normalizatsiya */
@@ -2196,12 +2197,17 @@ function openReviewDialog(opts) {
         const hintEl = bg.querySelector('#vmr-hint');
         const noneEl = bg.querySelector('#vmr-ph-none');
 
-        const fold = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е');
+        const fold = (s) => (typeof uzSearchFold === 'function'
+            ? uzSearchFold(s)
+            : String(s || '').toLowerCase().replace(/ё/g, 'е'));
 
         function renderList(q) {
             if (!listEl) return;
-            const qq = fold(q || '');
-            const filtered = names.filter(n => !qq || fold(n).includes(qq));
+            const filtered = names.filter(n => {
+                if (!q) return true;
+                if (typeof uzSearchMatch === 'function') return uzSearchMatch(n, q);
+                return fold(n).includes(fold(q));
+            });
             if (!filtered.length) {
                 listEl.innerHTML = '<div class="vmr-empty">Mos dorixona topilmadi</div>';
                 return;

@@ -1883,8 +1883,9 @@
     }
     if (q) {
       rows = rows.filter((r) => {
-        const blob = [r.name, r.username, r.lavozim, r.car, roleLabel(r.role)].join(' ').toLowerCase();
-        return blob.indexOf(q) >= 0;
+        const blob = [r.name, r.username, r.lavozim, r.car, roleLabel(r.role)].join(' ');
+        if (typeof uzSearchMatch === 'function') return uzSearchMatch(blob, q);
+        return blob.toLowerCase().indexOf(String(q).toLowerCase()) >= 0;
       });
     }
     const periodTitle = ({
@@ -3159,8 +3160,9 @@
     }
     if (q) {
       rows = rows.filter((r) => {
-        const blob = [r.name, r.username, r.lavozim, r.car, roleLabel(r.role)].join(' ').toLowerCase();
-        return blob.indexOf(q) >= 0;
+        const blob = [r.name, r.username, r.lavozim, r.car, roleLabel(r.role)].join(' ');
+        if (typeof uzSearchMatch === 'function') return uzSearchMatch(blob, q);
+        return blob.toLowerCase().indexOf(String(q).toLowerCase()) >= 0;
       });
     }
     return rows;

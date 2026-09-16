@@ -26,9 +26,38 @@ OUTSIDE_MARKERS = (
     "bo'ka", "бўка", "urtachirchiq",
 )
 
+# Kirill → lotin (JS uz-latin.js bilan bir xil mantiq)
+_UZ_CYR_LAT = (
+    ("ў", "o'"), ("қ", "q"), ("ғ", "g'"), ("ҳ", "h"),
+    ("ш", "sh"), ("ч", "ch"), ("ң", "ng"),
+    ("ё", "yo"), ("ю", "yu"), ("я", "ya"), ("ц", "ts"), ("щ", "sh"),
+    ("ъ", ""), ("ь", ""),
+    ("а", "a"), ("б", "b"), ("в", "v"), ("г", "g"), ("д", "d"),
+    ("е", "e"), ("ж", "j"), ("з", "z"), ("и", "i"), ("й", "y"),
+    ("к", "k"), ("л", "l"), ("м", "m"), ("н", "n"), ("о", "o"),
+    ("п", "p"), ("р", "r"), ("с", "s"), ("т", "t"), ("у", "u"),
+    ("ф", "f"), ("х", "x"), ("ы", "i"), ("э", "e"),
+)
+
+
+def uz_latin(s):
+    t = str(s or "").lower()
+    for a, b in _UZ_CYR_LAT:
+        t = t.replace(a, b)
+    return t
+
 
 def norm_ph(s):
-    return re.sub(r"[^a-z0-9а-яўқғҳ]", "", str(s or "").lower().replace("ё", "е"))
+    """Dorixona/joy nomi uchun yagona kalit: kirill ≡ lotin ≡ rus."""
+    t = uz_latin(s).lower()
+    for ch in ("ʼ", "`", "´", "ʻ", "ʹ", "ʿ", "'"):
+        t = t.replace(ch, "'")
+    t = re.sub(r"o'\s*", "o", t)
+    t = re.sub(r"g'\s*", "g", t)
+    t = t.replace("sh", "\x01").replace("ch", "\x02")
+    t = t.replace("h", "x")
+    t = t.replace("\x01", "sh").replace("\x02", "ch")
+    return re.sub(r"[^a-z0-9]+", "", t)
 
 
 def compact_car(s):

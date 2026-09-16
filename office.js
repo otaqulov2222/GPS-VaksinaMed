@@ -312,7 +312,9 @@ const VMOffice = {
                 if (!drv || !drv.pharmacies) return [];
                 return String(drv.pharmacies).split(',').map(s => s.trim()).filter(Boolean);
             })();
-        const fold = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-яўқғҳ]/gi, '');
+        const fold = (s) => (typeof uzSearchFold === 'function'
+            ? uzSearchFold(s)
+            : String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-яўқғҳ]/gi, ''));
         const seen = new Set();
         const out = [];
         raw.forEach(n => {
@@ -345,8 +347,9 @@ const VMOffice = {
         });
         const best = bestOwn || bestAny;
         if (!best) return null;
+        const sameName = (a, b) => (typeof uzNameEq === 'function' ? uzNameEq(a, b) : a === b);
         const owners = (STATE.pharmacies || [])
-            .filter(p => p.name === best.name || (p.lat === best.lat && p.lng === best.lng))
+            .filter(p => sameName(p.name, best.name) || (p.lat === best.lat && p.lng === best.lng))
             .map(p => {
                 const drv = this.driversList().find(d => d.car === p.car);
                 return drv ? drv.shortName : p.car;

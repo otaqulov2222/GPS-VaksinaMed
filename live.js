@@ -402,11 +402,12 @@ function liveSelect(key, pan) {
 }
 
 function liveFiltered() {
-  const q = String((liveEl('live-q') && liveEl('live-q').value) || '').trim().toLowerCase();
+  const q = String((liveEl('live-q') && liveEl('live-q').value) || '').trim();
   if (!q) return LIVE.units.slice();
   return LIVE.units.filter((u) => {
-    const blob = [u.car, u.name, u.driver, u.short].join(' ').toLowerCase();
-    return blob.indexOf(q) >= 0;
+    const blob = [u.car, u.name, u.driver, u.short].join(' ');
+    if (typeof uzSearchMatch === 'function') return uzSearchMatch(blob, q);
+    return blob.toLowerCase().indexOf(q.toLowerCase()) >= 0;
   });
 }
 

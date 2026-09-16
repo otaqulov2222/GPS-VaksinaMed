@@ -22,10 +22,13 @@ SEED_PATH = os.path.join(ROOT, "scripts", "pharmacies_seed.json")
 
 
 def norm_name(s: str) -> str:
-    s = str(s or "").strip().lower()
-    s = s.replace("ё", "е").replace("ў", "у").replace("қ", "к").replace("ғ", "г").replace("ҳ", "х")
-    s = re.sub(r"[\s\-_,.]+", "", s)
-    return s
+    try:
+        import gps_sync
+        return gps_sync.norm_ph(s)
+    except Exception:
+        s = str(s or "").strip().lower()
+        s = s.replace("ё", "е").replace("ў", "у").replace("қ", "к").replace("ғ", "г").replace("ҳ", "х")
+        return re.sub(r"[\s\-_,.]+", "", s)
 
 
 def compact_plate(p: str) -> str:

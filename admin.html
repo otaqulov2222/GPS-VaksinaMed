@@ -1447,7 +1447,7 @@ body { overflow-x: clip; }
         </div>
         <div class="field" style="margin:0">
           <label>2. Qidiruv (dorixona nomi)</label>
-          <input id="ph-search" placeholder="Masalan: Ganga">
+          <input id="ph-search" placeholder="Masalan: Yunusobod 7 / Юнусобод 7">
         </div>
         <div class="field" style="margin:0">
           <label>Radius, m</label>
@@ -1716,7 +1716,7 @@ body { overflow-x: clip; }
 
 
 
-<script src="uz-latin.js?v=1"></script>
+<script src="uz-latin.js?v=3"></script>
 <script src="fleet-data.js?v=9"></script>
 
 <script src="auth.js?v=37"></script>
@@ -1790,7 +1790,7 @@ function highlightAssigned(name) {
 
     const cell = tr.querySelector('td b');
 
-    return cell && cell.textContent.trim().toLowerCase() === String(name || '').toLowerCase();
+    return cell && phNameEq(cell.textContent.trim(), name);
 
   });
 
@@ -2509,17 +2509,33 @@ function carOptionsHtml(selected) {
 
 
 
+function phNameMatch(name, q) {
+  if (!q) return true;
+  if (typeof uzSearchMatch === 'function') return uzSearchMatch(name, q);
+  return String(name || '').toLowerCase().includes(String(q).toLowerCase());
+}
+
+function phNameEq(a, b) {
+  if (typeof uzNameEq === 'function') return uzNameEq(a, b);
+  return String(a || '').toLowerCase() === String(b || '').toLowerCase();
+}
+
+function phNameKey(name) {
+  if (typeof uzSearchFold === 'function') return uzSearchFold(name);
+  return String(name || '').toLowerCase();
+}
+
 function visiblePharms() {
 
   const filterCar = (document.getElementById('ph-filter-car') || {}).value || '';
 
-  const q = String((document.getElementById('ph-search') || {}).value || '').trim().toLowerCase();
+  const q = String((document.getElementById('ph-search') || {}).value || '').trim();
 
   return [...PHARMS]
 
     .filter(p => !filterCar || p.car === filterCar)
 
-    .filter(p => !q || String(p.name || '').toLowerCase().includes(q))
+    .filter(p => phNameMatch(p.name, q))
 
     .sort((a, b) => String(a.name).localeCompare(b.name) || String(a.car).localeCompare(b.car));
 
@@ -2744,7 +2760,7 @@ async function lookupPhByCoords() {
 }
 
 function fillCoordsFromGpsName(name) {
-  const hit = GPS_PLACES.find(p => String(p.name || '').toLowerCase() === String(name || '').toLowerCase());
+  const hit = GPS_PLACES.find(p => phNameEq(p.name, name));
   const latEl = document.getElementById('ph-lat');
   const lngEl = document.getElementById('ph-lng');
   if (!hit || hit.lat == null || hit.lng == null) {
@@ -2757,10 +2773,10 @@ function fillCoordsFromGpsName(name) {
 
 
 function gpsUnassignedList() {
-  const q = String((document.getElementById('ph-search') || {}).value || '').trim().toLowerCase();
+  const q = String((document.getElementById('ph-search') || {}).value || '').trim();
   return GPS_PLACES
     .filter(p => !p.assigned)
-    .filter(p => !q || String(p.name || '').toLowerCase().includes(q))
+    .filter(p => phNameMatch(p.name, q))
     .slice(0, 500);
 }
 
@@ -2867,7 +2883,7 @@ async function assignPharmacy(name, car, lat, lng, opts) {
   name = String(name || '').trim();
   car = String(car || '').trim();
   if (!name || !car) throw new Error('Mashina va dorixona nomi kerak');
-  const exists = PHARMS.find(p => String(p.name || '').toLowerCase() === name.toLowerCase());
+  const exists = PHARMS.find(p => phNameEq(p.name, name));
   const inputRadius = Math.max(40, Math.min(500, parseInt(String((document.getElementById('ph-radius') || {}).value || '').replace(/[^\d]/g, ''), 10) || 120));
   let radiusM = inputRadius;
   if (opts.radiusM != null && opts.radiusM !== '') {
@@ -2896,7 +2912,7 @@ async function assignPharmacy(name, car, lat, lng, opts) {
   if (opts.skipSave) return { name, car };
   await savePharms();
   GPS_PLACES.forEach(p => {
-    if (String(p.name || '').toLowerCase() === name.toLowerCase()) {
+    if (phNameEq(p.name, name)) {
       p.assigned = true;
       p.assignedCar = car;
     }
@@ -2914,9 +2930,9 @@ async function assignPharmaciesBulk(places, car) {
     await assignPharmacy(p.name, car, p.lat, p.lng, { skipSave: true, radiusM: p.radiusM });
   }
   await savePharms();
-  const names = new Set(places.map(p => String(p.name || '').toLowerCase()));
+  const names = new Set(places.map(p => phNameKey(p.name)).filter(Boolean));
   GPS_PLACES.forEach(p => {
-    if (names.has(String(p.name || '').toLowerCase())) {
+    if (names.has(phNameKey(p.name))) {
       p.assigned = true;
       p.assignedCar = car;
     }

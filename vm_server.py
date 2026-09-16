@@ -1437,7 +1437,14 @@ class OfficeStore:
         for p in self.pharmacies() or []:
             if not isinstance(p, dict) or not p.get("name"):
                 continue
-            known_map[str(p.get("name") or "").strip().lower()] = str(p.get("car") or "")
+            try:
+                import gps_sync as _gs
+                nkey = _gs.norm_ph(p.get("name"))
+            except Exception:
+                nkey = str(p.get("name") or "").strip().lower()
+            if not nkey:
+                continue
+            known_map[nkey] = str(p.get("car") or "")
 
         by_key = {}
         for item in bag.values():
@@ -1448,7 +1455,11 @@ class OfficeStore:
             if item["coord_n"] > 0:
                 lat = round(item["lat_sum"] / item["coord_n"], 6)
                 lng = round(item["lng_sum"] / item["coord_n"], 6)
-            name_key = item["name"].lower()
+            try:
+                import gps_sync as _gs
+                name_key = _gs.norm_ph(item["name"])
+            except Exception:
+                name_key = item["name"].lower()
             by_key[name_key] = {
                 "name": item["name"],
                 "count": item["count"],
@@ -1469,7 +1480,13 @@ class OfficeStore:
             name = str(z.get("name") or "").strip()[:80]
             if not name:
                 continue
-            key = name.lower()
+            try:
+                import gps_sync as _gs
+                key = _gs.norm_ph(name)
+            except Exception:
+                key = name.lower()
+            if not key:
+                continue
             try:
                 zlat = float(z.get("lat"))
                 zlng = float(z.get("lng"))
