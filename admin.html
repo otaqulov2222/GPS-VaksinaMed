@@ -786,22 +786,140 @@ tbody tr:hover td { background: #f8fafc; }
 .row-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 280px; }
 .users-table .u-inp {
   width: 100%;
-  min-width: 90px;
-  height: 34px;
-  padding: 4px 8px;
-  border: 1px solid #b8c9de;
+  min-width: 0;
+  height: 36px;
+  padding: 4px 10px;
+  border: 1px solid #c5d4e6;
   background: #fff;
   border-radius: 8px;
   font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
 }
-.users-table .u-inp-mono { font-family: var(--mono); }
-.users-table td.amal { min-width: 280px; vertical-align: top; }
+.users-table .u-inp:focus {
+  outline: none;
+  border-color: #7aa0c8;
+  box-shadow: 0 0 0 3px rgba(26, 95, 180, 0.12);
+}
+.users-table .u-inp-mono { font-family: var(--mono); font-size: 12px; letter-spacing: 0.02em; }
+.users-table td.u-login-at {
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+/* Amal paneli — tartibli 2 qator */
+.u-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 210px;
+}
+.u-acts-main,
+.u-acts-more {
+  display: grid;
+  gap: 6px;
+}
+.u-acts-main { grid-template-columns: 1fr 1fr; }
+.u-acts-more { grid-template-columns: 1fr 1fr 1fr; }
+.u-acts-more-2 { grid-template-columns: 1fr 1fr; }
+
+.u-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 8px;
+  margin: 0;
+  border: 1px solid #c5d4e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e3a5f;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: none;
+  white-space: nowrap;
+  line-height: 1;
+}
+.u-act:hover { background: #f0f5fa; border-color: #9bb4cc; }
+.u-act-save {
+  background: #1a5fb4;
+  border-color: #1a5fb4;
+  color: #fff;
+}
+.u-act-save:hover { background: #164e96; border-color: #164e96; color: #fff; }
+.u-act-copy {
+  background: #eef6ff;
+  border-color: #b8d0ea;
+  color: #1a5fb4;
+}
+.u-act-copy:hover { background: #e0eefc; }
+.u-act-copy.is-done {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #047857;
+}
+.u-act-danger,
+.u-acts .eat-del {
+  border-color: #f0c4c4 !important;
+  color: #b42318 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  min-width: 0 !important;
+  width: 100%;
+  height: 32px !important;
+  padding: 0 4px !important;
+  font-size: 10px !important;
+  gap: 3px !important;
+}
+.u-acts .eat-del__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.u-acts .eat-del__icon,
+.u-acts .eat-del__svg {
+  width: 16px !important;
+  height: 16px !important;
+  flex: 0 0 auto;
+}
+.u-acts .eat-del {
+  position: relative;
+}
+.u-acts .eat-del:hover {
+  background: #fef2f2 !important;
+  border-color: #f0a8a8 !important;
+}
+.users-table td.amal {
+  min-width: 236px;
+  width: 236px;
+  vertical-align: middle;
+  padding-right: 14px;
+}
 
 .row-btns .btn { white-space: nowrap; }
 
-.users-table { min-width: 1100px; }
-
-.users-table td { padding: 12px 10px; }
+.users-table { min-width: 1080px; border-collapse: separate; border-spacing: 0; }
+.users-table thead th {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 800;
+  background: #f4f7fb;
+  border-bottom: 1px solid #d7e2ef;
+  padding: 10px 10px;
+  white-space: nowrap;
+}
+.users-table tbody tr:nth-child(even) { background: #fafcfe; }
+.users-table tbody tr:hover { background: #f3f8fd; }
+.users-table td { padding: 10px 10px; vertical-align: middle; border-bottom: 1px solid #e8eef5; }
 
 .cred {
   display: inline-block;
@@ -1820,6 +1938,13 @@ function esc(s) {
 
 }
 
+function fmtUserLoginAt(iso) {
+  if (!iso) return '—';
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (m) return m[3] + '.' + m[2] + ' ' + m[4] + ':' + m[5];
+  return String(iso).slice(0, 16);
+}
+
 
 
 let resetId = null;
@@ -1883,19 +2008,26 @@ async function loadAll() {
         ? `<span class="cred">${esc(u.password)}</span>`
         : (u.hasPassword ? `<span class="cred empty">Nomaʼlum*</span>` : '—'));
     const view = u.role === 'driver' && u.car
-      ? `<a class="btn btn-sm" href="/driver?car=${encodeURIComponent(u.car)}">Kabinet</a>`
+      ? `<a class="u-act" href="/driver?car=${encodeURIComponent(u.car)}">Kabinet</a>`
       : '';
+    const delBtn = VmEatDelete.markup({ 'data-act': 'del', 'data-id': u.id, 'data-name': displayName || u.username, className: 'eat-del--sm' });
     const acts = !canManage
-      ? `<div class="row-btns">
-          <button class="btn btn-sm" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
-          <button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
+      ? `<div class="u-acts">
+          <div class="u-acts-main">
+            <button class="u-act u-act-copy" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
+            <button class="u-act" type="button" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
+          </div>
         </div>`
-      : `<div class="row-btns">
-          <button class="btn btn-sm" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
-          <button class="btn btn-sm btn-gold" data-act="save" data-id="${u.id}">Saqlash</button>
-          <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
-          ${view}
-          ${VmEatDelete.markup({ 'data-act': 'del', 'data-id': u.id, 'data-name': displayName || u.username, className: 'eat-del--sm' })}
+      : `<div class="u-acts">
+          <div class="u-acts-main">
+            <button class="u-act u-act-copy" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
+            <button class="u-act u-act-save" type="button" data-act="save" data-id="${u.id}">Saqlash</button>
+          </div>
+          <div class="u-acts-more${view ? '' : ' u-acts-more-2'}">
+            <button class="u-act" type="button" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
+            ${view}
+            ${delBtn}
+          </div>
         </div>`;
     return `<tr data-uid="${esc(u.id)}">
       <td>${nameCell}</td>
@@ -1904,7 +2036,7 @@ async function loadAll() {
       <td>${role}</td>
       <td>${carCell}</td>
       <td>${st}</td>
-      <td class="mono">${esc(u.last_login || '—')}</td>
+      <td class="u-login-at">${esc(fmtUserLoginAt(u.last_login))}</td>
       <td class="amal">${acts}</td>
     </tr>`;
   }).join('');
@@ -2140,11 +2272,11 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
       if (ok) {
         const prev = btn.textContent;
         btn.textContent = 'Nusxa ✓';
-        btn.classList.add('btn-gold');
+        btn.classList.add('is-done');
         show('msg-users', 'Nusxa olindi — haydovchiga yuborishingiz mumkin', true);
         setTimeout(() => {
           btn.textContent = prev || 'Copy';
-          btn.classList.remove('btn-gold');
+          btn.classList.remove('is-done');
         }, 1600);
       } else {
         show('msg-users', 'Nusxa olinmadi — brauzer ruxsat bermadi', false);
