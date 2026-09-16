@@ -795,7 +795,7 @@ tbody tr:hover td { background: #f8fafc; }
   font-size: 13px;
 }
 .users-table .u-inp-mono { font-family: var(--mono); }
-.users-table td.amal { min-width: 220px; vertical-align: top; }
+.users-table td.amal { min-width: 280px; vertical-align: top; }
 
 .row-btns .btn { white-space: nowrap; }
 
@@ -1886,8 +1886,12 @@ async function loadAll() {
       ? `<a class="btn btn-sm" href="/driver?car=${encodeURIComponent(u.car)}">Kabinet</a>`
       : '';
     const acts = !canManage
-      ? `<div class="row-btns"><button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button></div>`
+      ? `<div class="row-btns">
+          <button class="btn btn-sm" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
+          <button class="btn btn-sm" data-act="reset" data-id="${u.id}" data-name="${esc(u.username)}">Parol</button>
+        </div>`
       : `<div class="row-btns">
+          <button class="btn btn-sm" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
           <button class="btn btn-sm btn-gold" data-act="save" data-id="${u.id}">Saqlash</button>
           <button class="btn btn-sm" data-act="toggle" data-id="${u.id}" data-on="${u.active ? '0' : '1'}">${u.active ? 'Blok' : 'Yoqish'}</button>
           ${view}
@@ -2085,6 +2089,68 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
   hide('msg-users');
 
   try {
+
+    if (act === 'copy') {
+      const tr = btn.closest('tr');
+      if (!tr) return;
+      const readField = (f) => {
+        const inp = tr.querySelector('[data-f="' + f + '"]');
+        if (inp) return String(inp.value || '').trim();
+        return '';
+      };
+      let login = readField('username');
+      let parol = readField('password');
+      if (!login) {
+        const cred = tr.querySelectorAll('td .cred');
+        if (cred[0]) login = String(cred[0].textContent || '').trim();
+        if (!parol && cred[1] && !/Noma.?lum/i.test(cred[1].textContent || '')) {
+          parol = String(cred[1].textContent || '').trim();
+        }
+      }
+      if (!parol) {
+        const hit = (window._VM_USERS || []).find(x => x.id === id);
+        if (hit && hit.password) parol = String(hit.password);
+      }
+      if (!login) {
+        show('msg-users', 'Login topilmadi', false);
+        return;
+      }
+      if (!parol) {
+        show('msg-users', 'Parol koʻrinmayapti — avval Saqlash yoki Parol qoʻying', false);
+        return;
+      }
+      const text = 'login: ' + login + '\nparol: ' + parol;
+      let ok = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          ok = true;
+        }
+      } catch (errClip) { /* fallback */ }
+      if (!ok) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+        document.body.removeChild(ta);
+      }
+      if (ok) {
+        const prev = btn.textContent;
+        btn.textContent = 'Nusxa ✓';
+        btn.classList.add('btn-gold');
+        show('msg-users', 'Nusxa olindi — haydovchiga yuborishingiz mumkin', true);
+        setTimeout(() => {
+          btn.textContent = prev || 'Copy';
+          btn.classList.remove('btn-gold');
+        }, 1600);
+      } else {
+        show('msg-users', 'Nusxa olinmadi — brauzer ruxsat bermadi', false);
+      }
+      return;
+    }
 
     if (act === 'toggle') {
 
