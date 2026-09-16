@@ -1808,7 +1808,8 @@ class OfficeStore:
         return data
 
     def _plate_compact(self, plate):
-        return re.sub(r"\s+", "", str(plate or "").upper())
+        # Client bilan bir xil: bo'sh joy, /, -, _ olib tashlanadi
+        return re.sub(r"[\s/\-_]+", "", str(plate or "").upper())
 
     def _existing_plate_key(self, existing, plate):
         if plate in existing:
@@ -1819,6 +1820,93 @@ class OfficeStore:
                 return key
         return plate
 
+    def _car_score(self, rec):
+        """Qaysi yozuv 'to'liqroq' — bo'sh/nol dublikat yaxshisini bosmasin."""
+        if not isinstance(rec, dict):
+            return -1
+        score = 0
+        for k in (
+            "odoStart",
+            "gasStart",
+            "benzinStart",
+            "gasNorm",
+            "benzinNorm",
+            "gasPrice",
+            "benzinPrice",
+            "mixPct",
+        ):
+            try:
+                v = float(rec.get(k) or 0)
+            except (TypeError, ValueError):
+                v = 0.0
+            if v > 0:
+                score += 2
+        days = rec.get("days") if isinstance(rec.get("days"), dict) else {}
+        score += min(len(days), 40)
+        for row in days.values():
+            if not isinstance(row, dict):
+                continue
+            for fk in ("km", "odo", "gasIn", "benzinIn", "extra"):
+                try:
+                    if float(row.get(fk) or 0) > 0:
+                        score += 1
+                except (TypeError, ValueError):
+                    pass
+            if str(row.get("station") or "").strip():
+                score += 1
+        ch = rec.get("changes") if isinstance(rec.get("changes"), list) else []
+        dch = rec.get("driverChanges") if isinstance(rec.get("driverChanges"), list) else []
+        score += len(ch) + len(dch)
+        return score
+
+    def _merge_day_rows(self, a, b):
+        a = a if isinstance(a, dict) else {}
+        b = b if isinstance(b, dict) else {}
+        def row_score(r):
+            s = 0
+            for fk in ("km", "odo", "gasIn", "benzinIn", "extra"):
+                try:
+                    if float(r.get(fk) or 0) > 0:
+                        s += 2
+                except (TypeError, ValueError):
+                    pass
+            if str(r.get("station") or "").strip():
+                s += 1
+            return s
+        if row_score(b) > row_score(a):
+            out = dict(a)
+            out.update(b)
+            return out
+        out = dict(b)
+        out.update(a)
+        return out
+
+    def _merge_car_recs(self, a, b):
+        a = a if isinstance(a, dict) else {}
+        b = b if isinstance(b, dict) else {}
+        sa, sb = self._car_score(a), self._car_score(b)
+        base, other = (a, b) if sa >= sb else (b, a)
+        out = dict(other)
+        out.update(base)
+        days = {}
+        for src in (other, base):
+            src_days = src.get("days") if isinstance(src.get("days"), dict) else {}
+            for dk, dv in src_days.items():
+                if dk not in days:
+                    days[dk] = dict(dv) if isinstance(dv, dict) else dv
+                else:
+                    days[dk] = self._merge_day_rows(days[dk], dv)
+        out["days"] = days
+        if "changes" in base and isinstance(base.get("changes"), list):
+            out["changes"] = base["changes"]
+        elif "changes" in other and isinstance(other.get("changes"), list):
+            out["changes"] = other["changes"]
+        if "driverChanges" in base and isinstance(base.get("driverChanges"), list):
+            out["driverChanges"] = base["driverChanges"]
+        elif "driverChanges" in other and isinstance(other.get("driverChanges"), list):
+            out["driverChanges"] = other["driverChanges"]
+        return out
+
     def _dedupe_cars(self, cars):
         if not isinstance(cars, dict):
             return {}
@@ -1826,19 +1914,36 @@ class OfficeStore:
         for k, v in cars.items():
             if not isinstance(v, dict):
                 continue
-            canon = self._existing_plate_key(out, str(k).strip()[:24])
+            plate = str(k).strip()[:24]
+            canon = self._existing_plate_key(out, plate)
             if canon in out:
-                old = out[canon]
-                old_days = old.get("days") if isinstance(old.get("days"), dict) else {}
-                new_days = v.get("days") if isinstance(v.get("days"), dict) else {}
-                merged = dict(old_days)
-                merged.update(new_days)
-                out[canon] = dict(old)
-                out[canon].update(v)
-                out[canon]["days"] = merged
+                out[canon] = self._merge_car_recs(out[canon], v)
             else:
+                # Birinchi yozuvni ham ixcham kalitga normalizatsiya
                 out[canon] = v
-        return out
+        # Yakuniy: ixcham bo'yicha yana bir marta (01/269 vs 01 269)
+        final = {}
+        for k, v in out.items():
+            if not isinstance(v, dict):
+                continue
+            compact = self._plate_compact(k)
+            # Canon kalit — bo'shliqli formatga yaqinroq saqlash
+            prefer = k
+            hit = None
+            for ek in final:
+                if self._plate_compact(ek) == compact:
+                    hit = ek
+                    break
+            if hit is None:
+                final[prefer] = v
+            else:
+                merged = self._merge_car_recs(final[hit], v)
+                # Afzal kalit: bo'shliqli "01 269 KMA"
+                keep = hit if (" " in str(hit) and "/" not in str(hit)) else prefer
+                if keep != hit:
+                    del final[hit]
+                final[keep] = merged
+        return final
 
     def save_fuel_month(self, month, body):
         if not month or not MONTH_RE.match(str(month)):
@@ -1927,7 +2032,11 @@ class OfficeStore:
                 merged_days = dict(days)
             else:
                 merged_days = dict(old_days)
-                merged_days.update(days)
+                for dk, dv in days.items():
+                    if dk in merged_days:
+                        merged_days[dk] = self._merge_day_rows(merged_days[dk], dv)
+                    else:
+                        merged_days[dk] = dv
             old_changes = old.get("changes") if isinstance(old.get("changes"), list) else []
             old_dch = old.get("driverChanges") if isinstance(old.get("driverChanges"), list) else []
             # Bo'sh [] ham saqlansin (Excel/tozalash) — `or` ishlatilmaydi
@@ -1939,7 +2048,7 @@ class OfficeStore:
                 final_dch = dch
             else:
                 final_dch = dch or old_dch
-            cars[plate] = {
+            incoming = {
                 "gasNorm": as_num(rec.get("gasNorm"), old.get("gasNorm", 12)),
                 "benzinNorm": as_num(rec.get("benzinNorm"), old.get("benzinNorm", 4)),
                 "odoStart": as_num(rec.get("odoStart"), old.get("odoStart", 0)),
@@ -1953,6 +2062,33 @@ class OfficeStore:
                 "driverChanges": final_dch,
                 "days": merged_days,
             }
+            # Bo'sh/nol paket (masalan 269 dublikat) eski to'liq yozuvni o'chirmasin
+            if (
+                not replace_days
+                and old
+                and self._car_score(incoming) == 0
+                and self._car_score(old) > 0
+            ):
+                continue
+            if not replace_days and old:
+                for fld in (
+                    "gasNorm",
+                    "benzinNorm",
+                    "gasPrice",
+                    "benzinPrice",
+                    "mixPct",
+                    "odoStart",
+                    "gasStart",
+                    "benzinStart",
+                ):
+                    try:
+                        nv = float(incoming.get(fld) or 0)
+                        ov = float(old.get(fld) or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if nv == 0 and ov > 0:
+                        incoming[fld] = ov
+            cars[plate] = incoming
         cars = self._dedupe_cars(cars)
         payload = {"month": month, "savedAt": iso_now(), "cars": cars}
         key = "fuel:month:" + month

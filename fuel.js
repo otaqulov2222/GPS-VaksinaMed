@@ -201,10 +201,7 @@ function normalizeCarMap(cars) {
       out[canon] = Object.assign({}, rec);
       return;
     }
-    const prev = out[canon];
-    out[canon] = Object.assign({}, prev, rec, {
-      days: Object.assign({}, prev.days || {}, rec.days || {})
-    });
+    out[canon] = mergeCarRecs(out[canon], rec);
   });
   return out;
 }
@@ -297,10 +294,10 @@ function vehicleInfo(plate) {
     brand: extra.brand || base.brand || '',
     card: extra.card || '',
     fuelType: extra.fuelType || base.fuelType || 'mixed',
-    gasNorm: extra.gasNorm != null && extra.gasNorm !== '' ? n(extra.gasNorm) : 12,
-    benzinNorm: extra.benzinNorm != null && extra.benzinNorm !== '' ? n(extra.benzinNorm) : (diesel ? 10 : 4),
-    gasPrice: extra.gasPrice != null && extra.gasPrice !== '' ? n(extra.gasPrice) : 5200,
-    benzinPrice: extra.benzinPrice != null && extra.benzinPrice !== '' ? n(extra.benzinPrice) : 11000,
+    gasNorm: extra.gasNorm != null && extra.gasNorm !== '' && n(extra.gasNorm) > 0 ? n(extra.gasNorm) : 12,
+    benzinNorm: extra.benzinNorm != null && extra.benzinNorm !== '' && n(extra.benzinNorm) > 0 ? n(extra.benzinNorm) : (diesel ? 10 : 4),
+    gasPrice: extra.gasPrice != null && extra.gasPrice !== '' && n(extra.gasPrice) > 0 ? n(extra.gasPrice) : 5200,
+    benzinPrice: extra.benzinPrice != null && extra.benzinPrice !== '' && n(extra.benzinPrice) > 0 ? n(extra.benzinPrice) : 11000,
     hidden: !!extra.hidden,
     nameHistory: Array.isArray(extra.nameHistory) ? extra.nameHistory : []
   };
@@ -353,36 +350,78 @@ function blankCar(info) {
   };
 }
 
+function carScore(car) {
+  if (!car) return -1;
+  let score = 0;
+  ['odoStart', 'gasStart', 'benzinStart', 'gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice', 'mixPct'].forEach(k => {
+    if (n(car[k]) > 0) score += 2;
+  });
+  const days = car.days || {};
+  score += Math.min(Object.keys(days).length, 40);
+  Object.keys(days).forEach(d => {
+    const r = days[d] || {};
+    if (n(r.km) || n(r.odo) || n(r.gasIn) || n(r.benzinIn) || n(r.extra)) score += 1;
+    if (r.station) score += 1;
+  });
+  score += (car.changes && car.changes.length) || 0;
+  score += (car.driverChanges && car.driverChanges.length) || 0;
+  return score;
+}
+
+function carHasContent(car) {
+  return carScore(car) > 0;
+}
+
+function mergeCarRecs(a, b) {
+  a = a && typeof a === 'object' ? a : {};
+  b = b && typeof b === 'object' ? b : {};
+  const preferA = carScore(a) >= carScore(b);
+  const base = preferA ? a : b;
+  const other = preferA ? b : a;
+  const out = Object.assign({}, other, base);
+  const days = Object.assign({}, other.days || {});
+  Object.keys(base.days || {}).forEach(d => {
+    const bd = (base.days || {})[d] || {};
+    const od = days[d] || {};
+    const bHit = n(bd.km) || n(bd.odo) || n(bd.gasIn) || n(bd.benzinIn) || bd.station;
+    const oHit = n(od.km) || n(od.odo) || n(od.gasIn) || n(od.benzinIn) || od.station;
+    days[d] = bHit || !oHit ? Object.assign({}, od, bd) : Object.assign({}, bd, od);
+  });
+  out.days = days;
+  return out;
+}
+
 function recForPlate(map, plate) {
   if (!map || !plate) return null;
-  if (map[plate]) return map[plate];
   const compact = plateCompact(plate);
-  for (const k of Object.keys(map)) {
-    if (plateCompact(k) === compact) return map[k];
+  const hits = [];
+  Object.keys(map).forEach(k => {
+    if (plateCompact(k) === compact) hits.push(map[k]);
+  });
+  if (hits.length) {
+    let best = hits[0];
+    let bestScore = carScore(best);
+    for (let i = 1; i < hits.length; i++) {
+      const sc = carScore(hits[i]);
+      if (sc > bestScore) {
+        best = hits[i];
+        bestScore = sc;
+      }
+    }
+    return best;
   }
   const code = plateCode(plate);
   if (!code) return null;
   let hit = null;
-  let hits = 0;
+  let nHits = 0;
   for (const k of Object.keys(map)) {
     if (plateCode(k) === code) {
       hit = map[k];
-      hits += 1;
-      if (hits > 1) return null;
+      nHits += 1;
+      if (nHits > 1) return null;
     }
   }
   return hit;
-}
-
-function carHasContent(car) {
-  if (!car) return false;
-  if (n(car.odoStart) || n(car.gasStart) || n(car.benzinStart)) return true;
-  if ((car.changes && car.changes.length) || (car.driverChanges && car.driverChanges.length)) return true;
-  const days = car.days || {};
-  return Object.keys(days).some(d => {
-    const r = days[d] || {};
-    return n(r.km) || n(r.odo) || n(r.gasIn) || n(r.benzinIn) || n(r.extra) || r.note || r.station;
-  });
 }
 
 function adoptCars(raw) {
@@ -395,7 +434,7 @@ function adoptCars(raw) {
   Object.keys(src).forEach(k => {
     const canon = canonicalPlate(k);
     if (out[canon]) {
-      out[canon].days = Object.assign({}, src[k].days || {}, out[canon].days || {});
+      out[canon] = mergeCarRecs(out[canon], src[k]);
       return;
     }
     if (recForPlate(out, k)) return;
@@ -461,7 +500,7 @@ function mergeCarMaps(primary, secondary) {
     if (!carHasContent(rec)) return;
     const canon = canonicalPlate(k);
     if (out[canon]) {
-      out[canon].days = Object.assign({}, rec.days || {}, out[canon].days || {});
+      out[canon] = mergeCarRecs(out[canon], rec);
       return;
     }
     out[canon] = Object.assign({}, rec, { _fromServer: true });
@@ -476,16 +515,17 @@ function getCar(plate) {
     if (!STATE.cars[canon]) {
       STATE.cars[canon] = STATE.cars[plate];
     } else {
-      const a = STATE.cars[plate];
-      const b = STATE.cars[canon];
-      STATE.cars[canon] = Object.assign({}, a, b, {
-        days: Object.assign({}, a.days || {}, b.days || {}),
-        changes: (b.changes && b.changes.length ? b.changes : a.changes) || [],
-        driverChanges: (b.driverChanges && b.driverChanges.length ? b.driverChanges : a.driverChanges) || []
-      });
+      STATE.cars[canon] = mergeCarRecs(STATE.cars[canon], STATE.cars[plate]);
     }
     delete STATE.cars[plate];
   }
+  // Boshqa ixcham dublikatlarni ham yig'ish
+  Object.keys(STATE.cars || {}).forEach(k => {
+    if (k === canon) return;
+    if (plateCompact(k) !== plateCompact(canon)) return;
+    STATE.cars[canon] = mergeCarRecs(STATE.cars[canon] || {}, STATE.cars[k]);
+    delete STATE.cars[k];
+  });
   if (!STATE.cars[canon]) STATE.cars[canon] = blankCar(vehicleInfo(canon));
   if (!STATE.cars[canon].days) STATE.cars[canon].days = {};
   if (!STATE.cars[canon].changes) STATE.cars[canon].changes = [];
@@ -1057,12 +1097,13 @@ function liquidFuelLabel(fuelType) {
 function syncParamsToMeta(plate, car) {
   if (!plate || !car) return;
   const rec = ensureVehicleMeta(plate);
-  rec.gasNorm = n(car.gasNorm);
-  rec.benzinNorm = n(car.benzinNorm);
-  rec.gasPrice = n(car.gasPrice);
-  rec.benzinPrice = n(car.benzinPrice);
+  // Nol bilan meta ni buzib yubormaslik (269 dublikat muammosi)
+  if (n(car.gasNorm) > 0) rec.gasNorm = n(car.gasNorm);
+  if (n(car.benzinNorm) > 0) rec.benzinNorm = n(car.benzinNorm);
+  if (n(car.gasPrice) > 0) rec.gasPrice = n(car.gasPrice);
+  if (n(car.benzinPrice) > 0) rec.benzinPrice = n(car.benzinPrice);
   if (car.fuelType) rec.fuelType = car.fuelType;
-  if (car.mixPct != null && car.mixPct !== '') rec.mixPct = clampMixPct(car.mixPct);
+  if (car.mixPct != null && car.mixPct !== '' && n(car.mixPct) > 0) rec.mixPct = clampMixPct(car.mixPct);
   if (carNeedsMixLiqPct(plate) && car.mixLiqPct != null && car.mixLiqPct !== '') {
     rec.mixLiqPct = clampMixPct(car.mixLiqPct);
   }
