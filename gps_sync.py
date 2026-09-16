@@ -335,6 +335,111 @@ class WialonClient:
             })
         return out
 
+    def get_geofences(self):
+        """Boomerang/Wialon geozonalari (yashil doiralar): nom, markaz, radius.
+        Faqat katalog — mashina biriktirishni o'zgartirmaydi.
+        """
+        import math
+
+        r = self._call(
+            "core/search_items",
+            {
+                "spec": {
+                    "itemsType": "avl_resource",
+                    "propName": "sys_name",
+                    "propValueMask": "*",
+                    "sortType": "sys_name",
+                },
+                "force": 1,
+                # 1 = base, 4096 = zones library (zl)
+                "flags": 1 | 4096,
+                "from": 0,
+                "to": 0,
+            },
+        )
+        out = []
+        seen = set()
+        for res in r.get("items") or []:
+            if not isinstance(res, dict):
+                continue
+            rid = res.get("id")
+            zl = res.get("zl")
+            if not isinstance(zl, dict):
+                continue
+            for zid, z in zl.items():
+                if not isinstance(z, dict):
+                    continue
+                name = str(z.get("n") or "").strip()
+                if not name or len(name) < 2:
+                    continue
+                b = z.get("b") if isinstance(z.get("b"), dict) else {}
+                try:
+                    lat = float(b.get("cen_y") or 0)
+                    lng = float(b.get("cen_x") or 0)
+                except (TypeError, ValueError):
+                    lat = lng = 0.0
+                if abs(lat) < 0.1 or abs(lng) < 0.1:
+                    try:
+                        lat = (
+                            float(b.get("min_y") or 0) + float(b.get("max_y") or 0)
+                        ) / 2.0
+                        lng = (
+                            float(b.get("min_x") or 0) + float(b.get("max_x") or 0)
+                        ) / 2.0
+                    except (TypeError, ValueError):
+                        continue
+                if abs(lat) < 0.1 or abs(lng) < 0.1:
+                    continue
+                try:
+                    ztype = int(z.get("t") or 0)
+                except (TypeError, ValueError):
+                    ztype = 0
+                try:
+                    w = float(z.get("w") or 0)
+                except (TypeError, ValueError):
+                    w = 0.0
+                radius_m = None
+                # t=3 — doira; w metrda radius
+                if w >= 20 and (ztype == 3 or w <= 2000):
+                    radius_m = int(round(w))
+                if not radius_m:
+                    try:
+                        dlat = abs(float(b.get("max_y") or 0) - float(b.get("min_y") or 0))
+                        dlng = abs(float(b.get("max_x") or 0) - float(b.get("min_x") or 0))
+                        m_lat = dlat * 111320.0 / 2.0
+                        m_lng = (
+                            dlng
+                            * 111320.0
+                            * max(0.2, abs(math.cos(math.radians(lat))))
+                            / 2.0
+                        )
+                        est = max(m_lat, m_lng)
+                        if est >= 20:
+                            radius_m = int(round(est))
+                    except (TypeError, ValueError):
+                        radius_m = None
+                if not radius_m:
+                    radius_m = 120
+                radius_m = max(40, min(500, int(radius_m)))
+                key = name.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(
+                    {
+                        "id": "wz_%s_%s" % (rid, zid),
+                        "name": name[:80],
+                        "lat": round(lat, 6),
+                        "lng": round(lng, 6),
+                        "radiusM": radius_m,
+                        "type": ztype,
+                        "resourceId": rid,
+                        "zoneId": str(zid),
+                    }
+                )
+        out.sort(key=lambda x: x["name"].lower())
+        return out
+
     def resolve_templates(self):
         if self._tpl:
             return self._tpl
@@ -1128,6 +1233,34 @@ def fetch_live_fleet(office, base_dir):
             "stopped": sum(1 for x in units if x.get("status") == "stopped"),
             "offline": sum(1 for x in units if x.get("status") == "offline"),
         },
+    }
+
+
+def fetch_wialon_zones_catalog(office, base_dir=None):
+    """Boomerang geozona katalogi. office:pharmacies ga tegmaydi."""
+    cfg = office.gps_config_internal() if office else {}
+    if not cfg.get("configured"):
+        return {
+            "ok": False,
+            "error": "GPS sozlanmagan",
+            "zones": [],
+            "configured": False,
+            "count": 0,
+        }
+    client = WialonClient(
+        host=cfg.get("host") or "http://bms1.gpsavto.uz",
+        user=cfg.get("user") or "",
+        password=cfg.get("password") or "",
+        token=cfg.get("token") or "",
+        timeout=60,
+    )
+    client.login()
+    zones = client.get_geofences()
+    return {
+        "ok": True,
+        "configured": True,
+        "zones": zones,
+        "count": len(zones),
     }
 
 

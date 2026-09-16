@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 
 <html lang="uz">
 
@@ -1457,10 +1457,12 @@ body { overflow-x: clip; }
 
       <div class="panel-box">
         <div class="panel-box-title">
-          <div>GPS dan tanlash</div>
-          <button class="btn btn-sm" type="button" id="btn-ph-gps">GPS joylarini yangilash</button>
+          <div>GPS / Boomerang dan tanlash</div>
+          <button class="btn btn-sm" type="button" id="btn-ph-gps">Boomerang geozonalarni yangilash</button>
         </div>
-        <p class="muted" id="ph-gps-hint" style="margin-bottom:8px">GPS joylari yuklanmagan.</p>
+        <p class="muted" id="ph-gps-hint" style="margin-bottom:8px">
+          Boomerangdagi yashil geozonalar (filiallar) shu yerga yuklanadi. Tanlab mashinaga biriktirasiz — avto-biriktirish yoʻq.
+        </p>
 
         <div class="ph-bulk-bar">
           <label><input type="checkbox" id="ph-check-all"> Koʻrinayotganlarni belgilash</label>
@@ -1474,8 +1476,8 @@ body { overflow-x: clip; }
             <thead>
               <tr>
                 <th class="ph-check"><input type="checkbox" id="ph-check-all-th" title="Hammasini belgilash"></th>
-                <th>GPS joy nomi</th>
-                <th>Necha marta</th>
+                <th>Joy / filial nomi</th>
+                <th>Manba</th>
                 <th>Koordinata</th>
                 <th></th>
               </tr>
@@ -2759,7 +2761,7 @@ function gpsUnassignedList() {
   return GPS_PLACES
     .filter(p => !p.assigned)
     .filter(p => !q || String(p.name || '').toLowerCase().includes(q))
-    .slice(0, 120);
+    .slice(0, 500);
 }
 
 function updatePhBulkBar() {
@@ -2799,21 +2801,22 @@ function renderGpsPlaces() {
 
   if (dl) {
     dl.innerHTML = GPS_PLACES.map(p =>
-      `<option value="${esc(p.name)}">${esc(uiTxt(p.name))} · ${p.count} marta${p.assigned ? ' (biriktirilgan)' : ''}</option>`
+      `<option value="${esc(p.name)}">${esc(uiTxt(p.name))} · ${p.fromGeofence ? 'geozona' : ((p.count || 0) + ' marta')}${p.assigned ? ' (biriktirilgan)' : ''}</option>`
     ).join('');
   }
 
   if (hint) {
     const fresh = GPS_PLACES.filter(p => !p.assigned).length;
     const withCoord = GPS_PLACES.filter(p => p.lat != null && p.lng != null).length;
+    const geoN = GPS_PLACES.filter(p => p.fromGeofence).length;
     const carTxt = target ? carLabel(target) : 'mashina tanlanmagan';
     hint.textContent = GPS_PLACES.length
-      ? ('GPS: ' + GPS_PLACES.length + ' joy · ' + fresh + ' biriktirilmagan · ' + withCoord + ' koordinata. Maqsad: ' + carTxt + '.')
-      : 'Hali GPS joylari yuklanmagan. «GPS joylarini yangilash» bosing.';
+      ? ('Jami: ' + GPS_PLACES.length + ' joy · Geozona: ' + geoN + ' · Biriktirilmagan: ' + fresh + ' · Koordinata: ' + withCoord + '. Maqsad: ' + carTxt + '.')
+      : 'Hali yuklanmagan. «Boomerang geozonalarni yangilash» bosing — filiallar nomi va koordinatasi keladi.';
   }
 
   if (!GPS_PLACES.length) {
-    tb.innerHTML = '<tr><td colspan="5" class="muted" style="padding:12px">GPS joylari yoʻq — avval Dashboard da kun yuklang, keyin shu yerni yangilang.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" class="muted" style="padding:12px">Roʻyxat boʻsh — Boomerang geozonalarni yangilang (GPS sozlama kerak).</td></tr>';
     updatePhBulkBar();
     return;
   }
@@ -2827,10 +2830,14 @@ function renderGpsPlaces() {
     const geo = (p.lat != null && p.lng != null)
       ? (Number(p.lat).toFixed(5) + ', ' + Number(p.lng).toFixed(5))
       : 'nom bilan';
+    let src = 'Toʻxtash';
+    if (p.fromGeofence && p.count) src = 'Geozona + toʻxtash';
+    else if (p.fromGeofence) src = 'Geozona';
+    else if (p.count) src = (p.count + '× toʻxtash');
     return `<tr data-gps-name="${esc(p.name)}">
       <td class="ph-check"><input type="checkbox" data-ph-check></td>
       <td><b>${esc(uiTxt(p.name))}</b></td>
-      <td class="mono">${p.count}</td>
+      <td class="mono">${esc(src)}</td>
       <td class="mono">${esc(geo)}</td>
       <td><button class="btn btn-sm" type="button" data-gps-add title="Faqat shu birini biriktirish">+1</button></td>
     </tr>`;
@@ -2839,16 +2846,18 @@ function renderGpsPlaces() {
 }
 
 
-async function loadGpsPlaces() {
-
+async function loadGpsPlaces(opts) {
+  opts = opts || {};
+  if (opts.syncZones) {
+    const d = await vmApi('/api/office/sync-wialon-zones', { method: 'POST', body: '{}' });
+    GPS_PLACES = Array.isArray(d.places) ? d.places : [];
+    renderGpsPlaces();
+    return { places: GPS_PLACES, zonesCount: d.count || 0, synced: true, message: d.message || '' };
+  }
   const d = await vmApi('/api/office/pharmacy-places?days=60');
-
   GPS_PLACES = Array.isArray(d.places) ? d.places : [];
-
   renderGpsPlaces();
-
-  return GPS_PLACES;
-
+  return { places: GPS_PLACES, zonesCount: (d.zonesCatalog && d.zonesCatalog.count) || 0, synced: false };
 }
 
 
@@ -2859,7 +2868,12 @@ async function assignPharmacy(name, car, lat, lng, opts) {
   car = String(car || '').trim();
   if (!name || !car) throw new Error('Mashina va dorixona nomi kerak');
   const exists = PHARMS.find(p => String(p.name || '').toLowerCase() === name.toLowerCase());
-  const radiusM = Math.max(40, Math.min(500, parseInt(String((document.getElementById('ph-radius') || {}).value || '').replace(/[^\d]/g, ''), 10) || 120));
+  const inputRadius = Math.max(40, Math.min(500, parseInt(String((document.getElementById('ph-radius') || {}).value || '').replace(/[^\d]/g, ''), 10) || 120));
+  let radiusM = inputRadius;
+  if (opts.radiusM != null && opts.radiusM !== '') {
+    const r = parseInt(String(opts.radiusM).replace(/[^\d]/g, ''), 10);
+    if (r >= 40 && r <= 500) radiusM = r;
+  }
   if (exists) {
     exists.car = car;
     if (lat != null && lng != null && lat !== '' && lng !== '') {
@@ -2867,6 +2881,7 @@ async function assignPharmacy(name, car, lat, lng, opts) {
       exists.lng = Number(lng);
     }
     if (!opts.skipSave) exists.radiusM = radiusM;
+    else if (opts.radiusM != null) exists.radiusM = radiusM;
   } else {
     PHARMS.push({
       id: 'ph_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9),
@@ -2896,7 +2911,7 @@ async function assignPharmaciesBulk(places, car) {
   if (!car) throw new Error('Avval mashinani tanlang');
   if (!places || !places.length) throw new Error('Kamida bitta dorixona belgilang');
   for (const p of places) {
-    await assignPharmacy(p.name, car, p.lat, p.lng, { skipSave: true });
+    await assignPharmacy(p.name, car, p.lat, p.lng, { skipSave: true, radiusM: p.radiusM });
   }
   await savePharms();
   const names = new Set(places.map(p => String(p.name || '').toLowerCase()));
@@ -2977,13 +2992,18 @@ document.getElementById('btn-ph-gps').addEventListener('click', async () => {
 
   btn.disabled = true;
 
-  btn.textContent = 'Yuklanmoqda…';
+  btn.textContent = 'Boomerangdan yuklanmoqda…';
 
   try {
 
-    await loadGpsPlaces();
-
-    show('msg-ph', 'GPS joylari va koordinatalar yuklandi.', true);
+    const res = await loadGpsPlaces({ syncZones: true });
+    const n = res && res.zonesCount != null ? res.zonesCount : 0;
+    const total = (GPS_PLACES && GPS_PLACES.length) || 0;
+    show(
+      'msg-ph',
+      'Boomerang: ' + n + ' geozona katalogga yozildi. Jami tanlash uchun: ' + total + ' joy. Mavjud biriktirishlar oʻzgarmadi.',
+      true
+    );
 
   } catch (err) {
 
@@ -2993,7 +3013,7 @@ document.getElementById('btn-ph-gps').addEventListener('click', async () => {
 
     btn.disabled = false;
 
-    btn.textContent = 'GPS joylarini yangilash';
+    btn.textContent = 'Boomerang geozonalarni yangilash';
 
   }
 
@@ -3012,11 +3032,11 @@ document.getElementById('tb-ph-gps').addEventListener('click', async (e) => {
     || (document.getElementById('ph-car') || {}).value
     || '';
   try {
-    if (!car) throw new Error('Avval yuqoridan mashinani tanlang');
-    const r = await assignPharmacy(hit.name, car, hit.lat, hit.lng);
-    phNotify('"' + r.name + '" → ' + carLabel(r.car));
+    await assignPharmacy(name, car, hit.lat, hit.lng, { radiusM: hit.radiusM });
+    show('msg-ph', uiTxt(name) + ' → ' + carLabel(car) + ' biriktirildi.', true);
+    renderPharms();
   } catch (err) {
-    phNotify(err.message, false);
+    show('msg-ph', err.message, false);
   }
 });
 

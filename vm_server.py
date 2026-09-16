@@ -1224,6 +1224,79 @@ class OfficeStore:
             self._save("office:pharmacies", {"pharmacies": unique})
         return unique
 
+    def gps_zones_catalog(self):
+        """Boomerangdan saqlangan geozona katalogi (biriktirishsiz)."""
+        with self.lock:
+            data = self._load("office:gps_zones_catalog", {})
+        if not isinstance(data, dict):
+            return []
+        zones = data.get("zones")
+        return zones if isinstance(zones, list) else []
+
+    def gps_zones_catalog_meta(self):
+        with self.lock:
+            data = self._load("office:gps_zones_catalog", {})
+        if not isinstance(data, dict):
+            return {"count": 0, "savedAt": "", "savedBy": ""}
+        zones = data.get("zones") if isinstance(data.get("zones"), list) else []
+        return {
+            "count": len(zones),
+            "savedAt": str(data.get("savedAt") or ""),
+            "savedBy": str(data.get("savedBy") or "")[:40],
+        }
+
+    def save_gps_zones_catalog(self, zones, saved_by=""):
+        """Faqat katalog — office:pharmacies ga yozilmaydi."""
+        cleaned = []
+        seen = set()
+        for z in zones or []:
+            if not isinstance(z, dict):
+                continue
+            name = str(z.get("name") or "").strip()[:80]
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            try:
+                lat = float(z.get("lat"))
+                lng = float(z.get("lng"))
+            except (TypeError, ValueError):
+                continue
+            if abs(lat) < 0.1 or abs(lng) < 0.1:
+                continue
+            try:
+                radius = int(z.get("radiusM") if z.get("radiusM") not in (None, "") else 120)
+            except (TypeError, ValueError):
+                radius = 120
+            radius = max(40, min(500, radius))
+            try:
+                ztype = int(z.get("type") or 0)
+            except (TypeError, ValueError):
+                ztype = 0
+            seen.add(key)
+            cleaned.append(
+                {
+                    "id": str(z.get("id") or ("wz_" + secrets.token_hex(4)))[:48],
+                    "name": name,
+                    "lat": round(lat, 6),
+                    "lng": round(lng, 6),
+                    "radiusM": radius,
+                    "type": ztype,
+                    "resourceId": z.get("resourceId"),
+                    "zoneId": str(z.get("zoneId") or "")[:24],
+                }
+            )
+        payload = {
+            "zones": cleaned,
+            "count": len(cleaned),
+            "savedAt": iso_now(),
+            "savedBy": str(saved_by or "")[:40],
+        }
+        with self.lock:
+            self._save("office:gps_zones_catalog", payload)
+        return payload
+
     def reviews(self, date):
         if not valid_date(date):
             return {}
@@ -1308,7 +1381,9 @@ class OfficeStore:
             return data if isinstance(data, dict) else None
 
     def pharmacy_place_suggestions(self, limit_days=60):
-        """GPS hisobotlaridagi to'xtash joylari: nom + o'rtacha koordinata + eng ko'p kelgan mashina."""
+        """GPS joylari: Boomerang geozona katalogi + hisobot to'xtashlari.
+        Biriktirilgan dorixonalarni o'chirmaydi / mashinaga avto-biriktirmaydi.
+        """
         dates = self.report_dates()[: max(1, min(int(limit_days or 60), 120))]
         bag = {}
         for date in dates:
@@ -1363,7 +1438,8 @@ class OfficeStore:
             if not isinstance(p, dict) or not p.get("name"):
                 continue
             known_map[str(p.get("name") or "").strip().lower()] = str(p.get("car") or "")
-        out = []
+
+        by_key = {}
         for item in bag.values():
             top_car = ""
             if item["cars"]:
@@ -1373,19 +1449,75 @@ class OfficeStore:
                 lat = round(item["lat_sum"] / item["coord_n"], 6)
                 lng = round(item["lng_sum"] / item["coord_n"], 6)
             name_key = item["name"].lower()
-            out.append(
-                {
-                    "name": item["name"],
-                    "count": item["count"],
-                    "topCar": top_car,
-                    "lat": lat,
-                    "lng": lng,
-                    "assigned": name_key in known_map,
-                    "assignedCar": known_map.get(name_key) or "",
+            by_key[name_key] = {
+                "name": item["name"],
+                "count": item["count"],
+                "topCar": top_car,
+                "lat": lat,
+                "lng": lng,
+                "radiusM": None,
+                "assigned": name_key in known_map,
+                "assignedCar": known_map.get(name_key) or "",
+                "source": "stop",
+                "fromGeofence": False,
+            }
+
+        # Boomerang geozonalari — to'liq filial katalogi (ustunlik: koordinata/radius)
+        for z in self.gps_zones_catalog() or []:
+            if not isinstance(z, dict):
+                continue
+            name = str(z.get("name") or "").strip()[:80]
+            if not name:
+                continue
+            key = name.lower()
+            try:
+                zlat = float(z.get("lat"))
+                zlng = float(z.get("lng"))
+            except (TypeError, ValueError):
+                continue
+            if abs(zlat) < 0.1 or abs(zlng) < 0.1:
+                continue
+            try:
+                zrad = int(z.get("radiusM") if z.get("radiusM") not in (None, "") else 120)
+            except (TypeError, ValueError):
+                zrad = 120
+            zrad = max(40, min(500, zrad))
+            cur = by_key.get(key)
+            if cur:
+                # Nom hamisha Boomerang geozona yozuvida (registr/imlo)
+                cur["name"] = name
+                cur["lat"] = round(zlat, 6)
+                cur["lng"] = round(zlng, 6)
+                cur["radiusM"] = zrad
+                cur["fromGeofence"] = True
+                cur["source"] = "both" if cur.get("count") else "geofence"
+            else:
+                by_key[key] = {
+                    "name": name,
+                    "count": 0,
+                    "topCar": "",
+                    "lat": round(zlat, 6),
+                    "lng": round(zlng, 6),
+                    "radiusM": zrad,
+                    "assigned": key in known_map,
+                    "assignedCar": known_map.get(key) or "",
+                    "source": "geofence",
+                    "fromGeofence": True,
                 }
+
+        out = list(by_key.values())
+        # Geozonalar oldinda (alfavit), so'ng to'xtashlar (ko'p kelgan)
+        out.sort(
+            key=lambda x: (
+                0 if x.get("fromGeofence") else 1,
+                -int(x.get("count") or 0),
+                str(x.get("name") or "").lower(),
             )
-        out.sort(key=lambda x: (-x["count"], x["name"].lower()))
-        return out[:400]
+        )
+        # Geozonalarni cheklamaslik; to'xtash-faqat joylar uchun 400 ta lim
+        geo = [x for x in out if x.get("fromGeofence")]
+        stop_only = [x for x in out if not x.get("fromGeofence")][:400]
+        return geo + stop_only
 
     def save_report(self, date, cars, saved_by=""):
         if not valid_date(date):
@@ -3825,7 +3957,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 days = int((qs.get("days") or ["60"])[0])
             except (TypeError, ValueError):
                 days = 60
-            self.send_json({"ok": True, "places": OFFICE.pharmacy_place_suggestions(days)})
+            places = OFFICE.pharmacy_place_suggestions(days)
+            meta = OFFICE.gps_zones_catalog_meta()
+            self.send_json({
+                "ok": True,
+                "places": places,
+                "zonesCatalog": meta,
+            })
             return
 
         if path == "/api/office/geocode/reverse":
@@ -4307,6 +4445,53 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "queued": True,
                     "message": "Geozonlar fon rejimida o'rganilmoqda va hisobotlar yangilanmoqda"
                 })
+            return
+
+        if path == "/api/office/sync-wialon-zones":
+            # Boomerang geozona katalogini yangilash — biriktirilgan dorixonalarga tegmaydi
+            sess = self.require_staff()
+            if not sess:
+                return
+            try:
+                import gps_sync
+
+                result = gps_sync.fetch_wialon_zones_catalog(OFFICE, DIRECTORY)
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:200]}, 500)
+                return
+            if not result.get("ok"):
+                self.send_json(
+                    {
+                        "ok": False,
+                        "error": str(result.get("error") or "Geozona yuklanmadi")[:200],
+                        "configured": bool(result.get("configured")),
+                    },
+                    400,
+                )
+                return
+            saved = OFFICE.save_gps_zones_catalog(
+                result.get("zones") or [],
+                sess.get("username") or "admin",
+            )
+            try:
+                days = int(body.get("days") or 60)
+            except (TypeError, ValueError):
+                days = 60
+            places = OFFICE.pharmacy_place_suggestions(days)
+            self.send_json(
+                {
+                    "ok": True,
+                    "count": int(saved.get("count") or 0),
+                    "savedAt": saved.get("savedAt") or "",
+                    "places": places,
+                    "zonesCatalog": {
+                        "count": int(saved.get("count") or 0),
+                        "savedAt": saved.get("savedAt") or "",
+                        "savedBy": saved.get("savedBy") or "",
+                    },
+                    "message": "Boomerang geozonalari katalogga saqlandi (biriktirish o‘zgarmadi)",
+                }
+            )
             return
 
         if path == "/api/office/reviews":
