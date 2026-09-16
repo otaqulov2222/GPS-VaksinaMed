@@ -182,7 +182,7 @@ a { color: inherit; text-decoration: none; }
 
 .badge-ok { background: #1a5fb4; color: #fff; border-color: #1a5fb4; }
 
-.badge-bad { background: #0b1f3a; color: #fff; border-color: #0b1f3a; cursor: pointer; }
+.badge-bad { background: #dc2626; color: #fff; border-color: #b91c1c; cursor: pointer; }
 
 .acts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
@@ -434,8 +434,34 @@ table.dtable input.w-note { font-family: var(--sans); font-weight: 500; }
 .alert-box { background: #eef4fb; border: 1px solid #c5d4e6; padding: 10px 12px; margin-bottom: 12px; border-radius: 10px; }
 .st-ok { background: #e3eef9; color: var(--ok); }
 .st-mid { background: #e8eef5; color: var(--warn); }
-.st-hot { background: #e8eef5; color: var(--bad); }
-.st-dead { background: #0b1f3a; color: #fff; }
+.st-hot { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+.st-dead {
+  background: #dc2626;
+  color: #fff;
+  border-color: #b91c1c;
+  font-weight: 800;
+  letter-spacing: .04em;
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55);
+  animation: doc-dead-pulse 1.5s ease-in-out infinite;
+}
+.badge-bad {
+  animation: doc-dead-pulse 1.5s ease-in-out infinite;
+}
+@keyframes doc-dead-pulse {
+  0%, 100% {
+    background: #dc2626;
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    background: #ef4444;
+    box-shadow: 0 0 12px 2px rgba(220, 38, 38, 0.55);
+    transform: scale(1.04);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-dead, .badge-bad { animation: none; box-shadow: 0 0 8px rgba(220, 38, 38, 0.45); }
+}
 
 .subtabs {
   display: flex;
@@ -2166,7 +2192,7 @@ table.dtable td.day {
 <script src="auth.js?v=37"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="ph-delete-btn.js?v=3"></script>
-<script src="fuel.js?v=75"></script>
+<script src="fuel.js?v=76"></script>
 <script src="journal.js?v=13"></script>
 </body>
 </html>

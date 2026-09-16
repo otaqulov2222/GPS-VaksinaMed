@@ -2194,7 +2194,7 @@ function renderDocs() {
   document.getElementById('panel-docs').innerHTML = `
     <div class="card"><div class="card-h"><h3>Hujjat muddatlari hisoboti — ${esc(today.split('-').reverse().join('.'))}</h3></div>
       <div class="card-b">
-        <div class="hint">Muddat va davr (oy) ni qo'lda kiriting. <b>Yangilash</b> tugmasi muddatni shu davrga siljitadi. Yashil &gt;45 kun, sariq &lt;45, qizil &lt;15, to'q qizil — muddati o'tgan.</div>
+        <div class="hint">Muddat va davr (oy) ni qo'lda kiriting. <b>Yangilash</b> tugmasi muddatni shu davrga siljitadi. Yashil &gt;45 kun, sariq &lt;45, och qizil &lt;15, <b>qizil (puls)</b> — muddati o'tgan.</div>
         ${alerts.length ? `<div class="alert-box">${alerts.slice(0, 12).map(a =>
           `<div><b>${esc(plateDisp(a.car))}</b> ${esc(a.name)} — ${esc(a.title)} → ${a.left < 0 ? 'muddati o\'tgan' : (a.left + ' kun qoldi')}</div>`
         ).join('')}</div>` : ''}
