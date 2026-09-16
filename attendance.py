@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Davomat: Ofis QR + GPS geozona + kirish/chiqish (vaqt)."""
+"""Davomat: ofis geozona + Keldim/Ketdim (QR ixtiyoriy)."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ DEFAULT_SETTINGS = {
     "out_end": "20:00",
     "require_gps": True,
     "require_face": False,
-    "require_qr": True,
+    "require_qr": False,
     "office_qr_secret": "",
     "office_qr_version": 1,
     "office_qr_updated_at": "",
@@ -188,13 +188,18 @@ class AttendanceStore:
         if "late_grace_min" not in cur:
             cur["late_grace_min"] = 15
             changed = True
-        # Face → QR migratsiya
+        # Face → QR migratsiya (eski)
         if cur.get("require_face") is True and "require_qr" not in cur:
             cur["require_face"] = False
-            cur["require_qr"] = True
+            cur["require_qr"] = False
+            changed = True
+        # QR olib tashlandi: radius yetarli (geozona → Keldim/Ketdim)
+        if cur.get("require_qr") is not False:
+            cur["require_qr"] = False
+            cur["require_face"] = False
             changed = True
         if "require_qr" not in cur:
-            cur["require_qr"] = True
+            cur["require_qr"] = False
             changed = True
         if not str(cur.get("office_qr_secret") or "").strip():
             cur["office_qr_secret"] = secrets.token_urlsafe(24)
@@ -227,7 +232,7 @@ class AttendanceStore:
             except (TypeError, ValueError):
                 out["late_grace_min"] = 15
             out["require_face"] = bool(out.get("require_face", False))
-            out["require_qr"] = bool(out.get("require_qr", True))
+            out["require_qr"] = bool(out.get("require_qr", False))
             out["require_gps"] = bool(out.get("require_gps", True))
             secret = str(out.get("office_qr_secret") or "").strip()
             if not secret:
@@ -259,7 +264,7 @@ class AttendanceStore:
             "updatedAt": s.get("office_qr_updated_at") or "",
             "label": office.get("label") or "Ofis",
             "radius_m": office.get("radius_m"),
-            "require_qr": bool(s.get("require_qr", True)),
+            "require_qr": bool(s.get("require_qr", False)),
         }
 
     def office_qr_png(self, scale: int = 10) -> bytes:
@@ -286,7 +291,7 @@ class AttendanceStore:
             cur["office_qr_version"] = ver
             cur["office_qr_secret"] = secrets.token_urlsafe(24)
             cur["office_qr_updated_at"] = now_tz().isoformat(timespec="seconds")
-            cur["require_qr"] = True
+            # QR plakat yangilanadi, lekin majburiy qilib qo'ymaymiz
             cur["require_face"] = False
             self._save(SETTINGS_KEY, cur)
         return self.get_office_qr()
@@ -343,24 +348,23 @@ class AttendanceStore:
         radius = max(50.0, min(5000.0, radius))
         dist = haversine_m(lat_f, lng_f, olat, olng)
 
-        # Binoda GPS aniqligi yomon bo‘lishi mumkin — avval masofani hisobla.
-        # Soft zona: radius + min(accuracy, 120) (maks. +120 m).
+        # Binoda GPS yomon: soft = min(aniqlik, 280 m).
+        # Juda qo'pol IP/cell (±km) — softni 280 dan oshirmaymiz (soxta check-in yo'q).
         soft = 0.0
         if acc_f is not None and acc_f > 0:
-            soft = min(float(acc_f), 120.0)
+            soft = min(float(acc_f), 280.0)
         limit = radius + soft
 
         if dist <= radius:
             return True, dist, None
         if dist <= limit:
-            # Aniqlik past, lekin ofis atrofida — ichida deb qabul
             return True, dist, None
 
-        # Aniqlik juda past va hatto soft zona tashqarida
-        if acc_f is not None and acc_f > 350 and dist > radius:
+        if acc_f is not None and acc_f > 500 and dist > limit:
             return False, dist, (
-                f"Joylashuv aniq emas ({int(acc_f)} m). "
-                f"Ofis markazidan ~{int(dist)} m. Deraza yonida «Qayta tekshirish»."
+                f"Joylashuv aniq emas (±{int(acc_f)} m). "
+                f"Ofis markazidan ~{int(dist)} m. "
+                f"Telefonda GPS yoqing, ochiq joy/deraza yonida «Qayta tekshirish»."
             )
         return False, dist, (
             f"Ofis zonasi tashqarisida (~{int(dist)} m). "
@@ -408,7 +412,7 @@ class AttendanceStore:
         settings = self.settings_for_user(user)
         if not settings.get("enabled", True):
             return None, "Davomat hozir o'chirilgan"
-        if not settings.get("require_qr", True):
+        if not settings.get("require_qr", False):
             return None, "Ofis QR hozir o'chirilgan"
 
         ok_gps, dist, gerr = self._gps_inside_office(settings, lat, lng, accuracy)
@@ -500,7 +504,7 @@ class AttendanceStore:
             if k in patch:
                 cur[k] = patch[k]
         cur["require_face"] = bool(cur.get("require_face", False))
-        cur["require_qr"] = bool(cur.get("require_qr", True))
+        cur["require_qr"] = bool(cur.get("require_qr", False))
         # QR sirri client orqali o'zgarmasligi kerak
         s_full = self.settings()
         cur["office_qr_secret"] = s_full.get("office_qr_secret")
@@ -695,9 +699,9 @@ class AttendanceStore:
 
         face_score = None
         photo_out = None
-        method = "office_qr"
+        method = "geofence"
 
-        if settings.get("require_qr", True):
+        if settings.get("require_qr", False):
             terr = self.consume_qr_ticket(user_id, qr_ticket or "")
             if terr:
                 return None, terr
@@ -716,6 +720,7 @@ class AttendanceStore:
             if chal_err:
                 return None, chal_err
         else:
+            method = "geofence"
             if challenge:
                 chal_err = self.consume_challenge(user_id, challenge or "", purpose=str(kind))
                 if chal_err:
@@ -1583,7 +1588,7 @@ class AttendanceStore:
             "enabled": bool(s.get("enabled", True)),
             "require_gps": bool(s.get("require_gps", True)),
             "require_face": False,
-            "require_qr": bool(s.get("require_qr", True)),
+            "require_qr": bool(s.get("require_qr", False)),
             "qrTicketTtlMin": QR_TICKET_TTL_MIN,
             "in_start": s.get("in_start"),
             "in_end": s.get("in_end"),

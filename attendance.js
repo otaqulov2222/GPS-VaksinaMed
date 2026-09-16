@@ -1,6 +1,6 @@
 'use strict';
 /**
- * VaksinaMed Davomat — Ofis QR + geozona → Keldim/Ketdim
+ * VaksinaMed Davomat — Ofis geozona → Keldim/Ketdim (QR ixtiyoriy)
  */
 (function () {
   const app = document.getElementById('att-app');
@@ -44,10 +44,14 @@
   let attMap = null;
   let attMapCircle = null;
   let attMapUser = null;
+  let attMapAcc = null; // GPS aniqlik doirasi
+  let attMapLink = null; // Ofis ↔ Siz chizig'i
   let attMapOffice = null;
   let attMapFitted = false;
-  let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle' };
+  let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle', ts: 0 };
   let attMethod = 'qr';
+  const GEO_SOFT_MAX = 280;
+  const GEO_COARSE_REJECT = 1200; // undan yomon fix — yaxshi fix bor bo'lsa rad etiladi
 
   const modal = document.getElementById('fid-modal');
   const video = document.getElementById('att-cam');
@@ -149,6 +153,16 @@
     if (el) el.className = 'att-msg';
   }
 
+  function qrRequired() {
+    return !!(STATE && STATE.settings && STATE.settings.require_qr);
+  }
+
+  function punchGateOk() {
+    if (geoLive.inside !== true) return false;
+    if (qrRequired()) return !!activeQrTicket();
+    return true;
+  }
+
   function haversineM(lat1, lng1, lat2, lng2) {
     const R = 6371000;
     const toR = Math.PI / 180;
@@ -247,36 +261,84 @@
     geoWatchId = null;
   }
 
-  function applyGeoFix(lat, lng, accuracy) {
-    const off = officeInfo();
+  function fmtCoord(v, digits) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    return n.toFixed(digits == null ? 6 : digits);
+  }
+
+  /** Yangi GPS fixni qabul qilish: qo'pol IP/cell yaxshi fixni bosib yubormasin. */
+  function shouldAcceptGeoFix(lat, lng, accuracy) {
+    if (lat == null || lng == null) return false;
+    if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return false;
     const acc = accuracy != null && Number.isFinite(Number(accuracy)) ? Number(accuracy) : null;
+    if (!geoLive || geoLive.lat == null || geoLive.lng == null) return true;
+    const oldAcc = geoLive.accuracy != null && Number.isFinite(Number(geoLive.accuracy))
+      ? Number(geoLive.accuracy)
+      : null;
+    const moved = haversineM(lat, lng, geoLive.lat, geoLive.lng);
+    // Yaxshi fix bor (≤250 m), yangisi juda qo'pol — rad et
+    if (oldAcc != null && oldAcc <= 250 && acc != null && acc >= GEO_COARSE_REJECT) return false;
+    // Eski yaxshiroq, yangi yomonroq va deyarli joyida — rad et
+    if (oldAcc != null && acc != null && acc > oldAcc * 1.8 && acc > 120 && moved < Math.max(40, oldAcc)) {
+      return false;
+    }
+    // Yaxshiroq aniqlik — qabul
+    if (acc != null && (oldAcc == null || acc <= oldAcc)) return true;
+    // Harakat sezilarli — qabul (yangi joy)
+    if (moved > Math.max(25, (oldAcc || 50) * 0.6)) return true;
+    // Aniqlik biroz yomonroq, lekin yaqin — saqlab qolamiz (eski)
+    if (oldAcc != null && acc != null && acc > oldAcc) return false;
+    return true;
+  }
+
+  function computeInside(lat, lng, accuracy) {
+    const off = officeInfo();
+    if (!off.hasCoords) return { inside: null, dist: null, soft: 0 };
+    const dist = haversineM(lat, lng, off.lat, off.lng);
+    const acc = accuracy != null && Number.isFinite(Number(accuracy)) ? Number(accuracy) : null;
+    const soft = acc != null && acc > 0 ? Math.min(acc, GEO_SOFT_MAX) : 0;
+    return { inside: dist <= (off.radius + soft), dist, soft };
+  }
+
+  function applyGeoFix(lat, lng, accuracy, opts) {
+    opts = opts || {};
+    const force = !!opts.force;
+    const acc = accuracy != null && Number.isFinite(Number(accuracy)) ? Number(accuracy) : null;
+    if (!force && !shouldAcceptGeoFix(lat, lng, acc)) {
+      // Faqat UI da "yomon signal" eslatmasin — eng yaxshi fixni saqlaymiz
+      return false;
+    }
+    const off = officeInfo();
+    const calc = computeInside(lat, lng, acc);
     if (off.hasCoords) {
-      const dist = haversineM(lat, lng, off.lat, off.lng);
-      // Binoda GPS ±120 m gacha yumshoq zona (server bilan bir xil)
-      const soft = acc != null && acc > 0 ? Math.min(acc, 120) : 0;
-      const inside = dist <= (off.radius + soft);
       geoLive = {
-        inside, dist, accuracy: acc, lat, lng, err: null,
-        status: inside ? 'ok' : 'out',
-        message: null
+        inside: calc.inside,
+        dist: calc.dist,
+        accuracy: acc,
+        lat, lng,
+        err: null,
+        status: calc.inside ? 'ok' : 'out',
+        message: null,
+        ts: Date.now()
       };
-      paintGeoUI();
-      updateAttMap(lat, lng);
-      paintMapOverlay();
     } else {
       geoLive = {
         inside: geoLive && geoLive.inside === true ? true : null,
         dist: geoLive && geoLive.dist != null ? geoLive.dist : null,
-        accuracy: acc, lat, lng, err: null,
+        accuracy: acc,
+        lat, lng,
+        err: null,
         status: (geoLive && geoLive.inside === true) ? 'ok' : 'load',
-        message: null
+        message: null,
+        ts: Date.now()
       };
-      paintGeoUI();
-      updateAttMap(lat, lng);
-      paintMapOverlay();
     }
-    // Server yakuniy manba — har doim
+    paintGeoUI();
+    updateAttMap(lat, lng);
+    paintMapOverlay();
     scheduleGeoProbe(lat, lng, acc);
+    return true;
   }
 
   function scheduleGeoProbe(lat, lng, accuracy) {
@@ -359,7 +421,9 @@
     const outBtn = document.getElementById('btn-ketdim-main');
     const goBtn = document.getElementById('av-continue');
     const today = (STATE && STATE.today) || {};
+    const needQr = qrRequired();
     const ticketOk = !!activeQrTicket();
+    const gateOk = punchGateOk();
     const done = !!(today.in && today.out);
     const canIn = !today.in && !done;
     const canOut = !!today.in && !today.out;
@@ -375,21 +439,25 @@
     }
     if (distEl) {
       const bits = [];
+      if (geoLive.lat != null && geoLive.lng != null) {
+        bits.push('Siz: <b class="mono">' + fmtCoord(geoLive.lat) + ', ' + fmtCoord(geoLive.lng) + '</b>');
+      }
       if (geoLive.dist != null && Number.isFinite(Number(geoLive.dist))) {
-        bits.push('Markazdan <b>' + Math.round(geoLive.dist) + ' m</b>');
+        bits.push('Ofisdan <b>' + Math.round(geoLive.dist) + ' m</b>');
       }
       bits.push('Radius <b>' + off.radius + ' m</b>');
-      if (accTxt != null) bits.push('GPS ±' + accTxt + ' m');
+      if (accTxt != null) {
+        bits.push('Aniqlik <b>±' + accTxt + ' m</b>' + (accTxt > 500 ? ' <span class="av-geo-weak">(zaif)</span>' : ''));
+      }
       distEl.innerHTML = bits.join(' · ') || ('Ofis: <b>' + esc(off.label) + '</b>');
     }
     if (gate) {
       if (geoLive.status === 'ok') {
-        if (ticketOk) {
-          gate.className = 'av-gate-banner on ok';
-          gate.textContent = 'Ofis QR tasdiqlandi — Keldim yoki Ketdim tugmasini bosing.';
-        } else {
-          gate.className = 'av-gate-banner on ok';
+        gate.className = 'av-gate-banner on ok';
+        if (needQr && !ticketOk) {
           gate.textContent = 'Siz ofis zonasidasiz. Devordagi QR ni skanerlang, keyin Keldim.';
+        } else {
+          gate.textContent = 'Ofis zonasidasiz — Keldim yoki Ketdim tugmasini bosing.';
         }
       } else if (geoLive.status === 'out') {
         gate.className = 'av-gate-banner on';
@@ -412,23 +480,34 @@
 
     const lockPunch = (btn, allow) => {
       if (!btn) return;
-      const shouldEnable = allow && inside && ticketOk;
+      const shouldEnable = allow && gateOk;
       btn.disabled = !shouldEnable;
-      btn.classList.toggle('is-locked', !(inside && ticketOk) && allow);
+      btn.classList.toggle('is-locked', !gateOk && allow);
     };
     lockPunch(inBtn, canIn);
     lockPunch(outBtn, canOut);
 
     const pill = document.getElementById('av-qr-pill');
     if (pill) {
-      pill.classList.toggle('on', ticketOk);
-      pill.textContent = ticketOk ? 'QR faol' : 'QR kutilyapti';
+      if (!needQr) {
+        pill.classList.toggle('on', inside);
+        pill.textContent = inside ? 'Zona OK' : 'Zona kutilyapti';
+      } else {
+        pill.classList.toggle('on', ticketOk);
+        pill.textContent = ticketOk ? 'QR faol' : 'QR kutilyapti';
+      }
     }
     const hint = document.getElementById('av-qr-ticket-hint');
     if (hint) {
-      hint.textContent = ticketOk
-        ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim bosing.'
-        : 'QR hali skanerlanmagan.';
+      if (!needQr) {
+        hint.textContent = inside
+          ? 'Radius ichidasiz — Keldim / Ketdim ochiq.'
+          : 'Ofis radiusiga kiring — tugmalar ochiladi.';
+      } else {
+        hint.textContent = ticketOk
+          ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim bosing.'
+          : 'QR hali skanerlanmagan.';
+      }
     }
     const steps = document.getElementById('av-steps');
     if (steps) {
@@ -441,30 +520,33 @@
         el.classList.add(st);
       };
       setSt(geo, inside ? 'done' : (geoLive.status === 'err' || geoLive.status === 'out' ? 'now' : 'wait'));
-      setSt(qr, ticketOk ? 'done' : (inside ? 'now' : 'wait'));
-      setSt(punch, done ? 'done' : (ticketOk ? 'now' : 'wait'));
+      if (qr) {
+        qr.hidden = !needQr;
+        setSt(qr, ticketOk ? 'done' : (inside ? 'now' : 'wait'));
+      }
+      setSt(punch, done ? 'done' : (gateOk ? 'now' : 'wait'));
     }
 
     if (goBtn) {
       const nextKind = !today.in ? 'in' : (today.in && !today.out ? 'out' : null);
-      goBtn.disabled = done || !inside || !nextKind;
+      goBtn.disabled = done || !gateOk || !nextKind;
       goBtn.setAttribute('data-next', nextKind || '');
-      // Hech qachon avto-punch: ticket bo‘lsa ham faqat tanlash / skaner
-      goBtn.setAttribute('data-action', ticketOk ? 'choose' : 'scan');
+      goBtn.setAttribute('data-action', needQr ? (ticketOk ? 'choose' : 'scan') : 'punch');
       const lab = goBtn.querySelector('span');
       const sub = goBtn.querySelector('small');
       if (lab) {
         if (done) lab.textContent = 'Bugun yakunlangan';
         else if (!inside) lab.textContent = 'Ofisga keling';
-        else if (!ticketOk) lab.textContent = 'Ofis QR skanerlash';
-        else lab.textContent = 'Keldim / Ketdim tanlash';
+        else if (needQr && !ticketOk) lab.textContent = 'Ofis QR skanerlash';
+        else if (nextKind === 'out') lab.textContent = 'Ketdim';
+        else lab.textContent = 'Keldim';
       }
       if (sub) {
         sub.textContent = !inside
           ? (off.label + ' · ' + off.radius + ' m')
-          : (!ticketOk
+          : (needQr && !ticketOk
             ? 'Devordagi ofis QR ni skanerlang'
-            : 'Tugmalardan birini bosing — avtomatik yozilmaydi');
+            : 'Tugmani bosing — geozona yetarli');
       }
     }
   }
@@ -476,6 +558,8 @@
     attMap = null;
     attMapCircle = null;
     attMapUser = null;
+    attMapAcc = null;
+    attMapLink = null;
     attMapOffice = null;
     attMapFitted = false;
   }
@@ -523,7 +607,20 @@
   }
 
   function paintMapOverlay() {
-    /* Holat faqat header badge da — xarita ustida takrorlamaymiz */
+    /* Holat header + foot da — xarita ustida takrorlamaymiz */
+  }
+
+  function popupYouHtml(lat, lng, inside) {
+    const acc = geoLive.accuracy != null ? Math.round(geoLive.accuracy) : null;
+    const dist = geoLive.dist != null ? Math.round(geoLive.dist) : null;
+    return (
+      '<div class="av-you-pop">' +
+      '<b>' + (inside ? 'Siz — ofis ichida' : 'Siz — ofisdan tashqarida') + '</b><br>' +
+      '<span class="mono">' + fmtCoord(lat) + ', ' + fmtCoord(lng) + '</span><br>' +
+      (acc != null ? ('Aniqlik: ±' + acc + ' m<br>') : '') +
+      (dist != null ? ('Ofisgacha: ' + dist + ' m') : '') +
+      '</div>'
+    );
   }
 
   function initAttMap() {
@@ -531,11 +628,11 @@
     const el = document.getElementById('av-map');
     if (!el || !window.L) return;
     const off = officeInfo();
-    const startLat = off.hasCoords ? off.lat : (geoLive.lat != null ? geoLive.lat : 41.31);
-    const startLng = off.hasCoords ? off.lng : (geoLive.lng != null ? geoLive.lng : 69.24);
-    attMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([startLat, startLng], off.hasCoords ? 16 : 15);
+    const startLat = (geoLive.lat != null) ? geoLive.lat : (off.hasCoords ? off.lat : 41.31);
+    const startLng = (geoLive.lng != null) ? geoLive.lng : (off.hasCoords ? off.lng : 69.24);
+    attMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([startLat, startLng], 17);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
+      maxZoom: 20
     }).addTo(attMap);
     if (off.hasCoords) {
       attMapCircle = L.circle([off.lat, off.lng], {
@@ -549,11 +646,12 @@
       attMapOffice = L.marker([off.lat, off.lng], {
         icon: pinIcon('Ofis', 'office'),
         zIndexOffset: 200
-      }).addTo(attMap).bindPopup('<b>' + off.label + '</b><br>Radius: ' + off.radius + ' m');
+      }).addTo(attMap).bindPopup(
+        '<b>' + off.label + '</b><br>' +
+        '<span class="mono">' + fmtCoord(off.lat) + ', ' + fmtCoord(off.lng) + '</span><br>' +
+        'Radius: ' + off.radius + ' m'
+      );
       styleZoneCircle(geoLive.inside);
-      try {
-        attMap.fitBounds(attMapCircle.getBounds().pad(0.12));
-      } catch (e) {}
     } else {
       attMapCircle = null;
       attMapOffice = null;
@@ -563,11 +661,15 @@
       attachLocateControl();
     }, 80);
     if (geoLive.lat != null) updateAttMap(geoLive.lat, geoLive.lng);
+    else if (off.hasCoords) {
+      try { attMap.fitBounds(attMapCircle.getBounds().pad(0.12)); } catch (e) {}
+    }
     paintMapOverlay();
   }
 
   function updateAttMap(lat, lng) {
     if (!attMap || !window.L) return;
+    if (lat == null || lng == null) return;
     const inside = geoLive.inside === true;
     const youKind = inside ? 'you' : 'you-out';
     const youLabel = inside ? 'Siz (ichida)' : 'Siz (tashqarida)';
@@ -576,30 +678,74 @@
     if (!attMapUser) {
       attMapUser = L.marker([lat, lng], {
         icon: pinIcon(youLabel, youKind),
-        zIndexOffset: 400
-      }).addTo(attMap).bindTooltip(youLabel, { direction: 'top', offset: [0, -8], opacity: 0.95 });
+        zIndexOffset: 500
+      }).addTo(attMap);
+      attMapUser.bindPopup(popupYouHtml(lat, lng, inside));
+      attMapUser.bindTooltip(youLabel, { direction: 'top', offset: [0, -8], opacity: 0.95, permanent: false });
     } else {
       attMapUser.setLatLng([lat, lng]);
       attMapUser.setIcon(pinIcon(youLabel, youKind));
       try { attMapUser.setTooltipContent(youLabel); } catch (e) {}
+      try { attMapUser.setPopupContent(popupYouHtml(lat, lng, inside)); } catch (e) {}
+    }
+
+    // GPS aniqlik doirasi — foydalanuvchi qayerda ekanini ko'rsatadi
+    const accR = geoLive.accuracy != null && Number.isFinite(Number(geoLive.accuracy))
+      ? Math.max(8, Math.min(Number(geoLive.accuracy), 2500))
+      : 25;
+    if (!attMapAcc) {
+      attMapAcc = L.circle([lat, lng], {
+        radius: accR,
+        color: inside ? '#16a34a' : '#dc2626',
+        fillColor: inside ? '#22c55e' : '#f87171',
+        fillOpacity: 0.14,
+        weight: 1.5,
+        dashArray: '4 4',
+        interactive: false
+      }).addTo(attMap);
+    } else {
+      attMapAcc.setLatLng([lat, lng]);
+      attMapAcc.setRadius(accR);
+      attMapAcc.setStyle({
+        color: inside ? '#16a34a' : '#dc2626',
+        fillColor: inside ? '#22c55e' : '#f87171'
+      });
+    }
+
+    // Ofis ↔ Siz chizig'i
+    const off = officeInfo();
+    if (off.hasCoords) {
+      const pts = [[off.lat, off.lng], [lat, lng]];
+      if (!attMapLink) {
+        attMapLink = L.polyline(pts, {
+          color: inside ? '#16a34a' : '#f59e0b',
+          weight: 2,
+          opacity: 0.85,
+          dashArray: '6 8',
+          interactive: false
+        }).addTo(attMap);
+      } else {
+        attMapLink.setLatLngs(pts);
+        attMapLink.setStyle({ color: inside ? '#16a34a' : '#f59e0b' });
+      }
     }
 
     try {
-      const off = officeInfo();
       if (off.hasCoords) {
-        const b = L.latLngBounds([
-          [off.lat, off.lng],
-          [lat, lng]
-        ]);
+        const b = L.latLngBounds([[off.lat, off.lng], [lat, lng]]);
         if (attMapCircle) b.extend(attMapCircle.getBounds());
+        if (attMapAcc) b.extend(attMapAcc.getBounds());
         if (!attMapFitted) {
-          attMap.fitBounds(b.pad(0.18));
+          attMap.fitBounds(b.pad(0.22));
           attMapFitted = true;
         } else {
-          attMap.panTo([lat, lng], { animate: true });
+          // Foydalanuvchini doim ko'rinadigan qilib ushlash
+          if (!attMap.getBounds().contains([lat, lng])) {
+            attMap.panTo([lat, lng], { animate: true });
+          }
         }
       } else if (!attMapFitted) {
-        attMap.setView([lat, lng], 17);
+        attMap.setView([lat, lng], 18);
         attMapFitted = true;
       } else {
         attMap.panTo([lat, lng], { animate: true });
@@ -639,42 +785,39 @@
       } catch (e) {}
     }
     const btn = document.querySelector('.av-locate-ctrl-btn');
-    const pulse = () => {
-      if (!btn) return;
+    if (btn) {
       btn.classList.add('is-active');
       setTimeout(() => btn.classList.remove('is-active'), 450);
-    };
-    pulse();
-
-    // 1) Darhol oxirgi ma'lum joyga qaytar (kutmasdan)
-    if (geoLive.lat != null && geoLive.lng != null) {
-      forceCenterOnMe(geoLive.lat, geoLive.lng);
-      msg(
-        geoLive.inside ? 'Sizning joyingiz — ofis hududida' : 'Joriy joyingizga qaytildi',
-        geoLive.inside ? 'ok' : 'info'
-      );
-    } else if (btn) {
       btn.classList.add('is-busy');
     }
 
-    // 2) GPS ni yangilab yana markazlashtir
-    getGps().then((g) => {
-      applyGeoFix(g.lat, g.lng, g.accuracy);
+    // 1) Darhol oxirgi ma'lum joy
+    if (geoLive.lat != null && geoLive.lng != null) {
+      forceCenterOnMe(geoLive.lat, geoLive.lng);
+    }
+
+    // 2) Eng aniq GPS
+    acquireBestGps(12000).then((g) => {
+      applyGeoFix(g.lat, g.lng, g.accuracy, { force: true });
       forceCenterOnMe(g.lat, g.lng);
+      if (attMapUser) {
+        try { attMapUser.openPopup(); } catch (e) {}
+      }
       msg(
-        geoLive.inside ? 'Sizning joyingiz — ofis hududida' : 'Joriy joyingizga qaytildi',
+        'Siz: ' + fmtCoord(g.lat) + ', ' + fmtCoord(g.lng) +
+          (geoLive.inside ? ' — ofis hududida' : ' — ofisdan tashqarida'),
         geoLive.inside ? 'ok' : 'info'
       );
-      if (btn) btn.classList.remove('is-busy');
     }).catch((e) => {
       if (geoLive.lat != null) {
         forceCenterOnMe(geoLive.lat, geoLive.lng);
-        if (btn) btn.classList.remove('is-busy');
-        return;
+        msg('Oxirgi joy saqlangan. ' + (e.message || ''), 'err');
+      } else {
+        applyGeoError(e);
+        showGeoHelp(e.message || 'Joylashuv olinmadi');
+        msg(e.message || 'Joylashuv olinmadi', 'err');
       }
-      applyGeoError(e);
-      showGeoHelp(e.message || 'Joylashuv olinmadi');
-      msg(e.message || 'Joylashuv olinmadi', 'err');
+    }).finally(() => {
       if (btn) btn.classList.remove('is-busy');
     });
   }
@@ -713,17 +856,20 @@
       applyGeoError(new Error('Joylashuv qoʻllab-quvvatlanmaydi'));
       return;
     }
-    getGps().then((g) => {
-      applyGeoFix(g.lat, g.lng, g.accuracy);
+    acquireBestGps(10000).then((g) => {
+      applyGeoFix(g.lat, g.lng, g.accuracy, { force: true });
+      forceCenterOnMe(g.lat, g.lng);
     }).catch((e) => {
-      applyGeoError(e);
+      if (geoLive.lat == null) applyGeoError(e);
     });
     geoWatchId = navigator.geolocation.watchPosition(
-      (pos) => applyGeoFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+      (pos) => {
+        applyGeoFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      },
       (err) => {
         if (geoLive.lat == null) applyGeoError(err);
       },
-      { enableHighAccuracy: true, maximumAge: 8000, timeout: 20000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 25000 }
     );
   }
 
@@ -769,10 +915,19 @@
   async function checkGeoNow() {
     try {
       hideGeoHelp();
-      msg('Joylashuv tekshirilmoqda…', 'info');
-      const g = await getGps();
-      msg('Joylashuv OK (' + Math.round(g.accuracy || 0) + ' m). Endi Keldim bosing.', 'ok');
+      msg('Aniq joylashuv olinmoqda…', 'info');
+      const g = await acquireBestGps(14000);
+      forceCenterOnMe(g.lat, g.lng);
+      const acc = Math.round(g.accuracy || 0);
+      if (geoLive.inside === true) {
+        msg('Siz: ' + fmtCoord(g.lat) + ', ' + fmtCoord(g.lng) + ' · ±' + acc + ' m — ofis zonasida. Keldim ochiq.', 'ok');
+      } else if (acc > 500) {
+        msg('GPS zaif (±' + acc + ' m). Telefonda GPS yoqing, ochiq joyda qayta tekshiring.', 'err');
+      } else {
+        msg('Siz: ' + fmtCoord(g.lat) + ', ' + fmtCoord(g.lng) + ' · ofisdan ~' + Math.round(geoLive.dist || 0) + ' m.', 'err');
+      }
       hideGeoHelp();
+      paintGeoUI();
     } catch (e) {
       showGeoHelp(e.message || 'Joylashuv olinmadi');
     }
@@ -927,12 +1082,12 @@
     if (!window.isSecureContext) {
       throw new Error('Joylashuv faqat HTTPS da ishlaydi');
     }
-    // Watchdan yangi joylashuv bo'lsa — kutmasdan ishlatamiz (QR tezligi)
     if (
       geoLive &&
       geoLive.lat != null &&
       geoLive.lng != null &&
-      geoLive.inside === true &&
+      geoLive.ts &&
+      (Date.now() - geoLive.ts) < 8000 &&
       (geoLive.accuracy == null || geoLive.accuracy <= 120)
     ) {
       return {
@@ -941,25 +1096,67 @@
         accuracy: geoLive.accuracy
       };
     }
-    try {
-      return await getGpsOnce({
-        enableHighAccuracy: false,
-        timeout: 8000,
-        maximumAge: 15000
-      });
-    } catch (e1) {
-      try {
-        return await getGpsOnce({
-          enableHighAccuracy: true,
-          timeout: 12000,
-          maximumAge: 5000
-        });
-      } catch (e2) {
-        const code = (e2 && e2.code) || (e1 && e1.code);
-        const perm2 = await readGeoPermission();
-        throw Object.assign(new Error(gpsHelpText(code, perm2)), { code: code });
+    return acquireBestGps(14000);
+  }
+
+  /** Bir necha soniya GPS yig'ib eng aniq nuqtani tanlaydi. */
+  function acquireBestGps(maxWaitMs) {
+    maxWaitMs = maxWaitMs || 12000;
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(Object.assign(new Error('Joylashuv qo‘llab-quvvatlanmaydi'), { code: 0 }));
+        return;
       }
-    }
+      const samples = [];
+      let settled = false;
+      let wid = null;
+      const finish = async (err) => {
+        if (settled) return;
+        settled = true;
+        if (wid != null) {
+          try { navigator.geolocation.clearWatch(wid); } catch (e) {}
+        }
+        clearTimeout(timer);
+        if (samples.length) {
+          samples.sort((a, b) => (a.accuracy || 9e9) - (b.accuracy || 9e9));
+          const best = samples[0];
+          applyGeoFix(best.lat, best.lng, best.accuracy, { force: true });
+          resolve(best);
+          return;
+        }
+        if (geoLive.lat != null && geoLive.lng != null) {
+          resolve({ lat: geoLive.lat, lng: geoLive.lng, accuracy: geoLive.accuracy });
+          return;
+        }
+        const code = err && err.code;
+        const perm = await readGeoPermission();
+        reject(Object.assign(new Error(gpsHelpText(code, perm)), { code: code }));
+      };
+      const timer = setTimeout(() => finish(null), maxWaitMs);
+      wid = navigator.geolocation.watchPosition(
+        (pos) => {
+          const g = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy
+          };
+          samples.push(g);
+          applyGeoFix(g.lat, g.lng, g.accuracy);
+          if (g.accuracy != null && g.accuracy <= 35) finish(null);
+          else if (g.accuracy != null && g.accuracy <= 60 && samples.length >= 2) finish(null);
+        },
+        (err) => {
+          if (!samples.length && geoLive.lat == null) finish(err);
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: maxWaitMs }
+      );
+      getGpsOnce({ enableHighAccuracy: true, timeout: Math.min(10000, maxWaitMs), maximumAge: 0 })
+        .then((g) => {
+          samples.push(g);
+          applyGeoFix(g.lat, g.lng, g.accuracy);
+        })
+        .catch(() => {});
+    });
   }
 
   function openModal(title, sub, opts) {
@@ -1760,12 +1957,20 @@
     if (!hisobotTo) hisobotTo = boardDate;
 
     const ticketOk = !!activeQrTicket();
+    const needQr = qrRequired();
+    const gateOk = punchGateOk();
     const stepGeo = geoLive.inside === true ? 'done' : (geoLive.status === 'err' || geoLive.status === 'out' ? 'now' : 'wait');
     const stepQr = ticketOk ? 'done' : (geoLive.inside === true ? 'now' : 'wait');
-    const stepPunch = done ? 'done' : (ticketOk ? 'now' : 'wait');
+    const stepPunch = done ? 'done' : (gateOk ? 'now' : 'wait');
+    const nextAction = done
+      ? 'Bugun yakunlandi'
+      : (!geoLive.inside
+        ? 'Ofis zonasiga boring'
+        : (needQr && !ticketOk
+          ? 'Ofis QR skanerlang'
+          : (!inn ? 'Keldimni bosing' : 'Ketdimni bosing')));
     const dayStatus = done ? 'Yakunlangan' : (working ? 'Ishda' : (inn ? 'Kelgan' : 'Kutilmoqda'));
     const pulse = monthPulseFromHistory(history);
-    const nextAction = done ? 'Bugun yakunlandi' : (!geoLive.inside ? 'Ofis zonasiga boring' : (!ticketOk ? 'Ofis QR skanerlang' : (!inn ? 'Keldimni bosing' : 'Ketdimni bosing')));
 
     app.innerHTML = `
       <div class="att-tabs" role="tablist" aria-label="Davomat bo‘limlari">
@@ -1808,7 +2013,7 @@
             <div class="av-stage-main">
               <div class="av-stage-mark">VAKSINA · DAVOMAT</div>
               <h2 class="av-stage-title">Kunni <em>aniq</em><br>belgilang</h2>
-              <p class="av-stage-lead">Ofis zonasi + QR skan + Keldi/Ketdi. Brauzer orqali professional nazorat.</p>
+              <p class="av-stage-lead">Ofis radiusiga kiring — Keldim / Ketdim ochiladi. GPS geozona bilan nazorat.</p>
               <div class="av-stage-who">
                 <div class="who-name">${esc(uname)}</div>
                 <div class="who-meta">${esc(userRoleLabel())} · ${esc(off.label)}</div>
@@ -1868,8 +2073,8 @@
 
           <ol class="av-steps" id="av-steps" aria-label="Davomat qadamlari">
             <li class="av-step ${stepGeo}" data-step="geo"><span class="n">01</span><div><b>Geozona</b><small>${esc(String(off.radius))} m ichida</small></div></li>
-            <li class="av-step ${stepQr}" data-step="qr"><span class="n">02</span><div><b>Ofis QR</b><small>Devordagi kod</small></div></li>
-            <li class="av-step ${stepPunch}" data-step="punch"><span class="n">03</span><div><b>Stamp</b><small>Keldi / Ketdi</small></div></li>
+            ${needQr ? `<li class="av-step ${stepQr}" data-step="qr"><span class="n">02</span><div><b>Ofis QR</b><small>Devordagi kod</small></div></li>` : ''}
+            <li class="av-step ${stepPunch}" data-step="punch"><span class="n">${needQr ? '03' : '02'}</span><div><b>Stamp</b><small>Keldi / Ketdi</small></div></li>
           </ol>
 
           <div class="av-journey">
@@ -1905,7 +2110,7 @@
                 <div>
                   <div class="av-map-kicker">Live geofence</div>
                   <h3>${esc(off.label)}</h3>
-                  <div class="av-map-sub">Faqat yashil doira ichida skan va stamp ochiladi</div>
+                  <div class="av-map-sub">Faqat yashil doira ichida Keldim / Ketdim ochiladi</div>
                 </div>
                 <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
               </div>
@@ -1915,6 +2120,7 @@
                   <span><i class="lg-office"></i> Ofis</span>
                   <span><i class="lg-zone"></i> ${esc(String(off.radius))} m</span>
                   <span><i class="lg-you"></i> Siz</span>
+                  <span><i class="lg-acc"></i> Aniqlik</span>
                 </div>
               </div>
               <div class="av-map-foot">
@@ -1927,9 +2133,9 @@
               <section class="av-punch-card av-punch-card-pro">
                 <div class="av-punch-card-h">
                   <span>Stamp paneli</span>
-                  <span class="av-qr-pill ${ticketOk ? 'on' : ''}" id="av-qr-pill">${ticketOk ? 'QR faol' : 'QR kutilyapti'}</span>
+                  <span class="av-qr-pill ${gateOk ? 'on' : ''}" id="av-qr-pill">${needQr ? (ticketOk ? 'QR faol' : 'QR kutilyapti') : (geoLive.inside ? 'Zona OK' : 'Zona kutilyapti')}</span>
                 </div>
-                <p class="av-punch-hint">Zona → QR → Keldi/Ketdi. Har bir Ketdi uchun qayta skan talab qilinadi.</p>
+                <p class="av-punch-hint">${needQr ? 'Zona → QR → Keldi/Ketdi.' : 'Ofis radiusiga kiring — Keldim / Ketdim ochiladi. QR kerak emas.'}</p>
                 <div class="av-punch-row">
                   <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
                     <span class="ico">IN</span>
@@ -1946,17 +2152,18 @@
                 </div>
                 <button type="button" class="av-continue" id="av-continue" disabled>
                   <span>Ofisga keling</span>
-                  <small>Zona ichida QR skanerlash</small>
+                  <small>${needQr ? 'Zona ichida QR skanerlash' : 'Radius ichida stamp ochiladi'}</small>
                 </button>
-                <p class="av-ticket-hint" id="av-qr-ticket-hint">${ticketOk ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim.' : 'QR hali skanerlanmagan.'}</p>
+                <p class="av-ticket-hint" id="av-qr-ticket-hint">${needQr
+                  ? (ticketOk ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim.' : 'QR hali skanerlanmagan.')
+                  : (geoLive.inside ? 'Radius ichidasiz — Keldim / Ketdim ochiq.' : 'Ofis radiusiga kiring — tugmalar ochiladi.')}</p>
               </section>
 
               <section class="av-howto">
                 <h3>Qanday ishlaydi</h3>
                 <ul>
-                  <li><b>1.</b> Ofis ${esc(String(off.radius))} m ichiga kiring</li>
-                  <li><b>2.</b> Devordagi ofis QR ni skanerlang</li>
-                  <li><b>3.</b> Keldim / Ketdim ni bosing</li>
+                  <li><b>1.</b> Ofis ${esc(String(off.radius))} m ichiga kiring (telefonda GPS)</li>
+                  ${needQr ? '<li><b>2.</b> Devordagi ofis QR ni skanerlang</li><li><b>3.</b> Keldim / Ketdim ni bosing</li>' : '<li><b>2.</b> Keldim / Ketdim tugmasini bosing</li>'}
                 </ul>
                 <div class="av-howto-note">${esc(s.scheduleNote || '')}</div>
               </section>
@@ -2289,10 +2496,13 @@
 
     const cont = document.getElementById('av-continue');
     if (cont) bindTap(cont, () => {
-      const action = cont.getAttribute('data-action') || 'scan';
-      // Avto-punch yo‘q: ticket bor → tanlash oynasi; yo‘q → skaner
+      const action = cont.getAttribute('data-action') || 'punch';
+      const kind = nextPunchKind() || cont.getAttribute('data-next') || 'in';
+      if (action === 'punch' || (!qrRequired() && punchGateOk())) {
+        confirmPunch(kind);
+        return;
+      }
       if (action === 'choose' && activeQrTicket()) {
-        const kind = nextPunchKind() || 'in';
         openModal(
           kind === 'out' ? 'Ketdim' : 'Keldim',
           'Keldim yoki Ketdim tugmasini bosing',
@@ -2526,9 +2736,9 @@
     });
   }
 
-  /** QR ticket bor → Keldim/Ketdim */
+  /** Geozona OK (va kerak bo‘lsa QR) → Keldim/Ketdim */
   async function startAttendanceFlow(kind) {
-    if (!activeQrTicket()) {
+    if (qrRequired() && !activeQrTicket()) {
       await startQrScanFlow();
       return;
     }
@@ -2536,13 +2746,15 @@
   }
 
   async function confirmPunch(kind) {
-    const ticket = activeQrTicket();
-    if (!ticket) {
-      msg('Avval ofis QR ni skanerlang', 'err');
-      return;
+    if (qrRequired()) {
+      const ticket = activeQrTicket();
+      if (!ticket) {
+        msg('Avval ofis QR ni skanerlang', 'err');
+        return;
+      }
     }
     if (geoLive.inside !== true) {
-      msg('Faqat ofis radiusida ochiladi', 'err');
+      msg('Faqat ofis radiusida ochiladi — «Qayta tekshirish» bosing', 'err');
       return;
     }
     busy = true;
@@ -2556,17 +2768,25 @@
         progress: 90,
         tone: 'ok'
       });
-      if (!modalOpen) openModal(kind === 'in' ? 'KELDIM' : 'KETDIM', 'Davomat yozilmoqda', { qrMode: true });
+      if (!modalOpen) openModal(kind === 'in' ? 'KELDIM' : 'KETDIM', 'Davomat yozilmoqda', { qrMode: !!qrRequired() });
       const gps = await getGps();
+      if (geoLive.inside !== true) {
+        throw new Error('Hali ofis zonasida emassiz. GPS aniqlanishini kuting yoki ochiq joyda qayta tekshiring.');
+      }
+      const body = {
+        kind,
+        lat: gps.lat,
+        lng: gps.lng,
+        accuracy: gps.accuracy
+      };
+      if (qrRequired()) {
+        const ticket = activeQrTicket();
+        if (!ticket) throw new Error('Avval ofis QR ni skanerlang');
+        body.qrTicket = ticket.ticket;
+      }
       const r = await api('/api/attendance/punch', {
         method: 'POST',
-        body: JSON.stringify({
-          kind,
-          lat: gps.lat,
-          lng: gps.lng,
-          accuracy: gps.accuracy,
-          qrTicket: ticket.ticket
-        })
+        body: JSON.stringify(body)
       });
       qrTicketLocal = null;
       if (STATE) STATE.qrTicket = null;
@@ -2586,13 +2806,13 @@
       const text = e.message || 'Xato';
       setFidUI({ status: 'DENIED', hint: text, progress: 0, tone: 'err' });
       msg(text, 'err');
-      if (/QR|skaner|ruxsat/i.test(text)) {
+      if (/QR|skaner|ruxsat/i.test(text) && qrRequired()) {
         qrTicketLocal = null;
         if (STATE) STATE.qrTicket = null;
       }
       showRetry(text);
       flowRetry = () => {
-        if (/QR|skaner|ruxsat/i.test(text)) startQrScanFlow();
+        if (/QR|skaner|ruxsat/i.test(text) && qrRequired()) startQrScanFlow();
         else confirmPunch(kind);
       };
     } finally {
@@ -3587,7 +3807,7 @@
         out_start: document.getElementById('s-out-start').value,
         out_end: document.getElementById('s-out-end').value,
         require_face: false,
-        require_qr: true,
+        require_qr: false,
         office
       };
       await api('/api/attendance/settings', { method: 'POST', body: JSON.stringify(body) });
