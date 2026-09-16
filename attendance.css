@@ -3424,3 +3424,153 @@ body.hb-modal-open { overflow: hidden; }
     z-index: 5;
   }
 }
+
+/* ============================================================
+   LIGHT OFFICE STAGE — professional (overrides dark hero)
+   ============================================================ */
+.av-stage {
+  display: grid !important;
+  grid-template-columns: 1.2fr 0.8fr !important;
+  gap: 0 !important;
+  min-height: 0 !important;
+  border-radius: 18px !important;
+  overflow: hidden !important;
+  color: #0b1f3a !important;
+  background: linear-gradient(135deg, rgba(26,95,180,0.07) 0%, transparent 45%), #ffffff !important;
+  border: 1px solid rgba(11,31,58,0.12) !important;
+  box-shadow: 0 10px 28px rgba(11,31,58,0.06) !important;
+}
+@media (max-width: 900px) {
+  .av-stage { grid-template-columns: 1fr !important; }
+}
+.av-stage-main {
+  padding: 22px 24px 20px !important;
+}
+.av-stage-main::after {
+  background: linear-gradient(180deg, transparent, rgba(11,31,58,0.12), transparent) !important;
+}
+.av-stage-mark {
+  color: #1a5fb4 !important;
+  letter-spacing: 0.16em !important;
+  font-size: 10px !important;
+}
+.av-stage-title {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif !important;
+  font-weight: 700 !important;
+  font-size: clamp(22px, 2.8vw, 28px) !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1.2 !important;
+  color: #0b1f3a !important;
+  margin: 0 !important;
+}
+.av-stage-title em,
+.av-stage-title em * {
+  font-style: normal !important;
+  color: #1a5fb4 !important;
+  background: none !important;
+  -webkit-text-fill-color: #1a5fb4 !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+}
+.av-stage-lead {
+  margin-top: 10px !important;
+  max-width: 44ch !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  color: #5a7190 !important;
+  opacity: 1 !important;
+}
+.who-name { color: #0b1f3a !important; font-size: 15px !important; }
+.who-meta {
+  color: #5a7190 !important;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif !important;
+}
+.av-status-chip,
+.av-date-pill {
+  border-radius: 8px !important;
+  border: 1px solid rgba(11,31,58,0.12) !important;
+  background: #f4f8fc !important;
+  color: #0b1f3a !important;
+  padding: 6px 10px !important;
+  font-size: 11px !important;
+}
+.av-status-chip.live {
+  background: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1e40af !important;
+}
+.av-status-chip.ok {
+  background: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  color: #047857 !important;
+}
+.av-status-chip.idle { color: #5a7190 !important; }
+
+.av-stage-clock {
+  padding: 18px 20px !important;
+  gap: 10px !important;
+  background: linear-gradient(180deg, #f5f8fc, #eef3f9) !important;
+}
+.av-stage-clock .ring { display: none !important; }
+.av-stage-clock .clock-box,
+.av-stage-clock .work-box {
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  border: 1px solid rgba(11,31,58,0.12) !important;
+  backdrop-filter: none !important;
+}
+.av-stage-clock .k {
+  color: #5a7190 !important;
+  font-size: 10px !important;
+  letter-spacing: 0.12em !important;
+}
+.av-stage-clock .v {
+  color: #0b1f3a !important;
+  font-size: 26px !important;
+  font-weight: 700 !important;
+}
+.av-stage-clock .s { color: #5a7190 !important; font-size: 12px !important; }
+.av-stage-clock .work-box.live .v { color: #1a5fb4 !important; }
+.av-stage-clock .work-box.done .v { color: #047857 !important; }
+
+.av-gate-banner {
+  border-color: #f0d9a8 !important;
+  background: #fffaf0 !important;
+  color: #7a5a1e !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+.av-gate-banner.ok {
+  border-color: #a7f3d0 !important;
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+}
+
+.av-punch-card-pro,
+.av-map-card,
+.av-week-card,
+.av-journey,
+.av-hist-pro,
+.av-howto,
+.att-sheet {
+  background: #fff !important;
+  border: 1px solid rgba(11,31,58,0.12) !important;
+  box-shadow: 0 8px 22px rgba(11,31,58,0.05) !important;
+}
+.av-map-h h3,
+.av-week-h h3,
+.av-hist-h h3,
+.av-howto h3,
+.att-panel-head h2 {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  color: #0b1f3a !important;
+  text-transform: none !important;
+}
+@media (max-width: 640px) {
+  .av-stage-main { padding: 18px 16px 14px !important; }
+  .av-stage-clock { padding: 14px 16px 16px !important; }
+  .av-stage-clock .v { font-size: 22px !important; }
+}

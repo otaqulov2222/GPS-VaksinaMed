@@ -2124,8 +2124,8 @@
           <section class="av-stage">
             <div class="av-stage-main">
               <div class="av-stage-mark">VAKSINA · DAVOMAT</div>
-              <h2 class="av-stage-title">Kunni <em>aniq</em><br>belgilang</h2>
-              <p class="av-stage-lead">Ofis radiusiga kiring — Keldim / Ketdim ochiladi. GPS geozona bilan nazorat.</p>
+              <h2 class="av-stage-title">Bugungi davomat</h2>
+              <p class="av-stage-lead">Ofis geozonasiga kiring — Keldim / Ketdim ochiladi. GPS orqali nazorat.</p>
               <div class="av-stage-who">
                 <div class="who-name">${esc(uname)}</div>
                 <div class="who-meta">${esc(userRoleLabel())} · ${esc(off.label)}</div>
