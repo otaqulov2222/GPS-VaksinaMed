@@ -47,6 +47,8 @@ const STATE = {
   saveTimer: null,
   metaSaveTimer: null,
   dirty: false,
+  /** true faqat writeParams/renderDailyTable dan keyin — bo'sh DOM 269 ni nollamasin */
+  formHydrated: false,
   carsOpenPlate: '',
   saveInFlight: false,
   saveQueued: false,
@@ -913,6 +915,7 @@ async function applyDocsSeedToMeta() {
 }
 
 async function loadAll() {
+  STATE.formHydrated = false;
   const now = new Date();
   STATE.month = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   const mi = document.getElementById('month-input');
@@ -963,17 +966,20 @@ async function loadAll() {
   setMonthLabel();
   await autoChainMonth();
   if (syncAllCarsDayPrices()) STATE.dirty = true;
+  // Avval UI ni to'ldirish — bo'sh #p-* dan flush → 269 ni nollamasin
+  await renderAll();
+  STATE.formHydrated = true;
   if (STATE.dirty) {
     clearTimeout(STATE.saveTimer);
     await saveMonth();
   }
-  await renderAll();
 }
 
 async function changeMonth(ym) {
   if (!ym) return;
   flushFormToState();
   if (STATE.dirty) await saveMonth();
+  STATE.formHydrated = false;
   STATE.month = ym;
   document.getElementById('month-input').value = ym;
   const [month, gps] = await Promise.all([
@@ -1002,11 +1008,12 @@ async function changeMonth(ym) {
   setMonthLabel();
   await autoChainMonth();
   if (syncAllCarsDayPrices()) STATE.dirty = true;
+  await renderAll();
+  STATE.formHydrated = true;
   if (STATE.dirty) {
     clearTimeout(STATE.saveTimer);
     await saveMonth();
   }
-  await renderAll();
 }
 
 function setMonthLabel() {
@@ -1056,6 +1063,8 @@ function readCarsTableToMeta() {
 
 function flushFormToState() {
   readCarsTableToMeta();
+  // UI hali chizilmagan: bo'sh inputlar STATE.cars[269] ni 0 qilib yubormasin
+  if (!STATE.formHydrated) return;
   if (STATE.car) readParamsIntoCar();
   document.querySelectorAll('#daily-body [data-d][data-f]').forEach(el => {
     const d = el.getAttribute('data-d');
@@ -1109,7 +1118,7 @@ function syncParamsToMeta(plate, car) {
   }
 }
 
-/** Meta (Mashina va narx) — faqat bo'sh norma/tipni to'ldirish (oy qiymatini bosib yubormaslik). */
+/** Meta (Mashina va narx) — faqat bo'sh norma/narx/tipni to'ldirish (oy qiymatini bosib yubormaslik). */
 function applyMetaNormsToCars() {
   let changed = false;
   Object.keys(STATE.cars || {}).forEach(plate => {
@@ -1122,6 +1131,19 @@ function applyMetaNormsToCars() {
     }
     if (n(info.benzinNorm) > 0 && !(n(car.benzinNorm) > 0)) {
       car.benzinNorm = n(info.benzinNorm);
+      changed = true;
+    }
+    if (n(info.gasPrice) > 0 && !(n(car.gasPrice) > 0)) {
+      car.gasPrice = n(info.gasPrice);
+      changed = true;
+    }
+    if (n(info.benzinPrice) > 0 && !(n(car.benzinPrice) > 0)) {
+      car.benzinPrice = n(info.benzinPrice);
+      changed = true;
+    }
+    const ft = car.fuelType || info.fuelType || 'mixed';
+    if ((car.mixPct == null || car.mixPct === '') && (ft === 'mixed' || ft === 'dizel_gaz')) {
+      car.mixPct = 70;
       changed = true;
     }
     if (info.fuelType && !car.fuelType) {
@@ -4706,11 +4728,13 @@ function bind() {
     const c = e.target.closest('.chip-car');
     if (!c) return;
     // Avval joriy mashina (jumladan yozilayotgan 7, / 0) DOM → state
-    flushFormToState();
-    readParamsIntoCar();
-    if (STATE.car) {
-      syncDayPricesFromCar(getCar(STATE.car));
-      syncParamsToMeta(STATE.car, getCar(STATE.car));
+    if (STATE.formHydrated) {
+      flushFormToState();
+      readParamsIntoCar();
+      if (STATE.car) {
+        syncDayPricesFromCar(getCar(STATE.car));
+        syncParamsToMeta(STATE.car, getCar(STATE.car));
+      }
     }
     const next = canonicalPlate(c.getAttribute('data-car') || '') || c.getAttribute('data-car');
     if (next && next !== STATE.car) {
