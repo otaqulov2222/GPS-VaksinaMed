@@ -1,5 +1,5 @@
 'use strict';
-/* Hujjat muddatlari seed — skren jadvalidan (2026-09-15). fuel.js loadAll da bir marta meta ga yoziladi. */
+/* Hujjat muddatlari seed — faqat BO'SH maydonlarni to'ldirish (fuel.js). Foydalanuvchi Yangilash/tahririni bosib yubormaydi. */
 window.VM_DOCS_SEED = {
   "01 043 KMA": {
     "insurance": { "due": "2027-06-18", "months": 12 },

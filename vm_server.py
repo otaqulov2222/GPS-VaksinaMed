@@ -1758,7 +1758,27 @@ class OfficeStore:
                 "mechanic": str(body["firm"].get("mechanic") or "")[:80],
             }
         if isinstance(body.get("docs"), dict):
-            docs = {}
+            def _doc_compact(p):
+                return re.sub(r"[\s/\-_]+", "", str(p or "")).upper()
+
+            def _merge_doc_item(old_item, new_item):
+                out = {}
+                for key in ("insurance", "tech", "ads", "cylinder"):
+                    od = old_item.get(key) if isinstance(old_item.get(key), dict) else {}
+                    nd = new_item.get(key) if isinstance(new_item.get(key), dict) else {}
+                    old_due = str(od.get("due") or "")[:10]
+                    new_due = str(nd.get("due") or "")[:10]
+                    # Bo'sh due eski qiymatni o'chirmasin (seed/race)
+                    due = new_due if new_due else old_due
+                    months = int(as_num(nd.get("months"), as_num(od.get("months"), 12)))
+                    if months < 1:
+                        months = 1
+                    if months > 60:
+                        months = 60
+                    out[key] = {"due": due, "months": months}
+                return out
+
+            incoming = {}
             for i, (plate, rec) in enumerate(body["docs"].items()):
                 if i >= 200 or not isinstance(rec, dict):
                     continue
@@ -1774,11 +1794,42 @@ class OfficeStore:
                         "due": str(d.get("due") or "")[:10],
                         "months": months,
                     }
-                docs[str(plate).strip()[:32]] = item
-            # docs ham merge — eski hujjatlar yo'qolmasin
+                p = str(plate).strip()[:32]
+                if not p:
+                    continue
+                incoming[p] = item
+
             prev_docs = cur.get("docs") if isinstance(cur.get("docs"), dict) else {}
-            merged_docs = dict(prev_docs)
-            merged_docs.update(docs)
+            # Canonical plate bo'yicha dublikatlarni yig'ish
+            merged_docs = {}
+            by_compact = {}
+            for plate, rec in prev_docs.items():
+                if not isinstance(rec, dict):
+                    continue
+                p = str(plate).strip()[:32]
+                if not p:
+                    continue
+                ck = _doc_compact(p)
+                if ck in by_compact:
+                    old_p = by_compact[ck]
+                    merged_docs[old_p] = _merge_doc_item(merged_docs.get(old_p, {}), rec)
+                else:
+                    by_compact[ck] = p
+                    merged_docs[p] = dict(rec)
+
+            for plate, rec in incoming.items():
+                ck = _doc_compact(plate)
+                if ck in by_compact:
+                    old_p = by_compact[ck]
+                    merged_docs[old_p] = _merge_doc_item(merged_docs.get(old_p, {}), rec)
+                    # Afzal kalit: bo'shliqli "01 331 MLA"
+                    if " " in plate and plate != old_p:
+                        merged_docs[plate] = merged_docs.pop(old_p)
+                        by_compact[ck] = plate
+                else:
+                    by_compact[ck] = plate
+                    merged_docs[plate] = rec
+
             cur["docs"] = merged_docs
         self._save("fuel:meta", cur)
         try:

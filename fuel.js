@@ -883,35 +883,130 @@ async function saveMonth(opts) {
   }
 }
 
-function docsSeedNeedsApply() {
-  const seed = window.VM_DOCS_SEED;
-  if (!seed || typeof seed !== 'object') return false;
-  const docs = STATE.meta.docs || {};
-  const c083 = docs['01 083 XJA'] && docs['01 083 XJA'].insurance;
-  if (!c083 || c083.due !== '2027-09-02') return true;
-  const t331 = docs['01 331 MLA'] && docs['01 331 MLA'].tech;
-  if (!t331 || t331.due !== '2026-06-28') return true;
-  const c844 = docs['01 844 FKA'] && docs['01 844 FKA'].insurance;
-  if (!c844 || c844.due !== '2026-12-14') return true;
-  return false;
+function docsRecForPlate(plate) {
+  const map = STATE.meta.docs || {};
+  if (!plate) return {};
+  if (map[plate]) return map[plate];
+  const compact = plateCompact(plate);
+  for (const k of Object.keys(map)) {
+    if (plateCompact(k) === compact) return map[k];
+  }
+  return {};
 }
 
-async function applyDocsSeedToMeta() {
-  const seed = window.VM_DOCS_SEED;
-  if (!seed || typeof seed !== 'object') return false;
-  if (!docsSeedNeedsApply()) return false;
+function ensureDocsRec(plate) {
   STATE.meta.docs = STATE.meta.docs || {};
-  Object.keys(seed).forEach((plate) => {
-    STATE.meta.docs[plate] = seed[plate];
+  const canon = canonicalPlate(plate) || String(plate || '').trim();
+  if (!canon) return null;
+  if (!STATE.meta.docs[canon]) {
+    const existing = docsRecForPlate(canon);
+    STATE.meta.docs[canon] = existing && Object.keys(existing).length
+      ? Object.assign({}, existing)
+      : {};
+  }
+  // Dublikat kalitlarni yig'ish
+  Object.keys(STATE.meta.docs).forEach((k) => {
+    if (k === canon) return;
+    if (plateCompact(k) !== plateCompact(canon)) return;
+    const other = STATE.meta.docs[k];
+    if (other && typeof other === 'object') {
+      STATE.meta.docs[canon] = mergeDocPlateRecs(STATE.meta.docs[canon], other);
+    }
+    delete STATE.meta.docs[k];
   });
-  try {
-    await saveMeta();
-    toast('Hujjat muddatlari skren jadvalidan yuklandi');
-    return true;
-  } catch (e) {
-    console.warn('docs seed save', e);
+  return STATE.meta.docs[canon];
+}
+
+function mergeDocPlateRecs(a, b) {
+  const out = Object.assign({}, a || {});
+  DOC_KEYS.forEach((dk) => {
+    const k = dk.k;
+    const ar = (a && a[k]) || {};
+    const br = (b && b[k]) || {};
+    const aDue = String(ar.due || '').trim();
+    const bDue = String(br.due || '').trim();
+    // Bo'sh due boyitilganini bosib yubormasin
+    let due = aDue || bDue;
+    if (aDue && bDue) {
+      // Ikkalasi bor: keyingi muddatni saqlash (yangilangan)
+      due = aDue >= bDue ? aDue : bDue;
+    }
+    const months = n(ar.months) > 0 ? n(ar.months) : (n(br.months) > 0 ? n(br.months) : 12);
+    if (due || n(ar.months) || n(br.months) || ar.due === '' || br.due === '') {
+      out[k] = { due, months };
+    }
+  });
+  return out;
+}
+
+/** Plate kalitlarini bir xil ko'rinishga keltirish (01/331 vs 01 331). */
+function normalizeDocsMap() {
+  const map = STATE.meta.docs;
+  if (!map || typeof map !== 'object') {
+    STATE.meta.docs = {};
     return false;
   }
+  const out = {};
+  let changed = false;
+  Object.keys(map).forEach((k) => {
+    const rec = map[k];
+    if (!rec || typeof rec !== 'object') return;
+    const canon = canonicalPlate(k) || String(k || '').trim();
+    if (!canon) return;
+    if (canon !== k) changed = true;
+    if (!out[canon]) {
+      out[canon] = Object.assign({}, rec);
+      return;
+    }
+    out[canon] = mergeDocPlateRecs(out[canon], rec);
+    changed = true;
+  });
+  STATE.meta.docs = out;
+  return changed;
+}
+
+/**
+ * Seed faqat BO'SH hujjat maydonlarini to'ldiradi.
+ * Foydalanuvchi Yangilash/tahririni HECH QACHON seed bilan qayta yozmaydi
+ * (oldingi xato: 331 tech due !== seed → butun jadval qayta seedlanardi).
+ */
+function applyDocsSeedToMeta() {
+  const seed = window.VM_DOCS_SEED;
+  if (!seed || typeof seed !== 'object') return Promise.resolve(false);
+  STATE.meta.docs = STATE.meta.docs || {};
+  normalizeDocsMap();
+  let changed = false;
+  Object.keys(seed).forEach((plate) => {
+    const seedRec = seed[plate];
+    if (!seedRec || typeof seedRec !== 'object') return;
+    const dest = ensureDocsRec(plate);
+    if (!dest) return;
+    DOC_KEYS.forEach((dk) => {
+      const sk = seedRec[dk.k];
+      if (!sk || typeof sk !== 'object') return;
+      if (!dest[dk.k]) dest[dk.k] = { due: '', months: 12 };
+      const curDue = String(dest[dk.k].due || '').trim();
+      const seedDue = String(sk.due || '').trim();
+      if (!curDue && seedDue) {
+        dest[dk.k].due = seedDue;
+        dest[dk.k].months = n(sk.months) > 0 ? n(sk.months) : (n(dest[dk.k].months) || 12);
+        changed = true;
+      } else if (!(n(dest[dk.k].months) > 0) && n(sk.months) > 0) {
+        dest[dk.k].months = n(sk.months);
+        changed = true;
+      }
+    });
+  });
+  if (!changed) return Promise.resolve(false);
+  return saveMeta()
+    .then(() => {
+      toast('Bo\'sh hujjat muddatlari to\'ldirildi');
+      return true;
+    })
+    .catch((e) => {
+      console.warn('docs seed save', e);
+      return false;
+    });
 }
 
 async function loadAll() {
@@ -926,6 +1021,7 @@ async function loadAll() {
     vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(STATE.month)).catch(() => ({ days: {} }))
   ]);
   STATE.meta = normalizeMeta(meta.meta);
+  normalizeDocsMap();
   await applyDocsSeedToMeta();
   if (typeof applyFleetNameOverrides === 'function') {
     applyFleetNameOverrides(STATE.meta.vehicles || {});
@@ -1249,6 +1345,7 @@ function carsToSave(opts) {
 async function saveMeta() {
   readCarsTableToMeta();
   fleet().forEach(f => ensureVehicleMeta(f.car));
+  normalizeDocsMap();
   // Bo'sh ismli yangi mashinalar ham nom bilan saqlansin
   Object.keys(STATE.meta.vehicles || {}).forEach((plate) => {
     const rec = STATE.meta.vehicles[plate];
@@ -1263,6 +1360,7 @@ async function saveMeta() {
     body: JSON.stringify(STATE.meta)
   });
   STATE.meta = normalizeMeta(d.meta || STATE.meta);
+  normalizeDocsMap();
   if (typeof applyFleetNameOverrides === 'function') {
     applyFleetNameOverrides(STATE.meta.vehicles || {});
   }
@@ -1698,7 +1796,7 @@ function fleetTotals() {
 function collectDocAlerts() {
   const out = [];
   fleet().forEach(f => {
-    const rec = (STATE.meta.docs || {})[f.car] || {};
+    const rec = docsRecForPlate(f.car);
     DOC_KEYS.forEach(dk => {
       const due = rec[dk.k] && rec[dk.k].due;
       const left = daysLeft(due);
@@ -2288,7 +2386,7 @@ function renderDocs() {
   document.getElementById('panel-docs').innerHTML = `
     <div class="card"><div class="card-h"><h3>Hujjat muddatlari hisoboti — ${esc(today.split('-').reverse().join('.'))}</h3></div>
       <div class="card-b">
-        <div class="hint">Muddat va davr (oy) ni qo'lda kiriting. <b>Yangilash</b> tugmasi muddatni shu davrga siljitadi. Yashil &gt;45 kun, sariq &lt;45, och qizil &lt;15, <b>qizil (puls)</b> — muddati o'tgan.</div>
+        <div class="hint">Muddat va davr (oy) ni qo'lda kiriting. <b>Yangilash</b> tugmasi muddatni shu davrga siljitadi (muddati o'tgan bo'lsa — bugundan). Yashil &gt;45 kun, sariq &lt;45, och qizil &lt;15, <b>qizil (puls)</b> — muddati o'tgan.</div>
         ${alerts.length ? `<div class="alert-box">${alerts.slice(0, 12).map(a =>
           `<div><b>${esc(plateDisp(a.car))}</b> ${esc(a.name)} — ${esc(a.title)} → ${a.left < 0 ? 'muddati o\'tgan' : (a.left + ' kun qoldi')}</div>`
         ).join('')}</div>` : ''}
@@ -2297,7 +2395,7 @@ function renderDocs() {
           <table class="gtable">
             <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th>${DOC_KEYS.map(d => `<th>${esc(d.t)}</th>`).join('')}</tr></thead>
             <tbody>${fleet().map((f, i) => {
-              const rec = (STATE.meta.docs || {})[f.car] || {};
+              const rec = docsRecForPlate(f.car);
               return `<tr><td>${i + 1}</td><td>${esc(plateDisp(f.car))}</td><td>${esc(f.name)}</td>${DOC_KEYS.map(d => docCell(f.car, d.k, rec)).join('')}</tr>`;
             }).join('')}</tbody>
           </table>
@@ -2308,12 +2406,18 @@ function renderDocs() {
       const plate = el.getAttribute('data-doc');
       const k = el.getAttribute('data-k');
       const f = el.getAttribute('data-f');
-      if (!plate) return;
-      STATE.meta.docs = STATE.meta.docs || {};
-      if (!STATE.meta.docs[plate]) STATE.meta.docs[plate] = {};
-      if (!STATE.meta.docs[plate][k]) STATE.meta.docs[plate][k] = { due: '', months: 12 };
-      STATE.meta.docs[plate][k][f] = f === 'months' ? n(el.value) : el.value;
-      await saveMeta();
+      if (!plate || !k) return;
+      const dest = ensureDocsRec(plate);
+      if (!dest) return;
+      if (!dest[k]) dest[k] = { due: '', months: 12 };
+      dest[k][f] = f === 'months' ? (n(el.value) || 12) : el.value;
+      try {
+        await saveMeta();
+        toast('Hujjat saqlandi');
+      } catch (err) {
+        toast(err.message || 'Hujjat saqlanmadi');
+        return;
+      }
       renderDocsBadge();
       renderDocs();
     });
@@ -2322,17 +2426,27 @@ function renderDocs() {
     btn.onclick = async () => {
       const plate = btn.getAttribute('data-doc');
       const k = btn.getAttribute('data-k');
-      STATE.meta.docs = STATE.meta.docs || {};
-      if (!STATE.meta.docs[plate]) STATE.meta.docs[plate] = {};
-      const rec = STATE.meta.docs[plate][k] || { due: todayYmd(), months: 12 };
+      if (!plate || !k) return;
+      const dest = ensureDocsRec(plate);
+      if (!dest) return;
+      const rec = dest[k] || { due: todayYmd(), months: 12 };
       const months = n(rec.months) || 12;
-      const base = rec.due && daysLeft(rec.due) != null ? rec.due : todayYmd();
+      // Muddati o'tgan / bo'sh → bugundan; aks holda joriy muddatdan siljitish
+      let base = String(rec.due || '').trim();
+      const left = daysLeft(base);
+      if (!base || left == null || left < 0) base = todayYmd();
       const d = new Date(base + 'T00:00:00');
       d.setMonth(d.getMonth() + months);
       rec.due = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       rec.months = months;
-      STATE.meta.docs[plate][k] = rec;
-      await saveMeta();
+      dest[k] = rec;
+      try {
+        await saveMeta();
+        toast('Yangilandi: ' + plateDisp(plate) + ' → ' + rec.due.split('-').reverse().join('.'));
+      } catch (err) {
+        toast(err.message || 'Yangilanmadi');
+        return;
+      }
       renderDocsBadge();
       renderDocs();
     };
