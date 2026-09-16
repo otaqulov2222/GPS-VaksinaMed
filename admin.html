@@ -1716,7 +1716,7 @@ body { overflow-x: clip; }
 
 
 
-<script src="uz-latin.js?v=3"></script>
+<script src="uz-latin.js?v=4"></script>
 <script src="fleet-data.js?v=9"></script>
 
 <script src="auth.js?v=37"></script>
@@ -2517,10 +2517,15 @@ function phNameMatch(name, q) {
 
 function phNameEq(a, b) {
   if (typeof uzNameEq === 'function') return uzNameEq(a, b);
+  if (typeof pharmacyKey === 'function') {
+    const ka = pharmacyKey(a), kb = pharmacyKey(b);
+    return !!ka && ka === kb;
+  }
   return String(a || '').toLowerCase() === String(b || '').toLowerCase();
 }
 
 function phNameKey(name) {
+  if (typeof pharmacyKey === 'function') return pharmacyKey(name);
   if (typeof uzSearchFold === 'function') return uzSearchFold(name);
   return String(name || '').toLowerCase();
 }
@@ -2883,21 +2888,32 @@ async function assignPharmacy(name, car, lat, lng, opts) {
   name = String(name || '').trim();
   car = String(car || '').trim();
   if (!name || !car) throw new Error('Mashina va dorixona nomi kerak');
-  const exists = PHARMS.find(p => phNameEq(p.name, name));
+  const key = phNameKey(name);
+  const matches = key
+    ? PHARMS.filter(p => phNameKey(p.name) === key)
+    : PHARMS.filter(p => phNameEq(p.name, name));
   const inputRadius = Math.max(40, Math.min(500, parseInt(String((document.getElementById('ph-radius') || {}).value || '').replace(/[^\d]/g, ''), 10) || 120));
   let radiusM = inputRadius;
   if (opts.radiusM != null && opts.radiusM !== '') {
     const r = parseInt(String(opts.radiusM).replace(/[^\d]/g, ''), 10);
     if (r >= 40 && r <= 500) radiusM = r;
   }
-  if (exists) {
-    exists.car = car;
+  let keep = matches[0] || null;
+  if (matches.length > 1) {
+    // Koordinatasi borini afzal ko'ramiz, keyin birinchisini
+    keep = matches.find(p => p.lat != null && p.lng != null) || matches[0];
+    const keepId = keep.id;
+    PHARMS = PHARMS.filter(p => phNameKey(p.name) !== key || p.id === keepId);
+  }
+  if (keep) {
+    keep.car = car;
+    keep.name = name;
     if (lat != null && lng != null && lat !== '' && lng !== '') {
-      exists.lat = Number(lat);
-      exists.lng = Number(lng);
+      keep.lat = Number(lat);
+      keep.lng = Number(lng);
     }
-    if (!opts.skipSave) exists.radiusM = radiusM;
-    else if (opts.radiusM != null) exists.radiusM = radiusM;
+    if (!opts.skipSave) keep.radiusM = radiusM;
+    else if (opts.radiusM != null) keep.radiusM = radiusM;
   } else {
     PHARMS.push({
       id: 'ph_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9),
@@ -3219,8 +3235,21 @@ document.getElementById('tb-ph').addEventListener('click', async (e) => {
   }
 
   const oldLabel = carLabel(rec.car);
+  const key = phNameKey(rec.name);
 
-  rec.car = newCar;
+  // Shu nomdagi barcha nusxalarni bitta mashinaga birlashtirish
+  PHARMS.forEach(p => {
+    if (p.id === id || (key && phNameKey(p.name) === key)) {
+      p.car = newCar;
+    }
+  });
+  if (key) {
+    const same = PHARMS.filter(p => phNameKey(p.name) === key);
+    if (same.length > 1) {
+      const keep = same.find(p => p.id === id) || same[0];
+      PHARMS = PHARMS.filter(p => phNameKey(p.name) !== key || p.id === keep.id);
+    }
+  }
 
   try {
 

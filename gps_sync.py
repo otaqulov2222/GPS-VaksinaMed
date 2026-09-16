@@ -60,6 +60,17 @@ def norm_ph(s):
     return re.sub(r"[^a-z0-9]+", "", t)
 
 
+def pharmacy_key(s):
+    """Shirin ≡ Shirin filial — filial/branch qo'shimchasi hisobga olinmaydi."""
+    k = norm_ph(s)
+    if not k:
+        return ""
+    for suf in ("filiali", "filial", "flial", "branch"):
+        if k.endswith(suf) and len(k) > len(suf):
+            return k[: -len(suf)]
+    return k
+
+
 def compact_car(s):
     return re.sub(r"\s+", "", str(s or "").upper())
 
@@ -1437,13 +1448,25 @@ def build_pharm_index(drivers, pharmacies):
             if not name or not car:
                 continue
             drv = next((d for d in drivers if d["car"] == car), None)
-            index.append({"norm": norm_ph(name), "name": name, "car": car, "driver": (drv or {}).get("shortName") or car})
+            key = pharmacy_key(name)
+            index.append({
+                "norm": key or norm_ph(name),
+                "name": name,
+                "car": car,
+                "driver": (drv or {}).get("shortName") or car,
+            })
         return index
     for drv in drivers:
         for ph in (drv.get("pharmacies") or "").split(","):
             ph = ph.strip()
             if ph:
-                index.append({"norm": norm_ph(ph), "name": ph, "car": drv["car"], "driver": drv["shortName"]})
+                key = pharmacy_key(ph)
+                index.append({
+                    "norm": key or norm_ph(ph),
+                    "name": ph,
+                    "car": drv["car"],
+                    "driver": drv["shortName"],
+                })
     return index
 
 
@@ -1478,7 +1501,7 @@ def match_pharmacy(place, current_car, lat, lng, pharm_index, pharmacies):
     geo = match_geo(current_car, lat, lng, pharmacies)
     if geo:
         return geo
-    pn = norm_ph(place)
+    pn = pharmacy_key(place) or norm_ph(place)
     if len(pn) < 3:
         return {"type": "none", "phName": None, "owners": []}
     best_score, best = 0, None
@@ -1564,7 +1587,7 @@ def own_pharmacy_list(car_key, drivers, pharmacies):
     if from_state:
         seen, out = set(), []
         for n in from_state:
-            k = norm_ph(n)
+            k = pharmacy_key(n)
             if k and k not in seen:
                 seen.add(k)
                 out.append(n)
@@ -1575,7 +1598,7 @@ def own_pharmacy_list(car_key, drivers, pharmacies):
     seen, out = set(), []
     for n in drv["pharmacies"].split(","):
         n = n.strip()
-        k = norm_ph(n)
+        k = pharmacy_key(n)
         if k and k not in seen:
             seen.add(k)
             out.append(n)
@@ -1620,13 +1643,14 @@ def valid_uz_coord(lat, lng):
 
 def find_pharmacy(pharmacies, car, name):
     want_car = compact_car(car)
-    want_name = norm_ph(name)
+    want_name = pharmacy_key(name) or norm_ph(name)
     for ph in pharmacies or []:
         if not isinstance(ph, dict):
             continue
         if compact_car(ph.get("car")) != want_car:
             continue
-        if norm_ph(ph.get("name")) == want_name:
+        got = pharmacy_key(ph.get("name")) or norm_ph(ph.get("name"))
+        if got and got == want_name:
             return ph
     return None
 

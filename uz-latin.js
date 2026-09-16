@@ -107,10 +107,21 @@ function uzSearchMatch(haystack, needle) {
     return !!(qSoft && hSoft.indexOf(qSoft) !== -1);
 }
 
+/**
+ * Dorixona identifikatori: «Shirin» ≡ «Shirin filial» ≡ «Ширин».
+ * Faqat filial/branch qo'shimchalari olib tashlanadi (Algoritm-Guliston o'zgarmaydi).
+ */
+function pharmacyKey(s) {
+    let k = uzSearchFold(s);
+    if (!k) return '';
+    const stripped = k.replace(/(filiali|filial|flial|branch)$/i, '');
+    return stripped || k;
+}
+
 /** Ikki nom bir xil joy (biriktirish/dedupe) */
 function uzNameEq(a, b) {
-    const ka = uzSearchFold(a);
-    const kb = uzSearchFold(b);
+    const ka = pharmacyKey(a);
+    const kb = pharmacyKey(b);
     return !!ka && ka === kb;
 }
 
@@ -118,4 +129,5 @@ window.uzLatin = uzLatin;
 window.uzUi = uzUi;
 window.uzSearchFold = uzSearchFold;
 window.uzSearchMatch = uzSearchMatch;
+window.pharmacyKey = pharmacyKey;
 window.uzNameEq = uzNameEq;

@@ -312,18 +312,97 @@ const VMOffice = {
                 if (!drv || !drv.pharmacies) return [];
                 return String(drv.pharmacies).split(',').map(s => s.trim()).filter(Boolean);
             })();
-        const fold = (s) => (typeof uzSearchFold === 'function'
-            ? uzSearchFold(s)
-            : String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-яўқғҳ]/gi, ''));
+        const keyOf = (s) => (typeof pharmacyKey === 'function'
+            ? pharmacyKey(s)
+            : (typeof uzSearchFold === 'function'
+                ? uzSearchFold(s)
+                : String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-яўқғҳ]/gi, '')));
         const seen = new Set();
         const out = [];
         raw.forEach(n => {
-            const k = fold(n);
+            const k = keyOf(n);
             if (!k || seen.has(k)) return;
             seen.add(k);
             out.push(n);
         });
         return out;
+    },
+
+    async savePharmacies(list) {
+        const d = await vmApi('/api/office/pharmacies', {
+            method: 'POST',
+            body: JSON.stringify({ pharmacies: list || STATE.pharmacies || [] })
+        });
+        STATE.pharmacies = Array.isArray(d.pharmacies) ? d.pharmacies : (list || STATE.pharmacies || []);
+        if (typeof buildPharmIndex === 'function') buildPharmIndex();
+        if (typeof renderCarPharmacyRoster === 'function') renderCarPharmacyRoster(STATE.currentCar);
+        if (typeof renderKPI === 'function' || typeof refreshUI === 'function') {
+            try { if (typeof refreshUI === 'function') refreshUI({ deferMap: true }); } catch (e) {}
+        }
+        return STATE.pharmacies;
+    },
+
+    pharmKey(name) {
+        if (typeof pharmacyKey === 'function') return pharmacyKey(name);
+        if (typeof uzSearchFold === 'function') return uzSearchFold(name);
+        return String(name || '').toLowerCase();
+    },
+
+    findPharmByKey(name) {
+        const k = this.pharmKey(name);
+        if (!k) return null;
+        return (STATE.pharmacies || []).find(p => this.pharmKey(p.name) === k) || null;
+    },
+
+    async assignToCar(name, car, lat, lng, radiusM) {
+        name = String(name || '').trim();
+        car = String(car || '').trim();
+        if (!name || !car) throw new Error('Nom va mashina kerak');
+        const k = this.pharmKey(name);
+        let list = Array.isArray(STATE.pharmacies) ? STATE.pharmacies.slice() : [];
+        const matches = k ? list.filter(p => this.pharmKey(p.name) === k) : [];
+        let keep = matches.find(p => p.lat != null && p.lng != null) || matches[0] || null;
+        if (matches.length > 1 && keep) {
+            list = list.filter(p => this.pharmKey(p.name) !== k || p.id === keep.id);
+        }
+        if (keep) {
+            keep.car = car;
+            keep.name = name;
+            if (lat != null && lng != null && lat !== '' && lng !== '') {
+                keep.lat = Number(lat);
+                keep.lng = Number(lng);
+            }
+            if (radiusM != null) keep.radiusM = Math.max(40, Math.min(500, Number(radiusM) || 120));
+        } else {
+            list.push({
+                id: 'ph_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9),
+                car,
+                name,
+                lat: lat == null || lat === '' ? null : Number(lat),
+                lng: lng == null || lng === '' ? null : Number(lng),
+                radiusM: Math.max(40, Math.min(500, Number(radiusM) || 120)),
+                aliases: []
+            });
+        }
+        return this.savePharmacies(list);
+    },
+
+    async removePharm(id) {
+        const list = (STATE.pharmacies || []).filter(p => p.id !== id);
+        return this.savePharmacies(list);
+    },
+
+    async renamePharm(id, newName) {
+        newName = String(newName || '').trim();
+        if (!newName) throw new Error('Nom boʻsh');
+        const list = Array.isArray(STATE.pharmacies) ? STATE.pharmacies.slice() : [];
+        const rec = list.find(p => p.id === id);
+        if (!rec) throw new Error('Topilmadi');
+        const k = this.pharmKey(newName);
+        const cleaned = list.filter(p => p.id === id || !k || this.pharmKey(p.name) !== k);
+        const row = cleaned.find(p => p.id === id);
+        row.name = newName;
+        return this.savePharmacies(cleaned);
     },
 
     matchGeo(currentCar, lat, lng) {

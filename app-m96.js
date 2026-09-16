@@ -369,12 +369,37 @@ function uniquePhNames(list) {
     const seen = new Set();
     const out = [];
     (list || []).forEach(ph => {
-        const k = normPh(ph);
+        const k = (typeof pharmacyKey === 'function' ? pharmacyKey(ph) : null) || normPh(ph);
         if (!k || seen.has(k)) return;
         seen.add(k);
         out.push(ph);
     });
     return out;
+}
+
+function ownPharmacyRecords(carKey) {
+    const car = carKey || STATE.currentCar || '';
+    if (!car) return [];
+    const fromState = (STATE.pharmacies || []).filter(p => p.car === car);
+    if (fromState.length) {
+        const seen = new Set();
+        const out = [];
+        fromState.forEach(p => {
+            const k = (typeof pharmacyKey === 'function' ? pharmacyKey(p.name) : null) || normPh(p.name);
+            if (!k || seen.has(k)) return;
+            seen.add(k);
+            out.push(p);
+        });
+        return out;
+    }
+    return ownPharmacyList(car).map((name, i) => ({
+        id: 'local_' + i,
+        name,
+        car,
+        lat: null,
+        lng: null,
+        _ephemeral: true
+    }));
 }
 
 function ownPharmacyList(carKey) {
@@ -389,12 +414,17 @@ function ownPharmacyList(carKey) {
 function buildPharmIndex() {
     PHARM_INDEX = [];
     const pushEntry = (phName, car, shortName) => {
-        const n = normPh(phName);
+        const n = (typeof pharmacyKey === 'function' ? pharmacyKey(phName) : null) || normPh(phName);
         if (!n) return;
         PHARM_INDEX.push({ norm: n, name: phName, car, driver: uiTxt(shortName) });
         Object.entries(PHARMACY_ALIASES).forEach(([canonical, aliases]) => {
             if (n.includes(normPh(canonical)) || aliases.some(a => n.includes(normPh(a)))) {
-                aliases.forEach(al => PHARM_INDEX.push({ norm: normPh(al), name: phName, car, driver: shortName }));
+                aliases.forEach(al => PHARM_INDEX.push({
+                    norm: (typeof pharmacyKey === 'function' ? pharmacyKey(al) : null) || normPh(al),
+                    name: phName,
+                    car,
+                    driver: shortName
+                }));
             }
         });
     };
@@ -418,7 +448,7 @@ function matchPharmacy(place, currentCar, lat, lng) {
         const geo = VMOffice.matchGeo(currentCar, lat, lng);
         if (geo) return geo;
     }
-    const pn = normPh(place);
+    const pn = (typeof pharmacyKey === 'function' ? pharmacyKey(place) : null) || normPh(place);
     if (!pn || pn.length < 3) return { type: 'none', phName: null, owners: [] };
 
     let bestScore = 0, bestMatch = null, owners = [];
@@ -1836,13 +1866,18 @@ function selectDriver(carKey) {
 function renderCarPharmacyRoster(carKey) {
     const el = document.getElementById('car-pharmacy-roster');
     const cnt = document.getElementById('car-pharm-count');
+    const tools = document.getElementById('car-pharm-tools');
     if (!el) return;
     const car = carKey || STATE.currentCar || '';
-    const list = car ? uniquePhNames(ownPharmacyList(car)) : [];
+    const canEdit = typeof vmIsStaff === 'function' && vmIsStaff(window.VM_USER);
+    const records = car ? ownPharmacyRecords(car) : [];
     if (cnt) {
         cnt.textContent = car
-            ? (String(car).replace(/^(\d{2})\s+/, '$1/') + ' · ' + list.length + ' ta')
+            ? (String(car).replace(/^(\d{2})\s+/, '$1/') + ' · ' + records.length + ' ta')
             : '';
+    }
+    if (tools) {
+        tools.hidden = !(canEdit && car);
     }
     if (!car) {
         el.innerHTML = `<div class="empty-state">
@@ -1851,19 +1886,156 @@ function renderCarPharmacyRoster(carKey) {
         </div>`;
         return;
     }
-    if (!list.length) {
+    if (!records.length) {
         el.innerHTML = `<div class="empty-state">
             <div class="empty-title">Dorixona biriktirilmagan</div>
-            <div class="empty-desc">Boshqaruv → Dorixona biriktirish orqali qo'shing.</div>
+            <div class="empty-desc">${canEdit ? '«Qoʻshish» bilan qoʻshing yoki Boshqaruv → Dorixona biriktirish.' : 'Boshqaruv → Dorixona biriktirish orqali qoʻshing.'}</div>
         </div>`;
         return;
     }
     el.innerHTML = `<div class="car-pharm-grid">
-        ${list.map((ph, i) => `<div class="car-pharm-item">
+        ${records.map((ph, i) => {
+            const id = String(ph.id || '');
+            const nm = uiTxt(ph.name);
+            const actions = (canEdit && !ph._ephemeral)
+                ? `<span class="car-pharm-actions">
+                    <button type="button" class="car-pharm-btn" data-ph-edit="${escAttr(id)}" title="Tahrirlash">Tahrir</button>
+                    <button type="button" class="car-pharm-btn danger" data-ph-del="${escAttr(id)}" title="Oʻchirish">Oʻchir</button>
+                   </span>`
+                : '';
+            return `<div class="car-pharm-item" data-ph-id="${escAttr(id)}">
             <span class="n">${i + 1}</span>
-            <span class="nm">${uiTxt(ph)}</span>
-        </div>`).join('')}
+            <span class="nm">${nm}</span>
+            ${actions}
+        </div>`;
+        }).join('')}
     </div>`;
+}
+
+function escAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function ensureCarPharmModal() {
+    let m = document.getElementById('car-pharm-modal');
+    if (m) return m;
+    m = document.createElement('div');
+    m.id = 'car-pharm-modal';
+    m.className = 'car-pharm-modal';
+    m.hidden = true;
+    m.innerHTML = `
+      <div class="car-pharm-modal-card" role="dialog" aria-modal="true">
+        <div class="car-pharm-modal-head">
+          <h4 id="car-pharm-modal-title">Dorixona</h4>
+          <button type="button" class="car-pharm-modal-x" id="car-pharm-modal-close" aria-label="Yopish">×</button>
+        </div>
+        <label class="car-pharm-field">
+          <span>Nomi</span>
+          <input type="text" id="car-pharm-modal-name" maxlength="80" autocomplete="off" />
+        </label>
+        <p class="car-pharm-modal-hint" id="car-pharm-modal-hint"></p>
+        <div class="car-pharm-modal-actions">
+          <button type="button" class="btn btn-sm" id="car-pharm-modal-cancel">Bekor</button>
+          <button type="button" class="btn btn-sm btn-gold" id="car-pharm-modal-save">Saqlash</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', (e) => {
+        if (e.target === m) closeCarPharmModal();
+    });
+    document.getElementById('car-pharm-modal-close').addEventListener('click', closeCarPharmModal);
+    document.getElementById('car-pharm-modal-cancel').addEventListener('click', closeCarPharmModal);
+    document.getElementById('car-pharm-modal-save').addEventListener('click', submitCarPharmModal);
+    return m;
+}
+
+let _carPharmModalMode = null;
+let _carPharmModalId = null;
+
+function openCarPharmModal(mode, rec) {
+    if (!(typeof vmIsStaff === 'function' && vmIsStaff(window.VM_USER))) return;
+    const m = ensureCarPharmModal();
+    _carPharmModalMode = mode;
+    _carPharmModalId = rec && rec.id ? rec.id : null;
+    const title = document.getElementById('car-pharm-modal-title');
+    const input = document.getElementById('car-pharm-modal-name');
+    const hint = document.getElementById('car-pharm-modal-hint');
+    title.textContent = mode === 'edit' ? 'Dorixonani tahrirlash' : 'Dorixona qoʻshish';
+    input.value = rec && rec.name ? rec.name : '';
+    hint.textContent = mode === 'add'
+        ? 'Shu mashinaga biriktiriladi. Agar nom boshqa mashinada boʻlsa — avtomatik oʻtkaziladi.'
+        : 'Nom «Shirin filial» kabi boʻlsa ham «Shirin» bilan bir joy hisoblanadi.';
+    m.hidden = false;
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+}
+
+function closeCarPharmModal() {
+    const m = document.getElementById('car-pharm-modal');
+    if (m) m.hidden = true;
+    _carPharmModalMode = null;
+    _carPharmModalId = null;
+}
+
+async function submitCarPharmModal() {
+    const input = document.getElementById('car-pharm-modal-name');
+    const name = String((input && input.value) || '').trim();
+    const car = STATE.currentCar;
+    if (!name || !car) {
+        if (typeof showToast === 'function') showToast('Nom kiriting', 'warn');
+        return;
+    }
+    try {
+        if (!window.VMOffice || typeof VMOffice.assignToCar !== 'function') {
+            throw new Error('Ofis moduli yuklanmagan');
+        }
+        if (_carPharmModalMode === 'edit' && _carPharmModalId) {
+            await VMOffice.renamePharm(_carPharmModalId, name);
+            if (typeof showToast === 'function') showToast('Yangilandi', 'ok');
+        } else {
+            await VMOffice.assignToCar(name, car);
+            if (typeof showToast === 'function') showToast('"' + name + '" biriktirildi', 'ok');
+        }
+        closeCarPharmModal();
+        renderCarPharmacyRoster(car);
+    } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'Xato', 'warn');
+    }
+}
+
+function bindCarPharmacyRosterUi() {
+    if (bindCarPharmacyRosterUi._done) return;
+    bindCarPharmacyRosterUi._done = true;
+    const addBtn = document.getElementById('car-pharm-add');
+    if (addBtn) {
+        addBtn.addEventListener('click', () => openCarPharmModal('add'));
+    }
+    const el = document.getElementById('car-pharmacy-roster');
+    if (!el) return;
+    el.addEventListener('click', async (e) => {
+        const edit = e.target.closest('[data-ph-edit]');
+        const del = e.target.closest('[data-ph-del]');
+        if (edit) {
+            const id = edit.getAttribute('data-ph-edit');
+            const rec = (STATE.pharmacies || []).find(p => p.id === id);
+            if (rec) openCarPharmModal('edit', rec);
+            return;
+        }
+        if (del) {
+            const id = del.getAttribute('data-ph-del');
+            const rec = (STATE.pharmacies || []).find(p => p.id === id);
+            const label = rec ? rec.name : id;
+            if (!confirm('«' + label + '» ni shu mashinadan olib tashlaysizmi?')) return;
+            try {
+                await VMOffice.removePharm(id);
+                if (typeof showToast === 'function') showToast('Oʻchirildi', 'ok');
+                renderCarPharmacyRoster(STATE.currentCar);
+            } catch (err) {
+                if (typeof showToast === 'function') showToast(err.message || 'Xato', 'warn');
+            }
+        }
+    });
 }
 
 // ── 9. ASOSIY UI YANGILASH ──────────────────────────────────
@@ -3832,6 +4004,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (window.VMOffice) {
         await VMOffice.bootstrap();
+        bindCarPharmacyRosterUi();
         if (typeof listenFleetNameOverrides === 'function') {
             listenFleetNameOverrides(() => {
                 if (typeof buildPharmIndex === 'function') buildPharmIndex();
@@ -3841,6 +4014,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (typeof refreshUI === 'function') refreshUI();
             });
         }
+    } else {
+        bindCarPharmacyRosterUi();
     }
 
     // Kalendarni ko'rsatish — UI darhol, og'ir so'rovlar fon

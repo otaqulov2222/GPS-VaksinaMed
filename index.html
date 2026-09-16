@@ -764,12 +764,16 @@ body {
 .car-pharm-card .sec-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
 }
+.car-pharm-head-right {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end;
+}
 .car-pharm-count {
   font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap;
 }
+.car-pharm-tools { display: flex; gap: 6px; }
 .car-pharm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 8px;
   padding: 4px 2px 2px;
 }
@@ -779,13 +783,70 @@ body {
   border: 1px solid var(--line);
   background: #f7fafc;
   font-size: 13px; line-height: 1.35;
+  position: relative;
 }
 .car-pharm-item .n {
   flex: 0 0 auto;
   font-family: var(--mono); font-size: 11px; font-weight: 700;
   color: var(--faint); min-width: 1.4em;
 }
-.car-pharm-item .nm { font-weight: 600; color: var(--ink); }
+.car-pharm-item .nm { font-weight: 600; color: var(--ink); flex: 1; min-width: 0; }
+.car-pharm-actions {
+  display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto;
+  opacity: 0.72;
+}
+.car-pharm-item:hover .car-pharm-actions { opacity: 1; }
+.car-pharm-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-size: 10px; font-weight: 700;
+  padding: 2px 6px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.car-pharm-btn:hover { border-color: #7a9ab8; background: #eef4fa; }
+.car-pharm-btn.danger { color: #9b2c2c; }
+.car-pharm-btn.danger:hover { border-color: #c45c5c; background: #fdf2f2; }
+
+.car-pharm-modal {
+  position: fixed; inset: 0; z-index: 12000;
+  background: rgba(15, 28, 46, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.car-pharm-modal[hidden] { display: none !important; }
+.car-pharm-modal-card {
+  width: min(420px, 100%);
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 48px rgba(15, 28, 46, 0.18);
+  padding: 16px 18px 14px;
+}
+.car-pharm-modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.car-pharm-modal-head h4 {
+  margin: 0; font-size: 16px; font-weight: 800; color: var(--ink);
+}
+.car-pharm-modal-x {
+  border: 0; background: transparent; font-size: 22px; line-height: 1;
+  cursor: pointer; color: var(--muted); padding: 0 4px;
+}
+.car-pharm-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.car-pharm-field span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.car-pharm-field input {
+  height: 40px; padding: 0 12px;
+  border: 1px solid #a8bdd4; background: #fff;
+  font-size: 14px; font-weight: 600;
+}
+.car-pharm-modal-hint {
+  margin: 0 0 14px; font-size: 12px; color: var(--muted); line-height: 1.4;
+}
+.car-pharm-modal-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+}
 
 .ph-note {
 
@@ -2313,7 +2374,12 @@ input, select, textarea { max-width: 100%; }
     <div class="card car-pharm-card" id="car-pharm-card">
       <div class="sec-head">
         <h3>Shu mashinaga tegishli dorixonalar</h3>
-        <span class="car-pharm-count" id="car-pharm-count"></span>
+        <div class="car-pharm-head-right">
+          <span class="car-pharm-count" id="car-pharm-count"></span>
+          <div class="car-pharm-tools" id="car-pharm-tools" hidden>
+            <button type="button" class="btn btn-sm btn-gold" id="car-pharm-add">+ Qoʻshish</button>
+          </div>
+        </div>
       </div>
       <div id="car-pharmacy-roster">
         <div class="empty-state">
@@ -2674,7 +2740,7 @@ input, select, textarea { max-width: 100%; }
 
 <script src="wialon-api.js?v=32"></script>
 
-<script src="uz-latin.js?v=3"></script>
+<script src="uz-latin.js?v=4"></script>
 <script src="fleet-data.js?v=9"></script>
 
 <script src="/api/live-nav.js?v=m106"></script>
@@ -2683,9 +2749,9 @@ input, select, textarea { max-width: 100%; }
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=2"></script>
 
-<script src="app-m96.js?v=m115"></script>
+<script src="app-m96.js?v=m116"></script>
 
-<script src="office.js?v=20"></script>
+<script src="office.js?v=21"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

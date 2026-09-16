@@ -354,7 +354,7 @@ function uniquePhNames(list) {
     const seen = new Set();
     const out = [];
     (list || []).forEach(ph => {
-        const k = normPh(ph);
+        const k = (typeof pharmacyKey === 'function' ? pharmacyKey(ph) : null) || normPh(ph);
         if (!k || seen.has(k)) return;
         seen.add(k);
         out.push(ph);
@@ -403,7 +403,7 @@ function matchPharmacy(place, currentCar, lat, lng) {
         const geo = VMOffice.matchGeo(currentCar, lat, lng);
         if (geo) return geo;
     }
-    const pn = normPh(place);
+    const pn = (typeof pharmacyKey === 'function' ? pharmacyKey(place) : null) || normPh(place);
     if (!pn || pn.length < 3) return { type: 'none', phName: null, owners: [] };
 
     let bestScore = 0, bestMatch = null, owners = [];

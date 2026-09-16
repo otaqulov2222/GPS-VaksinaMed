@@ -1134,6 +1134,58 @@ def clean_pharmacy(p):
     }
 
 
+def _pharmacy_identity_key(name):
+    """Import gps_sync.pharmacy_key when available; fallback to simple fold."""
+    try:
+        from gps_sync import pharmacy_key as _pk
+
+        return _pk(name) or ""
+    except Exception:
+        t = re.sub(r"[^a-z0-9]+", "", str(name or "").lower())
+        for suf in ("filiali", "filial", "flial", "branch"):
+            if t.endswith(suf) and len(t) > len(suf):
+                return t[: -len(suf)]
+        return t
+
+
+def dedupe_pharmacies(items):
+    """Bir dorixona = bitta mashina. Oxirgi yozuv g'olib; koordinata saqlanadi."""
+    by_key = {}
+    order = []
+    for p in items or []:
+        if not isinstance(p, dict):
+            continue
+        k = _pharmacy_identity_key(p.get("name"))
+        if not k:
+            # kalit yo'q bo'lsa ham id bo'yicha saqlaymiz
+            k = "id:" + str(p.get("id") or secrets.token_hex(4))
+        if k in by_key:
+            old = by_key[k]
+            merged = dict(p)
+            if merged.get("lat") is None and old.get("lat") is not None:
+                merged["lat"] = old.get("lat")
+                merged["lng"] = old.get("lng")
+            if not merged.get("radiusM") and old.get("radiusM"):
+                merged["radiusM"] = old.get("radiusM")
+            aliases = []
+            for src in (old.get("aliases") or [], merged.get("aliases") or []):
+                for a in src:
+                    if a and a not in aliases:
+                        aliases.append(a)
+            # Eski nom alias sifatida (Shirin → Shirin filial o'tkazilsa)
+            old_name = str(old.get("name") or "").strip()
+            new_name = str(merged.get("name") or "").strip()
+            if old_name and old_name.lower() != new_name.lower() and old_name not in aliases:
+                aliases.append(old_name)
+            merged["aliases"] = aliases[:12]
+            merged["id"] = old.get("id") or merged.get("id")
+            by_key[k] = merged
+        else:
+            by_key[k] = p
+            order.append(k)
+    return [by_key[k] for k in order]
+
+
 def telegram_send(token, chat_id, text):
     token = (token or "").strip()
     chat_id = str(chat_id or "").strip()
@@ -1209,20 +1261,40 @@ class OfficeStore:
         with self.lock:
             data = self._load("office:pharmacies", {})
             items = data.get("pharmacies") if isinstance(data, dict) else []
-            return items if isinstance(items, list) else []
+            raw = items if isinstance(items, list) else []
+        cleaned = [c for c in (clean_pharmacy(p) for p in raw) if c]
+        unique = dedupe_pharmacies(cleaned)
+        seen_ids = set()
+        out = []
+        for p in unique:
+            row = dict(p)
+            if row["id"] in seen_ids:
+                row["id"] = "ph_" + secrets.token_hex(4)
+            seen_ids.add(row["id"])
+            out.append(row)
+
+        def _sig(rows):
+            return [(r.get("id"), r.get("car"), r.get("name"), r.get("lat"), r.get("lng")) for r in rows]
+
+        if _sig(cleaned) != _sig(out):
+            with self.lock:
+                self._save("office:pharmacies", {"pharmacies": out})
+        return out
 
     def save_pharmacies(self, items):
         cleaned = [c for c in (clean_pharmacy(p) for p in items or []) if c]
+        unique = dedupe_pharmacies(cleaned)
         seen = set()
-        unique = []
-        for p in cleaned:
-            if p["id"] in seen:
-                p["id"] = "ph_" + secrets.token_hex(4)
-            seen.add(p["id"])
-            unique.append(p)
+        out = []
+        for p in unique:
+            row = dict(p)
+            if row["id"] in seen:
+                row["id"] = "ph_" + secrets.token_hex(4)
+            seen.add(row["id"])
+            out.append(row)
         with self.lock:
-            self._save("office:pharmacies", {"pharmacies": unique})
-        return unique
+            self._save("office:pharmacies", {"pharmacies": out})
+        return out
 
     def gps_zones_catalog(self):
         """Boomerangdan saqlangan geozona katalogi (biriktirishsiz)."""
