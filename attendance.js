@@ -161,13 +161,122 @@
   }
 
   function qrRequired() {
-    return !!(STATE && STATE.settings && STATE.settings.require_qr);
+    // QR tizimdan olib tashlangan — hech qachon skaner ochilmasin
+    return false;
   }
 
   function punchGateOk() {
-    if (geoLive.inside !== true) return false;
-    if (qrRequired()) return !!activeQrTicket();
-    return true;
+    return geoLive.inside === true;
+  }
+
+  let punchCooldownUntil = 0;
+  let confirmResolver = null;
+
+  function closePunchConfirm() {
+    const m = document.getElementById('att-confirm-modal');
+    if (m) {
+      m.hidden = true;
+      m.setAttribute('aria-hidden', 'true');
+    }
+    document.body.classList.remove('att-confirm-open');
+    if (confirmResolver) {
+      const r = confirmResolver;
+      confirmResolver = null;
+      r(false);
+    }
+  }
+
+  function askPunchConfirm(kind) {
+    return new Promise((resolve) => {
+      const m = document.getElementById('att-confirm-modal');
+      if (!m) {
+        resolve(window.confirm(kind === 'out' ? 'Ishdan ketasizmi?' : 'Ishga keldingizmi?'));
+        return;
+      }
+      if (confirmResolver) {
+        const prev = confirmResolver;
+        confirmResolver = null;
+        prev(false);
+      }
+      confirmResolver = resolve;
+      const ico = document.getElementById('att-confirm-ico');
+      const title = document.getElementById('att-confirm-title');
+      const lead = document.getElementById('att-confirm-lead');
+      const note = document.getElementById('att-confirm-note');
+      const yes = document.getElementById('att-confirm-yes');
+      const no = document.getElementById('att-confirm-no');
+      if (kind === 'out') {
+        if (ico) { ico.textContent = 'OUT'; ico.className = 'att-confirm-ico out'; }
+        if (title) title.textContent = 'Ishdan ketish';
+        if (lead) lead.textContent = 'Ishdan ketishni bosayapsiz. Bugungi ish kuni yopiladi va ketish vaqti yoziladi.';
+        if (note) note.textContent = 'Faqat ofisdan haqiqatan chiqayotgan bo‘lsangiz «Ha, ketdim» ni bosing.';
+        if (yes) yes.textContent = 'Ha, ketdim';
+      } else {
+        if (ico) { ico.textContent = 'IN'; ico.className = 'att-confirm-ico in'; }
+        if (title) title.textContent = 'Ishga kelish';
+        if (lead) lead.textContent = 'Ishga keldingizmi? Tasdiqlasangiz, bugungi kelish vaqti yoziladi.';
+        if (note) note.textContent = 'Ofis zonasida ekanligingiz GPS orqali tekshiriladi.';
+        if (yes) yes.textContent = 'Ha, keldim';
+      }
+      m.hidden = false;
+      m.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('att-confirm-open');
+      const finish = (ok) => {
+        if (!confirmResolver) return;
+        confirmResolver = null;
+        m.hidden = true;
+        m.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('att-confirm-open');
+        resolve(!!ok);
+      };
+      if (yes) {
+        yes.onclick = (e) => {
+          if (e) e.preventDefault();
+          finish(true);
+        };
+      }
+      if (no) {
+        no.onclick = (e) => {
+          if (e) e.preventDefault();
+          finish(false);
+        };
+      }
+      const bd = document.getElementById('att-confirm-backdrop');
+      if (bd) bd.onclick = () => finish(false);
+    });
+  }
+
+  /** Foydalanuvchi tugmani bosganda — avval ruxsat, keyin yozish. Skaner yo‘q. */
+  async function requestPunch(kind) {
+    if (busy) return;
+    if (Date.now() < punchCooldownUntil) {
+      msg('Biroz kuting — oldingi yozuv yakunlanmoqda', 'info');
+      return;
+    }
+    kind = kind === 'out' ? 'out' : 'in';
+    const today = (STATE && STATE.today) || {};
+    if (kind === 'in' && today.in) {
+      msg('Bugun allaqachon kelganingiz yozilgan', 'info');
+      return;
+    }
+    if (kind === 'out' && !today.in) {
+      msg('Avval Keldim ni bosing', 'info');
+      return;
+    }
+    if (kind === 'out' && today.out) {
+      msg('Bugun allaqachon ketganingiz yozilgan', 'info');
+      return;
+    }
+    if (geoLive.inside !== true) {
+      msg('Faqat ofis radiusida ochiladi — «Qayta tekshirish» bosing', 'err');
+      return;
+    }
+    const ok = await askPunchConfirm(kind);
+    if (!ok) {
+      msg(kind === 'out' ? 'Ketish bekor qilindi' : 'Kelish bekor qilindi', 'info');
+      return;
+    }
+    await executePunch(kind);
   }
 
   function haversineM(lat1, lng1, lat2, lng2) {
@@ -1115,12 +1224,16 @@
     let lock = false;
     const run = (ev) => {
       if (lock) return;
+      if (busy) return;
       lock = true;
-      if (ev && ev.preventDefault) ev.preventDefault();
+      if (ev) {
+        if (ev.preventDefault) ev.preventDefault();
+        if (ev.stopPropagation) ev.stopPropagation();
+      }
       Promise.resolve()
         .then(() => fn(ev))
         .catch(() => {})
-        .finally(() => { setTimeout(() => { lock = false; }, 450); });
+        .finally(() => { setTimeout(() => { lock = false; }, 700); });
     };
     el.addEventListener('click', run, { passive: false });
   }
@@ -1271,34 +1384,9 @@
   }
 
   function openModal(title, sub, opts) {
-    if (!modal) return;
-    opts = opts || {};
-    const kind = opts.kind || nextPunchKind() || 'in';
-    const punchTitle = kind === 'out' ? 'Ketdim — QR scanner' : 'Keldim — QR scanner';
-    modal.hidden = false;
-    modal.setAttribute('aria-hidden', 'false');
-    modal.classList.add('open');
-    modal.classList.add('qr-mode');
-    document.body.classList.add('fid-lock');
-    modalOpen = true;
-    pendingScan = null;
-    hideFidActions();
-    hideRetry();
-    const t = document.getElementById('fid-title');
-    const s = document.getElementById('fid-sub');
-    if (t) t.textContent = title || (opts.qrMode !== false ? punchTitle : 'FACE ID');
-    if (s) {
-      s.textContent = sub || (opts.qrMode !== false
-        ? 'Ofis QR kodini yashil ramka ichiga tuting'
-        : '');
-    }
-    setFidUI({
-      status: 'Kamera ochilmoqda…',
-      hint: 'QR kodni yashil burchakli ramka ichiga tuting',
-      progress: null,
-      tone: 'load'
-    });
-    modal.classList.remove('ok', 'err', 'warn', 'scanning');
+    // QR/skaner punch uchun ochilmasin
+    closeModal();
+    return;
   }
 
   function closeModal() {
@@ -2616,8 +2704,8 @@
         if (personId) loadPerson(true);
       });
     }
-    if (kIn) bindTap(kIn, () => confirmPunch('in'));
-    if (kOut) bindTap(kOut, () => confirmPunch('out'));
+    if (kIn) bindTap(kIn, () => requestPunch('in'));
+    if (kOut) bindTap(kOut, () => requestPunch('out'));
     const geoBtn = document.getElementById('btn-geo-check');
     if (geoBtn) bindTap(geoBtn, () => {
       hideGeoHelp();
@@ -2628,23 +2716,19 @@
 
     const cont = document.getElementById('av-continue');
     if (cont) bindTap(cont, () => {
-      const action = cont.getAttribute('data-action') || 'punch';
-      const kind = nextPunchKind() || cont.getAttribute('data-next') || 'in';
-      if (action === 'punch' || (!qrRequired() && punchGateOk())) {
-        confirmPunch(kind);
+      // QR olib tashlangan — faqat geozona + tasdiq
+      if (!punchGateOk()) {
+        hideGeoHelp();
+        startGeoWatch();
+        msg('Avval ofis zonasiga kiring', 'info');
         return;
       }
-      if (action === 'choose' && activeQrTicket()) {
-        openModal(
-          kind === 'out' ? 'Ketdim' : 'Keldim',
-          'Keldim yoki Ketdim tugmasini bosing',
-          { qrMode: true, kind }
-        );
-        pendingKind = null;
-        showFidActions();
+      const kind = nextPunchKind();
+      if (!kind) {
+        msg('Bugungi davomat yakunlangan', 'info');
         return;
       }
-      startQrScanFlow();
+      requestPunch(kind);
     });
 
     app.querySelectorAll('[data-person]').forEach((el) => {
@@ -2685,222 +2769,36 @@
     stopCam();
   }
 
-  async function startQrScanFlow(forcedKind) {
-    if (busy) return;
-    busy = true;
-    clearMsg();
-    warmQrLib();
-    const kind = forcedKind || nextPunchKind() || 'in';
-    pendingKind = null;
-    openModal(
-      'Ofis QR scanner',
-      'Ofis QR kodini yashil ramka ichiga tuting',
-      { qrMode: true }
-    );
-    flowRetry = () => startQrScanFlow(forcedKind);
-    try {
-      const gpsPromise = getGps().catch((e) => e);
-      setFidUI({
-        status: 'QR qidirilmoqda…',
-        hint: 'QR kodni yashil burchakli ramka ichiga tuting',
-        progress: null,
-        tone: 'scan'
-      });
-      const payload = await scanOfficeQrPayload();
-      stopScanPulse();
-      setFidUI({ status: 'Tasdiqlanmoqda…', hint: 'Ofis QR va joylashuv', progress: null, tone: 'load' });
-      const gpsOrErr = await gpsPromise;
-      if (!gpsOrErr || gpsOrErr instanceof Error || gpsOrErr.lat == null) {
-        throw new Error((gpsOrErr && gpsOrErr.message) || 'Joylashuv olinmadi — ofis zonasida qayta urining');
-      }
-      const r = await api('/api/attendance/qr/verify', {
-        method: 'POST',
-        body: JSON.stringify({
-          payload,
-          lat: gpsOrErr.lat,
-          lng: gpsOrErr.lng,
-          accuracy: gpsOrErr.accuracy
-        })
-      });
-      qrTicketLocal = {
-        ticket: r.qrTicket,
-        exp: r.exp,
-        expiresInSec: r.expiresInSec
-      };
-      if (STATE) STATE.qrTicket = qrTicketLocal;
-      await stopQrScanner();
-      geoLive.inside = true;
-      geoLive.status = 'ok';
-      geoLive.lat = gpsOrErr.lat;
-      geoLive.lng = gpsOrErr.lng;
-      geoLive.accuracy = gpsOrErr.accuracy;
-      // Avto-punch yo‘q — foydalanuvchi Keldim/Ketdim ni o‘zi bosadi
-      pendingKind = null;
-      const tEl = document.getElementById('fid-title');
-      const sEl = document.getElementById('fid-sub');
-      if (tEl) tEl.textContent = 'Ofis QR tasdiqlandi';
-      if (sEl) sEl.textContent = 'Endi Keldim yoki Ketdim ni tanlang';
-      setFidUI({
-        status: 'Tayyor',
-        hint: 'Keldim yoki Ketdim tugmasini bosing',
-        progress: null,
-        tone: 'ok'
-      });
-      if (modal) {
-        modal.classList.add('ok');
-        modal.classList.remove('scanning', 'err');
-      }
-      paintGeoUI();
-      busy = false;
-      showFidActions();
-      return;
-    } catch (e) {
-      stopScanPulse();
-      await stopQrScanner();
-      const text = e.message || 'QR xato';
-      if (modal) { modal.classList.add('err'); modal.classList.remove('ok', 'scanning'); }
-      setFidUI({ status: 'FAILED', hint: text, progress: null, tone: 'err' });
-      msg(text, 'err');
-      showRetry(text);
-    } finally {
-      busy = false;
-    }
+  async function startQrScanFlow() {
+    // QR tizimdan olib tashlangan — skaner ochilmaydi
+    msg('QR kerak emas. Ofis zonasida Keldim / Ketdim ni bosing.', 'info');
+    closeModal();
   }
 
-  function scanOfficeQrPayload() {
-    return new Promise(async (resolve, reject) => {
-      let settled = false;
-      const done = (err, val) => {
-        if (settled) return;
-        settled = true;
-        abortScan = null;
-        stopScanPulse();
-        if (err) reject(err);
-        else resolve(val);
-      };
-      abortScan = () => done(new Error('Bekor qilindi'));
-
-      const accept = (raw) => {
-        const text = String(raw || '').trim();
-        if (!text) return;
-        if (!/VMATT1\.\d+\./i.test(text)) {
-          setFidUI({
-            status: 'Noto‘g‘ri QR',
-            hint: 'Bu ofis QR emas — to‘g‘ri kodni tuting',
-            progress: null,
-            tone: 'warn'
-          });
-          return;
-        }
-        done(null, text);
-      };
-
-      const startHtml5 = async () => {
-        await loadScriptOnce(HTML5_QR);
-        if (!window.Html5Qrcode) throw new Error('QR skaner yuklanmadi — internetni tekshiring');
-        const holder = document.getElementById('qr-reader');
-        if (!holder) throw new Error('QR oyna topilmadi');
-        holder.hidden = false;
-        holder.innerHTML = '';
-        if (video) video.style.display = 'none';
-        if (modal) modal.classList.add('scanning', 'qr-mode');
-        startScanPulse();
-        html5Qr = new window.Html5Qrcode('qr-reader', { verbose: false });
-        const camId = await pickBackCameraId();
-        const formats = (window.Html5QrcodeSupportedFormats)
-          ? [window.Html5QrcodeSupportedFormats.QR_CODE]
-          : undefined;
-        // To‘liq kadr + yuqori fps — qrbox ikkinchi oq ramka va sekinlik berardi
-        const config = {
-          fps: 30,
-          aspectRatio: 1,
-          disableFlip: false,
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-        };
-        if (formats) config.formatsToSupport = formats;
-        const cameraConfig = camId
-          ? { deviceId: { exact: camId } }
-          : { facingMode: { ideal: 'environment' } };
-        await html5Qr.start(cameraConfig, config, (decoded) => accept(decoded), () => {});
-        // Kutubxona oq ramkasini DOM dan ham olib tashlash
-        try {
-          const shade = document.getElementById('qr-shaded-region');
-          if (shade) shade.remove();
-          const dash = document.getElementById('qr-reader__dashboard');
-          if (dash) dash.remove();
-        } catch (eHide) { /* ignore */ }
-      };
-
-      try {
-        // Native BarcodeDetector — barcha platformada birinchi (tez)
-        if (window.BarcodeDetector) {
-          try {
-            const supported = await window.BarcodeDetector.getSupportedFormats();
-            if (!supported || supported.includes('qr_code')) {
-              await startCam();
-              if (modal) modal.classList.add('scanning', 'qr-mode');
-              startScanPulse();
-              const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-              const tick = async () => {
-                if (settled) return;
-                try {
-                  if (video && video.readyState >= 2) {
-                    const codes = await detector.detect(video);
-                    if (codes && codes[0] && codes[0].rawValue) {
-                      accept(codes[0].rawValue);
-                      return;
-                    }
-                  }
-                } catch (e) { /* keep */ }
-                scanLoop = setTimeout(tick, 24);
-              };
-              tick();
-              return;
-            }
-          } catch (eNative) {
-            stopCam();
-          }
-        }
-        await startHtml5();
-      } catch (e) {
-        done(e);
-      }
-    });
-  }
-
-  /** Geozona OK (va kerak bo‘lsa QR) → Keldim/Ketdim */
+  /** Geozona OK → tasdiq → yozish (skaner yo‘q) */
   async function startAttendanceFlow(kind) {
-    if (qrRequired() && !activeQrTicket()) {
-      await startQrScanFlow();
-      return;
-    }
-    await confirmPunch(kind);
+    await requestPunch(kind);
   }
 
   async function confirmPunch(kind) {
-    if (qrRequired()) {
-      const ticket = activeQrTicket();
-      if (!ticket) {
-        msg('Avval ofis QR ni skanerlang', 'err');
-        return;
-      }
-    }
+    // Eski nom — hammasi requestPunch orqali
+    await requestPunch(kind);
+  }
+
+  async function executePunch(kind) {
+    if (busy) return;
     if (geoLive.inside !== true) {
       msg('Faqat ofis radiusida ochiladi — «Qayta tekshirish» bosing', 'err');
       return;
     }
     busy = true;
+    punchCooldownUntil = Date.now() + 2500;
     clearMsg();
+    closeModal();
     hideFidActions();
     hideRetry();
+    msg(kind === 'in' ? 'Keldim yozilmoqda…' : 'Ketdim yozilmoqda…', 'info');
     try {
-      setFidUI({
-        status: kind === 'in' ? 'KELDIM…' : 'KETDIM…',
-        hint: 'Yozilmoqda…',
-        progress: 90,
-        tone: 'ok'
-      });
-      if (!modalOpen) openModal(kind === 'in' ? 'KELDIM' : 'KETDIM', 'Davomat yozilmoqda', { qrMode: !!qrRequired() });
       const gps = await getGps();
       if (geoLive.inside !== true) {
         throw new Error('Hali ofis zonasida emassiz. GPS aniqlanishini kuting yoki ochiq joyda qayta tekshiring.');
@@ -2911,49 +2809,31 @@
         lng: gps.lng,
         accuracy: gps.accuracy
       };
-      if (qrRequired()) {
-        const ticket = activeQrTicket();
-        if (!ticket) throw new Error('Avval ofis QR ni skanerlang');
-        body.qrTicket = ticket.ticket;
-      }
       const r = await api('/api/attendance/punch', {
         method: 'POST',
         body: JSON.stringify(body)
       });
       qrTicketLocal = null;
       if (STATE) STATE.qrTicket = null;
-      setFidUI({
-        status: 'SUCCESS',
-        hint: r.message || (kind === 'in' ? 'Keldim qayd etildi' : 'Ketdim qayd etildi'),
-        progress: 100,
-        tone: 'ok'
-      });
-      await new Promise((x) => setTimeout(x, 650));
-      closeModal();
+      punchCooldownUntil = Date.now() + 4000;
       msg(r.message || (kind === 'in' ? 'Keldim — vaqt boshlandi' : 'Ketdim — kun yakunlandi'), 'ok');
       uiTab = 'bugun';
       await reload();
     } catch (e) {
-      if (modal) modal.classList.add('err');
       const text = e.message || 'Xato';
-      setFidUI({ status: 'DENIED', hint: text, progress: 0, tone: 'err' });
       msg(text, 'err');
-      if (/QR|skaner|ruxsat/i.test(text) && qrRequired()) {
-        qrTicketLocal = null;
-        if (STATE) STATE.qrTicket = null;
-      }
-      showRetry(text);
-      flowRetry = () => {
-        if (/QR|skaner|ruxsat/i.test(text) && qrRequired()) startQrScanFlow();
-        else confirmPunch(kind);
-      };
+      punchCooldownUntil = Date.now() + 1200;
     } finally {
       busy = false;
     }
   }
 
+  function scanOfficeQrPayload() {
+    return Promise.reject(new Error('QR o‘chirilgan'));
+  }
+
   async function doEnroll() {
-    msg('Face ID o‘chirilgan. Ofis QR dan foydalaning.', 'info');
+    msg('Face ID o‘chirilgan. Ofis zonasida Keldim / Ketdim ni bosing.', 'info');
   }
 
   function exportReportXlsx() {
@@ -4221,8 +4101,8 @@
     render();
   }
 
-  if (btnKeldim) bindTap(btnKeldim, () => confirmPunch('in'));
-  if (btnKetdim) bindTap(btnKetdim, () => confirmPunch('out'));
+  if (btnKeldim) bindTap(btnKeldim, () => requestPunch('in'));
+  if (btnKetdim) bindTap(btnKetdim, () => requestPunch('out'));
   if (btnRetry) {
     bindTap(btnRetry, () => {
       hideRetry();

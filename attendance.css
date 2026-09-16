@@ -1,4 +1,4 @@
-/* Davomat ÃÂ¢ÃÂÃÂ VaksinaMed (app-shell bilan mos) */
+/* Davomat ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ VaksinaMed (app-shell bilan mos) */
 :root {
   --att-ink: #0b1f3a;
   --att-muted: #5a7190;
@@ -510,13 +510,14 @@ body.fid-lock { overflow: hidden; }
   position: fixed;
   inset: 0;
   z-index: 9999;
-  display: flex;
+  display: none !important; /* QR/skaner olib tashlangan */
   align-items: center;
   justify-content: center;
   padding: 16px;
   box-sizing: border-box;
 }
 .fid-modal[hidden] { display: none !important; }
+.fid-modal.open { display: none !important; }
 .fid-backdrop {
   position: absolute;
   inset: 0;
@@ -853,7 +854,7 @@ body.fid-lock { overflow: hidden; }
     max-height: min(48dvh, 420px);
     border-radius: 16px;
   }
-  /* Telefonda Face ID uslubi ÃÂ¢ÃÂÃÂ faqat Face rejimida */
+  /* Telefonda Face ID uslubi ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ faqat Face rejimida */
   .fid-modal:not(.qr-mode) .fid-video {
     transform: scaleX(-1) scale(0.68);
     object-position: center 36%;
@@ -923,7 +924,7 @@ body.fid-lock { overflow: hidden; }
     overflow-wrap: anywhere;
     padding: 0 8px;
   }
-  /* Xato/retry: kamera joyini qisqartir ÃÂ¢ÃÂÃÂ tugmalar koÃÂ¢ÃÂÃÂrinsin */
+  /* Xato/retry: kamera joyini qisqartir ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ tugmalar koÃÂÃÂ¢ÃÂÃÂÃÂÃÂrinsin */
   .fid-modal.err .fid-viewport,
   .fid-modal:has(#fid-retry-wrap:not([hidden])) .fid-viewport {
     flex: 0 0 auto;
@@ -936,7 +937,7 @@ body.fid-lock { overflow: hidden; }
   .att-chip { font-size: 10px; padding: 5px 9px; }
   .att-timer-val { font-size: 26px; }
   .att-main { padding: 12px 12px 16px; }
-  /* Mobil: bitta qator ikon + qisqa yozuv ÃÂ¢ÃÂÃÂ 2 qator pill emas */
+  /* Mobil: bitta qator ikon + qisqa yozuv ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ 2 qator pill emas */
   .att-tabs {
     position: sticky;
     top: var(--shell-sticky-top, var(--shell-topbar-h, 52px));
@@ -1019,7 +1020,7 @@ body.fid-lock { overflow: hidden; }
     flex-direction: column;
   }
   .av-workbench-pro > .av-side { order: -1; }
-  /* Stage ixcham ÃÂ¢ÃÂÃÂ sticky bilan ekranni yemasin */
+  /* Stage ixcham ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ sticky bilan ekranni yemasin */
   .av-stage {
     padding: 14px 14px 12px !important;
     gap: 10px !important;
@@ -1261,7 +1262,7 @@ body.fid-lock { overflow: hidden; }
   .att-btn { min-height: 48px; }
 }
 
-/* ===== Davomat Studio (Bugun) ÃÂ¢ÃÂÃÂ ofis + Face oqimi ===== */
+/* ===== Davomat Studio (Bugun) ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ ofis + Face oqimi ===== */
 .av-studio { display: grid; gap: 14px; }
 .av-workbench {
   display: grid;
@@ -1490,7 +1491,7 @@ body.fid-lock { overflow: hidden; }
   background: #e8eef5;
 }
 .av-map-wrap { position: relative; }
-/* Leaflet locate ÃÂ¢ÃÂÃÂ bitta tugma, leaflet-bar yoÃÂ¢ÃÂÃÂq (dublikat chegara chiqmasin) */
+/* Leaflet locate ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ bitta tugma, leaflet-bar yoÃÂÃÂ¢ÃÂÃÂÃÂÃÂq (dublikat chegara chiqmasin) */
 .av-locate-ctrl {
   border: 0 !important;
   background: transparent !important;
@@ -1807,7 +1808,7 @@ body.fid-lock { overflow: hidden; }
 
 .leaflet-container { font: inherit; }
 
-/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Davomat polish: steps, dayline, hero ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
+/* ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Davomat polish: steps, dayline, hero ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ */
 .av-kicker {
   font-size: 10px;
   font-weight: 700;
@@ -2429,7 +2430,7 @@ body.fid-lock { overflow: hidden; }
   max-width: 1240px;
 }
 
-/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Mobil tab rail (oxirgi qoida ÃÂ¢ÃÂÃÂ oldingi wrap/pill stillarni yutadi) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
+/* ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Mobil tab rail (oxirgi qoida ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ oldingi wrap/pill stillarni yutadi) ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ */
 @media (max-width: 640px) {
   .att-tabs {
     position: sticky !important;
@@ -2493,7 +2494,7 @@ body.fid-lock { overflow: hidden; }
   .att-tab.on .att-tab-ico { color: #7dd3fc !important; opacity: 1; }
 }
 
-/* ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Ofis QR skaner (VAKSINA HR uslubi: toza yashil ramka) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ */
+/* ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Ofis QR skaner (VAKSINA HR uslubi: toza yashil ramka) ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ */
 .fid-modal.qr-mode {
   background: #0a1628;
   padding: 0;
@@ -2660,7 +2661,7 @@ body.fid-lock { overflow: hidden; }
 }
 .oq-reader img { display: none !important; }
 
-/* Kutubxonaning oq ramkasini oÃÂ¢ÃÂÃÂchirish ÃÂ¢ÃÂÃÂ faqat bitta yashil burchak */
+/* Kutubxonaning oq ramkasini oÃÂÃÂ¢ÃÂÃÂÃÂÃÂchirish ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ faqat bitta yashil burchak */
 #qr-shaded-region,
 #qr-reader__dashboard,
 #qr-reader__dashboard_section,
@@ -2720,7 +2721,7 @@ body.fid-lock { overflow: hidden; }
 }
 
 
-/* ÃÂÃÂ Hisobot (kunlik jadval) ÃÂÃÂ */
+/* ÃÂÃÂÃÂÃÂ Hisobot (kunlik jadval) ÃÂÃÂÃÂÃÂ */
 .hb-card .att-card-b { padding-top: 12px; }
 .hb-period {
   display: flex;
@@ -2933,8 +2934,115 @@ body.hb-modal-open { overflow: hidden; }
   .hb-modal-grid { grid-template-columns: 1fr; }
 }
 
+/* Keldim / Ketdim ruxsat dialogi — skaner emas */
+.att-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 14000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.att-confirm[hidden] { display: none !important; }
+body.att-confirm-open { overflow: hidden; }
+.att-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 31, 58, 0.48);
+}
+.att-confirm-panel {
+  position: relative;
+  width: min(400px, 100%);
+  background: #fff;
+  border: 1px solid rgba(11, 31, 58, 0.12);
+  border-radius: 18px;
+  box-shadow: 0 22px 50px rgba(11, 31, 58, 0.22);
+  padding: 22px 20px 18px;
+  text-align: center;
+}
+.att-confirm-ico {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 12px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.att-confirm-ico.in {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.att-confirm-ico.out {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+.att-confirm-panel h3 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #0b1f3a;
+}
+.att-confirm-lead {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #1e3a5f;
+  font-weight: 600;
+}
+.att-confirm-note {
+  margin: 0 0 18px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #5a7190;
+}
+.att-confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+.att-confirm-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(11, 31, 58, 0.14);
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.att-confirm-btn.ghost {
+  background: #f7fafc;
+  color: #334e68;
+}
+.att-confirm-btn.primary {
+  background: #1a5fb4;
+  border-color: #1a5fb4;
+  color: #fff;
+}
+.att-confirm-btn.primary:hover { background: #164e96; }
+.att-confirm-ico.out ~ .att-confirm-actions .att-confirm-btn.primary,
+.att-confirm-panel:has(.att-confirm-ico.out) .att-confirm-btn.primary {
+  background: #c2410c;
+  border-color: #c2410c;
+}
+
+/* QR / kamera skaner — umuman ko‘rinmasin */
+.fid-modal,
+.fid-modal.open,
+.fid-modal.qr-mode {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* ============================================================
-   VAKSINA ATLAS â Davomat visual redesign (overrides)
+   VAKSINA ATLAS Ã¢ÂÂ Davomat visual redesign (overrides)
    ============================================================ */
 :root {
   --atlas-navy: #0b1f3a;
@@ -3257,7 +3365,7 @@ body.hb-modal-open { overflow: hidden; }
   .av-map-wrap .av-map { min-height: 200px; }
 }
 
-/* Pulse metrics â flat sheets */
+/* Pulse metrics Ã¢ÂÂ flat sheets */
 .av-pulse-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3426,7 +3534,7 @@ body.hb-modal-open { overflow: hidden; }
 }
 
 /* ============================================================
-   LIGHT OFFICE STAGE — professional (overrides dark hero)
+   LIGHT OFFICE STAGE â professional (overrides dark hero)
    ============================================================ */
 .av-stage {
   display: grid !important;
