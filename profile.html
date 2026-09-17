@@ -96,7 +96,8 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; align-items: baseline; }
 .kv dt { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .kv dd { font-family: var(--mono); font-size: 13px; font-weight: 600; word-break: break-word; }
-.links { display: flex; flex-direction: column; gap: 8px; }
+.links { display: flex; flex-direction: column; gap: 12px; }
+.links .btn { width: 100%; box-sizing: border-box; margin: 0; }
 .links a.btn { justify-content: flex-start; }
 .field { margin-bottom: 12px; }
 .field label {
@@ -194,7 +195,7 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
             <a class="btn staff-only" href="/" id="link-vhk" hidden>← Dashboard</a>
             <a class="btn staff-only" href="/fuel" id="link-fuel" hidden>Boshqaruv (yoqilg‘i)</a>
             <a class="btn btn-blue staff-only" href="/admin" id="link-admin" hidden>Admin panel</a>
-            <a class="btn btn-blue" href="/attendance" id="link-davomat">Davomat / Face</a>
+            <a class="btn btn-blue" href="/attendance" id="link-davomat">Davomat</a>
             <a class="btn btn-blue driver-only" href="/driver" id="link-driver" hidden>← Haydovchi kabineti</a>
             <p class="hint" id="profile-links-hint">Yuklanmoqda…</p>
           </div>
@@ -203,12 +204,12 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 
 
       <section class="card" style="margin-top:12px">
-        <div class="card-h">Face ID / Davomat</div>
+        <div class="card-h">Davomat</div>
         <div class="card-b">
-          <p class="hint" id="face-hint">Login qilib kirgach, bir marta yuzingizni ulang. Keyin har kuni Davomat bo'limidan o'tasiz.</p>
+          <p class="hint" id="face-hint">Ofis geozonasiga kiring — Keldim / Ketdim tugmalari ochiladi. GPS orqali nazorat qilinadi.</p>
           <p class="hint" id="p-face">Holat yuklanmoqda...</p>
           <div class="links" style="margin-top:10px">
-            <a class="btn btn-blue" href="/attendance">Davomat / Face ulash</a>
+            <a class="btn btn-blue" href="/attendance">Davomatga o‘tish</a>
           </div>
         </div>
       </section>
@@ -291,7 +292,7 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 
     const faceEl = document.getElementById('p-face');
     if (faceEl) {
-      faceEl.textContent = "Holat: Ofis QR — zonaga kirib QR skanerlang, keyin Keldim/Ketdim";
+      faceEl.textContent = 'Holat: Ofis zonasida Keldim / Ketdim — Face ID kerak emas';
     }
 
 
