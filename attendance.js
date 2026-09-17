@@ -2207,58 +2207,58 @@
       </div>
 
       <div class="att-panel" id="panel-bugun" ${uiTab === 'bugun' ? '' : 'hidden'}>
-        <div class="av-studio av-pro av-atlas">
+        <div class="av-studio av-cmd">
 
-          <section class="av-stage">
-            <div class="av-stage-main">
-              <div class="av-stage-mark">VAKSINA · DAVOMAT</div>
-              <h2 class="av-stage-title">Bugungi davomat</h2>
-              <p class="av-stage-lead">Ofis geozonasiga kiring — Keldim / Ketdim ochiladi. GPS orqali nazorat.</p>
-              <div class="av-stage-who">
-                <div class="who-name">${esc(uname)}</div>
-                <div class="who-meta">${esc(userRoleLabel())} · ${esc(off.label)}</div>
+          <header class="av-cmd-head">
+            <div class="av-cmd-identity">
+              <div class="av-cmd-kicker">Davomat · Geozona</div>
+              <h2 class="av-cmd-title">Bugungi sessiya</h2>
+              <div class="av-cmd-who">
+                <strong>${esc(uname)}</strong>
+                <span>${esc(userRoleLabel())} · ${esc(off.label)}</span>
               </div>
-              <div class="av-stage-pills">
+              <div class="av-cmd-pills">
                 <span class="av-status-chip ${done ? 'ok' : (working ? 'live' : 'idle')}">${esc(dayStatus)}</span>
                 <span class="av-date-pill">${esc(fmtDateLong(s.today))}</span>
               </div>
             </div>
-            <div class="av-stage-clock">
-              <div class="ring ${working ? 'live' : ''}" aria-hidden="true"></div>
-              <div class="clock-box">
+            <div class="av-cmd-meters">
+              <div class="av-cmd-meter">
                 <div class="k">Hozir</div>
                 <div class="v" id="av-now-clock">--:--:--</div>
                 <div class="s">${esc(s.in_start || '09:00')}–${esc(s.out_start || '18:00')}</div>
               </div>
-              <div class="work-box ${working ? 'live' : (done ? 'done' : '')}">
+              <div class="av-cmd-meter ${working ? 'live' : (done ? 'done' : '')}">
                 <div class="k">${working ? 'Ishlayapti' : (done ? 'Yopildi' : 'Ish vaqti')}</div>
                 <div class="v" id="att-live-timer">${fmtDur(dayWorkedSec(today) || 0)}</div>
                 <div class="s">${esc(nextAction)}</div>
               </div>
             </div>
-          </section>
+          </header>
 
           <div class="av-gate-banner" id="av-gate-banner">Joylashuv tekshirilmoqda…</div>
 
-          <div class="av-action-band">
-            <section class="av-punch-card av-punch-card-pro">
+          <div class="av-cmd-grid">
+            <section class="av-punch-card av-punch-card-pro av-cmd-stamp">
               <div class="av-punch-card-h">
-                <span>Stamp paneli</span>
+                <div>
+                  <span class="av-cmd-stamp-label">Stamp</span>
+                  <p class="av-punch-hint">${needQr ? 'Zona → QR → Keldi / Ketdi' : 'Faqat ofis radiusida · GPS nazorat'}</p>
+                </div>
                 <span class="av-qr-pill ${gateOk ? 'on' : ''}" id="av-qr-pill">${needQr ? (ticketOk ? 'QR faol' : 'QR kutilyapti') : (geoLive.inside ? 'Zona OK' : 'Zona kutilyapti')}</span>
               </div>
-              <p class="av-punch-hint">${needQr ? 'Zona → QR → Keldi/Ketdi.' : 'Ofis radiusiga kiring — Keldim / Ketdim ochiladi. QR kerak emas.'}</p>
               <div class="av-punch-row">
                 <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
                   <span class="ico">IN</span>
-                  <div class="tag">Keldi</div>
+                  <div class="tag">Keldim</div>
                   <div class="time">${inn ? punchTime(inn) : '—'}</div>
-                  <div class="plan">Rejada ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn ? ' · o‘z vaqtida' : '')}</div>
+                  <div class="plan">Reja ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn ? ' · o‘z vaqtida' : '')}</div>
                 </button>
                 <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
                   <span class="ico">OUT</span>
-                  <div class="tag">Ketdi</div>
+                  <div class="tag">Ketdim</div>
                   <div class="time">${out ? punchTime(out) : '—'}</div>
-                  <div class="plan">Rejada ${esc(s.out_start || '18:00')}</div>
+                  <div class="plan">Reja ${esc(s.out_start || '18:00')}</div>
                 </button>
               </div>
               <button type="button" class="av-continue" id="av-continue" disabled>
@@ -2270,12 +2270,12 @@
                 : (geoLive.inside ? 'Radius ichidasiz — Keldim / Ketdim ochiq.' : 'Ofis radiusiga kiring — tugmalar ochiladi.')}</p>
             </section>
 
-            <section class="av-map-card">
+            <section class="av-map-card av-cmd-map">
               <div class="av-map-h">
                 <div>
                   <div class="av-map-kicker">Live geofence</div>
                   <h3>${esc(off.label)}</h3>
-                  <div class="av-map-sub">Faqat yashil doira ichida Keldim / Ketdim ochiladi</div>
+                  <div class="av-map-sub">Yashil zona ichida stamp ochiladi</div>
                 </div>
                 <span class="av-geo-badge load" id="av-geo-badge">Joylashuv…</span>
               </div>
@@ -2296,69 +2296,71 @@
             </section>
           </div>
 
-          <section class="av-pulse-row" style="display:flex;flex-wrap:wrap;gap:16px;align-items:stretch;">
-            <div class="av-pulse-card" style="flex:1 1 160px;margin:0;min-width:0;">
+          <section class="av-pulse-row av-cmd-kpi" aria-label="Ko‘rsatkichlar">
+            <div class="av-pulse-card">
               <div class="k">Oxirgi 45 kun</div>
               <div class="v">${pulse.present}</div>
               <div class="s">Kelgan kunlar</div>
             </div>
-            <div class="av-pulse-card warn" style="flex:1 1 160px;margin:0;min-width:0;">
+            <div class="av-pulse-card warn">
               <div class="k">Kechikish</div>
               <div class="v">${pulse.late}</div>
               <div class="s">Belgilangan</div>
             </div>
-            <div class="av-pulse-card ok" style="flex:1 1 160px;margin:0;min-width:0;">
+            <div class="av-pulse-card ok">
               <div class="k">To‘liq kun</div>
               <div class="v">${pulse.full}</div>
               <div class="s">Keldi + Ketdi</div>
             </div>
-            <div class="av-pulse-card navy" style="flex:1 1 160px;margin:0;min-width:0;">
+            <div class="av-pulse-card navy">
               <div class="k">Keyingi qadam</div>
               <div class="v-sm">${esc(nextAction)}</div>
-              <div class="s">Tizim yo‘riqnomasi</div>
+              <div class="s">Yo‘riqnoma</div>
             </div>
           </section>
 
-          <section class="av-week-card">
-            <div class="av-week-h">
-              <div>
-                <h3>Haftalik ritm</h3>
-                <p>Oxirgi 7 kun — yashil to‘liq, sariq kechikish, ko‘k ishda</p>
+          <div class="av-cmd-mid">
+            <section class="av-week-card">
+              <div class="av-week-h">
+                <div>
+                  <h3>Haftalik ritm</h3>
+                  <p>7 kun — yashil to‘liq, sariq kechikish</p>
+                </div>
               </div>
-            </div>
-            <div class="av-week-strip">${weekStripHtml(history, s.today)}</div>
-          </section>
+              <div class="av-week-strip">${weekStripHtml(history, s.today)}</div>
+            </section>
 
-          <ol class="av-steps" id="av-steps" aria-label="Davomat qadamlari">
-            <li class="av-step ${stepGeo}" data-step="geo"><span class="n">01</span><div><b>Geozona</b><small>${esc(String(off.radius))} m ichida</small></div></li>
-            ${needQr ? `<li class="av-step ${stepQr}" data-step="qr"><span class="n">02</span><div><b>Ofis QR</b><small>Devordagi kod</small></div></li>` : ''}
-            <li class="av-step ${stepPunch}" data-step="punch"><span class="n">${needQr ? '03' : '02'}</span><div><b>Stamp</b><small>Keldi / Ketdi</small></div></li>
-          </ol>
-
-          <div class="av-journey">
-            <div class="av-journey-track">
-              <div class="node ${inn ? 'on' : 'wait'}">
-                <span class="dot"></span>
-                <div class="lab">Keldi</div>
-                <div class="val mono">${inn ? punchTime(inn) : '—'}</div>
-                <div class="meta">${inn ? (inn.late ? 'Kechikdi' : 'O‘z vaqtida') : 'Reja ' + esc(s.in_start || '09:00')}</div>
-              </div>
-              <div class="rail ${working || done ? 'on' : ''}"></div>
-              <div class="node focus">
-                <span class="dot"></span>
-                <div class="lab">Ish</div>
-                <div class="val mono" id="att-dayline-work">${fmtDur(dayWorkedSec(today) || 0)}</div>
-                <div class="meta">${done ? 'Kun yopiq' : (working ? 'Davom etmoqda' : 'Boshlanmagan')}</div>
-              </div>
-              <div class="rail ${done ? 'on' : ''}"></div>
-              <div class="node ${out ? 'on' : 'wait'}">
-                <span class="dot"></span>
-                <div class="lab">Ketdi</div>
-                <div class="val mono">${out ? punchTime(out) : '—'}</div>
-                <div class="meta">${out ? 'Qayd etildi' : 'Reja ' + esc(s.out_start || '18:00')}</div>
+            <div class="av-journey av-cmd-dayline" aria-label="Kun yo‘li">
+              <div class="av-journey-track">
+                <div class="node ${inn ? 'on' : 'wait'}">
+                  <span class="dot"></span>
+                  <div class="lab">Keldi</div>
+                  <div class="val mono">${inn ? punchTime(inn) : '—'}</div>
+                  <div class="meta">${inn ? (inn.late ? 'Kechikdi' : 'O‘z vaqtida') : 'Reja ' + esc(s.in_start || '09:00')}</div>
+                </div>
+                <div class="rail ${working || done ? 'on' : ''}"></div>
+                <div class="node focus">
+                  <span class="dot"></span>
+                  <div class="lab">Ish</div>
+                  <div class="val mono" id="att-dayline-work">${fmtDur(dayWorkedSec(today) || 0)}</div>
+                  <div class="meta">${done ? 'Kun yopiq' : (working ? 'Davom etmoqda' : 'Boshlanmagan')}</div>
+                </div>
+                <div class="rail ${done ? 'on' : ''}"></div>
+                <div class="node ${out ? 'on' : 'wait'}">
+                  <span class="dot"></span>
+                  <div class="lab">Ketdi</div>
+                  <div class="val mono">${out ? punchTime(out) : '—'}</div>
+                  <div class="meta">${out ? 'Qayd etildi' : 'Reja ' + esc(s.out_start || '18:00')}</div>
+                </div>
               </div>
             </div>
           </div>
+
+          <ol class="av-steps av-cmd-steps" id="av-steps" aria-label="Davomat qadamlari">
+            <li class="av-step ${stepGeo}" data-step="geo"><span class="n">1</span><div><b>Geozona</b><small>${esc(String(off.radius))} m</small></div></li>
+            ${needQr ? `<li class="av-step ${stepQr}" data-step="qr"><span class="n">2</span><div><b>Ofis QR</b><small>Devor</small></div></li>` : ''}
+            <li class="av-step ${stepPunch}" data-step="punch"><span class="n">${needQr ? '3' : '2'}</span><div><b>Stamp</b><small>Keldi / Ketdi</small></div></li>
+          </ol>
 
           <div class="att-msg" id="att-msg"></div>
           <div class="att-geo-box" id="att-geo-box" hidden>
@@ -2368,20 +2370,20 @@
             <button type="button" class="att-btn att-btn-in" id="btn-geo-check-2">Joylashuvni tekshirish</button>
           </div>
 
-          <div class="av-side" style="display:grid;gap:12px;grid-template-columns:1fr">
-            <section class="av-howto">
+          <div class="av-cmd-bottom">
+            <section class="av-howto av-cmd-howto">
               <h3>Qanday ishlaydi</h3>
               <ul>
-                <li><b>1.</b> Ofis ${esc(String(off.radius))} m ichiga kiring (telefonda GPS)</li>
-                ${needQr ? '<li><b>2.</b> Devordagi ofis QR ni skanerlang</li><li><b>3.</b> Keldim / Ketdim ni bosing</li>' : '<li><b>2.</b> Keldim / Ketdim tugmasini bosing</li>'}
+                <li><b>1</b> Ofis ${esc(String(off.radius))} m ichiga kiring (GPS)</li>
+                ${needQr ? '<li><b>2</b> Ofis QR ni skanerlang</li><li><b>3</b> Keldim / Ketdim</li>' : '<li><b>2</b> Keldim / Ketdim tugmasini bosing</li>'}
               </ul>
               <div class="av-howto-note">${esc(s.scheduleNote || '')}</div>
             </section>
 
-            <section class="av-hist av-hist-pro">
+            <section class="av-hist av-hist-pro av-cmd-hist">
               <div class="av-hist-h">
                 <div>
-                  <h3>Soʻnggi yozuvlar</h3>
+                  <h3>So‘nggi yozuvlar</h3>
                   <p class="av-hist-sub">Shaxsiy stamp jurnal</p>
                 </div>
               </div>
@@ -2401,7 +2403,7 @@
                         </tr>`).join('')}
                     </tbody>
                   </table></div>
-                ` : `<div class="av-empty">Hali yozuv yoʻq. Ofis zonasida birinchi stampni qoʻying.</div>`}
+                ` : `<div class="av-empty">Hali yozuv yo‘q. Ofis zonasida birinchi stampni qo‘ying.</div>`}
               </div>
             </section>
           </div>
