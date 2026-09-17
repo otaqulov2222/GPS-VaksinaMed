@@ -380,8 +380,10 @@ function uniquePhNames(list) {
 function ownPharmacyRecords(carKey) {
     const car = carKey || STATE.currentCar || '';
     if (!car) return [];
-    const fromState = (STATE.pharmacies || []).filter(p => p.car === car);
-    if (fromState.length) {
+    const list = Array.isArray(STATE.pharmacies) ? STATE.pharmacies : [];
+    const compact = String(car).replace(/\s+/g, '').toUpperCase();
+    if (list.length) {
+        const fromState = list.filter(p => p && p.car && (p.car === car || String(p.car).replace(/\s+/g, '').toUpperCase() === compact));
         const seen = new Set();
         const out = [];
         fromState.forEach(p => {
@@ -405,6 +407,14 @@ function ownPharmacyRecords(carKey) {
 function ownPharmacyList(carKey) {
     if (window.VMOffice && typeof VMOffice.ownNames === 'function') {
         return uniquePhNames(VMOffice.ownNames(carKey));
+    }
+    // Office yo'q — faqat shu mashina uchun STATE.pharmacies
+    const list = Array.isArray(STATE.pharmacies) ? STATE.pharmacies : [];
+    if (list.length) {
+        const compact = String(carKey || '').replace(/\s+/g, '').toUpperCase();
+        return uniquePhNames(list
+            .filter(p => p && p.name && (p.car === carKey || String(p.car || '').replace(/\s+/g, '').toUpperCase() === compact))
+            .map(p => p.name));
     }
     const driver = DRIVERS.find(d => d.car === carKey);
     if (!driver || !driver.pharmacies) return [];

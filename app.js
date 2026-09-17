@@ -366,6 +366,13 @@ function ownPharmacyList(carKey) {
     if (window.VMOffice && typeof VMOffice.ownNames === 'function') {
         return uniquePhNames(VMOffice.ownNames(carKey));
     }
+    const list = Array.isArray(STATE.pharmacies) ? STATE.pharmacies : [];
+    if (list.length) {
+        const compact = String(carKey || '').replace(/\s+/g, '').toUpperCase();
+        return uniquePhNames(list
+            .filter(p => p && p.name && (p.car === carKey || String(p.car || '').replace(/\s+/g, '').toUpperCase() === compact))
+            .map(p => p.name));
+    }
     const driver = DRIVERS.find(d => d.car === carKey);
     if (!driver || !driver.pharmacies) return [];
     return uniquePhNames(driver.pharmacies.split(',').map(p => p.trim()).filter(Boolean));

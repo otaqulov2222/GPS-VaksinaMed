@@ -304,28 +304,36 @@ const VMOffice = {
     },
 
     ownNames(car) {
-        const fromState = (STATE.pharmacies || []).filter(p => p.car === car).map(p => p.name).filter(Boolean);
-        const raw = fromState.length
-            ? fromState
-            : (() => {
-                const drv = this.driversList().find(d => d.car === car);
-                if (!drv || !drv.pharmacies) return [];
-                return String(drv.pharmacies).split(',').map(s => s.trim()).filter(Boolean);
-            })();
+        // Admin biriktirish (office:pharmacies) — yagona manba.
+        // Ro'yxat bo'sh mashina uchun fleet-data ga qaytmasin (aks holda 0/12 kabi soxta sonlar chiqadi).
+        const list = Array.isArray(STATE.pharmacies) ? STATE.pharmacies : null;
+        const compact = plateCompact(car);
         const keyOf = (s) => (typeof pharmacyKey === 'function'
             ? pharmacyKey(s)
             : (typeof uzSearchFold === 'function'
                 ? uzSearchFold(s)
                 : String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-z0-9а-яўқғҳ]/gi, '')));
-        const seen = new Set();
-        const out = [];
-        raw.forEach(n => {
-            const k = keyOf(n);
-            if (!k || seen.has(k)) return;
-            seen.add(k);
-            out.push(n);
-        });
-        return out;
+        const dedupe = (names) => {
+            const seen = new Set();
+            const out = [];
+            (names || []).forEach(n => {
+                const k = keyOf(n);
+                if (!k || seen.has(k)) return;
+                seen.add(k);
+                out.push(n);
+            });
+            return out;
+        };
+        if (list && list.length) {
+            const fromOffice = list
+                .filter(p => p && p.name && (p.car === car || plateCompact(p.car) === compact))
+                .map(p => p.name);
+            return dedupe(fromOffice);
+        }
+        // Faqat office hali bo'sh bo'lsa — eski fleet ro'yxati (birinchi marta)
+        const drv = this.driversList().find(d => d.car === car || plateCompact(d.car) === compact);
+        if (!drv || !drv.pharmacies) return [];
+        return dedupe(String(drv.pharmacies).split(',').map(s => s.trim()).filter(Boolean));
     },
 
     async savePharmacies(list) {
@@ -481,8 +489,9 @@ const VMOffice = {
     },
 
     rowOf(drv, rec) {
+        const assigned = this.ownNames(drv.car).length;
         if (!rec) {
-            return { drv, rec: null, score: null, km: 0, own: 0, total: this.ownNames(drv.car).length, other: 0, problem: 0, speed: 0, work: '—' };
+            return { drv, rec: null, score: null, km: 0, own: 0, total: assigned, other: 0, problem: 0, speed: 0, work: '—' };
         }
         const a = rec.analysis || {};
         const sc = a.score || {};
@@ -492,7 +501,8 @@ const VMOffice = {
             score: sc.final,
             km: (rec.stats && rec.stats.probeg) || 0,
             own: a.ownVisited || 0,
-            total: a.totalOwn || this.ownNames(drv.car).length,
+            // Hisobotdagi totalOwn eski fleet-data dan bo'lishi mumkin — admin ro'yxati ustun
+            total: assigned,
             other: a.otherDirection || 0,
             problem: a.problemStops || 0,
             speed: (rec.stats && rec.stats.maxSpeed) || 0,

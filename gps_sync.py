@@ -1583,8 +1583,11 @@ def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
 
 
 def own_pharmacy_list(car_key, drivers, pharmacies):
-    from_state = [p.get("name") for p in (pharmacies or []) if isinstance(p, dict) and p.get("car") == car_key and p.get("name")]
-    if from_state:
+    """Admin biriktirish ustun. Office ro'yxati bor bo'lsa fleet-data ga qaytmaydi."""
+    office = [p for p in (pharmacies or []) if isinstance(p, dict) and p.get("name") and p.get("car")]
+    want = compact_car(car_key)
+    if office:
+        from_state = [p.get("name") for p in office if compact_car(p.get("car")) == want]
         seen, out = set(), []
         for n in from_state:
             k = pharmacy_key(n)
@@ -1592,7 +1595,7 @@ def own_pharmacy_list(car_key, drivers, pharmacies):
                 seen.add(k)
                 out.append(n)
         return out
-    drv = next((d for d in drivers if d["car"] == car_key), None)
+    drv = next((d for d in drivers if compact_car(d.get("car")) == want), None)
     if not drv or not drv.get("pharmacies"):
         return []
     seen, out = set(), []
