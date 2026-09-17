@@ -372,6 +372,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 table.dtable { border-collapse: collapse; min-width: 1960px; width: 100%; }
+/* Aralash dizel % — thead va tbody birga yashiriladi (ustun surilishiga qarshi) */
+table.dtable.hide-mix-liq .col-mix-liq { display: none !important; }
 table.dtable th, table.dtable td {
   border: 1px solid #d7e3f0; padding: 4px 5px; font-size: 11px; vertical-align: middle;
 }
@@ -2192,7 +2194,7 @@ table.dtable td.day {
 <script src="auth.js?v=38"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="ph-delete-btn.js?v=3"></script>
-<script src="fuel.js?v=82"></script>
+<script src="fuel.js?v=83"></script>
 <script src="journal.js?v=13"></script>
 </body>
 </html>
