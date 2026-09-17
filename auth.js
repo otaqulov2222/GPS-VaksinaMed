@@ -248,11 +248,62 @@ function vmEnsureDavomatNav() {
     });
 }
 
+function vmEnsurePanelNav() {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    const onAdmin = /\/admin(\.html)?$/.test(path);
+    const staff = vmIsStaff(window.VM_USER);
+    const drv = vmIsDriver(window.VM_USER);
+    const label = (window.VM_USER && window.VM_USER.role === 'admin_pro') ? 'Admin Pro' : 'Panel';
+
+    document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {
+        let link = nav.querySelector(
+            '#btn-admin-panel, a[href="/admin"], a[href="/admin.html"], a[href="admin.html"]'
+        );
+        // Haydovchi: Panel bo‘lmasin
+        if (drv || (!staff && window.VM_USER)) {
+            if (link) link.remove();
+            return;
+        }
+        if (!staff && !window.VM_USER) {
+            if (link) {
+                link.classList.add('staff-only');
+                link.setAttribute('hidden', 'hidden');
+                link.style.display = 'none';
+            }
+            return;
+        }
+        if (!link) {
+            link = document.createElement('a');
+            link.href = '/admin';
+            link.className = 'nav-link staff-only';
+            link.id = 'btn-admin-panel';
+            link.textContent = label;
+            const dav = nav.querySelector('#nav-davomat, a[href="/attendance"], a[href="/attendance.html"], a[href*="attendance"]');
+            const live = nav.querySelector('#nav-live, a[href="/live"], a[href="/live.html"], a[href*="live"]');
+            if (dav) dav.insertAdjacentElement('afterend', link);
+            else if (live) live.insertAdjacentElement('afterend', link);
+            else nav.appendChild(link);
+        } else {
+            link.href = '/admin';
+            link.id = link.id || 'btn-admin-panel';
+            link.classList.add('staff-only', 'nav-link');
+            link.textContent = label;
+        }
+        link.removeAttribute('hidden');
+        link.style.display = '';
+        link.style.visibility = 'visible';
+        link.classList.toggle('on', onAdmin);
+        if (onAdmin) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    });
+}
+
 function vmApplyChrome(user) {
     if (!user) return;
     vmApplyRoleNav(user);
     vmEnsureLiveNav();
     vmEnsureDavomatNav();
+    vmEnsurePanelNav();
     const name = document.getElementById('tb-user-name');
     const role = document.getElementById('tb-user-role');
     const panel = document.getElementById('btn-admin-panel');
