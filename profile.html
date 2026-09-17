@@ -96,9 +96,12 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; align-items: baseline; }
 .kv dt { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .kv dd { font-family: var(--mono); font-size: 13px; font-weight: 600; word-break: break-word; }
-.links { display: flex; flex-direction: column; gap: 12px; }
-.links .btn { width: 100%; box-sizing: border-box; margin: 0; }
-.links a.btn { justify-content: flex-start; }
+.links { display: flex; flex-direction: column; gap: 14px; }
+.links .btn {
+  width: 100%; box-sizing: border-box; margin: 0;
+  padding: 0 16px; min-height: 44px;
+}
+.links a.btn { justify-content: flex-start; text-align: left; }
 .field { margin-bottom: 12px; }
 .field label {
   display: block; font-size: 10px; font-weight: 700; letter-spacing: .12em;
@@ -204,17 +207,6 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 
 
       <section class="card" style="margin-top:12px">
-        <div class="card-h">Davomat</div>
-        <div class="card-b">
-          <p class="hint" id="face-hint">Ofis geozonasiga kiring — Keldim / Ketdim tugmalari ochiladi. GPS orqali nazorat qilinadi.</p>
-          <p class="hint" id="p-face">Holat yuklanmoqda...</p>
-          <div class="links" style="margin-top:10px">
-            <a class="btn btn-blue" href="/attendance">Davomatga o‘tish</a>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
         <div class="card-h">Parolni almashtirish</div>
         <div class="card-b">
           <div class="msg" id="pw-msg"></div>
@@ -242,7 +234,7 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 
 <script src="uz-latin.js?v=3"></script>
 <script src="fleet-data.js?v=9"></script>
-<script src="auth.js?v=37"></script>
+<script src="auth.js?v=38"></script>
 <script>
 (function () {
   const ROLE_LABEL = {
@@ -289,12 +281,6 @@ body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
     setText('p-last', u.last_login || '—');
     const pers = me.persist || {};
     setText('p-persist', pers.mode || pers.backend || (pers.ok ? 'OK' : '—'));
-
-    const faceEl = document.getElementById('p-face');
-    if (faceEl) {
-      faceEl.textContent = 'Holat: Ofis zonasida Keldim / Ketdim — Face ID kerak emas';
-    }
-
 
     const staff = vmIsStaff(u);
     const drv = vmIsDriver(u);

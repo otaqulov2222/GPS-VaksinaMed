@@ -243,8 +243,8 @@ function vmEnsureDavomatNav() {
         }
         st.classList.add('on');
         st.classList.remove('off');
-        st.innerHTML = '<i></i> QR ofis';
-        st.setAttribute('aria-label', 'Ofis QR davomat');
+        st.innerHTML = '<i></i> Davomat';
+        st.setAttribute('aria-label', 'Ofis zonasida davomat');
     });
 }
 

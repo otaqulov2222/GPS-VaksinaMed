@@ -2833,7 +2833,7 @@
   }
 
   async function doEnroll() {
-    msg('Face ID o‘chirilgan. Ofis zonasida Keldim / Ketdim ni bosing.', 'info');
+    msg('Ofis zonasida Keldim / Ketdim ni bosing.', 'info');
   }
 
   function exportReportXlsx() {

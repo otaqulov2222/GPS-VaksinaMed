@@ -46,7 +46,7 @@
     'attendance.html': [
       'Keldim nima?',
       'Ketdim',
-      'Face ID ulash',
+      'Keldim / Ketdim',
       'Joylashuv',
       'Timer',
       'Tarix'
