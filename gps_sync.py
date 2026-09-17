@@ -1474,6 +1474,7 @@ def match_geo(current_car, lat, lng, pharmacies):
     y, x = float(lat or 0), float(lng or 0)
     if not y or not x:
         return None
+    want = compact_car(current_car)
     best_own, best_own_d = None, 1e12
     best_any, best_any_d = None, 1e12
     for ph in pharmacies or []:
@@ -1485,13 +1486,15 @@ def match_geo(current_car, lat, lng, pharmacies):
             continue
         if d < best_any_d:
             best_any_d, best_any = d, ph
-        if ph.get("car") == current_car and d < best_own_d:
+        same_car = ph.get("car") == current_car or compact_car(ph.get("car")) == want
+        if same_car and d < best_own_d:
             best_own_d, best_own = d, ph
     best = best_own or best_any
     if not best:
         return None
+    is_own = best.get("car") == current_car or compact_car(best.get("car")) == want
     return {
-        "type": "own" if best.get("car") == current_car else "other",
+        "type": "own" if is_own else "other",
         "phName": best.get("name"),
         "owners": [best.get("car")],
     }
@@ -1514,18 +1517,17 @@ def match_pharmacy(place, current_car, lat, lng, pharm_index, pharmacies):
         elif pn in en or en in pn:
             score = min(len(pn), len(en)) / max(len(pn), len(en)) * 90
         else:
-            ptok = pn.split()
-            etok = en.split()
-            matches = sum(1 for pt in ptok if pt in etok and len(pt) > 2)
-            if ptok or etok:
-                score = matches / max(len(ptok), len(etok)) * 70
+            # Kalitlar bo'shliqsiz — token o'rniga qisman moslash
+            if len(pn) >= 4 and len(en) >= 4 and (pn[:4] == en[:4]):
+                score = 45
         if score > 40:
             owners.append(entry)
             if score > best_score:
                 best_score, best = score, entry
     if not best:
         return {"type": "none", "phName": None, "owners": []}
-    is_own = any(o["car"] == current_car for o in owners)
+    want = compact_car(current_car)
+    is_own = any(o["car"] == current_car or compact_car(o["car"]) == want for o in owners)
     return {"type": "own" if is_own else "other", "phName": best["name"], "owners": list({o["driver"] for o in owners})}
 
 
@@ -1737,10 +1739,14 @@ def _visited_from_reviews(reviews, car_key):
         if compact_car(car_k) != want:
             continue
         ph_name = rv.get("phName") or ""
-        n = norm_ph(ph_name)
-        if n:
-            visited.add(n)
+        k = pharmacy_key(ph_name) or norm_ph(ph_name)
+        if k:
+            visited.add(k)
     return visited
+
+
+def _visit_key(name):
+    return pharmacy_key(name) or norm_ph(name)
 
 
 def _f4_coord(v):
@@ -1876,16 +1882,24 @@ def learn_geozones_from_reports(office, base_dir):
 
 def analyze_data(stops, car_key, stats, drivers, pharmacies, reviews=None):
     own_pharms = own_pharmacy_list(car_key, drivers, pharmacies)
+    own_keys = {_visit_key(ph) for ph in own_pharms if _visit_key(ph)}
     visited = set()
     for s in stops or []:
-        if s.get("matchType") == "own":
-            n = norm_ph(s.get("phName") or s.get("place") or "")
-            if n:
-                visited.add(n)
+        k = _visit_key(s.get("phName") or s.get("place") or "")
+        if not k:
+            continue
+        # own to'xtash YOKI biriktirilgan dorixona kaliti (noto'g'ri "other" ham)
+        if s.get("matchType") == "own" or k in own_keys:
+            visited.add(k)
     visited.update(_visited_from_reviews(reviews, car_key))
-    missed = [ph for ph in own_pharms if norm_ph(ph) not in visited]
+    missed = [ph for ph in own_pharms if _visit_key(ph) not in visited]
     own_visited = len(own_pharms) - len(missed) if own_pharms else len(visited)
-    other_dir = sum(1 for s in stops or [] if s.get("matchType") == "other")
+    other_dir = sum(
+        1
+        for s in stops or []
+        if s.get("matchType") == "other"
+        and _visit_key(s.get("phName") or s.get("place") or "") not in own_keys
+    )
     problem_stops = sum(1 for s in stops or [] if stop_counts_as_problem(s, car_key, reviews))
     outside_city = sum(1 for s in stops or [] if s.get("isOutside"))
     score = 10.0

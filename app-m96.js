@@ -369,12 +369,27 @@ function uniquePhNames(list) {
     const seen = new Set();
     const out = [];
     (list || []).forEach(ph => {
-        const k = (typeof pharmacyKey === 'function' ? pharmacyKey(ph) : null) || normPh(ph);
+        const k = visitKey(ph);
         if (!k || seen.has(k)) return;
         seen.add(k);
         out.push(ph);
     });
     return out;
+}
+
+/** Tashrif kaliti — biriktirish bilan bir xil (Shirin ≡ Shirin filial) */
+function visitKey(name) {
+    if (!name) return '';
+    if (typeof pharmacyKey === 'function') {
+        const k = pharmacyKey(name);
+        if (k) return k;
+    }
+    return normPh(name);
+}
+
+function plateKey(car) {
+    if (typeof plateCompact === 'function') return plateCompact(car);
+    return String(car || '').replace(/\s+/g, '').toUpperCase();
 }
 
 function ownPharmacyRecords(carKey) {
@@ -486,7 +501,8 @@ function matchPharmacy(place, currentCar, lat, lng) {
     if (!bestMatch) return { type: 'none', phName: null, owners: [] };
 
     const uniqueOwners = [...new Map(owners.map(o => [o.car, o])).values()];
-    const isOwn = uniqueOwners.some(o => o.car === currentCar);
+    const want = plateKey(currentCar);
+    const isOwn = uniqueOwners.some(o => o.car === currentCar || plateKey(o.car) === want);
 
     return {
         type:    isOwn ? 'own' : 'other',
@@ -836,25 +852,30 @@ function stopIsProblem(st, carKey, dateVal) {
 function analyzeDataLocal(stops, carKey, stats, dateVal) {
     const day = dateVal || STATE.currentDate;
     const ownPharms = uniquePhNames(ownPharmacyList(carKey));
+    const ownKeys = new Set(ownPharms.map(visitKey).filter(Boolean));
     const problemOf = (s) => stopIsProblem(s, carKey, day);
 
-    const visitedNorms = new Set(
-        stops.filter(s => s.matchType === 'own').map(s => normPh(s.phName || s.place || '')).filter(Boolean)
-    );
+    const visitedKeys = new Set();
+    (stops || []).forEach((s) => {
+        const k = visitKey(s.phName || s.place || '');
+        if (!k) return;
+        // own to'xtash YOKI biriktirilgan dorixona kaliti (noto'g'ri "other" ham hisob)
+        if (s.matchType === 'own' || ownKeys.has(k)) visitedKeys.add(k);
+    });
     const bag = (STATE.reviews && STATE.reviews[day]) || {};
-    const want = String(carKey || '').replace(/\s+/g, '').toUpperCase();
+    const want = plateKey(carKey);
     Object.keys(bag).forEach(key => {
         const rv = bag[key];
         if (!rv || rv.status !== 'allowed' || !rv.phName) return;
         const parts = key.split('|');
         const carK = rv.car || (parts[1] || '');
-        if (String(carK).replace(/\s+/g, '').toUpperCase() !== want) return;
-        const n = normPh(rv.phName);
-        if (n) visitedNorms.add(n);
+        if (plateKey(carK) !== want) return;
+        const k = visitKey(rv.phName);
+        if (k) visitedKeys.add(k);
     });
-    const missedList = ownPharms.filter(ph => !visitedNorms.has(normPh(ph)));
-    const ownVisited = ownPharms.length ? (ownPharms.length - missedList.length) : visitedNorms.size;
-    const otherDir      = stops.filter(s => s.matchType === 'other').length;
+    const missedList = ownPharms.filter(ph => !visitedKeys.has(visitKey(ph)));
+    const ownVisited = ownPharms.length ? (ownPharms.length - missedList.length) : visitedKeys.size;
+    const otherDir      = stops.filter(s => s.matchType === 'other' && !ownKeys.has(visitKey(s.phName || s.place || ''))).length;
     const problemStops  = stops.filter(s => problemOf(s)).length;
     const outsideCity   = stops.filter(s => s.isOutside).length;
 
@@ -2545,8 +2566,11 @@ function renderPharmacy(data) {
     }
 
     if (ownStops.length > 0) {
+        const uniqueOwn = new Set(ownStops.map(s => visitKey(s.phName || s.place || '')).filter(Boolean));
+        const uniqN = uniqueOwn.size || a.ownVisited || 0;
+        const stopN = ownStops.length;
         html += `<div class="ph-block">
-            <div class="ph-h ok">Borilgan · ${ownStops.length}</div>
+            <div class="ph-h ok">Borilgan · ${uniqN} dorixona${stopN !== uniqN ? ` (${stopN} to‘xtash)` : ''}</div>
             <div class="ph-list">
             ${ownStops.map(s => `
             <div class="ph-row">

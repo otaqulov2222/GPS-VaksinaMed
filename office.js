@@ -416,6 +416,7 @@ const VMOffice = {
     matchGeo(currentCar, lat, lng) {
         const y = Number(lat), x = Number(lng);
         if (!y || !x) return null;
+        const want = plateCompact(currentCar);
         let bestOwn = null, bestOwnD = 1e12;
         let bestAny = null, bestAnyD = 1e12;
         (STATE.pharmacies || []).forEach(ph => {
@@ -427,7 +428,8 @@ const VMOffice = {
                 bestAnyD = d;
                 bestAny = ph;
             }
-            if (ph.car === currentCar && d < bestOwnD) {
+            const sameCar = ph.car === currentCar || plateCompact(ph.car) === want;
+            if (sameCar && d < bestOwnD) {
                 bestOwnD = d;
                 bestOwn = ph;
             }
@@ -438,12 +440,13 @@ const VMOffice = {
         const owners = (STATE.pharmacies || [])
             .filter(p => sameName(p.name, best.name) || (p.lat === best.lat && p.lng === best.lng))
             .map(p => {
-                const drv = this.driversList().find(d => d.car === p.car);
+                const drv = this.driversList().find(d => d.car === p.car || plateCompact(d.car) === plateCompact(p.car));
                 return drv ? drv.shortName : p.car;
             });
         const uniq = [...new Set(owners)];
+        const isOwn = best.car === currentCar || plateCompact(best.car) === want;
         return {
-            type: best.car === currentCar ? 'own' : 'other',
+            type: isOwn ? 'own' : 'other',
             phName: best.name,
             owners: uniq,
             by: 'geo'
