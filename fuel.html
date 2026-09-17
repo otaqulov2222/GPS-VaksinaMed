@@ -371,7 +371,7 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: .04em;
 }
 
-table.dtable { border-collapse: collapse; min-width: 1960px; width: 100%; }
+table.dtable { border-collapse: collapse; min-width: 2100px; width: 100%; }
 /* Aralash dizel % — thead va tbody birga yashiriladi (ustun surilishiga qarshi) */
 table.dtable.hide-mix-liq .col-mix-liq { display: none !important; }
 table.dtable th, table.dtable td {
@@ -416,6 +416,19 @@ table.dtable .out {
   display: block; min-height: 28px; line-height: 28px; padding: 0 5px;
   background: #f3f7fc; font-family: var(--mono); font-size: 11px;
   border-radius: 6px;
+}
+/* Gaz/Benzin summa — bir qatorda, katak biroz kengroq */
+table.dtable th.col-sum,
+table.dtable td.col-sum {
+  min-width: 108px;
+  white-space: nowrap;
+}
+table.dtable td.col-sum .out {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 table.dtable input.w-note { font-family: var(--sans); font-weight: 500; }
 
@@ -1939,13 +1952,13 @@ table.dtable td.day {
 
             <th>1 m³ gaz narxi</th>
 
-            <th>Gaz summa</th>
+            <th class="col-sum">Gaz summa</th>
 
             <th id="th-liq-in">Olingan benzin (l)</th>
 
             <th id="th-liq-price">1 l narxi</th>
 
-            <th id="th-liq-sum">Benzin summa</th>
+            <th id="th-liq-sum" class="col-sum">Benzin summa</th>
 
             <th>Sarf gaz</th>
 
@@ -2195,7 +2208,7 @@ table.dtable td.day {
 <script src="auth.js?v=39"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="ph-delete-btn.js?v=3"></script>
-<script src="fuel.js?v=83"></script>
+<script src="fuel.js?v=85"></script>
 <script src="journal.js?v=13"></script>
 </body>
 </html>

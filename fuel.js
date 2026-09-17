@@ -95,7 +95,7 @@ function fmtNum(v) {
   return String(x).replace('.', ',');
 }
 function fmt(v) { return fmtNum(v); }
-/** Summalar (so'm) — minglik bo'shliq bilan: 494 663,1 */
+/** Summalar (so'm) — minglik NBSP (qatorga tushmasin): 75 600,24 */
 function money(v) {
   const x = cleanFloat(n(v));
   if (!Number.isFinite(x)) return '';
@@ -104,7 +104,7 @@ function money(v) {
   const abs = Math.abs(x);
   const raw = String(abs);
   const parts = raw.split('.');
-  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
   const frac = parts[1] != null && parts[1] !== '' ? ',' + parts[1] : '';
   return (neg ? '-' : '') + intPart + frac;
 }
@@ -1699,10 +1699,10 @@ function dailyJamiHtml(rows) {
       <td></td>
       <td><span class="out" data-j="gasIn">${t.gasIn ? fmtNum(t.gasIn) : ''}</span></td>
       <td></td>
-      <td><span class="out" data-j="gasSum">${t.gasIn ? money(t.gasSum) : ''}</span></td>
+      <td class="col-sum"><span class="out" data-j="gasSum">${t.gasIn ? money(t.gasSum) : ''}</span></td>
       <td><span class="out" data-j="benzinIn">${t.benzinIn ? fmtNum(t.benzinIn) : ''}</span></td>
       <td></td>
-      <td><span class="out" data-j="benzinSum">${t.benzinIn ? money(t.benzinSum) : ''}</span></td>
+      <td class="col-sum"><span class="out" data-j="benzinSum">${t.benzinIn ? money(t.benzinSum) : ''}</span></td>
       <td><span class="out" data-j="gasUsed">${t.gasUsed ? fmtNum(t.gasUsed) : ''}</span></td>
       <td><span class="out" data-j="benUsed">${t.benUsed ? fmtNum(t.benUsed) : ''}</span></td>
       <td><span class="out ${remainClass(t.gasR)}" data-j="gasR">${t.gasR || t.gasR === 0 ? fmtNum(t.gasR) : ''}</span></td>
@@ -1774,10 +1774,10 @@ function renderDailyTable() {
       <td>${stationSelect(r.d, src.station)}</td>
       <td><input data-d="${r.d}" data-f="gasIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.gasIn, dispFracOf(src, 'gasIn'))}"></td>
       <td><input data-d="${r.d}" data-f="gasPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.gasPrice, dispFracOf(src, 'gasPrice'))}"></td>
-      <td><span class="out">${r.gasIn ? money(r.gasSum) : ''}</span></td>
+      <td class="col-sum"><span class="out">${r.gasIn ? money(r.gasSum) : ''}</span></td>
       <td><input data-d="${r.d}" data-f="benzinIn" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.benzinIn, dispFracOf(src, 'benzinIn'))}"></td>
       <td><input data-d="${r.d}" data-f="benzinPrice" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(r.benzinPrice, dispFracOf(src, 'benzinPrice'))}"></td>
-      <td><span class="out">${r.benzinIn ? money(r.benzinSum) : ''}</span></td>
+      <td class="col-sum"><span class="out">${r.benzinIn ? money(r.benzinSum) : ''}</span></td>
       <td><span class="out">${(r.gasKm || r.gasUsed) ? fmtNum(r.gasUsed) : ''}</span></td>
       <td><span class="out">${(r.liqKm || r.benUsed) ? fmtNum(r.benUsed) : ''}</span></td>
       <td><span class="out ${remainClass(r.gasR)}">${(r.km || r.gasIn) ? fmtNum(r.gasR) : ''}</span></td>
