@@ -1987,6 +1987,9 @@ body.fid-lock { overflow: hidden; }
   font-size: 12px;
   color: var(--att-muted);
   line-height: 1.4;
+  position: relative;
+  z-index: 0;
+  flex-shrink: 0;
 }
 
 .att-tabs {
@@ -3258,27 +3261,38 @@ body.att-confirm-open { overflow: hidden; }
   border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
-/* Action band: punch + map first */
+/* Action band: punch + map first — start (not stretch) so white card
+   does not grow under the pulse row below */
 .av-action-band {
   display: grid;
   grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.25fr);
   gap: 16px;
   column-gap: 16px;
   row-gap: 16px;
-  align-items: stretch;
+  align-items: start;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
 }
 @media (max-width: 980px) {
   .av-action-band { grid-template-columns: 1fr; }
 }
 
 .av-punch-card-pro {
-  height: 100%;
+  height: auto;
+  max-height: none;
   display: flex;
   flex-direction: column;
   border-radius: var(--atlas-radius);
   background: var(--atlas-paper);
   border: 1px solid var(--atlas-line);
   box-shadow: 0 8px 22px rgba(11, 31, 58, 0.06);
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
 }
 .av-punch-card-h {
   display: flex;
@@ -3320,7 +3334,7 @@ body.att-confirm-open { overflow: hidden; }
 
 .av-continue {
   width: 100%;
-  margin-top: auto;
+  margin-top: 12px;
   padding: 14px 16px;
   border-radius: 14px;
   border: 0;
@@ -3375,7 +3389,7 @@ body.att-confirm-open { overflow: hidden; }
   .av-map-wrap .av-map { min-height: 200px; }
 }
 
-/* Pulse metrics — flex + gap (soya bilan yopishib ko‘rinmasin) */
+/* Pulse metrics — alohida qator, stamp oq foni ostiga tushmasin */
 .av-studio .av-pulse-row,
 section.av-pulse-row {
   display: flex !important;
@@ -3386,8 +3400,11 @@ section.av-pulse-row {
   row-gap: 16px !important;
   width: 100% !important;
   box-sizing: border-box !important;
-  margin: 4px 0 0 !important;
+  margin: 8px 0 0 !important;
   padding: 0 !important;
+  position: relative !important;
+  z-index: 1 !important;
+  clear: both !important;
 }
 .av-studio .av-pulse-card,
 section.av-pulse-row > .av-pulse-card {
@@ -3403,7 +3420,7 @@ section.av-pulse-row > .av-pulse-card {
   padding: 14px 14px 12px !important;
   box-sizing: border-box !important;
   position: relative !important;
-  z-index: 1 !important;
+  z-index: auto !important;
   float: none !important;
   transform: none !important;
 }
@@ -3570,10 +3587,11 @@ section.av-pulse-row > .av-pulse-card {
   .att-main { padding: 12px 12px 88px; }
   .av-stage-main { padding: 22px 18px 18px; }
   .av-stage-clock { padding: 0 18px 18px; }
+  /* sticky olib tashlandi — oq fon pulse kartochkalar ustiga yopishib qolardi */
   .av-punch-card-pro {
-    position: sticky;
-    bottom: 10px;
-    z-index: 5;
+    position: relative;
+    bottom: auto;
+    z-index: 0;
   }
 }
 
