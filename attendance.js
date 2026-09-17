@@ -2296,23 +2296,23 @@
             </section>
           </div>
 
-          <section class="av-pulse-row">
-            <div class="av-pulse-card">
+          <section class="av-pulse-row" style="display:flex;flex-wrap:wrap;gap:16px;align-items:stretch;">
+            <div class="av-pulse-card" style="flex:1 1 160px;margin:0;min-width:0;">
               <div class="k">Oxirgi 45 kun</div>
               <div class="v">${pulse.present}</div>
               <div class="s">Kelgan kunlar</div>
             </div>
-            <div class="av-pulse-card warn">
+            <div class="av-pulse-card warn" style="flex:1 1 160px;margin:0;min-width:0;">
               <div class="k">Kechikish</div>
               <div class="v">${pulse.late}</div>
               <div class="s">Belgilangan</div>
             </div>
-            <div class="av-pulse-card ok">
+            <div class="av-pulse-card ok" style="flex:1 1 160px;margin:0;min-width:0;">
               <div class="k">To‘liq kun</div>
               <div class="v">${pulse.full}</div>
               <div class="s">Keldi + Ketdi</div>
             </div>
-            <div class="av-pulse-card navy">
+            <div class="av-pulse-card navy" style="flex:1 1 160px;margin:0;min-width:0;">
               <div class="k">Keyingi qadam</div>
               <div class="v-sm">${esc(nextAction)}</div>
               <div class="s">Tizim yo‘riqnomasi</div>
