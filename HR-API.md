@@ -11,8 +11,12 @@ HR platformasiga shu hujjatni bering. Asosiy VHK / yoqilg‘i / login o‘zgarma
 
 ## Manzil
 
-Production misol:
-`https://gps-vaksina-med.vercel.app`
+Production misol (Hetzner / o‘z domen):
+`https://SIZNING-GPS-DOMEN.uz`
+
+Eski Vercel URL ishlatilmasin.
+
+To‘liq Logistika (menyu + SSO): qarang `HR-LOGISTIKA-ULASH.md`.
 
 ## Autentifikatsiya
 

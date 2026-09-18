@@ -11,10 +11,13 @@
 | Savol | Javob |
 |--------|--------|
 | API tayyormi? | Ha — kod va endpointlar ishlaydi |
-| Yozish mumkinmi? | **Yo‘q** — faqat GET |
-| Login / cookie kerakmi? | **Yo‘q** — faqat API kalit |
+| Yozish mumkinmi? | **Yo‘q** — faqat GET (o‘qish API) |
+| To‘liq UI (Logistika)? | **Ha** — qarang `HR-LOGISTIKA-ULASH.md` (SSO) |
+| Login / cookie kerakmi? | O‘qish API: **yo‘q**. Logistika SSO: ticket |
 | Yoqilg‘i narxi, GPS parol, foydalanuvchi login | **Berilmaydi** |
-| Face ID / davomat | Hozircha **shu API’da yo‘q** |
+| Face ID / davomat | O‘qish API’da yo‘q; Logistika UI orqali ochiladi |
+
+> **Direktor to‘liq ishlatsin** deb rejalashtirilgan bo‘lsa — asosiy hujjat: **`HR-LOGISTIKA-ULASH.md`**.
 
 ---
 

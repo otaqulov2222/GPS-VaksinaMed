@@ -57,8 +57,10 @@ BLOCKED_NAMES = {
     "render.yaml",
     "gps_sync.py",
     "hr_api.py",
+    "hr_logistics.py",
     "support_ai.py",
     "hr-api.md",
+    "hr-logistika-ulash.md",
 }
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
@@ -86,7 +88,7 @@ HTML_CANONICAL = {
 }
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m138"
+VM_BUILD = "m139"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -753,6 +755,42 @@ class AuthStore:
             self._save_sessions()
             user["last_login"] = iso_now()
             self._audit(data, "login_ok", user["username"], ip)
+            self._write(data)
+            return sess, None
+
+    def login_sso(self, username, ip, ua, source="hr_sso"):
+        """Parolsiz sessiya — faqat HR Logistika bridge orqali (ruxsat tekshiruvi tashqarida)."""
+        with self.lock:
+            data = self._read()
+            user = self.find_user(data, username=username.strip() if username else "")
+            if not user or not user.get("active", True):
+                self._audit(data, "sso_fail", username or "?", "user topilmadi")
+                self._write(data)
+                return None, "Foydalanuvchi topilmadi yoki o'chirilgan"
+            role = user.get("role") or "admin"
+            if role not in STAFF_ROLES:
+                self._audit(data, "sso_fail", username, "staff emas")
+                self._write(data)
+                return None, "Faqat admin rollari uchun"
+            sid = secrets.token_urlsafe(32)
+            sess = {
+                "id": sid,
+                "user_id": user["id"],
+                "username": user["username"],
+                "name": user.get("name") or user["username"],
+                "role": role,
+                "car": user.get("car") or "",
+                "ip": ip,
+                "ua": (ua or "")[:180],
+                "created": now_ts(),
+                "last_seen": now_ts(),
+                "sso": True,
+                "sso_source": str(source or "hr_sso")[:40],
+            }
+            self.sessions[sid] = sess
+            self._save_sessions()
+            user["last_login"] = iso_now()
+            self._audit(data, "sso_ok", user["username"], str(source or "hr_sso")[:40])
             self._write(data)
             return sess, None
 
@@ -3063,7 +3101,20 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         else:
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        # HR iframe: VM_HR_FRAME_ANCESTORS berilsa — CSP; aks holda eski SAMEORIGIN
+        try:
+            import hr_logistics as _hrl
+
+            ancestors = _hrl.frame_ancestors()
+        except Exception:
+            ancestors = ""
+        if ancestors:
+            self.send_header(
+                "Content-Security-Policy",
+                "frame-ancestors 'self' " + ancestors,
+            )
+        else:
+            self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("X-VM-Build", VM_BUILD)
         super().end_headers()
@@ -3081,10 +3132,14 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return True
         return False
 
-    def cookie_attrs(self, max_age=SESSION_TTL):
-        parts = ["HttpOnly", "Path=/", "SameSite=Lax", f"Max-Age={int(max_age)}"]
-        if self.is_https():
-            parts.append("Secure")
+    def cookie_attrs(self, max_age=SESSION_TTL, embed=False):
+        # iframe (boshqa domen): SameSite=None; Secure kerak
+        if embed:
+            parts = ["HttpOnly", "Path=/", "SameSite=None", f"Max-Age={int(max_age)}", "Secure"]
+        else:
+            parts = ["HttpOnly", "Path=/", "SameSite=Lax", f"Max-Age={int(max_age)}"]
+            if self.is_https():
+                parts.append("Secure")
         return "; ".join(parts)
 
     def read_sid(self):
@@ -3382,7 +3437,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             n = 0
         if n > 12 * 1024 * 1024:
             return {}
-        raw = self.rfile.read(n) if n else b"{}"
+        if n > 0:
+            raw = self.rfile.read(n)
+        else:
+            # dispatch_http / ba'zi proxy: Content-Length yo'q bo'lishi mumkin
+            raw = self.rfile.read() or b"{}"
         try:
             return json.loads(raw.decode("utf-8") or "{}")
         except json.JSONDecodeError:
@@ -3427,7 +3486,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "X-API-Key, Authorization, Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(raw)
 
@@ -3440,12 +3499,50 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return False
         return True
 
-    def handle_hr_api(self, path):
-        """Faqat o'qish HR API — session cookie talab qilinmaydi."""
+    def handle_hr_logistics_enter(self):
+        """Brauzer: bir martalik ticket → cookie + redirect. API key kerak emas."""
+        import hr_logistics
+
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        ticket = (qs.get("ticket") or [""])[0]
+        row, err = hr_logistics.consume_ticket(ticket)
+        if err:
+            self.send_hr_json({"ok": False, "error": err}, 401)
+            return
+        sess, serr = STORE.login_sso(
+            row.get("username"),
+            self.client_ip(),
+            self.headers.get("User-Agent"),
+            source="hr_logistics",
+        )
+        if serr or not sess:
+            self.send_hr_json({"ok": False, "error": serr or "SSO xato"}, 403)
+            return
+        loc = row.get("path") or "/"
+        embed = bool(row.get("embed"))
+        self.send_response(302)
+        self.send_header("Location", loc)
+        self.send_header(
+            "Set-Cookie",
+            f"{COOKIE}={sess['id']}; {self.cookie_attrs(embed=embed)}",
+        )
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def handle_hr_api(self, path, body=None):
+        """HR API: o'qish + Logistika menyu/SSO. Asosiy login oqimiga tegmaydi."""
         import hr_api
+        import hr_logistics
+
+        # Enter — ticket o'zi maxfiy
+        if path == "/api/hr/logistics/enter":
+            self.handle_hr_logistics_enter()
+            return
 
         if not self.require_hr_key():
             return
+
+        method = (self.command or "GET").upper()
         qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         date = (qs.get("date") or [None])[0]
         car = (qs.get("car") or [None])[0]
@@ -3455,14 +3552,22 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 {
                     "ok": True,
                     "service": "VaksinaMed HR API",
-                    "version": 1,
+                    "version": 2,
                     "today": hr_api.today_tashkent(),
                     "endpoints": [
                         "GET /api/hr/health",
                         "GET /api/hr/fleet?date=YYYY-MM-DD",
                         "GET /api/hr/driver?car=01+887+UKA&date=YYYY-MM-DD",
                         "GET /api/hr/tasks?date=YYYY-MM-DD",
+                        "GET /api/hr/logistics/menu",
+                        "POST /api/hr/logistics/sso",
+                        "GET /api/hr/logistics/enter?ticket=...",
                     ],
+                    "logistics": {
+                        "menu": "/api/hr/logistics/menu",
+                        "sso": "POST /api/hr/logistics/sso",
+                        "placement": "top_level_Logistika",
+                    },
                 }
             )
             return
@@ -3489,6 +3594,46 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_hr_json({"ok": False, "error": err}, 400)
                 return
             self.send_hr_json({"ok": True, **data})
+            return
+
+        if path == "/api/hr/logistics/menu":
+            self.send_hr_json({"ok": True, **hr_logistics.menu_payload()})
+            return
+
+        if path == "/api/hr/logistics/sso":
+            if method != "POST":
+                self.send_hr_json(
+                    {"ok": False, "error": "POST kerak: {username|hrUser, path, embed?}"},
+                    405,
+                )
+                return
+            body = body if isinstance(body, dict) else {}
+            username = hr_logistics.resolve_username(body)
+            if not username:
+                self.send_hr_json(
+                    {"ok": False, "error": "username yoki hrUser kerak"},
+                    400,
+                )
+                return
+            path_req = body.get("path") or body.get("page") or "/"
+            embed = bool(body.get("embed"))
+            tid, err = hr_logistics.create_ticket(username, path_req, embed=embed)
+            if err:
+                code = 503 if "o'chirilgan" in err else 403
+                self.send_hr_json({"ok": False, "error": err}, code)
+                return
+            enter = hr_logistics.enter_url(tid)
+            self.send_hr_json(
+                {
+                    "ok": True,
+                    "ticket": tid,
+                    "expiresInSec": 90,
+                    "path": hr_logistics.normalize_path(path_req),
+                    "enterUrl": enter,
+                    "embed": embed,
+                    "instruction": "Brauzerni enterUrl ga yo'naltiring (yoki iframe src=enterUrl)",
+                }
+            )
             return
 
         self.send_hr_json({"ok": False, "error": "Not found"}, 404)
@@ -3523,7 +3668,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if path.startswith("/api/hr"):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Headers", "X-API-Key, Authorization, Content-Type")
-            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
 
     def do_GET(self):
@@ -4333,6 +4478,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_api_post(self, path):
+        # HR Logistika SSO — asosiy /api/login dan oldin, alohida
+        if path.startswith("/api/hr"):
+            body = self.read_json()
+            self.handle_hr_api(path, body=body)
+            return
+
         body = self.read_json()
 
         if path == "/api/login":
