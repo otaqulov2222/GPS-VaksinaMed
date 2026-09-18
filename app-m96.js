@@ -468,6 +468,23 @@ function buildPharmIndex() {
     });
 }
 
+function pharmNameScore(pn, en) {
+    if (!pn || !en || pn.length < 3 || en.length < 3) return 0;
+    if (pn === en) return 100;
+    const pn2 = pn.replace(/\d+/g, '');
+    const en2 = en.replace(/\d+/g, '');
+    // qorasuv2 ≡ qorasuv5 bo'lib ketmasin
+    if (pn2 && en2 && pn2.length >= 10 && pn2 === en2) return 95;
+    if (pn.includes(en) || en.includes(pn)) {
+        const shorter = Math.min(pn.length, en.length);
+        const longer = Math.max(pn.length, en.length);
+        const ratio = shorter / longer;
+        if (shorter >= 8 && ratio >= 0.75) return ratio * 90;
+        return 0;
+    }
+    return 0;
+}
+
 function matchPharmacy(place, currentCar, lat, lng) {
     if (window.VMOffice && typeof VMOffice.matchGeo === 'function') {
         const geo = VMOffice.matchGeo(currentCar, lat, lng);
@@ -480,19 +497,8 @@ function matchPharmacy(place, currentCar, lat, lng) {
 
     PHARM_INDEX.forEach(entry => {
         const en = entry.norm;
-        let score = 0;
-        if (pn === en) score = 100;
-        else if (pn.includes(en) || en.includes(pn)) {
-            score = Math.min(pn.length, en.length) / Math.max(pn.length, en.length) * 90;
-        } else {
-            // Token matching
-            const ptok = pn.split(' ');
-            const etok = en.split(' ');
-            let matches = 0;
-            ptok.forEach(pt => { if (etok.some(et => et === pt && pt.length > 2)) matches++; });
-            score = matches / Math.max(ptok.length, etok.length) * 70;
-        }
-        if (score > 40) {
+        const score = pharmNameScore(pn, en);
+        if (score >= 55) {
             owners.push({ car: entry.car, driver: entry.driver, phName: entry.name, score });
             if (score > bestScore) { bestScore = score; bestMatch = entry; }
         }

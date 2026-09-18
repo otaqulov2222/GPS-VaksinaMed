@@ -71,6 +71,33 @@ def pharmacy_key(s):
     return k
 
 
+def _pharm_name_score(pn, en):
+    """
+    Joy nomi ↔ dorixona. Soxta moslashmasin:
+    - 'qora…' prefiks (4 harf) bilan Qorakamish/Qorasuv aralashmasin
+    - QORA-SUV-2 SADAF ≡ Qora-suv Sadaf (raqam farqi OK)
+    """
+    if not pn or not en or len(pn) < 3 or len(en) < 3:
+        return 0.0
+    if pn == en:
+        return 100.0
+    # Raqamlarni olib tashlab solishtirish (geozona -2 / SADAF)
+    # DIQQAT: qorasuv2 ≡ qorasuv5 bo'lib ketmasin — faqat yetarli uzun kalit
+    pn2 = re.sub(r"\d+", "", pn)
+    en2 = re.sub(r"\d+", "", en)
+    if pn2 and en2 and len(pn2) >= 10 and pn2 == en2:
+        return 95.0
+    if pn in en or en in pn:
+        shorter = min(len(pn), len(en))
+        longer = max(len(pn), len(en))
+        ratio = shorter / longer
+        # juda qisqa substring (masalan 'qorasuv' → barcha Qora-suv-*) — rad
+        if shorter >= 8 and ratio >= 0.75:
+            return ratio * 90.0
+        return 0.0
+    return 0.0
+
+
 def compact_car(s):
     return re.sub(r"\s+", "", str(s or "").upper())
 
@@ -1507,20 +1534,12 @@ def match_pharmacy(place, current_car, lat, lng, pharm_index, pharmacies):
     pn = pharmacy_key(place) or norm_ph(place)
     if len(pn) < 3:
         return {"type": "none", "phName": None, "owners": []}
-    best_score, best = 0, None
+    best_score, best = 0.0, None
     owners = []
     for entry in pharm_index:
         en = entry["norm"]
-        score = 0
-        if pn == en:
-            score = 100
-        elif pn in en or en in pn:
-            score = min(len(pn), len(en)) / max(len(pn), len(en)) * 90
-        else:
-            # Kalitlar bo'shliqsiz — token o'rniga qisman moslash
-            if len(pn) >= 4 and len(en) >= 4 and (pn[:4] == en[:4]):
-                score = 45
-        if score > 40:
+        score = _pharm_name_score(pn, en)
+        if score >= 55:
             owners.append(entry)
             if score > best_score:
                 best_score, best = score, entry

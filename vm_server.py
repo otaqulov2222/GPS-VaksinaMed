@@ -88,7 +88,7 @@ HTML_CANONICAL = {
 }
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m140"
+VM_BUILD = "m141"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -5706,7 +5706,13 @@ def main():
     try:
         import support_ai
 
-        support_ai.load_dotenv(os.path.join(DIRECTORY, ".env"))
+        for env_path in (
+            os.path.join(DIRECTORY, "scripts", "hr_logistics.env.defaults"),
+            "/opt/vaksina/scripts/hr_logistics.env.defaults",
+            "/opt/vaksina/app/scripts/hr_logistics.env.defaults",
+            os.path.join(DIRECTORY, ".env"),
+        ):
+            support_ai.load_dotenv(env_path)
     except Exception:
         pass
     parser = argparse.ArgumentParser(description="VaksinaMed GPS Monitor Server")
