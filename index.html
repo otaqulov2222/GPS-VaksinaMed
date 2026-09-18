@@ -1409,6 +1409,56 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   text-shadow: 0 0 3px #fff, 0 1px 2px rgba(255,255,255,.9);
   opacity: .75;
 }
+.vm-route-chev {
+  background: none !important;
+  border: none !important;
+}
+.vm-route-chev-inner {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(var(--brg, 0deg));
+  filter: drop-shadow(0 1px 2px rgba(11, 31, 58, 0.65));
+}
+.vm-route-chev-inner svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+  overflow: visible;
+}
+.vm-route-chev-inner path {
+  fill: #ffffff;
+  stroke: #0b1f3a;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.leaflet-container path.vm-route-flow {
+  animation: vmRouteFlow 1.55s linear infinite;
+  pointer-events: none;
+}
+@keyframes vmRouteFlow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -22; }
+}
+.leg-dot.is-flow {
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #0b2d60 0%, #1a5fb4 32%, #0e94a0 62%, #ea8c28 100%);
+  box-shadow: none;
+}
+.leg-dot.is-chev {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 8px solid #1a5fb4;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .map-overlay-info {
   position: absolute; top: 12px; right: 12px; z-index: 460;
   pointer-events: none;
@@ -2466,7 +2516,9 @@ input, select, textarea { max-width: 100%; }
         <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a"></span> Muammo</span>
         <span class="leg-item"><span class="leg-dot" style="background:#8eb6df"></span> Shahardan tashqari</span>
         <span class="leg-item"><span class="leg-dot" style="background:#123050"></span> Ofis / sklad</span>
-        <span class="leg-item"><span class="leg-dot is-line" style="background:#1a5fb4"></span> GPS marshrut (haqiqiy yo'l)</span>
+        <span class="leg-item"><span class="leg-dot is-line" style="background:#1a5fb4"></span> GPS marshrut</span>
+        <span class="leg-item"><span class="leg-dot is-chev"></span> Yo‘nalish strelkasi</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a;border-radius:4px"></span> A / B</span>
       </div>
 
       <div class="map-frame" id="map-frame">
@@ -2748,9 +2800,9 @@ input, select, textarea { max-width: 100%; }
 <script src="auth.js?v=39"></script>
 
 <script src="map-tiles.js?v=3"></script>
-<script src="map-route.js?v=2"></script>
+<script src="map-route.js?v=7"></script>
 
-<script src="app-m96.js?v=m142"></script>
+<script src="app-m96.js?v=m142r8"></script>
 
 <script src="office.js?v=24"></script>
 

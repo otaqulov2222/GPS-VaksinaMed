@@ -1224,16 +1224,151 @@ function initMap() {
 function removeMapRouteLayers() {
     if (!STATE.map) return;
     if (STATE.mapLine) {
-        STATE.map.removeLayer(STATE.mapLine);
+        try { STATE.map.removeLayer(STATE.mapLine); } catch (e) {}
         STATE.mapLine = null;
     }
     if (STATE.mapRouteMain) {
-        STATE.map.removeLayer(STATE.mapRouteMain);
+        try { STATE.map.removeLayer(STATE.mapRouteMain); } catch (e) {}
         STATE.mapRouteMain = null;
     }
     if (STATE.mapRouteArrows) {
-        STATE.map.removeLayer(STATE.mapRouteArrows);
+        try { STATE.map.removeLayer(STATE.mapRouteArrows); } catch (e) {}
         STATE.mapRouteArrows = null;
+    }
+}
+
+/** Shimol = 0°, soat yo‘nalishi — CSS rotate uchun (strelka yuqoriga qaragan). */
+function routeBearingDeg(a, b) {
+    const lat1 = Number(a[0]) * Math.PI / 180;
+    const lat2 = Number(b[0]) * Math.PI / 180;
+    const dLng = (Number(b[1]) - Number(a[1])) * Math.PI / 180;
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function routeSegMeters(a, b) {
+    if (typeof L !== 'undefined' && L.latLng) {
+        return L.latLng(a[0], a[1]).distanceTo(L.latLng(b[0], b[1]));
+    }
+    const R = 6371000;
+    const φ1 = a[0] * Math.PI / 180, φ2 = b[0] * Math.PI / 180;
+    const dφ = (b[0] - a[0]) * Math.PI / 180;
+    const dλ = (b[1] - a[1]) * Math.PI / 180;
+    const s = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+/**
+ * Toza professional marshrut:
+ * bitta ko'k chiziq + oq strelkalar (yo'nalish).
+ * Ko'p rang / lane / chalkashlik YO'Q.
+ */
+function drawMapRouteLayers(latlngs, lanePts) {
+    removeMapRouteLayers();
+    if (!STATE.map || !latlngs || latlngs.length < 2) return;
+
+    const pts = [];
+    for (let i = 0; i < latlngs.length; i++) {
+        const p = latlngs[i];
+        if (!p || p.length < 2) continue;
+        const lat = Number(p[0]), lng = Number(p[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !lat || !lng) continue;
+        if (pts.length) {
+            const prev = pts[pts.length - 1];
+            if (Math.abs(prev[0] - lat) < 1e-7 && Math.abs(prev[1] - lng) < 1e-7) continue;
+        }
+        pts.push([lat, lng]);
+    }
+    if (pts.length < 2) return;
+
+    STATE.mapLine = L.polyline(pts, {
+        color: '#0b1f3a',
+        weight: 8,
+        opacity: 0.18,
+        lineJoin: 'round',
+        lineCap: 'round',
+        interactive: false
+    }).addTo(STATE.map);
+
+    const layers = [];
+    layers.push(L.polyline(pts, {
+        color: '#1a5fb4',
+        weight: 4,
+        opacity: 0.95,
+        lineJoin: 'round',
+        lineCap: 'round',
+        interactive: false
+    }));
+    layers.push(L.polyline(pts, {
+        color: '#ffffff',
+        weight: 1.4,
+        opacity: 0.4,
+        dashArray: '5 12',
+        lineJoin: 'round',
+        lineCap: 'butt',
+        className: 'vm-route-flow',
+        interactive: false
+    }));
+    STATE.mapRouteMain = L.layerGroup(layers).addTo(STATE.map);
+
+    const arrowLayers = [];
+    const dist = [0];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+        total += routeSegMeters(pts[i - 1], pts[i]);
+        dist.push(total);
+    }
+    if (total < 1) total = 1;
+
+    // Butun marshrut bo'ylab teng: borish + qaytishda ham strelka (oldingi limit faqat boshini belgilardi)
+    const targetArrows = Math.min(140, Math.max(20, Math.round(total / 220)));
+    const spacing = total / (targetArrows + 1);
+
+    function pointAtDistance(meters) {
+        if (meters <= 0) return { lat: pts[0][0], lng: pts[0][1], brg: routeBearingDeg(pts[0], pts[1]) };
+        if (meters >= total) {
+            const a = pts[pts.length - 2], b = pts[pts.length - 1];
+            return {
+                lat: b[0],
+                lng: b[1],
+                brg: (typeof vmRouteBearing === 'function') ? vmRouteBearing(a, b) : routeBearingDeg(a, b)
+            };
+        }
+        for (let i = 1; i < dist.length; i++) {
+            if (dist[i] < meters) continue;
+            const segLen = dist[i] - dist[i - 1];
+            const f = segLen > 0 ? (meters - dist[i - 1]) / segLen : 0;
+            const a = pts[i - 1], b = pts[i];
+            return {
+                lat: a[0] + (b[0] - a[0]) * f,
+                lng: a[1] + (b[1] - a[1]) * f,
+                brg: (typeof vmRouteBearing === 'function') ? vmRouteBearing(a, b) : routeBearingDeg(a, b)
+            };
+        }
+        return null;
+    }
+
+    for (let n = 1; n <= targetArrows; n++) {
+        const at = spacing * n;
+        const p = pointAtDistance(at);
+        if (!p) continue;
+        arrowLayers.push(L.marker([p.lat, p.lng], {
+            interactive: false,
+            keyboard: false,
+            zIndexOffset: 400,
+            icon: L.divIcon({
+                className: 'vm-route-chev',
+                html: '<div class="vm-route-chev-inner" style="--brg:' + Number(p.brg).toFixed(1) + 'deg">'
+                    + '<svg viewBox="0 0 24 24" aria-hidden="true">'
+                    + '<path d="M12 2.8L21 20.2l-9-4.2-9 4.2z"/></svg></div>',
+                iconSize: [22, 22],
+                iconAnchor: [11, 11]
+            })
+        }));
+    }
+    if (arrowLayers.length) {
+        STATE.mapRouteArrows = L.layerGroup(arrowLayers).addTo(STATE.map);
     }
 }
 
@@ -1297,39 +1432,6 @@ async function refreshTrackTelemetry() {
         track = await ensureTrackPoints(day, { needTelemetry: true });
     }
     drawBoomerangTelemetry(track);
-}
-
-function drawMapRouteLayers(latlngs) {
-    removeMapRouteLayers();
-    if (!STATE.map || !latlngs || latlngs.length < 2) return;
-    STATE.mapLine = L.polyline(latlngs, {
-        color: '#0b1f3a', weight: 7, opacity: 0.18, lineJoin: 'round', lineCap: 'round',
-        interactive: false
-    }).addTo(STATE.map);
-    STATE.mapRouteMain = L.polyline(latlngs, {
-        color: '#1a5fb4', weight: 3.25, opacity: 0.95, lineJoin: 'round', lineCap: 'round',
-        interactive: false
-    }).addTo(STATE.map);
-    // Yo'nalish belgilar (siyrak)
-    const arrowLayers = [];
-    const step = Math.max(1, Math.floor(latlngs.length / 12));
-    for (let i = step; i < latlngs.length - 1; i += step) {
-        const p = latlngs[i];
-        const next = latlngs[Math.min(latlngs.length - 1, i + Math.max(1, Math.floor(step / 2)))];
-        const ang = Math.atan2(next[1] - p[1], next[0] - p[0]) * 180 / Math.PI;
-        arrowLayers.push(L.marker(p, {
-            interactive: false,
-            icon: L.divIcon({
-                className: 'vm-route-arrow',
-                html: `<span style="transform:rotate(${ang}deg)">›</span>`,
-                iconSize: [14, 14],
-                iconAnchor: [7, 7]
-            })
-        }));
-    }
-    if (arrowLayers.length) {
-        STATE.mapRouteArrows = L.layerGroup(arrowLayers).addTo(STATE.map);
-    }
 }
 
 function sortStopsForRoute(stops) {
@@ -1667,14 +1769,36 @@ async function refreshMap(stops, points) {
     const officeMarks = built.officeMarks || [];
     setMapStats(list, track.length || (markerStops.length + officeMarks.length));
 
-    // Asosiy chiziq — haqiqiy GPS trek; bo'lmasa to'xtashlar orasidagi yo'l
+    // Asosiy chiziq — GPS trek → yo'lga match + ko'p o'tish offset
     let routeLatlngs = track.length >= 2
         ? track.map(p => [p[0], p[1]])
         : markerStops.filter(st => validUzCoord(st.lat, st.lng)).map(st => [st.lat, st.lng]);
+    let routeLanes = null;
 
     if (routeLatlngs.length > 1) {
-        drawMapRouteLayers(routeLatlngs);
-        // Faqat to'xtashlar (trek yo'q) va ular uzoq — OSRM yo'l bo'yicha
+        if (track.length >= 2 && typeof vmPrepareRouteTrack === 'function') {
+            try {
+                const prepared = await vmPrepareRouteTrack(routeLatlngs, {
+                    simplifyM: 16,
+                    minStepM: 12,
+                    clusterRM: 26,
+                    snap: true
+                });
+                if (gen !== STATE.mapRouteGen) return;
+                if (prepared && prepared.points && prepared.points.length >= 2) {
+                    routeLatlngs = prepared.points;
+                    routeLanes = null;
+                    STATE._routeSnapped = !!prepared.snapped;
+                }
+            } catch (e) {
+                console.warn('prepareRouteTrack:', e);
+                STATE._routeSnapped = false;
+            }
+        } else {
+            STATE._routeSnapped = false;
+        }
+        drawMapRouteLayers(routeLatlngs, routeLanes);
+        // Trek yo'q — to'xtashlar orasini OSRM route
         if (track.length < 2 && typeof vmFetchRoadRoute === 'function' && routeLatlngs.length >= 2) {
             const span = L.latLngBounds(routeLatlngs);
             if (span.isValid() && span.getNorthEast().distanceTo(span.getSouthWest()) > 120) {
@@ -1683,7 +1807,7 @@ async function refreshMap(stops, points) {
                     if (gen !== STATE.mapRouteGen) return;
                     if (road && road.length > 1) {
                         routeLatlngs = road;
-                        drawMapRouteLayers(road);
+                        drawMapRouteLayers(road, null);
                     }
                 }).catch(() => {});
             }
@@ -1700,6 +1824,7 @@ async function refreshMap(stops, points) {
         if (km > 0) bits.push(km.toFixed(2) + ' km');
         if (track.length) bits.push(track.length + ' GPS nuqta');
         bits.push(markerStops.length + ' to\'xtash');
+        if (STATE._routeSnapped) bits.push('yo‘l bo‘ylab');
         setMapOverlay(bits.join(' · '));
     }
 
@@ -1708,9 +1833,9 @@ async function refreshMap(stops, points) {
         const aIcon = mapPinIcon('A', '#0b1f3a', true);
         const bIcon = mapPinIcon('B', '#1a5fb4', true);
         STATE.mapMarkers.push(L.marker([track[0][0], track[0][1]], { icon: aIcon, zIndexOffset: 80 }).addTo(STATE.map)
-            .bindPopup('<b>Boshlanish</b><br>Kunlik marshrut A nuqtasi'));
+            .bindPopup('<b>A · Boshlanish</b><br>Kunlik marshrut boshlangan nuqta'));
         STATE.mapMarkers.push(L.marker([track[track.length - 1][0], track[track.length - 1][1]], { icon: bIcon, zIndexOffset: 80 }).addTo(STATE.map)
-            .bindPopup('<b>Tugash</b><br>Kunlik marshrut B nuqtasi'));
+            .bindPopup('<b>B · Tugash</b><br>Kunlik marshrut yakunlangan nuqta'));
     }
 
     // Tungi ofis — raqamsiz «O»
