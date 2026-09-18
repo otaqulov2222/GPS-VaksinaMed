@@ -413,44 +413,76 @@ const VMOffice = {
         return this.savePharmacies(cleaned);
     },
 
-    matchGeo(currentCar, lat, lng) {
+    matchGeo(currentCar, lat, lng, place) {
         const y = Number(lat), x = Number(lng);
         if (!y || !x) return null;
         const want = plateCompact(currentCar);
-        let bestOwn = null, bestOwnD = 1e12;
-        let bestAny = null, bestAnyD = 1e12;
+        const candidates = [];
         (STATE.pharmacies || []).forEach(ph => {
             if (ph.lat == null || ph.lng == null) return;
             const d = vmHaversineM(y, x, Number(ph.lat), Number(ph.lng));
             const r = Number(ph.radiusM) || 120;
             if (d > r) return;
-            if (d < bestAnyD) {
-                bestAnyD = d;
-                bestAny = ph;
-            }
-            const sameCar = ph.car === currentCar || plateCompact(ph.car) === want;
-            if (sameCar && d < bestOwnD) {
-                bestOwnD = d;
-                bestOwn = ph;
-            }
+            candidates.push({ d, ph });
         });
-        const best = bestOwn || bestAny;
-        if (!best) return null;
-        const sameName = (a, b) => (typeof uzNameEq === 'function' ? uzNameEq(a, b) : a === b);
-        const owners = (STATE.pharmacies || [])
-            .filter(p => sameName(p.name, best.name) || (p.lat === best.lat && p.lng === best.lng))
-            .map(p => {
-                const drv = this.driversList().find(d => d.car === p.car || plateCompact(d.car) === plateCompact(p.car));
-                return drv ? drv.shortName : p.car;
-            });
-        const uniq = [...new Set(owners)];
-        const isOwn = best.car === currentCar || plateCompact(best.car) === want;
-        return {
-            type: isOwn ? 'own' : 'other',
-            phName: best.name,
-            owners: uniq,
-            by: 'geo'
+        if (!candidates.length) return null;
+
+        const pk = (typeof pharmacyKey === 'function' ? pharmacyKey(place) : null)
+            || (typeof normPh === 'function' ? normPh(place) : '');
+        const isCoord = (typeof isCoordPlace === 'function')
+            ? isCoordPlace(place)
+            : /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(String(place || '').trim());
+        const isJunk = (typeof isJunkPlace === 'function') ? isJunkPlace(place) : !String(place || '').trim();
+        const placeOk = !!(pk && pk.length >= 4) && !isCoord && !isJunk;
+
+        const pack = (ph, type) => {
+            const sameName = (a, b) => (typeof uzNameEq === 'function' ? uzNameEq(a, b) : a === b);
+            const owners = (STATE.pharmacies || [])
+                .filter(p => sameName(p.name, ph.name) || (p.lat === ph.lat && p.lng === ph.lng))
+                .map(p => {
+                    const drv = this.driversList().find(d => d.car === p.car || plateCompact(d.car) === plateCompact(p.car));
+                    return drv ? drv.shortName : p.car;
+                });
+            return {
+                type,
+                phName: ph.name,
+                owners: [...new Set(owners)],
+                by: 'geo'
+            };
         };
+
+        // 1) Joy nomi dorixona bilan kelishadi
+        if (placeOk && typeof pharmNameScore === 'function') {
+            let bestSc = 0, bestPh = null, bestD = 1e12;
+            candidates.forEach(({ d, ph }) => {
+                const en = (typeof pharmacyKey === 'function' ? pharmacyKey(ph.name) : null) || normPh(ph.name);
+                const sc = pharmNameScore(pk, en);
+                if (sc >= 55 && (sc > bestSc || (sc === bestSc && d < bestD))) {
+                    bestSc = sc;
+                    bestPh = ph;
+                    bestD = d;
+                }
+            });
+            if (bestPh) {
+                const isOwn = bestPh.car === currentCar || plateCompact(bestPh.car) === want;
+                return pack(bestPh, isOwn ? 'own' : 'other');
+            }
+        }
+
+        // 2) Eng yaqin o'z dorixonasi
+        const ownCands = candidates.filter(({ ph }) =>
+            ph.car === currentCar || plateCompact(ph.car) === want);
+        if (ownCands.length) {
+            ownCands.sort((a, b) => a.d - b.d);
+            return pack(ownCands[0].ph, 'own');
+        }
+
+        // 3) Boshqa yo'nalish geo — faqat joy nomi yo'q/koordinata
+        if (!placeOk) {
+            candidates.sort((a, b) => a.d - b.d);
+            return pack(candidates[0].ph, 'other');
+        }
+        return null;
     },
 
     drawGeofences(map, car) {

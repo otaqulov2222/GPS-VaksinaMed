@@ -88,7 +88,7 @@ HTML_CANONICAL = {
 }
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m141"
+VM_BUILD = "m142"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}

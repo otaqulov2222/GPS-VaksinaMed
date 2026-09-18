@@ -34,11 +34,15 @@ function uiTxt(s) {
     return typeof uzUi === 'function' ? uzUi(s) : s;
 }
 
+function isCoordPlace(s) {
+    return /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(String(s || '').trim());
+}
+
 /** Boomerangdan kelgan buzilgan manzil (sasasas va h.k.) */
 function isJunkPlace(s) {
     const t = String(s || '').trim();
     if (!t) return true;
-    if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(t)) return false;
+    if (isCoordPlace(t)) return false;
     const compact = t.replace(/[\s\d.,\-_/]+/g, '');
     if (compact.length >= 4 && /^(.)\1+$/i.test(compact)) return true;
     if (/^(sa){2,}|(as){2,}|test+|asdf|qwerty|xxx+/i.test(compact)) return true;
@@ -417,46 +421,96 @@ function buildPharmIndex() {
     });
 }
 
+function pharmNameScore(pn, en) {
+    if (!pn || !en || pn.length < 3 || en.length < 3) return 0;
+    if (pn === en) return 100;
+    const pn2 = pn.replace(/\d+/g, '');
+    const en2 = en.replace(/\d+/g, '');
+    if (pn2 && en2 && pn2.length >= 10 && pn2 === en2) return 95;
+    if (pn.includes(en) || en.includes(pn)) {
+        const shorter = Math.min(pn.length, en.length);
+        const longer = Math.max(pn.length, en.length);
+        const ratio = shorter / longer;
+        if (shorter >= 8 && ratio >= 0.75) return ratio * 90;
+        return 0;
+    }
+    return 0;
+}
+
+function ownPharmacyKeyMap(carKey) {
+    const map = new Map();
+    const want = typeof plateKey === 'function' ? plateKey(carKey)
+        : String(carKey || '').replace(/\s+/g, '').toUpperCase();
+    (STATE.pharmacies || []).forEach(p => {
+        if (!p || !p.name || !p.car) return;
+        const pc = typeof plateKey === 'function' ? plateKey(p.car)
+            : String(p.car || '').replace(/\s+/g, '').toUpperCase();
+        if (p.car !== carKey && pc !== want) return;
+        const k = (typeof pharmacyKey === 'function' ? pharmacyKey(p.name) : null) || normPh(p.name);
+        if (k && !map.has(k)) map.set(k, p);
+    });
+    return map;
+}
+
+function finalizeMatch(match, place, currentCar) {
+    const m = Object.assign({ type: 'none', phName: null, owners: [] }, match || {});
+    const ownMap = ownPharmacyKeyMap(currentCar);
+    if (!ownMap.size) return m;
+    const phk = m.phName
+        ? ((typeof pharmacyKey === 'function' ? pharmacyKey(m.phName) : null) || normPh(m.phName))
+        : '';
+    if (phk && ownMap.has(phk)) {
+        const own = ownMap.get(phk);
+        m.type = 'own';
+        m.phName = own.name || m.phName;
+        return m;
+    }
+    const pk = (typeof pharmacyKey === 'function' ? pharmacyKey(place) : null) || normPh(place);
+    if (pk && ownMap.has(pk) && (m.type === 'none' || m.type === 'other' || !m.phName)) {
+        const own = ownMap.get(pk);
+        if (m.type !== 'other') return { type: 'own', phName: own.name, owners: [currentCar] };
+        const scOwn = pharmNameScore(pk, (typeof pharmacyKey === 'function' ? pharmacyKey(own.name) : null) || normPh(own.name));
+        const scOth = pharmNameScore(pk, (typeof pharmacyKey === 'function' ? pharmacyKey(m.phName) : null) || normPh(m.phName || ''));
+        if (scOwn >= scOth) return { type: 'own', phName: own.name, owners: [currentCar] };
+    }
+    return m;
+}
+
 function matchPharmacy(place, currentCar, lat, lng) {
     if (window.VMOffice && typeof VMOffice.matchGeo === 'function') {
-        const geo = VMOffice.matchGeo(currentCar, lat, lng);
-        if (geo) return geo;
+        const geo = VMOffice.matchGeo(currentCar, lat, lng, place);
+        if (geo) return finalizeMatch(geo, place, currentCar);
     }
     const pn = (typeof pharmacyKey === 'function' ? pharmacyKey(place) : null) || normPh(place);
-    if (!pn || pn.length < 3) return { type: 'none', phName: null, owners: [] };
+    if (!pn || pn.length < 3) return finalizeMatch({ type: 'none', phName: null, owners: [] }, place, currentCar);
 
     let bestScore = 0, bestMatch = null, owners = [];
 
     PHARM_INDEX.forEach(entry => {
         const en = entry.norm;
-        let score = 0;
-        if (pn === en) score = 100;
-        else if (pn.includes(en) || en.includes(pn)) {
-            score = Math.min(pn.length, en.length) / Math.max(pn.length, en.length) * 90;
-        } else {
-            // Token matching
-            const ptok = pn.split(' ');
-            const etok = en.split(' ');
-            let matches = 0;
-            ptok.forEach(pt => { if (etok.some(et => et === pt && pt.length > 2)) matches++; });
-            score = matches / Math.max(ptok.length, etok.length) * 70;
-        }
-        if (score > 40) {
+        const score = pharmNameScore(pn, en);
+        if (score >= 55) {
             owners.push({ car: entry.car, driver: entry.driver, phName: entry.name, score });
             if (score > bestScore) { bestScore = score; bestMatch = entry; }
         }
     });
 
-    if (!bestMatch) return { type: 'none', phName: null, owners: [] };
+    if (!bestMatch) return finalizeMatch({ type: 'none', phName: null, owners: [] }, place, currentCar);
 
     const uniqueOwners = [...new Map(owners.map(o => [o.car, o])).values()];
-    const isOwn = uniqueOwners.some(o => o.car === currentCar);
+    const want = typeof plateKey === 'function' ? plateKey(currentCar)
+        : String(currentCar || '').replace(/\s+/g, '').toUpperCase();
+    const isOwn = uniqueOwners.some(o => {
+        const oc = typeof plateKey === 'function' ? plateKey(o.car)
+            : String(o.car || '').replace(/\s+/g, '').toUpperCase();
+        return o.car === currentCar || oc === want;
+    });
 
-    return {
+    return finalizeMatch({
         type:    isOwn ? 'own' : 'other',
         phName:  bestMatch.name,
         owners:  uniqueOwners.map(o => o.driver)
-    };
+    }, place, currentCar);
 }
 
 // Ofis/sklad joylari

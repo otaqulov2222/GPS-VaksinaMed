@@ -1497,43 +1497,143 @@ def build_pharm_index(drivers, pharmacies):
     return index
 
 
-def match_geo(current_car, lat, lng, pharmacies):
-    y, x = float(lat or 0), float(lng or 0)
+def _own_pharmacy_by_key(current_car, pharmacies):
+    """Mashinaga biriktirilgan dorixonalar: pharmacy_key → ph dict."""
+    want = compact_car(current_car)
+    out = {}
+    for p in pharmacies or []:
+        if not isinstance(p, dict) or not p.get("name"):
+            continue
+        if compact_car(p.get("car")) != want:
+            continue
+        k = pharmacy_key(p.get("name")) or norm_ph(p.get("name"))
+        if k and k not in out:
+            out[k] = p
+    return out
+
+
+def _place_key_usable(place):
+    """Koordinata/bo'sh joy emas — nom bilan geo tasdiqlash mumkin."""
+    if is_coord_place(place) or is_junk_place(place):
+        return False
+    pk = pharmacy_key(place) or norm_ph(place)
+    return bool(pk) and len(pk) >= 4
+
+
+def _finalize_match(match, place, current_car, pharmacies):
+    """
+    Yakuniy own/other: agar joy yoki topilgan dorixona shu mashina ro'yxatida
+    bo'lsa — majburan own (noto'g'ri 'boshqa yo'nalish' oldini oladi).
+    """
+    match = dict(match or {"type": "none", "phName": None, "owners": []})
+    own_by_key = _own_pharmacy_by_key(current_car, pharmacies)
+    if not own_by_key:
+        return match
+
+    phk = pharmacy_key(match.get("phName") or "") if match.get("phName") else ""
+    if phk and phk in own_by_key:
+        own = own_by_key[phk]
+        match["type"] = "own"
+        match["phName"] = own.get("name") or match.get("phName")
+        if not match.get("owners"):
+            match["owners"] = [current_car]
+        return match
+
+    pk = pharmacy_key(place) or norm_ph(place)
+    if not pk or pk not in own_by_key:
+        return match
+
+    own = own_by_key[pk]
+    if match.get("type") in (None, "none") or not match.get("phName"):
+        return {"type": "own", "phName": own.get("name"), "owners": [current_car]}
+
+    if match.get("type") == "other":
+        sc_own = _pharm_name_score(pk, pharmacy_key(own.get("name") or "") or "")
+        sc_oth = _pharm_name_score(pk, pharmacy_key(match.get("phName") or "") or "")
+        if sc_own >= sc_oth:
+            return {"type": "own", "phName": own.get("name"), "owners": [current_car]}
+    return match
+
+
+def match_geo(current_car, lat, lng, pharmacies, place=""):
+    """
+    Geo moslashish:
+    1) radius ichida + joy nomi dorixona bilan kelishadi → shu
+    2) eng yaqin o'z dorixonasi
+    3) boshqa mashina geofence — faqat joy bo'sh/koordinata bo'lsa
+       (ko'cha nomi boshqa dorixonaga yopishtirilmasin)
+    """
+    try:
+        y, x = float(lat or 0), float(lng or 0)
+    except (TypeError, ValueError):
+        return None
     if not y or not x:
         return None
     want = compact_car(current_car)
-    best_own, best_own_d = None, 1e12
-    best_any, best_any_d = None, 1e12
+    candidates = []
     for ph in pharmacies or []:
         if not isinstance(ph, dict) or ph.get("lat") is None or ph.get("lng") is None:
             continue
-        d = haversine_m(y, x, float(ph["lat"]), float(ph["lng"]))
+        try:
+            d = haversine_m(y, x, float(ph["lat"]), float(ph["lng"]))
+        except (TypeError, ValueError):
+            continue
         r = float(ph.get("radiusM") or 120)
         if d > r:
             continue
-        if d < best_any_d:
-            best_any_d, best_any = d, ph
-        same_car = ph.get("car") == current_car or compact_car(ph.get("car")) == want
-        if same_car and d < best_own_d:
-            best_own_d, best_own = d, ph
-    best = best_own or best_any
-    if not best:
+        candidates.append((d, ph))
+    if not candidates:
         return None
-    is_own = best.get("car") == current_car or compact_car(best.get("car")) == want
-    return {
-        "type": "own" if is_own else "other",
-        "phName": best.get("name"),
-        "owners": [best.get("car")],
-    }
+
+    pk = pharmacy_key(place) or norm_ph(place)
+    place_ok = _place_key_usable(place)
+
+    def _pack(ph, typ):
+        return {
+            "type": typ,
+            "phName": ph.get("name"),
+            "owners": [ph.get("car")],
+        }
+
+    # 1) Joy nomi kelishgan nomzodlar
+    if place_ok and pk:
+        named = []
+        for d, ph in candidates:
+            en = pharmacy_key(ph.get("name") or "") or norm_ph(ph.get("name") or "")
+            sc = _pharm_name_score(pk, en)
+            if sc >= 55:
+                named.append((sc, -d, ph))
+        if named:
+            named.sort(reverse=True)
+            best = named[0][2]
+            is_own = best.get("car") == current_car or compact_car(best.get("car")) == want
+            return _pack(best, "own" if is_own else "other")
+
+    # 2) Eng yaqin o'z dorixonasi
+    own_cands = [
+        (d, ph)
+        for d, ph in candidates
+        if ph.get("car") == current_car or compact_car(ph.get("car")) == want
+    ]
+    if own_cands:
+        own_cands.sort(key=lambda t: t[0])
+        return _pack(own_cands[0][1], "own")
+
+    # 3) Boshqa yo'nalish geo — faqat joy nomi yo'q/koordinata
+    if not place_ok:
+        candidates.sort(key=lambda t: t[0])
+        return _pack(candidates[0][1], "other")
+
+    return None
 
 
 def match_pharmacy(place, current_car, lat, lng, pharm_index, pharmacies):
-    geo = match_geo(current_car, lat, lng, pharmacies)
+    geo = match_geo(current_car, lat, lng, pharmacies, place=place)
     if geo:
-        return geo
+        return _finalize_match(geo, place, current_car, pharmacies)
     pn = pharmacy_key(place) or norm_ph(place)
     if len(pn) < 3:
-        return {"type": "none", "phName": None, "owners": []}
+        return _finalize_match({"type": "none", "phName": None, "owners": []}, place, current_car, pharmacies)
     best_score, best = 0.0, None
     owners = []
     for entry in pharm_index:
@@ -1544,11 +1644,19 @@ def match_pharmacy(place, current_car, lat, lng, pharm_index, pharmacies):
             if score > best_score:
                 best_score, best = score, entry
     if not best:
-        return {"type": "none", "phName": None, "owners": []}
+        return _finalize_match({"type": "none", "phName": None, "owners": []}, place, current_car, pharmacies)
     want = compact_car(current_car)
     is_own = any(o["car"] == current_car or compact_car(o["car"]) == want for o in owners)
-    return {"type": "own" if is_own else "other", "phName": best["name"], "owners": list({o["driver"] for o in owners})}
-
+    return _finalize_match(
+        {
+            "type": "own" if is_own else "other",
+            "phName": best["name"],
+            "owners": list({o["driver"] for o in owners}),
+        },
+        place,
+        current_car,
+        pharmacies,
+    )
 
 def is_office(place):
     p = norm_ph(place)
