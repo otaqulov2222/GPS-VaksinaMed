@@ -88,7 +88,7 @@ HTML_CANONICAL = {
 }
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m139"
+VM_BUILD = "m140"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -5665,7 +5665,14 @@ def init_app(base_dir=None):
         try:
             import support_ai
 
-            support_ai.load_dotenv(os.path.join(base_dir, ".env"))
+            # HR Logistika default → keyin .env (mavjud env ustiga yozilmaydi)
+            for env_path in (
+                os.path.join(base_dir, "scripts", "hr_logistics.env.defaults"),
+                "/opt/vaksina/scripts/hr_logistics.env.defaults",
+                "/opt/vaksina/app/scripts/hr_logistics.env.defaults",
+                os.path.join(base_dir, ".env"),
+            ):
+                support_ai.load_dotenv(env_path)
         except Exception:
             pass
         production_checks()
