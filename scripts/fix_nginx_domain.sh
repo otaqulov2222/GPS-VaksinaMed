@@ -1,27 +1,30 @@
 #!/usr/bin/env bash
-# vaksinamedgps.uz ni APP (proxy_pass) block ga ulaydi;
-# bo'sh SSL-only blocklarni o'chiradi (404 sababi).
+# 1) Eng eski ishlagan backupdan tiklaydi
+# 2) Domenni faqat proxy_pass (APP) blockga qo'shadi
+# 3) Bo'sh SSL block server_name ni o'chirib, _unused qiladi (block o'chirilmaydi)
 set -euo pipefail
 
 DOMAIN="${1:-vaksinamedgps.uz}"
 WWW="www.${DOMAIN}"
-NGINX_SITE="${NGINX_SITE:-/etc/nginx/sites-enabled/vaksina}"
+SITE="${NGINX_SITE:-/etc/nginx/sites-enabled/vaksina}"
+OLD="vaksinagps.duckdns.org"
 
-if [[ ! -f "$NGINX_SITE" ]]; then
-  echo "XATO: $NGINX_SITE topilmadi"
-  ls -la /etc/nginx/sites-enabled/ || true
-  exit 1
+echo "==> Backuplar:"
+ls -lt "${SITE}".bak.* 2>/dev/null | head -10 || true
+
+# Eng eski backup (birinchi buzilishdan oldin)
+OLDEST="$(ls -1t "${SITE}".bak.* 2>/dev/null | tail -1 || true)"
+if [[ -n "$OLDEST" ]]; then
+  echo "==> Tiklanmoqda: $OLDEST"
+  cp -a "$OLDEST" "$SITE"
+else
+  echo "Diqqat: .bak topilmadi — joriy fayl tuzatiladi"
 fi
 
-cp -a "$NGINX_SITE" "${NGINX_SITE}.bak.$(date +%s)"
-
-python3 - "$NGINX_SITE" "$DOMAIN" "$WWW" <<'PY'
+python3 - "$SITE" "$DOMAIN" "$WWW" "$OLD" <<'PY'
 import re, sys
-path, domain, www = sys.argv[1:4]
-old = "vaksinagps.duckdns.org"
+path, domain, www, old = sys.argv[1:5]
 text = open(path, encoding="utf-8", errors="replace").read()
-
-# Oldingi buzilgan izohlarni tozalash
 text = text.replace("# --- disabled empty ssl block ---", "")
 
 def split_servers(content):
@@ -40,7 +43,7 @@ def split_servers(content):
             elif content[j] == "}":
                 depth -= 1
                 if depth == 0:
-                    out.append((start, j + 1, content[start : j + 1]))
+                    out.append((start, j + 1, content[start:j+1]))
                     i = j + 1
                     break
             j += 1
@@ -50,7 +53,7 @@ def split_servers(content):
 
 servers = split_servers(text)
 if not servers:
-    print("XATO: server {} block topilmadi")
+    print("XATO: server block yo'q")
     sys.exit(1)
 
 changes = []
@@ -70,47 +73,41 @@ for start, end, block in reversed(servers):
                 names2.append(extra)
         if names2 != names:
             new_sn = "server_name " + " ".join(names2) + ";"
-            new_block = block[: sn.start()] + new_sn + block[sn.end() :]
-            changes.append("APP block: " + " ".join(names2))
+            new_block = block[:sn.start()] + new_sn + block[sn.end():]
+            changes.append("APP: " + " ".join(names2))
     else:
-        # Bo'sh SSL blockda yangi domen bo'lsa — butun blockni o'chiramiz
+        # Bo'sh block — domenni _unused ga almashtirish (404 bermasligi uchun)
         name_set = {n.rstrip(".") for n in names}
         if domain in name_set or www in name_set:
-            new_block = ""
-            changes.append("removed empty SSL-only block for " + domain)
-        else:
-            names2 = [n for n in names if n.rstrip(".") not in (domain, www)]
-            if names2 != names and names2:
-                new_sn = "server_name " + " ".join(names2) + ";"
-                new_block = block[: sn.start()] + new_sn + block[sn.end() :]
-                changes.append("stripped domain from non-proxy block")
+            new_sn = "server_name _unused_vaksinamedgps;"
+            new_block = block[:sn.start()] + new_sn + block[sn.end():]
+            changes.append("disabled empty SSL block server_name")
 
     if new_block != block:
         result = result[:start] + new_block + result[end:]
 
-# Fallback: duckdns qatoriga qo'shish
-if not any(c.startswith("APP block") for c in changes):
-    if old in result:
-        # faqat proxy_pass yaqinidagi server_name ni yangilashga harakat
-        if f"{old} {domain}" not in result and domain not in result.split("proxy_pass")[0][-200:]:
-            result2 = result.replace(old, f"{old} {domain} {www}", 1)
-            if result2 != result:
-                result = result2
-                changes.append("fallback: duckdns line extended")
+# Agar APP topilmasa — oddiy replace
+if not any(c.startswith("APP:") for c in changes):
+    if old in result and domain not in result:
+        result = result.replace(old, f"{old} {domain} {www}", 1)
+        changes.append("fallback duckdns extend")
 
 if not changes:
-    print("Hech narsa o'zgarmadi. server_name / proxy_pass:")
-    for i, line in enumerate(text.splitlines(), 1):
+    print("O'zgarish yo'q — qatorlar:")
+    for i, line in enumerate(open(path, encoding="utf-8", errors="replace"), 1):
         if "server_name" in line or "proxy_pass" in line:
-            print(f"{i}: {line.strip()}")
+            print(f"{i}: {line.rstrip()}")
     sys.exit(2)
 
-# Bo'sh qatorlarni biroz tozalash
-result = re.sub(r"\n{3,}", "\n\n", result)
+# Brace tekshiruv
+if result.count("{") != result.count("}"):
+    print("XATO: brace mos emas {", result.count("{"), "} ", result.count("}"))
+    sys.exit(3)
+
 open(path, "w", encoding="utf-8").write(result)
 for c in changes:
     print(c)
-print("OK")
+print("OK file written")
 PY
 
 nginx -t
