@@ -20,6 +20,9 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import mimetypes
+
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 try:
     from zoneinfo import ZoneInfo
@@ -39,10 +42,32 @@ SEED_PASS = os.environ.get("VM_SEED_PASS", DEFAULT_SEED_PASS)
 SESSIONS_KEY = "auth:sessions"
 SESSION_TOMBS_KEY = "auth:session_tombs"
 
-PUBLIC_PATHS = {"/login.html", "/login", "/favicon.ico"}
+PUBLIC_PATHS = {
+    "/login.html",
+    "/login",
+    "/favicon.ico",
+    "/site.webmanifest",
+    "/manifest.webmanifest",
+    "/sw.js",
+    "/offline.html",
+    "/offline",
+}
 PUBLIC_PREFIX = ("/fonts/", "/logo/", "/assets/")
 # Frontend assetlar — cookie kutmasdan yuklansin (eski kesh / auth race yo'qoladi)
-PUBLIC_STATIC_EXT = {".js", ".css", ".map", ".woff", ".woff2", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".ico"}
+PUBLIC_STATIC_EXT = {
+    ".js",
+    ".css",
+    ".map",
+    ".woff",
+    ".woff2",
+    ".svg",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".ico",
+    ".webmanifest",
+}
 BLOCKED_EXT = {".py", ".bat", ".md", ".txt", ".env"}
 BLOCKED_NAMES = {
     "users.json",
@@ -75,6 +100,7 @@ PAGE_FILE = {
     "/driver": "driver.html",
     "/profile": "profile.html",
     "/login": "login.html",
+    "/offline": "offline.html",
 }
 HTML_CANONICAL = {
     "fuel.html": "/fuel",
@@ -3703,6 +3729,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         if self.is_blocked(path):
             self.send_error(403, "Ruxsat yo'q")
             return
+
+        if path in ("/offline", "/offline.html"):
+            return self.serve_page_file("offline.html")
 
         sess = None
         # Statik JS/CSS/PNG — session OLMASDAN (tezlik)
