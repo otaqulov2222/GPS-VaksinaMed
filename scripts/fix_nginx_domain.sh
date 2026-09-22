@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# vaksinamedgps.uz ni APP (proxy_pass) server block ga ulaydi;
-# bo'sh SSL-only blockdan olib tashlaydi (404 sababi).
+# vaksinamedgps.uz ni APP (proxy_pass) block ga ulaydi;
+# bo'sh SSL-only blocklarni o'chiradi (404 sababi).
 set -euo pipefail
 
 DOMAIN="${1:-vaksinamedgps.uz}"
@@ -20,6 +20,9 @@ import re, sys
 path, domain, www = sys.argv[1:4]
 old = "vaksinagps.duckdns.org"
 text = open(path, encoding="utf-8", errors="replace").read()
+
+# Oldingi buzilgan izohlarni tozalash
+text = text.replace("# --- disabled empty ssl block ---", "")
 
 def split_servers(content):
     out = []
@@ -70,32 +73,40 @@ for start, end, block in reversed(servers):
             new_block = block[: sn.start()] + new_sn + block[sn.end() :]
             changes.append("APP block: " + " ".join(names2))
     else:
-        # Bo'sh SSL block — yangi domenni olib tashla (404 berardi)
-        names2 = [n for n in names if n.rstrip(".") not in (domain, www)]
-        if names2 != names:
-            if names2:
+        # Bo'sh SSL blockda yangi domen bo'lsa — butun blockni o'chiramiz
+        name_set = {n.rstrip(".") for n in names}
+        if domain in name_set or www in name_set:
+            new_block = ""
+            changes.append("removed empty SSL-only block for " + domain)
+        else:
+            names2 = [n for n in names if n.rstrip(".") not in (domain, www)]
+            if names2 != names and names2:
                 new_sn = "server_name " + " ".join(names2) + ";"
                 new_block = block[: sn.start()] + new_sn + block[sn.end() :]
-                changes.append("empty block stripped")
-            else:
-                new_block = "FAKESECRET_e4f5g6h7i8j9k0l1m2n3" + block + "\n"
-                changes.append("empty SSL-only block commented out")
+                changes.append("stripped domain from non-proxy block")
 
     if new_block != block:
         result = result[:start] + new_block + result[end:]
 
-if not changes:
-    # Fallback
-    if old in result and domain not in result:
-        result = result.replace(old, f"{old} {domain} {www}", 1)
-        changes.append("fallback: duckdns line extended")
-    else:
-        print("Hech narsa o'zgarmadi. server_name qatorlari:")
-        for i, line in enumerate(text.splitlines(), 1):
-            if "server_name" in line or "proxy_pass" in line:
-                print(f"{i}: {line.strip()}")
-        sys.exit(2)
+# Fallback: duckdns qatoriga qo'shish
+if not any(c.startswith("APP block") for c in changes):
+    if old in result:
+        # faqat proxy_pass yaqinidagi server_name ni yangilashga harakat
+        if f"{old} {domain}" not in result and domain not in result.split("proxy_pass")[0][-200:]:
+            result2 = result.replace(old, f"{old} {domain} {www}", 1)
+            if result2 != result:
+                result = result2
+                changes.append("fallback: duckdns line extended")
 
+if not changes:
+    print("Hech narsa o'zgarmadi. server_name / proxy_pass:")
+    for i, line in enumerate(text.splitlines(), 1):
+        if "server_name" in line or "proxy_pass" in line:
+            print(f"{i}: {line.strip()}")
+    sys.exit(2)
+
+# Bo'sh qatorlarni biroz tozalash
+result = re.sub(r"\n{3,}", "\n\n", result)
 open(path, "w", encoding="utf-8").write(result)
 for c in changes:
     print(c)
