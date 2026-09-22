@@ -4264,7 +4264,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             })
             return
         if path == "/api/audit":
-            sess = self.require_pro()
+            sess = self.require_ops_read()
             if not sess:
                 return
             self.send_json({"ok": True, "audit": STORE.audit()})
@@ -4306,7 +4306,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/pharmacy-places":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             try:
@@ -4323,7 +4323,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/geocode/reverse":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             try:
@@ -4398,14 +4398,14 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/gps/config":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             self.send_json({"ok": True, **OFFICE.gps_config_public()})
             return
 
         if path == "/api/office/dashboard-settings":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             ds = OFFICE.dashboard_settings()
@@ -4534,7 +4534,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             plate = (qs.get("car") or [None])[0] or ""
             if is_driver(sess):
                 plate = sess.get("car") or ""
-            elif not is_staff(sess):
+            elif not can_ops_read(sess):
                 self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
                 return
             if not compact_plate(plate):
@@ -4553,7 +4553,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             plate = (qs.get("car") or [None])[0] or ""
             if is_driver(sess):
                 plate = sess.get("car") or ""
-            elif not is_staff(sess):
+            elif not can_ops_read(sess):
                 self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
                 return
             if not compact_plate(plate):
@@ -4570,10 +4570,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             car_q = (qs.get("car") or [None])[0] or ""
             if is_driver(sess):
                 car_q = sess.get("car") or ""
-            elif not is_staff(sess):
+            elif not can_ops_read(sess):
                 self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
                 return
-            if all_flag and is_staff(sess):
+            if all_flag and can_ops_read(sess):
                 items = OFFICE._task_items()
                 items.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
                 self.send_json({"ok": True, "tasks": items[:200]})

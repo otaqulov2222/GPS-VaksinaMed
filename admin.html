@@ -1820,7 +1820,7 @@ body { overflow-x: clip; }
 <script src="uz-latin.js?v=4"></script>
 <script src="fleet-data.js?v=9"></script>
 
-<script src="auth.js?v=40"></script>
+<script src="auth.js?v=41"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="ph-delete-btn.js?v=3"></script>
 
@@ -1941,12 +1941,12 @@ async function loadAll() {
   const isViewer = me.role === 'viewer';
 
   const reqs = [vmApi('/api/users'), vmApi('/api/sessions')];
-  if (isPro) reqs.push(vmApi('/api/audit'));
+  if (isPro || isViewer) reqs.push(vmApi('/api/audit'));
 
   const results = await Promise.all(reqs);
   const users = results[0];
   const sess = results[1];
-  const audit = isPro ? results[2] : { audit: [] };
+  const audit = (isPro || isViewer) ? results[2] : { audit: [] };
 
   window._VM_USERS = users.users || [];
 
