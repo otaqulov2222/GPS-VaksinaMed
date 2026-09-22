@@ -1,26 +1,57 @@
 #!/usr/bin/env bash
-# 1) Eng eski ishlagan backupdan tiklaydi
-# 2) Domenni faqat proxy_pass (APP) blockga qo'shadi
-# 3) Bo'sh SSL block server_name ni o'chirib, _unused qiladi (block o'chirilmaydi)
+# Yakuniy tuzatish:
+# 1) sites-enabled ichidagi .bak larni OLIB TASHLAYDI (nginx ularni ham o'qiydi!)
+# 2) Domenni faqat APP (proxy_pass) blockga qo'shadi
+# 3) Bo'sh SSL block server_name ni _unused qiladi
 set -euo pipefail
 
 DOMAIN="${1:-vaksinamedgps.uz}"
 WWW="www.${DOMAIN}"
-SITE="${NGINX_SITE:-/etc/nginx/sites-enabled/vaksina}"
+SITE="/etc/nginx/sites-enabled/vaksina"
 OLD="vaksinagps.duckdns.org"
+BAK_DIR="/root/nginx-bak"
 
-echo "==> Backuplar:"
-ls -lt "${SITE}".bak.* 2>/dev/null | head -10 || true
+echo "==> 1) .bak fayllarni sites-enabled dan chiqarish"
+mkdir -p "$BAK_DIR"
+# Joriy fayl nusxasi ham shu yerga
+if [[ -f "$SITE" ]]; then
+  cp -a "$SITE" "$BAK_DIR/vaksina.before-fix.$(date +%s)" || true
+fi
+shopt -s nullglob
+for f in /etc/nginx/sites-enabled/*.bak* /etc/nginx/sites-enabled/*~; do
+  echo "    move $(basename "$f")"
+  mv -f "$f" "$BAK_DIR/"
+done
+shopt -u nullglob
 
-# Eng eski backup (birinchi buzilishdan oldin)
-OLDEST="$(ls -1t "${SITE}".bak.* 2>/dev/null | tail -1 || true)"
-if [[ -n "$OLDEST" ]]; then
-  echo "==> Tiklanmoqda: $OLDEST"
-  cp -a "$OLDEST" "$SITE"
-else
-  echo "Diqqat: .bak topilmadi — joriy fayl tuzatiladi"
+echo "==> sites-enabled holat:"
+ls -la /etc/nginx/sites-enabled/
+
+# Agar vaksina yo'q yoki buzilgan bo'lsa — eng eski backupdan tikla
+need_restore=0
+if [[ ! -f "$SITE" ]]; then
+  need_restore=1
+elif ! nginx -t 2>/dev/null; then
+  need_restore=1
 fi
 
+if [[ "$need_restore" -eq 1 ]]; then
+  echo "==> 2) Buzilgan — backupdan tiklash"
+  CAND="$(ls -1t "$BAK_DIR"/vaksina.bak.* "$BAK_DIR"/vaksina.before-fix.* 2>/dev/null | tail -1 || true)"
+  # Eng eski .bak odatda eng toza
+  OLDEST="$(ls -1 "$BAK_DIR"/vaksina.bak.* 2>/dev/null | head -1 || true)"
+  if [[ -n "$OLDEST" ]]; then
+    CAND="$OLDEST"
+  fi
+  if [[ -z "$CAND" ]]; then
+    echo "XATO: backup yo'q"
+    exit 1
+  fi
+  echo "    tiklanmoqda: $CAND"
+  cp -a "$CAND" "$SITE"
+fi
+
+echo "==> 3) Domenni APP blockga ulash"
 python3 - "$SITE" "$DOMAIN" "$WWW" "$OLD" <<'PY'
 import re, sys
 path, domain, www, old = sys.argv[1:5]
@@ -76,41 +107,33 @@ for start, end, block in reversed(servers):
             new_block = block[:sn.start()] + new_sn + block[sn.end():]
             changes.append("APP: " + " ".join(names2))
     else:
-        # Bo'sh block — domenni _unused ga almashtirish (404 bermasligi uchun)
         name_set = {n.rstrip(".") for n in names}
         if domain in name_set or www in name_set:
             new_sn = "server_name _unused_vaksinamedgps;"
             new_block = block[:sn.start()] + new_sn + block[sn.end():]
-            changes.append("disabled empty SSL block server_name")
+            changes.append("empty SSL -> _unused")
 
     if new_block != block:
         result = result[:start] + new_block + result[end:]
 
-# Agar APP topilmasa — oddiy replace
 if not any(c.startswith("APP:") for c in changes):
     if old in result and domain not in result:
         result = result.replace(old, f"{old} {domain} {www}", 1)
         changes.append("fallback duckdns extend")
 
-if not changes:
-    print("O'zgarish yo'q — qatorlar:")
-    for i, line in enumerate(open(path, encoding="utf-8", errors="replace"), 1):
-        if "server_name" in line or "proxy_pass" in line:
-            print(f"{i}: {line.rstrip()}")
-    sys.exit(2)
-
-# Brace tekshiruv
 if result.count("{") != result.count("}"):
-    print("XATO: brace mos emas {", result.count("{"), "} ", result.count("}"))
+    print("XATO: brace", result.count("{"), result.count("}"))
     sys.exit(3)
 
 open(path, "w", encoding="utf-8").write(result)
-for c in changes:
+for c in changes or ["no structural change (maybe already set)"]:
     print(c)
-print("OK file written")
+print("OK")
 PY
 
+echo "==> 4) nginx test + reload"
 nginx -t
 systemctl reload nginx
 systemctl restart vaksina 2>/dev/null || true
-echo "Tekshiring: https://${DOMAIN}"
+echo
+echo "TAYYOR. Ochish: https://${DOMAIN}"
