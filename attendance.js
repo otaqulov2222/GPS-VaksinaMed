@@ -150,14 +150,29 @@
 
   function msg(text, kind) {
     const el = document.getElementById('att-msg');
-    if (!el) return;
-    el.className = 'att-msg on ' + (kind || 'info');
-    el.textContent = text;
+    if (el) {
+      el.className = 'att-msg on ' + (kind || 'info');
+      el.textContent = text;
+      try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+    }
+    // Qayta render paytida ham ko'rinsin
+    window.__attLastMsg = { text: String(text || ''), kind: kind || 'info', ts: Date.now() };
   }
 
   function clearMsg() {
     const el = document.getElementById('att-msg');
     if (el) el.className = 'att-msg';
+    window.__attLastMsg = null;
+  }
+
+  function restoreMsgAfterRender() {
+    const last = window.__attLastMsg;
+    if (!last || !last.text) return;
+    if (Date.now() - (last.ts || 0) > 20000) return;
+    const el = document.getElementById('att-msg');
+    if (!el) return;
+    el.className = 'att-msg on ' + (last.kind || 'info');
+    el.textContent = last.text;
   }
 
   function qrRequired() {
@@ -664,6 +679,18 @@
             ? 'Devordagi ofis QR ni skanerlang'
             : 'Tugmani bosing — geozona yetarli');
       }
+    }
+
+    // "Keyingi qadam" — GPS kelganda ham yangilanadi (stale "Ofis zonasiga boring" yo'qoladi)
+    const nextCard = document.querySelector('.av-pulse-card.navy .v-sm');
+    if (nextCard) {
+      let nextTxt = 'Kutilmoqda';
+      if (done) nextTxt = 'Bugun yakunlandi';
+      else if (!inside) nextTxt = 'Ofis zonasiga boring';
+      else if (needQr && !ticketOk) nextTxt = 'Ofis QR skanerlang';
+      else if (!today.in) nextTxt = 'Keldimni bosing';
+      else nextTxt = 'Ketdimni bosing';
+      nextCard.textContent = nextTxt;
     }
   }
 
@@ -1306,13 +1333,29 @@
     if (!window.isSecureContext) {
       throw new Error('Joylashuv faqat HTTPS da ishlaydi');
     }
+    // Punch uchun: zonada ekanimiz aniq bo'lsa — qayta GPS olish zona holatini buzmasin
+    // (tasdiq oynasi 8+ soniya olishi mumkin)
+    if (
+      geoLive &&
+      geoLive.inside === true &&
+      geoLive.lat != null &&
+      geoLive.lng != null &&
+      geoLive.ts &&
+      (Date.now() - geoLive.ts) < 120000
+    ) {
+      return {
+        lat: geoLive.lat,
+        lng: geoLive.lng,
+        accuracy: geoLive.accuracy
+      };
+    }
     if (
       geoLive &&
       geoLive.lat != null &&
       geoLive.lng != null &&
       geoLive.ts &&
-      (Date.now() - geoLive.ts) < 8000 &&
-      (geoLive.accuracy == null || geoLive.accuracy <= 120)
+      (Date.now() - geoLive.ts) < 15000 &&
+      (geoLive.accuracy == null || geoLive.accuracy <= 150)
     ) {
       return {
         lat: geoLive.lat,
@@ -1321,6 +1364,18 @@
       };
     }
     return acquireBestGps(14000);
+  }
+
+  /** Stamp uchun joylashuv — faqat ichkaridagi eng so'nggi yaxshi fix. */
+  function gpsForPunch() {
+    if (geoLive && geoLive.inside === true && geoLive.lat != null && geoLive.lng != null) {
+      return {
+        lat: geoLive.lat,
+        lng: geoLive.lng,
+        accuracy: geoLive.accuracy != null ? geoLive.accuracy : null
+      };
+    }
+    return null;
   }
 
   /** Bir necha soniya GPS yig'ib eng aniq nuqtani tanlaydi. */
@@ -1342,8 +1397,14 @@
         }
         clearTimeout(timer);
         if (samples.length) {
-          samples.sort((a, b) => (a.accuracy || 9e9) - (b.accuracy || 9e9));
-          const best = samples[0];
+          // Avval ichkaridagi fixlarni afzal ko'r (aniqlik yaxshiroq bo'lsa ham tashqari qilib yubormasin)
+          const insideSamples = samples.filter((s) => {
+            const c = computeInside(s.lat, s.lng, s.accuracy);
+            return c && c.inside;
+          });
+          const pool = insideSamples.length ? insideSamples : samples;
+          pool.sort((a, b) => (a.accuracy || 9e9) - (b.accuracy || 9e9));
+          const best = pool[0];
           applyGeoFix(best.lat, best.lng, best.accuracy, { force: true });
           resolve(best);
           return;
@@ -2558,6 +2619,7 @@
     if (staff && uiTab === 'shaxs') loadPersonPanel();
     if (staff && uiTab === 'soz') renderSettings();
     if (working) startLiveTimer();
+    restoreMsgAfterRender();
   }
 
   function openPerson(uid) {
@@ -2801,32 +2863,65 @@
     hideRetry();
     msg(kind === 'in' ? 'Keldim yozilmoqda…' : 'Ketdim yozilmoqda…', 'info');
     try {
-      const gps = await getGps();
-      if (geoLive.inside !== true) {
-        throw new Error('Hali ofis zonasida emassiz. GPS aniqlanishini kuting yoki ochiq joyda qayta tekshiring.');
+      // Muhim: tasdiqdan keyin qayta GPS olish zona holatini buzmasin
+      let gps = gpsForPunch();
+      if (!gps) {
+        gps = await getGps();
       }
-      const body = {
-        kind,
-        lat: gps.lat,
-        lng: gps.lng,
-        accuracy: gps.accuracy
-      };
+      const calc = computeInside(gps.lat, gps.lng, gps.accuracy);
+      if (!calc.inside) {
+        throw new Error(
+          'Joylashuv ofis zonasidan tashqarida (~' +
+          Math.round(calc.dist || 0) +
+          ' m). «Qayta tekshirish» qilib qayta urinib ko\'ring.'
+        );
+      }
+      // UI ni ichkarida saqlab qolamiz
+      applyGeoFix(gps.lat, gps.lng, gps.accuracy, { force: true });
+
       const r = await api('/api/attendance/punch', {
         method: 'POST',
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          kind,
+          lat: gps.lat,
+          lng: gps.lng,
+          accuracy: gps.accuracy
+        })
       });
       qrTicketLocal = null;
       if (STATE) STATE.qrTicket = null;
       punchCooldownUntil = Date.now() + 4000;
-      msg(r.message || (kind === 'in' ? 'Keldim — vaqt boshlandi' : 'Ketdim — kun yakunlandi'), 'ok');
+
+      // Optimistic UI — reload kutmasdan stamp ko'rinsin
+      if (STATE && r && r.record) {
+        STATE.today = r.record;
+      } else if (STATE && r && r.ok) {
+        const nowIso = (STATE.serverNow) || new Date().toISOString();
+        STATE.today = STATE.today || {};
+        STATE.today[kind] = {
+          at: nowIso,
+          atDisplay: nowIso.slice(11, 19),
+          late: !!r.late,
+          distance_m: r.distance_m
+        };
+      }
+
+      const okText = r.message || (kind === 'in' ? 'Keldim — vaqt boshlandi ✓' : 'Ketdim — kun yakunlandi ✓');
+      msg(okText, 'ok');
       uiTab = 'bugun';
       await reload();
+      msg(okText, 'ok');
+      restoreMsgAfterRender();
     } catch (e) {
       const text = e.message || 'Xato';
       msg(text, 'err');
       punchCooldownUntil = Date.now() + 1200;
+      try {
+        if (typeof showToast === 'function') showToast(text, 'err');
+      } catch (err2) {}
     } finally {
       busy = false;
+      paintGeoUI();
     }
   }
 

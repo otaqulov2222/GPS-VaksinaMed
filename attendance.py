@@ -355,9 +355,14 @@ class AttendanceStore:
             soft = min(float(acc_f), 280.0)
         limit = radius + soft
 
+        # Ofis markaziga yaqin (radius ichida) — aniqlik qanchalik bo'lsin, qabul
         if dist <= radius:
             return True, dist, None
+        # Radius + soft (binoda GPS drift)
         if dist <= limit:
+            return True, dist, None
+        # Chegara yaqin (radius*1.15) va aniqlik yomon — foydalanuvchini rad etmaslik
+        if acc_f is not None and acc_f >= 50 and dist <= radius * 1.15 + min(acc_f, 120.0):
             return True, dist, None
 
         if acc_f is not None and acc_f > 500 and dist > limit:
