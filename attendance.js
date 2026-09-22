@@ -3248,7 +3248,60 @@
     msg('Excel yuklandi', 'ok');
   }
 
-  function exportReportPdf() {
+  let ATT_PDF_FONTS = null;
+  let ATT_PDF_FONT = 'helvetica';
+
+  function attAbToB64(buf) {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const step = 0x8000;
+    for (let i = 0; i < bytes.length; i += step) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+    }
+    return btoa(binary);
+  }
+
+  async function loadAttPdfFonts() {
+    if (ATT_PDF_FONTS) return ATT_PDF_FONTS;
+    const pairs = [
+      ['fonts/NotoSans-Regular.ttf', 'fonts/NotoSans-Bold.ttf'],
+      [
+        'https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf',
+        'https://cdn.jsdelivr.net/gh/googlefonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Bold.ttf'
+      ]
+    ];
+    for (const [regUrl, boldUrl] of pairs) {
+      try {
+        const [reg, bold] = await Promise.all([
+          fetch(regUrl).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }),
+          fetch(boldUrl).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        ]);
+        ATT_PDF_FONTS = { regular: attAbToB64(reg), bold: attAbToB64(bold) };
+        return ATT_PDF_FONTS;
+      } catch (e) { /* next */ }
+    }
+    return null;
+  }
+
+  function applyAttPdfFont(doc, fonts) {
+    if (!fonts) {
+      ATT_PDF_FONT = 'helvetica';
+      doc.setFont('helvetica', 'normal');
+      return;
+    }
+    doc.addFileToVFS('NotoSans-Regular.ttf', fonts.regular);
+    doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+    doc.addFileToVFS('NotoSans-Bold.ttf', fonts.bold);
+    doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
+    doc.setFont('NotoSans', 'normal');
+    ATT_PDF_FONT = 'NotoSans';
+  }
+
+  function attPdfF(doc, style) {
+    doc.setFont(ATT_PDF_FONT, style || 'normal');
+  }
+
+  async function exportReportPdf() {
     const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
     if (!JsPDF) {
       msg('PDF kutubxonasi yuklanmadi', 'err');
@@ -3258,8 +3311,12 @@
       msg('Avval hisobotni yuklang', 'err');
       return;
     }
+    msg('PDF tayyorlanmoqda…', 'info');
+    const fonts = await loadAttPdfFonts();
     const doc = new JsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    applyAttPdfFont(doc, fonts);
     const month = REPORT.month || reportMonth;
+    attPdfF(doc, 'bold');
     doc.setFontSize(14);
     doc.text('Davomat hisobot — ' + month, 40, 36);
     const body = (REPORT.people || []).map((p) => [
@@ -3276,10 +3333,11 @@
         startY: 48,
         head: [['Ism', 'Rol', 'Kun', 'Kech', 'Yo\'q', 'O\'rt.', 'Ish']],
         body,
-        styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [11, 31, 58] }
+        styles: { font: ATT_PDF_FONT, fontSize: 8, cellPadding: 3 },
+        headStyles: { font: ATT_PDF_FONT, fontStyle: 'bold', fillColor: [11, 31, 58] }
       });
     } else {
+      attPdfF(doc, 'normal');
       doc.setFontSize(10);
       body.forEach((r, i) => doc.text(r.join(' | '), 40, 56 + i * 14));
     }
@@ -3316,7 +3374,7 @@
     msg('Excel yuklandi', 'ok');
   }
 
-  function exportPersonPdf() {
+  async function exportPersonPdf() {
     const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
     if (!JsPDF) {
       msg('PDF kutubxonasi yuklanmadi', 'err');
@@ -3326,11 +3384,16 @@
       msg('Avval xodimni tanlang', 'err');
       return;
     }
+    msg('PDF tayyorlanmoqda…', 'info');
+    const fonts = await loadAttPdfFonts();
     const u = PERSON.user || {};
     const st = PERSON.stats || {};
     const doc = new JsPDF({ unit: 'pt', format: 'a4' });
+    applyAttPdfFont(doc, fonts);
+    attPdfF(doc, 'bold');
     doc.setFontSize(14);
     doc.text((u.name || u.username || 'Xodim') + ' — ' + (PERSON.month || ''), 40, 40);
+    attPdfF(doc, 'normal');
     doc.setFontSize(10);
     doc.text(
       'Kelgan: ' + (st.presentDays || 0) +
@@ -3355,8 +3418,8 @@
         startY: 72,
         head: [['Sana', 'Keldim', 'Ketdim', 'Kech', 'Ish', 'Holat']],
         body,
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [26, 95, 180] }
+        styles: { font: ATT_PDF_FONT, fontSize: 9 },
+        headStyles: { font: ATT_PDF_FONT, fontStyle: 'bold', fillColor: [26, 95, 180] }
       });
     }
     doc.save('davomat-' + (u.username || 'user') + '-' + (PERSON.month || '') + '.pdf');
@@ -3645,7 +3708,7 @@
     msg('Excel yuklandi', 'ok');
   }
 
-  function exportHisobotPdf() {
+  async function exportHisobotPdf() {
     const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
     if (!JsPDF) {
       msg('PDF kutubxonasi yuklanmadi', 'err');
@@ -3655,9 +3718,12 @@
       msg('Avval hisobotni yuklang', 'err');
       return;
     }
+    msg('PDF tayyorlanmoqda…', 'info');
+    const fonts = await loadAttPdfFonts();
     const meta = hisobotExportMeta();
     const st = meta.stats || {};
     const doc = new JsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    applyAttPdfFont(doc, fonts);
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
     const margin = 28;
@@ -3668,10 +3734,13 @@
     doc.setFillColor(26, 95, 180);
     doc.rect(0, 52, pageW, 3, 'F');
     doc.setTextColor(255, 255, 255);
+    attPdfF(doc, 'normal');
     doc.setFontSize(9);
     doc.text(meta.brand, margin, 20);
+    attPdfF(doc, 'bold');
     doc.setFontSize(15);
     doc.text(meta.title, margin, 40);
+    attPdfF(doc, 'normal');
     doc.setFontSize(9);
     doc.text(meta.range || '', pageW - margin, 40, { align: 'right' });
 
@@ -3724,6 +3793,7 @@
         body,
         margin: { left: margin, right: margin },
         styles: {
+          font: ATT_PDF_FONT,
           fontSize: 8,
           cellPadding: 4,
           lineColor: [226, 232, 240],
@@ -3732,6 +3802,7 @@
           valign: 'middle'
         },
         headStyles: {
+          font: ATT_PDF_FONT,
           fillColor: [26, 95, 180],
           textColor: [255, 255, 255],
           fontStyle: 'bold',
@@ -3757,7 +3828,8 @@
             }
           }
         },
-        didDrawPage: (data) => {
+        didDrawPage: () => {
+          attPdfF(doc, 'normal');
           doc.setFontSize(8);
           doc.setTextColor(100, 116, 139);
           doc.text(
