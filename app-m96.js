@@ -577,10 +577,42 @@ const OFFICE_KEYWORDS = [
     'база', 'baza', 'vaksina', 'vaksinamed', 'завод', 'fabrika',
     'tashkent farma', 'korxona', 'bosh ofis', 'yangi-sklad', 'yangisklad'
 ];
+/** Davomat ofis geozonasi (default) — GPS to'xtash = muammo emas */
+const DEFAULT_OFFICE_GEO = { lat: 41.219119, lng: 69.272688, radius_m: 150, label: 'VaksinaMed ofis' };
+
+function getOfficeGeofence() {
+    const g = (typeof STATE !== 'undefined' && STATE && STATE.officeGeofence) ? STATE.officeGeofence : null;
+    if (g && g.lat != null && g.lng != null) {
+        return {
+            lat: Number(g.lat),
+            lng: Number(g.lng),
+            radius_m: Math.max(120, Math.min(400, Number(g.radius_m) || 150)),
+            label: g.label || DEFAULT_OFFICE_GEO.label
+        };
+    }
+    return DEFAULT_OFFICE_GEO;
+}
+
+function pointInOffice(lat, lng) {
+    const y = Number(lat), x = Number(lng);
+    if (!y || !x) return false;
+    if (typeof validUzCoord === 'function' && !validUzCoord(y, x)) return false;
+    const g = getOfficeGeofence();
+    const dist = (typeof vmHaversineM === 'function')
+        ? vmHaversineM(y, x, g.lat, g.lng)
+        : routeSegMeters([y, x], [g.lat, g.lng]);
+    return dist <= g.radius_m;
+}
+
 function isOffice(place) {
     const p = normPh(place);
     if (!p) return false;
     return OFFICE_KEYWORDS.some(k => p.includes(normPh(k)));
+}
+
+/** Nom yoki geozona — ofisda to'xtash (barcha haydovchilar, balga ta'sir yo'q) */
+function stopIsOffice(place, lat, lng) {
+    return isOffice(place) || pointInOffice(lat, lng);
 }
 
 // Shahar tashqarisi
@@ -640,10 +672,11 @@ function enrichStops(rawStops, carKey) {
             matchType: match.type,
             phName: match.phName,
             owners: match.owners,
-            isOffice: isOffice(place || placeRaw),
+            isOffice: stopIsOffice(place || placeRaw, lat, lng),
             isOutside: isOutsideCity(place || placeRaw),
             isProblem: false
         };
+        // Ofis geozonasi — muammo emas
         if (!stop.isOffice && !stop.isOutside && stop.matchType === 'none' && stop.durSec > 600) {
             stop.isProblem = true;
         }
@@ -833,13 +866,13 @@ function parseChronoRows(rows, carKey) {
             matchType:   match.type,   // 'own'|'other'|'none'
             phName:      match.phName,
             owners:      match.owners,
-            isOffice:    isOffice(place),
+            isOffice:    stopIsOffice(place, lat, lng),
             isOutside:   isOutsideCity(place),
             isProblem:   false  // keyinroq belgilanadi
         });
     }
 
-    // Muammoli to'xtashlarni belgilash
+    // Muammoli to'xtashlarni belgilash (ofis/geozona — hech qachon muammo emas)
     stops.forEach(s => {
         if (!s.isOffice && !s.isOutside && s.matchType === 'none' && s.durSec > 600) {
             s.isProblem = true;
@@ -1542,7 +1575,7 @@ const OFFICE_PIN = 'Of';
 
 function isMapOfficeStop(st) {
     if (!st) return false;
-    if (st.isOffice || isOffice(st.place)) return true;
+    if (st.isOffice || stopIsOffice(st.place, st.lat, st.lng)) return true;
     return false;
 }
 /** @deprecated — isMapOfficeStop ishlating */

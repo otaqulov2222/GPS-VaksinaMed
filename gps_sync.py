@@ -17,9 +17,19 @@ TZ5 = timezone(timedelta(hours=5))
 COORD_PLACE_RE = re.compile(r"^\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*$")
 
 OFFICE_KEYWORDS = (
-    "sklad", "склад", "офис", "omborxona", "ombo", "база", "vaksina", "vaksinamed",
-    "завод", "fabrika", "tashkent farma", "korxona", "baza", "bosh ofis",
+    "sklad", "склад", "офис", "ofis", "office", "omborxona", "ombo", "ombor",
+    "база", "baza", "vaksina", "vaksinamed", "завод", "fabrika",
+    "tashkent farma", "korxona", "bosh ofis", "yangi-sklad", "yangisklad",
 )
+# Davomat ofis geozonasi (attendance.DEFAULT_SETTINGS.office) — GPS to'xtash = muammo emas
+DEFAULT_OFFICE_GEO = {
+    "lat": 41.219119,
+    "lng": 69.272688,
+    "radius_m": 150.0,
+    "label": "VaksinaMed ofis",
+}
+_OFFICE_GEO_CACHE = None
+_OFFICE_GEO_TS = 0.0
 OUTSIDE_MARKERS = (
     "kibray", "кибрай", "parkent", "паркент", "yangiyo", "янгийўл",
     "zangiota", "зангиота", "qibray", "chirchiq", "чирчиқ",
@@ -271,6 +281,91 @@ def haversine_m(lat1, lng1, lat2, lng2):
     d_lng = (lng2 - lng1) * to_r
     a = math.sin(d_lat / 2) ** 2 + math.cos(lat1 * to_r) * math.cos(lat2 * to_r) * math.sin(d_lng / 2) ** 2
     return 2 * r * math.asin(min(1, math.sqrt(a)))
+
+
+def get_office_geofence(force: bool = False) -> dict:
+    """Davomat ofis zonasi — barcha haydovchilar uchun bitta geofence.
+
+    Radius: sozlama + 50 m GPS jitter (min 120, max 400).
+    """
+    global _OFFICE_GEO_CACHE, _OFFICE_GEO_TS
+    now = datetime.now(tz=TZ5).timestamp()
+    if not force and _OFFICE_GEO_CACHE is not None and (now - _OFFICE_GEO_TS) < 60:
+        return dict(_OFFICE_GEO_CACHE)
+
+    geo = dict(DEFAULT_OFFICE_GEO)
+    raw_office = None
+    try:
+        from attendance import DEFAULT_SETTINGS
+
+        raw_office = dict((DEFAULT_SETTINGS.get("office") or {}))
+    except Exception:
+        raw_office = None
+
+    # Live sozlama: data/kv/attendance__settings.json
+    try:
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "kv")
+        path = os.path.join(base, "attendance__settings.json")
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("office"), dict):
+                raw_office = dict(raw_office or {})
+                raw_office.update(data["office"])
+    except Exception:
+        pass
+
+    if isinstance(raw_office, dict):
+        try:
+            lat = float(raw_office.get("lat"))
+            lng = float(raw_office.get("lng"))
+            r = float(raw_office.get("radius_m") or 100)
+            if -90 <= lat <= 90 and -180 <= lng <= 180:
+                geo["lat"] = lat
+                geo["lng"] = lng
+                # GPS treker biroz tashqarida qolishi mumkin — buffer
+                geo["radius_m"] = max(120.0, min(400.0, r + 50.0))
+            if raw_office.get("label"):
+                geo["label"] = str(raw_office.get("label"))[:80]
+        except (TypeError, ValueError):
+            pass
+
+    _OFFICE_GEO_CACHE = dict(geo)
+    _OFFICE_GEO_TS = now
+    return dict(geo)
+
+
+def point_in_office(lat, lng) -> bool:
+    """Ofis geozonasida to'xtash — muammo emas, balga ta'sir qilmaydi."""
+    try:
+        y = float(lat or 0)
+        x = float(lng or 0)
+    except (TypeError, ValueError):
+        return False
+    if not y or not x:
+        return False
+    if not valid_uz_coord(y, x):
+        return False
+    geo = get_office_geofence()
+    try:
+        olat = float(geo["lat"])
+        olng = float(geo["lng"])
+        radius = float(geo.get("radius_m") or 150)
+    except (TypeError, ValueError, KeyError):
+        return False
+    return haversine_m(y, x, olat, olng) <= radius
+
+
+def is_office(place):
+    p = norm_ph(place)
+    return any(k in p for k in OFFICE_KEYWORDS)
+
+
+def stop_is_office(place, lat=None, lng=None) -> bool:
+    """Nom yoki geozona — ofis/sklad to'xtashi."""
+    if is_office(place):
+        return True
+    return point_in_office(lat, lng)
 
 
 class WialonClient:
@@ -1658,11 +1753,6 @@ def match_pharmacy(place, current_car, lat, lng, pharm_index, pharmacies):
         pharmacies,
     )
 
-def is_office(place):
-    p = norm_ph(place)
-    return any(k in p for k in OFFICE_KEYWORDS)
-
-
 def is_outside(place):
     p = norm_ph(place)
     return any(k in p for k in OUTSIDE_MARKERS)
@@ -1684,6 +1774,7 @@ def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
             dur_sec = parse_dur_sec(s.get("duration"))
         if not place and lat and lng:
             place = "%.5f, %.5f" % (float(lat), float(lng))
+        office_stop = stop_is_office(place or place_raw, lat, lng)
         stop = {
             "num": 0,
             "place": place or "Noma'lum manzil",
@@ -1698,10 +1789,11 @@ def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
             "matchType": match["type"],
             "phName": match.get("phName"),
             "owners": match.get("owners") or [],
-            "isOffice": is_office(place or place_raw),
+            "isOffice": office_stop,
             "isOutside": is_outside(place or place_raw),
             "isProblem": False,
         }
+        # Ofis geozonasi / sklad — hech qachon muammo emas (balga ta'sir yo'q)
         if not stop["isOffice"] and not stop["isOutside"] and stop["matchType"] == "none" and dur_sec > 600:
             stop["isProblem"] = True
         built.append(stop)

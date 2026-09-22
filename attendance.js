@@ -54,7 +54,8 @@
   let routeSeq = 0;
   let routeCacheKey = '';
   let routeCacheLatLngs = null;
-  let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle', ts: 0 };
+  let geoLive = { inside: null, dist: null, accuracy: null, lat: null, lng: null, err: null, status: 'idle', ts: 0, heading: null, speed: null, moving: false };
+  let geoPrevFix = null;
   let attMethod = 'qr';
   const GEO_SOFT_MAX = 280;
   const GEO_COARSE_REJECT = 1200; // undan yomon fix — yaxshi fix bor bo'lsa rad etiladi
@@ -432,16 +433,55 @@
     return { inside: dist <= (off.radius + soft), dist, soft };
   }
 
+  function bearingDeg(lat1, lng1, lat2, lng2) {
+    const toR = Math.PI / 180;
+    const φ1 = lat1 * toR;
+    const φ2 = lat2 * toR;
+    const Δλ = (lng2 - lng1) * toR;
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+
+  function resolveHeading(lat, lng, coords) {
+    const now = Date.now();
+    let heading = null;
+    let speed = null;
+    if (coords) {
+      if (coords.heading != null && Number.isFinite(Number(coords.heading)) && Number(coords.heading) >= 0) {
+        heading = Number(coords.heading);
+      }
+      if (coords.speed != null && Number.isFinite(Number(coords.speed)) && Number(coords.speed) >= 0) {
+        speed = Number(coords.speed);
+      }
+    }
+    // GPS heading yo‘q / turib — oldingi nuqtadan yo‘nalish
+    if ((heading == null || (speed != null && speed < 0.4)) && geoPrevFix) {
+      const moved = haversineM(lat, lng, geoPrevFix.lat, geoPrevFix.lng);
+      const dt = (now - (geoPrevFix.ts || 0)) / 1000;
+      if (moved >= 3 && dt > 0.4 && dt < 45) {
+        heading = bearingDeg(geoPrevFix.lat, geoPrevFix.lng, lat, lng);
+        if (speed == null) speed = moved / Math.max(dt, 0.5);
+      }
+    }
+    if (geoPrevFix == null || haversineM(lat, lng, geoPrevFix.lat, geoPrevFix.lng) >= 2) {
+      geoPrevFix = { lat, lng, ts: now };
+    }
+    const moving = speed != null ? speed >= 0.45 : false;
+    return { heading, speed, moving };
+  }
+
   function applyGeoFix(lat, lng, accuracy, opts) {
     opts = opts || {};
     const force = !!opts.force;
+    const coords = opts.coords || null;
     const acc = accuracy != null && Number.isFinite(Number(accuracy)) ? Number(accuracy) : null;
     if (!force && !shouldAcceptGeoFix(lat, lng, acc)) {
-      // Faqat UI da "yomon signal" eslatmasin — eng yaxshi fixni saqlaymiz
       return false;
     }
     const off = officeInfo();
     const calc = computeInside(lat, lng, acc);
+    const motion = resolveHeading(lat, lng, coords);
     if (off.hasCoords) {
       geoLive = {
         inside: calc.inside,
@@ -451,7 +491,10 @@
         err: null,
         status: calc.inside ? 'ok' : 'out',
         message: null,
-        ts: Date.now()
+        ts: Date.now(),
+        heading: motion.heading,
+        speed: motion.speed,
+        moving: motion.moving
       };
     } else {
       geoLive = {
@@ -462,7 +505,10 @@
         err: null,
         status: (geoLive && geoLive.inside === true) ? 'ok' : 'load',
         message: null,
-        ts: Date.now()
+        ts: Date.now(),
+        heading: motion.heading,
+        speed: motion.speed,
+        moving: motion.moving
       };
     }
     paintGeoUI();
@@ -496,7 +542,11 @@
         lat, lng,
         err: inside ? null : (r.message || null),
         status: inside ? 'ok' : 'out',
-        message: r.message || null
+        message: r.message || null,
+        heading: geoLive.heading,
+        speed: geoLive.speed,
+        moving: geoLive.moving,
+        ts: Date.now()
       };
       if (r.radius_m != null && STATE && STATE.settings && STATE.settings.office) {
         STATE.settings.office.radius_m = r.radius_m;
@@ -548,16 +598,14 @@
     const distEl = document.getElementById('av-geo-dist');
     const gate = document.getElementById('av-gate-banner');
     const off = officeInfo();
-    const inBtn = document.getElementById('btn-keldim-main');
-    const outBtn = document.getElementById('btn-ketdim-main');
+    const inCard = document.getElementById('btn-keldim-main');
+    const outCard = document.getElementById('btn-ketdim-main');
     const goBtn = document.getElementById('av-continue');
     const today = (STATE && STATE.today) || {};
     const needQr = qrRequired();
     const ticketOk = !!activeQrTicket();
     const gateOk = punchGateOk();
     const done = !!(today.in && today.out);
-    const canIn = !today.in && !done;
-    const canOut = !!today.in && !today.out;
     const inside = geoLive.inside === true;
     const accTxt = geoLive.accuracy != null ? Math.round(geoLive.accuracy) : null;
 
@@ -588,7 +636,7 @@
         if (needQr && !ticketOk) {
           gate.textContent = 'Siz ofis zonasidasiz. Devordagi QR ni skanerlang, keyin Keldim.';
         } else {
-          gate.textContent = 'Ofis zonasidasiz — Keldim yoki Ketdim tugmasini bosing.';
+          gate.textContent = 'Ofis zonasidasiz — pastidagi Keldim / Ketdim tugmasini bosing.';
         }
       } else if (geoLive.status === 'out') {
         gate.className = 'av-gate-banner on';
@@ -602,21 +650,24 @@
         }
       } else if (geoLive.status === 'err') {
         gate.className = 'av-gate-banner on';
-        gate.textContent = geoLive.err || 'Joylashuvni yoqing — ofisga kirganingizda tugmalar ochiladi.';
+        gate.textContent = geoLive.err || 'Joylashuvni yoqing — ofisga kirganingizda tugma ochiladi.';
       } else {
         gate.className = 'av-gate-banner on';
         gate.textContent = 'Joylashuv tekshirilmoqda…';
       }
     }
 
-    const lockPunch = (btn, allow) => {
-      if (!btn) return;
-      const shouldEnable = allow && gateOk;
-      btn.disabled = !shouldEnable;
-      btn.classList.toggle('is-locked', !gateOk && allow);
-    };
-    lockPunch(inBtn, canIn);
-    lockPunch(outBtn, canOut);
+    // IN/OUT kartalar — faqat ko‘rinish (bosilmaydi)
+    if (inCard) {
+      inCard.classList.toggle('is-done', !!today.in);
+      inCard.classList.toggle('is-empty', !today.in);
+      inCard.classList.remove('is-locked');
+    }
+    if (outCard) {
+      outCard.classList.toggle('is-done', !!today.out);
+      outCard.classList.toggle('is-empty', !today.out);
+      outCard.classList.remove('is-locked');
+    }
 
     const pill = document.getElementById('av-qr-pill');
     if (pill) {
@@ -632,8 +683,8 @@
     if (hint) {
       if (!needQr) {
         hint.textContent = inside
-          ? 'Radius ichidasiz — Keldim / Ketdim ochiq.'
-          : 'Ofis radiusiga kiring — tugmalar ochiladi.';
+          ? 'Radius ichidasiz — pastidagi tugma ochiq.'
+          : 'Ofis radiusiga kiring — pastidagi tugma ochiladi.';
       } else {
         hint.textContent = ticketOk
           ? 'QR ruxsati faol (~10 daq). Endi Keldim yoki Ketdim bosing.'
@@ -709,6 +760,7 @@
     attMapFitted = false;
     routeCacheKey = '';
     routeCacheLatLngs = null;
+    geoPrevFix = null;
   }
 
   function pinIcon(label, kind) {
@@ -721,6 +773,30 @@
       html: '<div class="' + cls + '" title="' + safe + '"><i></i></div>',
       iconSize: [18, 18],
       iconAnchor: [9, 9]
+    });
+  }
+
+  /** Navigator strelkasi — heading bo‘yicha aylanadi */
+  function youNavIcon(inside, heading, moving) {
+    const deg = (heading != null && Number.isFinite(Number(heading))) ? Number(heading) : 0;
+    const hasHead = heading != null && Number.isFinite(Number(heading));
+    const tone = inside ? 'in' : 'out';
+    const motion = moving ? ' is-moving' : (hasHead ? '' : ' is-idle');
+    const html =
+      '<div class="av-nav ' + tone + motion + '" style="--h:' + deg.toFixed(1) + 'deg" title="Siz">' +
+        '<span class="av-nav-pulse"></span>' +
+        '<span class="av-nav-cone"></span>' +
+        '<span class="av-nav-arrow" aria-hidden="true">' +
+          '<svg viewBox="0 0 40 40" width="28" height="28">' +
+            '<path d="M20 4 L32 30 L20 24 L8 30 Z" fill="currentColor"/>' +
+          '</svg>' +
+        '</span>' +
+      '</div>';
+    return L.divIcon({
+      className: 'av-nav-wrap',
+      html: html,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22]
     });
   }
 
@@ -760,12 +836,14 @@
   function popupYouHtml(lat, lng, inside) {
     const acc = geoLive.accuracy != null ? Math.round(geoLive.accuracy) : null;
     const dist = geoLive.dist != null ? Math.round(geoLive.dist) : null;
+    const head = geoLive.heading != null ? Math.round(geoLive.heading) + '°' : null;
     return (
       '<div class="av-you-pop">' +
       '<b>' + (inside ? 'Siz — ofis ichida' : 'Siz — ofisdan tashqarida') + '</b><br>' +
       '<span class="mono">' + fmtCoord(lat) + ', ' + fmtCoord(lng) + '</span><br>' +
       (acc != null ? ('Aniqlik: ±' + acc + ' m<br>') : '') +
-      (dist != null ? ('Ofisgacha: ' + dist + ' m') : '') +
+      (dist != null ? ('Ofisgacha: ' + dist + ' m<br>') : '') +
+      (head ? ('Yo‘nalish: ' + head) : (geoLive.moving ? 'Harakatda…' : 'Kutilyapti')) +
       '</div>'
     );
   }
@@ -818,20 +896,23 @@
     if (!attMap || !window.L) return;
     if (lat == null || lng == null) return;
     const inside = geoLive.inside === true;
-    const youKind = inside ? 'you' : 'you-out';
     const youLabel = inside ? 'Siz (ichida)' : 'Siz (tashqarida)';
+    const heading = geoLive.heading;
+    const moving = !!geoLive.moving;
     styleZoneCircle(geoLive.inside);
 
+    const icon = youNavIcon(inside, heading, moving);
     if (!attMapUser) {
       attMapUser = L.marker([lat, lng], {
-        icon: pinIcon(youLabel, youKind),
-        zIndexOffset: 500
+        icon: icon,
+        zIndexOffset: 600,
+        interactive: true
       }).addTo(attMap);
       attMapUser.bindPopup(popupYouHtml(lat, lng, inside));
-      attMapUser.bindTooltip(youLabel, { direction: 'top', offset: [0, -8], opacity: 0.95, permanent: false });
+      attMapUser.bindTooltip(youLabel, { direction: 'top', offset: [0, -16], opacity: 0.95, permanent: false });
     } else {
       attMapUser.setLatLng([lat, lng]);
-      attMapUser.setIcon(pinIcon(youLabel, youKind));
+      attMapUser.setIcon(icon);
       try { attMapUser.setTooltipContent(youLabel); } catch (e) {}
       try { attMapUser.setPopupContent(popupYouHtml(lat, lng, inside)); } catch (e) {}
     }
@@ -1111,7 +1192,7 @@
     });
     geoWatchId = navigator.geolocation.watchPosition(
       (pos) => {
-        applyGeoFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+        applyGeoFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, { coords: pos.coords });
       },
       (err) => {
         if (geoLive.lat == null) applyGeoError(err);
@@ -1867,7 +1948,22 @@
   }
 
   function kpiCard(label, value, tone) {
-    return `<div class="att-kpi ${tone || ''}"><div class="att-kpi-v">${esc(String(value))}</div><div class="att-kpi-l">${esc(label)}</div></div>`;
+    const icons = { ok: '✓', warn: '!', bad: '×', info: '●' };
+    const mark = icons[tone || ''] != null ? icons[tone || ''] : '◈';
+    return (
+      `<div class="att-kpi dash-kpi ${tone || ''}">` +
+        `<div class="dash-kpi-mark" aria-hidden="true">${mark}</div>` +
+        `<div class="att-kpi-v">${esc(String(value))}</div>` +
+        `<div class="att-kpi-l">${esc(label)}</div>` +
+      `</div>`
+    );
+  }
+
+  function dashInitials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
   function statusLabel(s) {
@@ -2046,98 +2142,189 @@
     const rangeTxt = data.period === 'day'
       ? (data.date || '')
       : ((data.dateFrom || '') + ' — ' + (data.dateTo || ''));
+    const people = st.people != null ? st.people : rows.length;
+    const presentN = rows.filter((r) => r.status !== 'absent').length;
+    const absentN = rows.filter((r) => r.status === 'absent').length;
+    const rate = people > 0 ? Math.round((presentN / Math.max(people, rows.length || 1)) * 100) : 0;
 
     return `
-      <div class="hb-meta">
-        <div>
-          <div class="hb-title">${esc(periodTitle)} · ${esc(rangeTxt)}</div>
-          <div class="hb-sub">Ko‘rsatilmoqda: ${rows.length} yozuv · jami bazada ${st.people != null ? st.people : '—'}</div>
+      <div class="hb-hero">
+        <div class="hb-hero-main">
+          <div class="hb-kicker">${esc(periodTitle)}</div>
+          <div class="hb-hero-title">${esc(rangeTxt || '—')}</div>
+          <p class="hb-hero-sub">Ko‘rsatilmoqda <b>${rows.length}</b> yozuv · bazada <b>${people}</b> · reja ${esc(sched.label || '09:00–18:00')}</p>
+          <div class="hb-meter" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, rate))}%"></i></div>
         </div>
-        <div class="hb-stats">
-          <span class="hb-stat warn"><b>${st.late_in || 0}</b> Kech keldi</span>
-          <span class="hb-stat ok"><b>${st.early_in || 0}</b> Erta keldi</span>
-          <span class="hb-stat bad"><b>${st.early_out || 0}</b> Erta ketdi</span>
-          <span class="hb-stat info"><b>${st.late_out || 0}</b> Kech ketdi</span>
-          <span class="hb-stat"><b>Reja</b> ${esc(sched.label || '09:00–18:00')}</span>
+        <div class="hb-hero-side">
+          <div class="dash-chip warn"><b>${st.late_in || 0}</b><span>Kech keldi</span></div>
+          <div class="dash-chip ok"><b>${st.early_in || 0}</b><span>Erta keldi</span></div>
+          <div class="dash-chip bad"><b>${st.early_out || 0}</b><span>Erta ketdi</span></div>
+          <div class="dash-chip info"><b>${st.late_out || 0}</b><span>Kech ketdi</span></div>
         </div>
       </div>
-      <div class="scroll-x">
-      <table class="att-table hb-table">
-        <thead>
-          <tr>
-            <th>№</th>
-            ${showDate ? '<th>Sana</th>' : ''}
-            <th>F.I.Sh.</th>
-            <th>Lavozim</th>
-            <th>Holat</th>
-            <th>Kelish</th>
-            <th>Ketish</th>
-            <th>Ishlagan</th>
-            <th>Kech keldi</th>
-            <th>Erta keldi</th>
-            <th>Erta ketdi</th>
-            <th>Kech ketdi</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map((r, i) => `
+
+      <div class="hb-summary">
+        <div class="hb-sum-card"><span>Filtr</span><b>${rows.length}</b></div>
+        <div class="hb-sum-card ok"><span>Kelgan</span><b>${presentN}</b></div>
+        <div class="hb-sum-card bad"><span>Yo‘q</span><b>${absentN}</b></div>
+        <div class="hb-sum-card"><span>Foiz</span><b>${rate}%</b></div>
+      </div>
+
+      <div class="dash-table-wrap hb-table-wrap">
+        <div class="dash-table-h">
+          <h3>Hisobot jadvali</h3>
+          <span>${rows.length} ta · Excel / PDF tayyor</span>
+        </div>
+        <div class="scroll-x">
+        <table class="att-table hb-table dash-table">
+          <thead>
             <tr>
-              <td class="mono">${i + 1}</td>
-              ${showDate ? `<td class="mono">${esc(fmtDate(r.date))}</td>` : ''}
-              <td><b>${esc(r.name || r.username || '—')}</b>${r.car ? `<div class="att-sub">${esc(r.car)}</div>` : ''}</td>
-              <td>${esc(r.lavozim || roleLabel(r.role))}</td>
-              <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status))}</span></td>
-              <td class="mono">${r.inAt ? esc(r.inAt) : '—'}</td>
-              <td class="mono">${r.outAt ? esc(r.outAt) : '—'}</td>
-              <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.inAt && !r.outAt ? '…' : '0:00')}</td>
-              <td class="mono hb-late">${r.late_in_txt ? esc(r.late_in_txt) : '—'}</td>
-              <td class="mono hb-early">${r.early_in_txt ? esc(r.early_in_txt) : '—'}</td>
-              <td class="mono hb-early-out">${r.early_out_txt ? esc(r.early_out_txt) : '—'}</td>
-              <td class="mono hb-late-out">${r.late_out_txt ? esc(r.late_out_txt) : '—'}</td>
-              <td><button type="button" class="att-link-btn hb-edit-btn" data-hb-edit="${encodeURIComponent(JSON.stringify({
-                userId: r.userId,
-                date: r.date,
-                name: r.name || r.username,
-                inAt: r.inAt || '',
-                outAt: r.outAt || '',
-                holatMode: r.holatMode || 'auto',
-                note: r.note || ''
-              }))}" title="Tahrirlash">✎</button></td>
-            </tr>`).join('') || `<tr><td colspan="${showDate ? 13 : 12}">Ma’lumot yo‘q</td></tr>`}
-        </tbody>
-      </table></div>`;
+              <th>№</th>
+              ${showDate ? '<th>Sana</th>' : ''}
+              <th>F.I.Sh.</th>
+              <th>Lavozim</th>
+              <th>Holat</th>
+              <th>Kelish</th>
+              <th>Ketish</th>
+              <th>Ishlagan</th>
+              <th>Kech keldi</th>
+              <th>Erta keldi</th>
+              <th>Erta ketdi</th>
+              <th>Kech ketdi</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r, i) => `
+              <tr class="dash-row status-${esc(statusBadgeClass(r.status))}">
+                <td class="mono">${i + 1}</td>
+                ${showDate ? `<td class="mono">${esc(fmtDate(r.date))}</td>` : ''}
+                <td>
+                  <div class="dash-name">
+                    <span class="dash-av">${esc(dashInitials(r.name || r.username))}</span>
+                    <div>
+                      <b>${esc(r.name || r.username || '—')}</b>
+                      ${r.car ? `<div class="att-sub">${esc(r.car)}</div>` : ''}
+                    </div>
+                  </div>
+                </td>
+                <td>${esc(r.lavozim || roleLabel(r.role))}</td>
+                <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status))}</span></td>
+                <td class="mono">${r.inAt ? esc(r.inAt) : '—'}</td>
+                <td class="mono">${r.outAt ? esc(r.outAt) : '—'}</td>
+                <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.inAt && !r.outAt ? '…' : '0:00')}</td>
+                <td class="mono hb-late">${r.late_in_txt ? esc(r.late_in_txt) : '—'}</td>
+                <td class="mono hb-early">${r.early_in_txt ? esc(r.early_in_txt) : '—'}</td>
+                <td class="mono hb-early-out">${r.early_out_txt ? esc(r.early_out_txt) : '—'}</td>
+                <td class="mono hb-late-out">${r.late_out_txt ? esc(r.late_out_txt) : '—'}</td>
+                <td><button type="button" class="att-link-btn hb-edit-btn" data-hb-edit="${encodeURIComponent(JSON.stringify({
+                  userId: r.userId,
+                  date: r.date,
+                  name: r.name || r.username,
+                  inAt: r.inAt || '',
+                  outAt: r.outAt || '',
+                  holatMode: r.holatMode || 'auto',
+                  note: r.note || ''
+                }))}" title="Tahrirlash">✎</button></td>
+              </tr>`).join('') || `<tr><td colspan="${showDate ? 13 : 12}">Ma’lumot yo‘q</td></tr>`}
+          </tbody>
+        </table></div>
+      </div>`;
   }
 
   function renderBoardHtml(d) {
     const rows = (d && d.rows) || [];
     const c = (d && d.counts) || {};
+    const total = c.total != null ? c.total : rows.length;
+    const present = c.present || 0;
+    const working = c.working || 0;
+    const late = c.late || 0;
+    const absent = c.absent || 0;
+    const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+    const live = rows.filter((r) => r.status === 'in' || r.status === 'late' || (r.in && !r.out));
+    const missing = rows.filter((r) => r.status === 'absent' || (!r.in && r.status !== 'vacation'));
+
     return `
-      <div class="att-kpi-row">
-        ${kpiCard('Jami', c.total != null ? c.total : rows.length)}
-        ${kpiCard('Kelgan', c.present || 0, 'ok')}
-        ${kpiCard('Ishda', c.working || 0, 'info')}
-        ${kpiCard('Kechikdi', c.late || 0, 'warn')}
-        ${kpiCard('Yo‘q', c.absent || 0, 'bad')}
-        ${kpiCard('QR', c.enrolled || 0)}
+      <div class="dash-hero">
+        <div class="dash-hero-main">
+          <div class="dash-kicker">Kunlik pulse</div>
+          <div class="dash-hero-title">${rate}<span>%</span> kelgan</div>
+          <p class="dash-hero-sub">${present} / ${total} xodim · ${working} hozir ishda${late ? ' · ' + late + ' kechikish' : ''}</p>
+          <div class="dash-meter" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, rate))}%"></i></div>
+        </div>
+        <div class="dash-hero-side">
+          <div class="dash-chip ok"><b>${present}</b><span>Kelgan</span></div>
+          <div class="dash-chip info"><b>${working}</b><span>Ishda</span></div>
+          <div class="dash-chip warn"><b>${late}</b><span>Kech</span></div>
+          <div class="dash-chip bad"><b>${absent}</b><span>Yo‘q</span></div>
+        </div>
       </div>
-      <div class="scroll-x">
-      <table class="att-table">
-        <thead><tr><th>Ism</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Keldim</th><th>Ketdim</th><th>Ish</th><th></th></tr></thead>
-        <tbody>
-          ${rows.map((r) => `
-            <tr>
-              <td><b>${esc(r.name || r.username)}</b><div class="att-sub">@${esc(r.username || '')}</div></td>
-              <td>${esc(roleLabel(r.role))}</td>
-              <td class="mono">${esc(r.car || '—')}</td>
-              <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status))}</span></td>
-              <td class="mono">${r.inAt || (r.in ? punchTime(r.in) : '—')}${r.late_in_txt ? ' · ' + esc(r.late_in_txt) : ''}</td>
-              <td class="mono">${r.outAt || (r.out ? punchTime(r.out) : '—')}</td>
-              <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
-              <td><button type="button" class="att-link-btn" data-person="${esc(r.userId)}">Oy</button></td>
-            </tr>`).join('') || '<tr><td colspan="8">Bo‘sh</td></tr>'}
-        </tbody>
-      </table></div>`;
+
+      <div class="att-kpi-row dash-kpi-row">
+        ${kpiCard('Jami', total)}
+        ${kpiCard('Kelgan', present, 'ok')}
+        ${kpiCard('Ishda', working, 'info')}
+        ${kpiCard('Kechikdi', late, 'warn')}
+        ${kpiCard('Yo‘q', absent, 'bad')}
+        ${kpiCard('QR', c.enrolled || 0, 'info')}
+      </div>
+
+      <div class="dash-lanes">
+        <div class="dash-lane">
+          <div class="dash-lane-h"><span class="dot ok"></span> Hozir ofisda / ishda</div>
+          <div class="dash-people">
+            ${live.length ? live.slice(0, 12).map((r) => `
+              <button type="button" class="dash-person" data-person="${esc(r.userId)}" title="${esc(r.name || r.username)}">
+                <i class="${r.status === 'late' ? 'late' : 'ok'}">${esc(dashInitials(r.name || r.username))}</i>
+                <em>${esc((r.name || r.username || '').split(/\s+/)[0])}</em>
+                <small>${r.inAt || (r.in ? punchTime(r.in) : '—')}</small>
+              </button>`).join('') : '<span class="dash-empty">Hali hech kim belgilamagan</span>'}
+          </div>
+        </div>
+        <div class="dash-lane">
+          <div class="dash-lane-h"><span class="dot bad"></span> Kelmagan</div>
+          <div class="dash-people">
+            ${missing.length ? missing.slice(0, 12).map((r) => `
+              <button type="button" class="dash-person muted" data-person="${esc(r.userId)}" title="${esc(r.name || r.username)}">
+                <i class="bad">${esc(dashInitials(r.name || r.username))}</i>
+                <em>${esc((r.name || r.username || '').split(/\s+/)[0])}</em>
+                <small>—</small>
+              </button>`).join('') : '<span class="dash-empty">Hammasi joyida</span>'}
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-table-wrap">
+        <div class="dash-table-h">
+          <h3>Xodimlar ro‘yxati</h3>
+          <span>${rows.length} ta yozuv</span>
+        </div>
+        <div class="scroll-x">
+        <table class="att-table dash-table">
+          <thead><tr><th>Ism</th><th>Rol</th><th>Mashina</th><th>Holat</th><th>Keldim</th><th>Ketdim</th><th>Ish</th><th></th></tr></thead>
+          <tbody>
+            ${rows.map((r) => `
+              <tr class="dash-row status-${esc(statusBadgeClass(r.status))}">
+                <td>
+                  <div class="dash-name">
+                    <span class="dash-av">${esc(dashInitials(r.name || r.username))}</span>
+                    <div>
+                      <b>${esc(r.name || r.username)}</b>
+                      <div class="att-sub">@${esc(r.username || '')}</div>
+                    </div>
+                  </div>
+                </td>
+                <td>${esc(roleLabel(r.role))}</td>
+                <td class="mono">${esc(r.car || '—')}</td>
+                <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status))}</span></td>
+                <td class="mono">${r.inAt || (r.in ? punchTime(r.in) : '—')}${r.late_in_txt ? ' · ' + esc(r.late_in_txt) : ''}</td>
+                <td class="mono">${r.outAt || (r.out ? punchTime(r.out) : '—')}</td>
+                <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
+                <td><button type="button" class="att-link-btn" data-person="${esc(r.userId)}">Oy</button></td>
+              </tr>`).join('') || '<tr><td colspan="8">Bo‘sh</td></tr>'}
+          </tbody>
+        </table></div>
+      </div>`;
   }
 
   function renderReportHtml(rep) {
@@ -2145,50 +2332,86 @@
   }
 
   function renderPersonHtml(p) {
-    if (!p) return `<p class="att-hint">Xodimni tanlang</p>`;
+    if (!p) {
+      return `
+        <div class="person-empty">
+          <div class="person-empty-ico" aria-hidden="true">👤</div>
+          <h3>Xodimni tanlang</h3>
+          <p>Yuqoridan ismni tanlang — kunlik kelish/ketish va oylik statistika chiqadi.</p>
+        </div>`;
+    }
     const u = p.user || {};
     const st = p.stats || {};
     const days = p.days || [];
+    const present = st.presentDays || 0;
+    const late = st.lateDays || 0;
+    const absent = st.absentDays || 0;
+    const totalDays = present + late + absent || days.filter((d) => d.status !== 'future').length || 1;
+    const rate = Math.round((present / Math.max(1, totalDays)) * 100);
+
     return `
-      <div class="att-person-head">
-        <div>
-          <div class="att-person-name">${esc(u.name || u.username || '—')}</div>
-          <div class="att-sub">@${esc(u.username || '')} · ${esc(roleLabel(u.role))}${u.car ? ' · ' + esc(u.car) : ''}</div>
+      <div class="hb-hero person-hero">
+        <div class="hb-hero-main">
+          <div class="hb-kicker">Xodim profili</div>
+          <div class="hb-hero-title">${esc(u.name || u.username || '—')}</div>
+          <p class="hb-hero-sub">@${esc(u.username || '')} · ${esc(roleLabel(u.role))}${u.car ? ' · ' + esc(u.car) : ''} · kelish ${rate}%</p>
+          <div class="hb-meter" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, rate))}%"></i></div>
+        </div>
+        <div class="hb-hero-side">
+          <div class="dash-chip ok"><b>${present}</b><span>Kelgan</span></div>
+          <div class="dash-chip warn"><b>${late}</b><span>Kechikish</span></div>
+          <div class="dash-chip bad"><b>${absent}</b><span>Yo‘qlik</span></div>
+          <div class="dash-chip info"><b>${esc(st.avgIn || '—')}</b><span>O‘rt. kelish</span></div>
         </div>
       </div>
-      <div class="att-kpi-row">
-        ${kpiCard('Kelgan', st.presentDays || 0, 'ok')}
-        ${kpiCard('Kechikish', st.lateDays || 0, 'warn')}
-        ${kpiCard('Yo‘qlik', st.absentDays || 0, 'bad')}
+
+      <div class="att-kpi-row dash-kpi-row">
+        ${kpiCard('Kelgan', present, 'ok')}
+        ${kpiCard('Kechikish', late, 'warn')}
+        ${kpiCard('Yo‘qlik', absent, 'bad')}
         ${kpiCard('O‘rt. kelish', st.avgIn || '—')}
-        ${kpiCard('Jami ish', st.worked_sec ? fmtDur(st.worked_sec) : '—')}
+        ${kpiCard('Jami ish', st.worked_sec ? fmtDur(st.worked_sec) : '—', 'info')}
       </div>
-      <div class="att-cal">
-        ${days.map((d) => {
-          const cls = d.status || 'absent';
-          return `<div class="att-cal-day ${esc(cls)}${d.late ? ' late' : ''}" title="${esc(d.note || '')}">
-            <div class="d">${esc(d.date.slice(8))} <span>${esc(d.weekday || '')}</span></div>
-            <div class="t">${d.status === 'future' ? '—' : (d.inAt ? esc(d.inAt) + (d.late ? ' !' : '') : 'yo‘q')}</div>
-            <div class="o">${d.outAt ? esc(d.outAt) : (d.inAt && d.status !== 'future' ? '…' : '')}</div>
-            <div class="w">${d.worked_sec != null ? fmtDur(d.worked_sec) : ''}</div>
-          </div>`;
-        }).join('')}
+
+      <div class="person-cal-wrap">
+        <div class="dash-table-h">
+          <h3>Oy kalendari</h3>
+          <span>${days.filter((d) => d.status !== 'future').length} kun</span>
+        </div>
+        <div class="att-cal">
+          ${days.map((d) => {
+            const cls = d.status || 'absent';
+            return `<div class="att-cal-day ${esc(cls)}${d.late ? ' late' : ''}" title="${esc(d.note || '')}">
+              <div class="d">${esc(d.date.slice(8))} <span>${esc(d.weekday || '')}</span></div>
+              <div class="t">${d.status === 'future' ? '—' : (d.inAt ? esc(d.inAt) + (d.late ? ' !' : '') : 'yo‘q')}</div>
+              <div class="o">${d.outAt ? esc(d.outAt) : (d.inAt && d.status !== 'future' ? '…' : '')}</div>
+              <div class="w">${d.worked_sec != null ? fmtDur(d.worked_sec) : ''}</div>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
-      <div class="scroll-x" style="margin-top:14px">
-      <table class="att-table">
-        <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish</th><th>Masofa</th><th>Holat</th></tr></thead>
-        <tbody>
-          ${days.filter((d) => d.status !== 'future').slice().reverse().map((d) => `
-            <tr>
-              <td>${fmtDate(d.date)}</td>
-              <td class="mono">${d.inAt ? esc(d.inAt) + (d.late ? ' !' : '') : '—'}</td>
-              <td class="mono">${d.outAt ? esc(d.outAt) : '—'}</td>
-              <td class="mono">${d.worked_sec != null ? fmtDur(d.worked_sec) : '—'}</td>
-              <td class="mono">${d.distance_m != null ? Math.round(d.distance_m) + ' m' : '—'}</td>
-              <td><span class="att-badge ${esc(d.status)}">${esc(statusLabel(d.status))}</span></td>
-            </tr>`).join('') || '<tr><td colspan="6">Yozuv yo‘q</td></tr>'}
-        </tbody>
-      </table></div>`;
+
+      <div class="dash-table-wrap" style="margin-top:14px">
+        <div class="dash-table-h">
+          <h3>Kunlik yozuvlar</h3>
+          <span>Yangi → eski</span>
+        </div>
+        <div class="scroll-x">
+        <table class="att-table dash-table">
+          <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish</th><th>Masofa</th><th>Holat</th></tr></thead>
+          <tbody>
+            ${days.filter((d) => d.status !== 'future').slice().reverse().map((d) => `
+              <tr class="dash-row status-${esc(statusBadgeClass(d.status))}">
+                <td>${fmtDate(d.date)}</td>
+                <td class="mono">${d.inAt ? esc(d.inAt) + (d.late ? ' !' : '') : '—'}</td>
+                <td class="mono">${d.outAt ? esc(d.outAt) : '—'}</td>
+                <td class="mono">${d.worked_sec != null ? fmtDur(d.worked_sec) : '—'}</td>
+                <td class="mono">${d.distance_m != null ? Math.round(d.distance_m) + ' m' : '—'}</td>
+                <td><span class="att-badge ${esc(d.status)}">${esc(statusLabel(d.status))}</span></td>
+              </tr>`).join('') || '<tr><td colspan="6">Yozuv yo‘q</td></tr>'}
+          </tbody>
+        </table></div>
+      </div>`;
   }
 
   function render() {
@@ -2309,18 +2532,18 @@
                 <span class="av-qr-pill ${gateOk ? 'on' : ''}" id="av-qr-pill">${needQr ? (ticketOk ? 'QR faol' : 'QR kutilyapti') : (geoLive.inside ? 'Zona OK' : 'Zona kutilyapti')}</span>
               </div>
               <div class="av-punch-row">
-                <button type="button" class="av-punch av-punch-in is-locked" id="btn-keldim-main" ${inn || done ? 'disabled' : ''}>
-                  <span class="ico">IN</span>
+                <div class="av-punch av-punch-in av-punch-display ${inn ? 'is-done' : 'is-empty'}" id="btn-keldim-main" aria-hidden="true">
                   <div class="tag">Keldim</div>
+                  <span class="ico">IN</span>
                   <div class="time">${inn ? punchTime(inn) : '—'}</div>
                   <div class="plan">Reja ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn && (inn.note || '').toLowerCase().indexOf('erta') >= 0 ? ' · erta' : (inn ? ' · o‘z vaqtida' : ' · erta mumkin'))}</div>
-                </button>
-                <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
-                  <span class="ico">OUT</span>
+                </div>
+                <div class="av-punch av-punch-out av-punch-display ${out ? 'is-done' : 'is-empty'}" id="btn-ketdim-main" aria-hidden="true">
                   <div class="tag">Ketdim</div>
+                  <span class="ico">OUT</span>
                   <div class="time">${out ? punchTime(out) : '—'}</div>
                   <div class="plan">Reja ${esc(s.out_start || '18:00')}${out && (out.note || '').toLowerCase().indexOf('erta') >= 0 ? ' · erta' : (out ? ' · qayd' : ' · erta mumkin')}</div>
-                </button>
+                </div>
               </div>
               <button type="button" class="av-continue" id="av-continue" disabled>
                 <span>Ofisga keling</span>
@@ -2345,7 +2568,7 @@
                 <div class="av-map-legend">
                   <span><i class="lg-office"></i> Ofis</span>
                   <span><i class="lg-zone"></i> ${esc(String(off.radius))} m</span>
-                  <span><i class="lg-you"></i> Siz</span>
+                  <span><i class="lg-you"></i> Siz (navigator)</span>
                   <span><i class="lg-acc"></i> Aniqlik</span>
                   <span><i class="lg-route"></i> Yo‘l</span>
                 </div>
@@ -2472,67 +2695,101 @@
       </div>
 
       <div class="att-panel" id="panel-tarix" ${uiTab === 'tarix' ? '' : 'hidden'}>
-        <section class="att-sheet">
-          <div class="att-panel-head">
+        <section class="att-sheet hist-sheet">
+          <div class="att-panel-head dash-head">
             <div>
+              <div class="dash-head-kicker">My timeline</div>
               <h2>Mening davomatim</h2>
               <p>Shaxsiy kelish / ketish tarixi</p>
             </div>
           </div>
-          <div class="att-card-b">
-            ${history.length ? `
-              <div class="scroll-x">
-              <table class="att-table">
-                <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish vaqti</th><th>Holat</th></tr></thead>
-                <tbody>
-                  ${history.map((r) => `
-                    <tr>
-                      <td>${fmtDate(r.date)}</td>
-                      <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
-                      <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
-                      <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
-                      <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
-                    </tr>`).join('')}
-                </tbody>
-              </table></div>
-            ` : `<p class="att-hint">Hali yozuv yo‘q. Birinchi marta Keldim bosing.</p>`}
+          <div class="att-card-b hist-body">
+            ${(() => {
+              const lateN = history.filter((r) => r.status === 'late' || r.late || (r.in && r.in.late)).length;
+              const doneN = history.filter((r) => r.in && r.out).length;
+              const openN = history.filter((r) => r.in && !r.out).length;
+              const rate = history.length ? Math.round((doneN / history.length) * 100) : 0;
+              if (!history.length) {
+                return `<div class="person-empty"><div class="person-empty-ico" aria-hidden="true">📅</div><h3>Hali yozuv yo‘q</h3><p>Birinchi marta Keldim bosing — tarix shu yerda chiqadi.</p></div>`;
+              }
+              return `
+              <div class="hb-hero">
+                <div class="hb-hero-main">
+                  <div class="hb-kicker">Shaxsiy pulse</div>
+                  <div class="hb-hero-title">${history.length} <span style="font-size:.55em;opacity:.85">kun</span></div>
+                  <p class="hb-hero-sub">${doneN} to‘liq · ${openN} ochiq · ${lateN} kechikish · yakun ${rate}%</p>
+                  <div class="hb-meter" aria-hidden="true"><i style="width:${rate}%"></i></div>
+                </div>
+                <div class="hb-hero-side">
+                  <div class="dash-chip ok"><b>${doneN}</b><span>To‘liq</span></div>
+                  <div class="dash-chip info"><b>${openN}</b><span>Ochiq</span></div>
+                  <div class="dash-chip warn"><b>${lateN}</b><span>Kech</span></div>
+                  <div class="dash-chip"><b>${history.length}</b><span>Jami</span></div>
+                </div>
+              </div>
+              <div class="dash-table-wrap">
+                <div class="dash-table-h">
+                  <h3>Kunlar ro‘yxati</h3>
+                  <span>${history.length} yozuv</span>
+                </div>
+                <div class="scroll-x">
+                <table class="att-table dash-table hist-table">
+                  <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish vaqti</th><th>Holat</th></tr></thead>
+                  <tbody>
+                    ${history.map((r) => `
+                      <tr class="dash-row status-${esc(statusBadgeClass(r.status))}">
+                        <td>${fmtDate(r.date)}</td>
+                        <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
+                        <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
+                        <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
+                        <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table></div>
+              </div>`;
+            })()}
           </div>
         </section>
       </div>
 
       ${staff ? `
       <div class="att-panel" id="panel-dash" ${uiTab === 'dash' ? '' : 'hidden'}>
-        <section class="att-sheet">
-          <div class="att-panel-head">
+        <section class="att-sheet dash-sheet">
+          <div class="att-panel-head dash-head">
             <div>
+              <div class="dash-head-kicker">Team control</div>
               <h2>Jamoa dashboard</h2>
-              <p>Kunlik holat — kim keldi, kim kechikdi</p>
+              <p>Kim keldi, kim kechikdi, kim hali yo‘q — bir qarashda</p>
             </div>
-            <div class="att-toolbar">
-              <input type="date" id="board-date" value="${esc(dayInputValue(boardDate))}">
-              <button type="button" class="att-btn att-btn-face" id="btn-board" style="padding:8px 12px;min-width:0;font-size:12px">Yangilash</button>
+            <div class="att-toolbar dash-toolbar">
+              <label class="dash-date">
+                <span>Sana</span>
+                <input type="date" id="board-date" value="${esc(dayInputValue(boardDate))}">
+              </label>
+              <button type="button" class="att-btn att-btn-face dash-refresh" id="btn-board">Yangilash</button>
             </div>
           </div>
-          <div class="att-card-b" id="att-board"><p class="att-hint">Yuklanmoqda…</p></div>
+          <div class="att-card-b dash-body" id="att-board"><p class="att-hint">Yuklanmoqda…</p></div>
         </section>
       </div>
 
       <div class="att-panel" id="panel-hisobot" ${uiTab === 'hisobot' ? '' : 'hidden'}>
-        <section class="att-sheet hb-card">
-          <div class="att-panel-head">
+        <section class="att-sheet hb-card hb-sheet">
+          <div class="att-panel-head dash-head">
             <div>
+              <div class="dash-head-kicker">Reports</div>
               <h2>Davomat hisoboti</h2>
-              <p>Kunlik, haftalik, oylik va oraliq export</p>
+              <p>Kunlik · haftalik · oylik · oraliq — export va tahrir</p>
             </div>
           </div>
-          <div class="att-card-b">
+          <div class="att-card-b hb-body">
             <div class="hb-period" role="tablist" aria-label="Davr turi">
               <button type="button" class="hb-period-btn ${hisobotPeriod === 'day' ? 'on' : ''}" data-hb-period="day">Kunlik</button>
               <button type="button" class="hb-period-btn ${hisobotPeriod === 'week' ? 'on' : ''}" data-hb-period="week">Haftalik</button>
               <button type="button" class="hb-period-btn ${hisobotPeriod === 'month' ? 'on' : ''}" data-hb-period="month">Oylik</button>
               <button type="button" class="hb-period-btn ${hisobotPeriod === 'range' ? 'on' : ''}" data-hb-period="range">Sanadan–gacha</button>
             </div>
-            <div class="hb-filters">
+            <div class="hb-filters hb-filters-pro">
               <label class="hb-fld hb-date-wrap ${hisobotPeriod === 'range' ? 'hidden' : ''}">
                 <span>Sana</span>
                 <div class="hb-date-nav">
@@ -2565,9 +2822,11 @@
                 <span>Qidiruv</span>
                 <input type="search" id="hb-q" placeholder="Ism, lavozim…" value="${esc(hisobotQ)}">
               </label>
-              <button type="button" class="att-btn att-btn-face" id="btn-report">Yangilash</button>
-              <button type="button" class="att-btn att-btn-in" id="btn-export-xlsx">Excel</button>
-              <button type="button" class="att-btn att-btn-out" id="btn-export-pdf">PDF</button>
+              <div class="hb-actions">
+                <button type="button" class="att-btn att-btn-face" id="btn-report">Yangilash</button>
+                <button type="button" class="att-btn att-btn-in" id="btn-export-xlsx">Excel</button>
+                <button type="button" class="att-btn att-btn-out" id="btn-export-pdf">PDF</button>
+              </div>
             </div>
             <div id="att-report"><p class="att-hint">Yuklanmoqda…</p></div>
           </div>
@@ -2575,33 +2834,47 @@
       </div>
 
       <div class="att-panel" id="panel-shaxs" ${uiTab === 'shaxs' ? '' : 'hidden'}>
-        <section class="att-sheet">
-          <div class="att-panel-head">
+        <section class="att-sheet person-sheet">
+          <div class="att-panel-head dash-head">
             <div>
+              <div class="dash-head-kicker">People</div>
               <h2>Xodim tahlili</h2>
               <p>Kunlik kelish/ketish va oylik statistika</p>
             </div>
-            <div class="att-toolbar">
-              <select id="person-select"><option value="">— tanlang —</option></select>
-              <input type="month" id="person-month" value="${esc(monthInputValue(personMonth))}">
-              <button type="button" class="att-btn att-btn-face" id="btn-person" style="padding:8px 12px;min-width:0;font-size:12px">Ko‘rish</button>
-              <button type="button" class="att-btn att-btn-in" id="btn-person-xlsx" style="padding:8px 12px;min-width:0;font-size:12px">Excel</button>
-              <button type="button" class="att-btn att-btn-out" id="btn-person-pdf" style="padding:8px 12px;min-width:0;font-size:12px">PDF</button>
+            <div class="att-toolbar dash-toolbar person-toolbar">
+              <label class="dash-date">
+                <span>Xodim</span>
+                <select id="person-select"><option value="">— tanlang —</option></select>
+              </label>
+              <label class="dash-date">
+                <span>Oy</span>
+                <input type="month" id="person-month" value="${esc(monthInputValue(personMonth))}">
+              </label>
+              <button type="button" class="att-btn att-btn-face dash-refresh" id="btn-person">Ko‘rish</button>
+              <button type="button" class="att-btn att-btn-in dash-refresh" id="btn-person-xlsx">Excel</button>
+              <button type="button" class="att-btn att-btn-out dash-refresh" id="btn-person-pdf">PDF</button>
             </div>
           </div>
-          <div class="att-card-b" id="att-person"><p class="att-hint">Xodimni tanlang — kunlik kelish/ketish va oylik statistika.</p></div>
+          <div class="att-card-b person-body" id="att-person">
+            <div class="person-empty">
+              <div class="person-empty-ico" aria-hidden="true">👤</div>
+              <h3>Xodimni tanlang</h3>
+              <p>Yuqoridan ismni tanlang — kunlik kelish/ketish va oylik statistika chiqadi.</p>
+            </div>
+          </div>
         </section>
       </div>
 
       <div class="att-panel" id="panel-soz" ${uiTab === 'soz' ? '' : 'hidden'}>
-        <section class="att-sheet">
-          <div class="att-panel-head">
+        <section class="att-sheet set-sheet">
+          <div class="att-panel-head dash-head">
             <div>
+              <div class="dash-head-kicker">Control room</div>
               <h2>Sozlamalar</h2>
-              <p>Ofis geozona, jadval va QR</p>
+              <p>Ofis geozona, ish jadvali va QR plakat</p>
             </div>
           </div>
-          <div class="att-card-b att-settings" id="att-settings"></div>
+          <div class="att-card-b att-settings set-body" id="att-settings"></div>
         </section>
       </div>
       ` : ''}
@@ -2640,8 +2913,6 @@
     const enroll = document.getElementById('btn-enroll');
     const re = document.getElementById('btn-reenroll');
     const board = document.getElementById('btn-board');
-    const kIn = document.getElementById('btn-keldim-main');
-    const kOut = document.getElementById('btn-ketdim-main');
     const boardDateEl = document.getElementById('board-date');
     const reportBtn = document.getElementById('btn-report');
     const personBtn = document.getElementById('btn-person');
@@ -2768,8 +3039,7 @@
         if (personId) loadPerson(true);
       });
     }
-    if (kIn) bindTap(kIn, () => requestPunch('in'));
-    if (kOut) bindTap(kOut, () => requestPunch('out'));
+    // IN/OUT kartalar faqat ko‘rinish — punch faqat #av-continue orqali
     const geoBtn = document.getElementById('btn-geo-check');
     if (geoBtn) bindTap(geoBtn, () => {
       hideGeoHelp();
@@ -3551,7 +3821,7 @@
     if (personId) await loadPerson(false);
     else {
       const box = document.getElementById('att-person');
-      if (box) box.innerHTML = `<p class="att-hint">Xodimni tanlang — kunlik kelish/ketish va oylik statistika.</p>`;
+      if (box) box.innerHTML = renderPersonHtml(null);
     }
   }
 
@@ -3559,7 +3829,7 @@
     const box = document.getElementById('att-person');
     if (!box) return;
     if (!personId) {
-      box.innerHTML = `<p class="att-hint">Xodimni tanlang</p>`;
+      box.innerHTML = renderPersonHtml(null);
       return;
     }
     const month = monthInputValue(personMonth);
@@ -3593,56 +3863,73 @@
       const o = s.office || {};
       officeQrMeta = qr;
       box.innerHTML = `
-        <div class="att-qr-poster-wrap" id="att-qr-print">
-          <div class="att-qr-poster-head">
-            <div>
-              <div class="att-qr-kicker">Davomat</div>
-              <h3 class="att-qr-title">Ofis QR</h3>
-              <p class="att-qr-lead">Chop etish · PNG · PDF</p>
+        <div class="set-grid">
+          <div class="set-card set-card-qr">
+            <div class="set-card-h">
+              <div class="dash-head-kicker">QR poster</div>
+              <h3>Ofis QR</h3>
+              <p>Chop etish · PNG · PDF · yangilash</p>
             </div>
-            <div class="att-qr-ver">v${esc(String(qr.version || 1))}</div>
+            <div class="att-qr-poster-wrap" id="att-qr-print">
+              <div class="att-qr-poster-head">
+                <div>
+                  <div class="att-qr-kicker">Davomat</div>
+                  <h3 class="att-qr-title">Ofis QR</h3>
+                  <p class="att-qr-lead">Devorga osish uchun</p>
+                </div>
+                <div class="att-qr-ver">v${esc(String(qr.version || 1))}</div>
+              </div>
+              <div class="att-qr-stage">
+                <canvas id="office-qr-poster" width="720" height="960" aria-label="Ofis QR plakat"></canvas>
+                <div class="att-qr-loading" id="office-qr-loading">QR chizilmoqda…</div>
+              </div>
+              <div class="att-qr-actions">
+                <button type="button" class="att-btn att-btn-in" id="btn-qr-print">Chop etish</button>
+                <button type="button" class="att-btn att-btn-face" id="btn-qr-png">PNG yuklash</button>
+                <button type="button" class="att-btn att-btn-out" id="btn-qr-pdf">PDF yuklash</button>
+                <button type="button" class="att-btn" id="btn-qr-rotate" style="background:#0b1f3a;color:#fff;border-color:#0b1f3a">QR yangilash</button>
+              </div>
+              <p class="att-hint" id="office-qr-status">v${esc(String(qr.version || 1))} · ${esc(qr.label || o.label || 'Ofis')}</p>
+            </div>
           </div>
-          <div class="att-qr-stage">
-            <canvas id="office-qr-poster" width="720" height="960" aria-label="Ofis QR plakat"></canvas>
-            <div class="att-qr-loading" id="office-qr-loading">QR chizilmoqda…</div>
+
+          <div class="set-card set-card-form">
+            <div class="set-card-h">
+              <div class="dash-head-kicker">Schedule & zone</div>
+              <h3>Ish jadvali va geozona</h3>
+              <p>Haydovchilar / ofis: <b>09:00–18:00</b>, kechikish ruxsati <b>15 daqiqa</b></p>
+            </div>
+            <div class="row2">
+              <div class="fld"><label>Ish boshlanishi</label><input id="s-in-start" value="${esc(s.in_start || '09:00')}" placeholder="09:00"></div>
+              <div class="fld"><label>Ruxsat (daqiqa)</label><input id="s-grace" type="number" min="0" max="120" value="${esc(s.late_grace_min != null ? s.late_grace_min : 15)}"></div>
+            </div>
+            <div class="row2">
+              <div class="fld"><label>Kechikish dan (soat)</label><input id="s-late" value="${esc(s.in_late_after || '09:15')}" placeholder="09:15"></div>
+              <div class="fld"><label>Ish tugashi (rejada)</label><input id="s-out-start" value="${esc(s.out_start || '18:00')}" placeholder="18:00"></div>
+            </div>
+            <div class="row2">
+              <div class="fld"><label>Kun yopiladi (oxirgi punch)</label><input id="s-out-end" value="${esc(s.out_end || '20:00')}" placeholder="20:00"></div>
+              <div class="fld"><label>Ofis nomi</label><input id="s-label" value="${esc(o.label || '')}"></div>
+            </div>
+            <div class="row2">
+              <div class="fld"><label>Radius (m)</label><input id="s-radius" type="number" value="${esc(o.radius_m || 100)}"></div>
+              <div class="fld"></div>
+            </div>
+            ${canSeeOfficeCoords() ? `
+            <div class="row2">
+              <div class="fld"><label>Ofis lat</label><input id="s-lat" value="${esc(o.lat || '')}"></div>
+              <div class="fld"><label>Ofis lng</label><input id="s-lng" value="${esc(o.lng || '')}"></div>
+            </div>
+            <p class="att-hint">Koordinata faqat Admin Pro uchun. Oddiy admin ko‘ra olmaydi.</p>
+            ` : `
+            <p class="att-hint">Ofis koordinatasi yashirilgan (faqat Admin Pro sozlaydi). Geozona serverda tekshiriladi.</p>
+            `}
+            <div class="set-form-actions">
+              <button type="button" class="att-btn att-btn-in" id="btn-save-set">Saqlash</button>
+              ${canSeeOfficeCoords() ? `<button type="button" class="att-btn att-btn-face" id="btn-here">Hozirgi joyimni ofis qil</button>` : ''}
+            </div>
           </div>
-          <div class="att-qr-actions">
-            <button type="button" class="att-btn att-btn-in" id="btn-qr-print">Chop etish</button>
-            <button type="button" class="att-btn att-btn-face" id="btn-qr-png">PNG yuklash</button>
-            <button type="button" class="att-btn att-btn-out" id="btn-qr-pdf">PDF yuklash</button>
-            <button type="button" class="att-btn" id="btn-qr-rotate" style="background:#0b1f3a;color:#fff;border-color:#0b1f3a">QR yangilash</button>
-          </div>
-          <p class="att-hint" id="office-qr-status">v${esc(String(qr.version || 1))} · ${esc(qr.label || o.label || 'Ofis')}</p>
         </div>
-        <hr style="margin:22px 0;border:none;border-top:1px solid #d7e2ef">
-        <p class="att-hint" style="margin:0 0 12px">Haydovchilar va ofis: <b>09:00–18:00</b>, kechikish ruxsati <b>15 daqiqa</b>.</p>
-        <div class="row2">
-          <div class="fld"><label>Ish boshlanishi</label><input id="s-in-start" value="${esc(s.in_start || '09:00')}" placeholder="09:00"></div>
-          <div class="fld"><label>Ruxsat (daqiqa)</label><input id="s-grace" type="number" min="0" max="120" value="${esc(s.late_grace_min != null ? s.late_grace_min : 15)}"></div>
-        </div>
-        <div class="row2">
-          <div class="fld"><label>Kechikish dan (soat)</label><input id="s-late" value="${esc(s.in_late_after || '09:15')}" placeholder="09:15"></div>
-          <div class="fld"><label>Ish tugashi (rejada)</label><input id="s-out-start" value="${esc(s.out_start || '18:00')}" placeholder="18:00"></div>
-        </div>
-        <div class="row2">
-          <div class="fld"><label>Kun yopiladi (oxirgi punch)</label><input id="s-out-end" value="${esc(s.out_end || '20:00')}" placeholder="20:00"></div>
-          <div class="fld"><label>Ofis nomi</label><input id="s-label" value="${esc(o.label || '')}"></div>
-        </div>
-        <div class="row2">
-          <div class="fld"><label>Radius (m)</label><input id="s-radius" type="number" value="${esc(o.radius_m || 100)}"></div>
-          <div class="fld"></div>
-        </div>
-        ${canSeeOfficeCoords() ? `
-        <div class="row2">
-          <div class="fld"><label>Ofis lat</label><input id="s-lat" value="${esc(o.lat || '')}"></div>
-          <div class="fld"><label>Ofis lng</label><input id="s-lng" value="${esc(o.lng || '')}"></div>
-        </div>
-        <p class="att-hint">Koordinata faqat Admin Pro uchun. Oddiy admin ko‘ra olmaydi.</p>
-        ` : `
-        <p class="att-hint">Ofis koordinatasi yashirilgan (faqat Admin Pro sozlaydi). Geozona serverda tekshiriladi.</p>
-        `}
-        <button type="button" class="att-btn att-btn-in" id="btn-save-set" style="margin-top:8px">Saqlash</button>
-        ${canSeeOfficeCoords() ? `<button type="button" class="att-btn att-btn-face" id="btn-here" style="margin-top:8px">Hozirgi joyimni ofis qil</button>` : ''}
       `;
       document.getElementById('btn-save-set').onclick = saveSettings;
       const btnHere = document.getElementById('btn-here');

@@ -4197,6 +4197,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if is_driver(sess):
                 self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
                 return
+            office_geo = None
+            try:
+                from gps_sync import get_office_geofence
+
+                office_geo = get_office_geofence()
+            except Exception:
+                office_geo = None
             self.send_json(
                 {
                     "ok": True,
@@ -4208,6 +4215,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "persist": STORE.persist_info(),
                     "vehicles": (OFFICE.fuel_meta() or {}).get("vehicles") or {},
                     "fuelNorms": (OFFICE.dashboard_settings() or {}).get("fuelNorms") or {},
+                    "officeGeofence": office_geo,
                 }
             )
             return

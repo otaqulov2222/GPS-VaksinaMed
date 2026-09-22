@@ -63,6 +63,9 @@ const VMOffice = {
             d = await vmApi('/api/office/bootstrap');
             STATE.pharmacies = Array.isArray(d.pharmacies) ? d.pharmacies : [];
             STATE.reviews = d.reviews && typeof d.reviews === 'object' ? d.reviews : {};
+            if (d.officeGeofence && typeof d.officeGeofence === 'object') {
+                STATE.officeGeofence = d.officeGeofence;
+            }
             this.reportDates = d.reportDates || [];
             this.telegram = d.telegram || this.telegram;
             if (d.gps && typeof d.gps === 'object') {
