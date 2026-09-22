@@ -862,9 +862,11 @@ class AttendanceStore:
         name = str(u.get("name") or "").strip().lower()
         if role == "admin_pro":
             return True
-        if uname in ("adminpro", "admin_pro", "admin-pro"):
+        if role == "viewer":
             return True
-        if name in ("admin pro", "adminpro"):
+        if uname in ("adminpro", "admin_pro", "admin-pro", "kuzatuvchi"):
+            return True
+        if name in ("admin pro", "adminpro", "kuzatuvchi"):
             return True
         return False
 

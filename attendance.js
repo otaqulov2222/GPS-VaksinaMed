@@ -338,6 +338,7 @@
     const role = r || '';
     if (role === 'admin_pro') return 'Admin Pro';
     if (role === 'admin') return 'Admin';
+    if (role === 'viewer') return 'Kuzatuvchi';
     if (role === 'driver') return 'Haydovchi';
     return role || 'Xodim';
   }
@@ -2426,7 +2427,12 @@
     const inn = today.in;
     const out = today.out;
     const enrolled = !!STATE.enrolled;
-    const staff = window.VM_USER && (VM_USER.role === 'admin' || VM_USER.role === 'admin_pro');
+    const staff = window.VM_USER && (typeof vmCanViewOps === 'function'
+      ? vmCanViewOps(VM_USER)
+      : (VM_USER.role === 'admin' || VM_USER.role === 'admin_pro' || VM_USER.role === 'viewer'));
+    const canWrite = window.VM_USER && (typeof vmCanWrite === 'function'
+      ? vmCanWrite(VM_USER)
+      : (VM_USER.role === 'admin' || VM_USER.role === 'admin_pro'));
     const history = STATE.history || [];
     const working = !!(inn && !out);
     const done = !!(inn && out);
@@ -3479,9 +3485,9 @@
       const role = String(r.role || '').toLowerCase();
       const uname = String(r.username || '').toLowerCase().replace(/\s+/g, '');
       const name = String(r.name || '').toLowerCase();
-      if (role === 'admin_pro') return false;
-      if (uname === 'adminpro' || uname === 'admin_pro') return false;
-      if (name === 'admin pro' || name === 'adminpro') return false;
+      if (role === 'admin_pro' || role === 'viewer') return false;
+      if (uname === 'adminpro' || uname === 'admin_pro' || uname === 'kuzatuvchi') return false;
+      if (name === 'admin pro' || name === 'adminpro' || name === 'kuzatuvchi') return false;
       return true;
     });
     if (holat !== 'all') {

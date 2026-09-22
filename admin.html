@@ -747,6 +747,12 @@ tbody tr:hover td { background: #f8fafc; }
   border-color: #bfdbfe;
 }
 
+.chip-viewer {
+  background: #ecfdf5;
+  color: #0f766e;
+  border-color: #99f6e4;
+}
+
 .chip-admin {
   background: #e3eef9;
   color: var(--accent);
@@ -1814,7 +1820,7 @@ body { overflow-x: clip; }
 <script src="uz-latin.js?v=4"></script>
 <script src="fleet-data.js?v=9"></script>
 
-<script src="auth.js?v=39"></script>
+<script src="auth.js?v=40"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="ph-delete-btn.js?v=3"></script>
 
@@ -1932,6 +1938,7 @@ async function loadAll() {
 
   const me = window.VM_USER || {};
   const isPro = me.role === 'admin_pro';
+  const isViewer = me.role === 'viewer';
 
   const reqs = [vmApi('/api/users'), vmApi('/api/sessions')];
   if (isPro) reqs.push(vmApi('/api/audit'));
@@ -1956,12 +1963,13 @@ async function loadAll() {
   document.getElementById('tb-users').innerHTML = users.users.map(u => {
     const role = u.role === 'admin_pro'
       ? '<span class="chip chip-pro">Pro</span>'
-      : (u.role === 'driver' ? '<span class="chip chip-drv">Haydovchi</span>' : '<span class="chip chip-admin">Admin</span>');
+      : (u.role === 'viewer' ? '<span class="chip chip-viewer">Kuzatuvchi</span>'
+        : (u.role === 'driver' ? '<span class="chip chip-drv">Haydovchi</span>' : '<span class="chip chip-admin">Admin</span>'));
     const st = u.active
       ? '<span class="chip chip-on">Faol</span>'
       : '<span class="chip chip-off">Blok</span>';
     const isSuper = u.protected || u.role === 'admin_pro';
-    const canManage = !isSuper;
+    const canManage = !isSuper && !isViewer;
     let displayName = u.name || u.username || '';
     if (u.role === 'driver' && u.car && typeof resolveDriver === 'function') {
       const live = resolveDriver(u.car);
@@ -3501,7 +3509,7 @@ if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document);
 
   const me = await vmMe();
 
-  if (!me || (me.role !== 'admin_pro' && me.role !== 'admin')) {
+  if (!me || (me.role !== 'admin_pro' && me.role !== 'admin' && me.role !== 'viewer')) {
 
     if (me && me.role === 'driver') location.replace('/driver');
 
@@ -3513,7 +3521,9 @@ if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document);
 
   window.VM_USER = me;
   const isPro = me.role === 'admin_pro';
+  const isViewer = me.role === 'viewer';
   document.body.classList.toggle('role-admin-pro', isPro);
+  document.body.classList.toggle('role-viewer', isViewer);
   document.querySelectorAll('.pro-only').forEach((el) => {
     if (isPro) {
       el.hidden = false;
@@ -3523,6 +3533,7 @@ if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document);
       el.setAttribute('aria-hidden', 'true');
     }
   });
+  if (isViewer && typeof vmApplyReadonly === 'function') vmApplyReadonly(me);
 
   if (typeof vmGatePage === 'function') vmGatePage(me);
 

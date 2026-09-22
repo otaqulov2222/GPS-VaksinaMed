@@ -65,6 +65,20 @@ function vmIsStaff(user) {
     return !!user && (user.role === 'admin_pro' || user.role === 'admin');
 }
 
+function vmIsViewer(user) {
+    return !!user && user.role === 'viewer';
+}
+
+/** Dashboard / Live / Fuel / Davomat hisobot — ko'rish */
+function vmCanViewOps(user) {
+    return vmIsStaff(user) || vmIsViewer(user);
+}
+
+/** Saqlash / o'zgartirish — faqat admin */
+function vmCanWrite(user) {
+    return vmIsStaff(user);
+}
+
 function vmIsDriver(user) {
     return !!user && user.role === 'driver';
 }
@@ -81,7 +95,7 @@ function vmGatePage(user) {
         if (!onDriver && !onProfile && !onAttendance) location.replace('/driver');
         return;
     }
-    if (onDriver && !vmIsStaff(user)) {
+    if (onDriver && !vmCanViewOps(user)) {
         location.replace('/');
     }
 }
@@ -89,7 +103,7 @@ function vmGatePage(user) {
 /** Rolga qarab menyu / havolalar — haydovchiga admin menyu KO'RINMASIN */
 function vmApplyRoleNav(user) {
     if (!user) return;
-    const staff = vmIsStaff(user);
+    const staff = vmCanViewOps(user);
     const drv = vmIsDriver(user);
 
     document.querySelectorAll('.staff-only').forEach((el) => {
@@ -301,6 +315,7 @@ function vmEnsurePanelNav() {
 function vmApplyChrome(user) {
     if (!user) return;
     vmApplyRoleNav(user);
+    vmApplyReadonly(user);
     vmEnsureLiveNav();
     vmEnsureDavomatNav();
     vmEnsurePanelNav();
@@ -309,22 +324,27 @@ function vmApplyChrome(user) {
     const panel = document.getElementById('btn-admin-panel');
     if (name) name.textContent = user.username || user.name || '—';
     if (role) {
-        const roleLabel = user.role === 'admin_pro' ? 'Admin Pro' : (user.role === 'driver' ? 'Haydovchi' : (user.role === 'admin' ? 'Admin' : ''));
+        const roleLabel = user.role === 'admin_pro' ? 'Admin Pro'
+            : (user.role === 'driver' ? 'Haydovchi'
+                : (user.role === 'admin' ? 'Admin'
+                    : (user.role === 'viewer' ? 'Kuzatuvchi' : '')));
         const shown = name ? name.textContent : (user.username || '');
         if (roleLabel && !vmSameLabel(shown, roleLabel) && !vmSameLabel(shown, 'admin')) {
             role.hidden = false;
             role.textContent = roleLabel;
-            role.className = 'tb-role ' + (user.role === 'admin_pro' ? 'tb-role-pro' : 'tb-role-admin');
+            role.className = 'tb-role ' + (user.role === 'admin_pro' ? 'tb-role-pro'
+                : (user.role === 'viewer' ? 'tb-role-viewer' : 'tb-role-admin'));
         } else {
             role.hidden = true;
             role.textContent = '';
         }
     }
     if (panel) {
-        if (vmIsStaff(user)) {
+        if (vmCanViewOps(user)) {
             panel.style.display = '';
             panel.removeAttribute('hidden');
-            panel.textContent = user.role === 'admin_pro' ? 'Admin Pro' : 'Panel';
+            panel.textContent = user.role === 'admin_pro' ? 'Admin Pro'
+                : (user.role === 'viewer' ? 'Kuzatuv' : 'Panel');
             panel.setAttribute('href', '/admin');
         } else {
             panel.style.display = 'none';
@@ -333,12 +353,54 @@ function vmApplyChrome(user) {
     }
 }
 
+/** Kuzatuvchi: saqlash / o'chirish / stamp tugmalarini yashirish */
+function vmApplyReadonly(user) {
+    if (!vmIsViewer(user)) {
+        document.body.classList.remove('role-viewer', 'vm-readonly');
+        return;
+    }
+    document.body.classList.add('role-viewer', 'vm-readonly');
+    if (document.getElementById('vm-readonly-css')) return;
+    const st = document.createElement('style');
+    st.id = 'vm-readonly-css';
+    st.textContent = [
+        'body.vm-readonly .write-only,',
+        'body.vm-readonly .pro-only,',
+        'body.vm-readonly #form-add,',
+        'body.vm-readonly #form-drv,',
+        'body.vm-readonly [data-write],',
+        'body.vm-readonly .att-btn-in,',
+        'body.vm-readonly .att-btn-out,',
+        'body.vm-readonly #btn-save-set,',
+        'body.vm-readonly #btn-here,',
+        'body.vm-readonly #btn-qr-rotate,',
+        'body.vm-readonly button[id^="btn-save"],',
+        'body.vm-readonly button[id*="save"],',
+        'body.vm-readonly button[id*="delete"],',
+        'body.vm-readonly button[id*="ochir"],',
+        'body.vm-readonly .av-continue { display: none !important; }',
+        'body.vm-readonly input:not([type="search"]):not([type="date"]):not([type="month"]):not([readonly]),',
+        'body.vm-readonly select:not([data-view-ok]),',
+        'body.vm-readonly textarea { pointer-events: none; opacity: 0.85; }',
+        'body.vm-readonly .tb-role-viewer { background:#0f766e; color:#ecfdf5; }',
+        'body.vm-readonly::after { content:"FAQAT KO\\2018RISH — o\\2018zgartirish mumkin emas";',
+        'position:fixed;left:12px;bottom:12px;z-index:9999;background:#0f766e;color:#fff;',
+        'font:650 11px/1.2 system-ui,sans-serif;padding:8px 12px;border-radius:10px;',
+        'box-shadow:0 8px 20px rgba(15,118,110,.35);pointer-events:none; }'
+    ].join('\n');
+    document.head.appendChild(st);
+}
+
 window.vmApplyRoleNav = vmApplyRoleNav;
 window.vmApplyChrome = vmApplyChrome;
+window.vmApplyReadonly = vmApplyReadonly;
 window.vmGatePage = vmGatePage;
 window.vmMe = vmMe;
 window.vmApi = vmApi;
 window.vmIsStaff = vmIsStaff;
+window.vmIsViewer = vmIsViewer;
+window.vmCanViewOps = vmCanViewOps;
+window.vmCanWrite = vmCanWrite;
 window.vmIsDriver = vmIsDriver;
 
 function vmStartHeartbeat() {

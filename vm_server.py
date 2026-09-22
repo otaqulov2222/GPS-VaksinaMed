@@ -39,6 +39,10 @@ SESSION_PERSIST_INTERVAL = 120
 SEED_USER = "adminpro"
 DEFAULT_SEED_PASS = "AdminPro@2026"
 SEED_PASS = os.environ.get("VM_SEED_PASS", DEFAULT_SEED_PASS)
+SEED_VIEWER_USER = "kuzatuvchi"
+DEFAULT_SEED_VIEWER_PASS = "Kuzatuv@2026"
+SEED_VIEWER_PASS = os.environ.get("VM_VIEWER_PASS", DEFAULT_SEED_VIEWER_PASS)
+VIEWER_ROLE = "viewer"
 SESSIONS_KEY = "auth:sessions"
 SESSION_TOMBS_KEY = "auth:session_tombs"
 
@@ -200,10 +204,20 @@ def _login_rate_ok_clear(ip):
         _LOGIN_FAILS.pop(ip, None)
 YEAR_RE = re.compile(r"^\d{4}$")
 STAFF_ROLES = ("admin_pro", "admin")
+OPS_READ_ROLES = ("admin_pro", "admin", "viewer")
 
 
 def is_staff(sess):
     return bool(sess) and sess.get("role") in STAFF_ROLES
+
+
+def is_viewer(sess):
+    return bool(sess) and sess.get("role") == VIEWER_ROLE
+
+
+def can_ops_read(sess):
+    """Dashboard / Live / Fuel / Davomat hisobotlarini ko'rish."""
+    return bool(sess) and sess.get("role") in OPS_READ_ROLES
 
 
 def is_driver(sess):
@@ -674,8 +688,53 @@ class AuthStore:
             }
             self._write(data)
             self.seeded = True
-            return
-        # password_plain saqlanadi — Admin Pro/Admin panelda ko'rish uchun
+        self._ensure_viewer()
+
+    def _ensure_viewer(self):
+        """Faqat-ko'rish: kuzatuvchi — har ishga tushganda borligini kafolatlaydi."""
+        with self.lock:
+            data = self._read()
+            for u in data.get("users") or []:
+                if not isinstance(u, dict):
+                    continue
+                if str(u.get("username") or "").strip().lower() == SEED_VIEWER_USER:
+                    changed = False
+                    if u.get("role") != VIEWER_ROLE:
+                        u["role"] = VIEWER_ROLE
+                        changed = True
+                    if not u.get("active", True):
+                        u["active"] = True
+                        changed = True
+                    if not u.get("protected"):
+                        u["protected"] = True
+                        changed = True
+                    if changed:
+                        self._write(data)
+                    return
+            salt, pw_hash = hash_pw(SEED_VIEWER_PASS)
+            data.setdefault("users", []).append(
+                {
+                    "id": "u_kuzatuvchi",
+                    "username": SEED_VIEWER_USER,
+                    "name": "Kuzatuvchi",
+                    "role": VIEWER_ROLE,
+                    "password_salt": salt,
+                    "password_hash": pw_hash,
+                    "password_plain": SEED_VIEWER_PASS,
+                    "active": True,
+                    "protected": True,
+                    "created_at": iso_now(),
+                    "last_login": None,
+                }
+            )
+            self._audit(
+                data,
+                "seed_viewer",
+                "system",
+                "Kuzatuvchi (faqat ko'rish) yaratildi",
+            )
+            self._write(data)
+            self.viewer_seeded = True
 
     def _touch_session(self, sess, persist=True):
         sess["last_seen"] = now_ts()
@@ -882,7 +941,7 @@ class AuthStore:
             return True
         # Oddiy admin: boshqa admin + haydovchi (adminpro ko'rinmaydi)
         if actor_role == "admin":
-            return target.get("role") in ("admin", "driver")
+            return target.get("role") in ("admin", "driver", "viewer")
         return False
 
     def add_admin(self, actor, name, username, password):
@@ -894,7 +953,7 @@ class AuthStore:
         password = password or ""
         role = (role or "admin").strip()
         car = str(car or "").strip()[:32]
-        if role not in ("admin", "driver"):
+        if role not in ("admin", "driver", "viewer"):
             return None, "Rol noto'g'ri"
         if not username or len(username) < 3:
             return None, "Login kamida 3 belgi bo'lsin"
@@ -904,6 +963,8 @@ class AuthStore:
             return None, "Parol kamida 6 belgi bo'lsin"
         if role == "driver" and not car:
             return None, "Haydovchiga mashina biriktiring"
+        if role == "viewer":
+            car = ""
         if not name:
             name = username
         with self.lock:
@@ -3318,7 +3379,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
   function ensureLiveNav(){
     try{
       var u=window.VM_USER;var role=u&&u.role;
-      var staff=role==='admin'||role==='admin_pro';
+      var staff=role==='admin'||role==='admin_pro'||role==='viewer';
       var drv=role==='driver';
       var links=document.querySelectorAll('.nav-rail .nav-links');
       if(!links||!links.length) return;
@@ -3498,9 +3559,25 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return None
         return sess
 
+    def require_ops_read(self):
+        """Staff yoki kuzatuvchi — hisobot/dashboard o'qish."""
+        sess = self.require_user()
+        if not sess:
+            return None
+        if not can_ops_read(sess):
+            self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
+            return None
+        return sess
+
     def deny_driver_write(self, sess):
         if is_driver(sess):
             self.send_json({"ok": False, "error": "Haydovchi faqat ko'ra oladi"}, 403)
+            return True
+        if is_viewer(sess):
+            self.send_json(
+                {"ok": False, "error": "Kuzatuvchi faqat ko'ra oladi — o'zgartirish mumkin emas"},
+                403,
+            )
             return True
         return False
 
@@ -3769,7 +3846,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 self.redirect("/login")
                 return
-            if not is_staff(sess):
+            if not can_ops_read(sess):
                 self.redirect(home_for(sess))
                 return
             return self.serve_page_file("admin.html")
@@ -3778,7 +3855,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not sess:
                 self.redirect("/login")
                 return
-            if not is_driver(sess) and not is_staff(sess):
+            if not is_driver(sess) and not can_ops_read(sess):
                 self.redirect("/")
                 return
             return self.serve_page_file("driver.html")
@@ -3866,7 +3943,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             js = (
                 "(function(){function go(){try{"
                 "var u=window.VM_USER;var role=u&&u.role;"
-                "var staff=role==='admin'||role==='admin_pro';"
+                "var staff=role==='admin'||role==='admin_pro'||role==='viewer';"
                 "var drv=role==='driver';"
                 "var ns=document.querySelectorAll('.nav-rail .nav-links');"
                 "ns.forEach(function(nav){"
@@ -4015,7 +4092,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/attendance/board":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             if not ATTENDANCE:
@@ -4048,9 +4125,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             except (TypeError, ValueError):
                 limit = 60
             uid = str(sess["user_id"])
-            # Admin boshqa userni ko'ra oladi
+            # Admin / kuzatuvchi boshqa userni ko'ra oladi
             want = (qs.get("userId") or [None])[0]
-            if want and sess.get("role") in ("admin", "admin_pro"):
+            if want and can_ops_read(sess):
                 uid = str(want)
             self.send_json({
                 "ok": True,
@@ -4060,7 +4137,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/attendance/report":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             if not ATTENDANCE:
@@ -4079,7 +4156,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/attendance/hisobot":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             if not ATTENDANCE:
@@ -4100,7 +4177,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/attendance/person":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             if not ATTENDANCE:
@@ -4127,7 +4204,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/attendance/settings":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             if not ATTENDANCE:
@@ -4136,12 +4213,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             s = dict(ATTENDANCE.settings())
             s.pop("office_qr_secret", None)
             # O‘qish: xarita uchun lat/lng hammaga. Yozish: faqat Admin Pro (POST da).
-            s["officeCoordsVisible"] = True
+            s["officeCoordsVisible"] = bool(sess.get("role") == "admin_pro")
             self.send_json({"ok": True, "settings": s})
             return
 
         if path == "/api/attendance/qr":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             if not ATTENDANCE:
@@ -4151,7 +4228,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/attendance/qr/image":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             if not ATTENDANCE:
@@ -4171,13 +4248,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/users":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             self.send_json({"ok": True, "users": STORE.list_users(viewer_role=sess.get("role"))})
             return
         if path == "/api/sessions":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             self.send_json({
@@ -4568,6 +4645,20 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             STORE.logout(self.read_sid())
             self.send_json({"ok": True}, clear_cookie=True)
             return
+
+        # Kuzatuvchi: faqat o'qish — barcha yozuv POST lar yopiq
+        _viewer_post_ok = {"/api/ping", "/api/support/chat"}
+        if path not in _viewer_post_ok:
+            _vs = self.current_session()
+            if is_viewer(_vs):
+                self.send_json(
+                    {
+                        "ok": False,
+                        "error": "Kuzatuvchi faqat ko'ra oladi — o'zgartirish mumkin emas",
+                    },
+                    403,
+                )
+                return
 
         if path == "/api/ping":
             sess = self.require_user()
@@ -5794,6 +5885,10 @@ def main():
   |  Admin Pro login : {SEED_USER:<22} |
   |  Parol: VM_SEED_PASS (.env)             |
   |  Birinchi ish: panelda parolni almashtiring! |"""
+    viewer_note = f"""
+  |  Kuzatuvchi login: {SEED_VIEWER_USER:<20} |
+  |  Kuzatuvchi parol: {SEED_VIEWER_PASS:<20} |
+  |  (faqat ko'rish — o'zgartira olmaydi)   |"""
 
     persist_line = "PostgreSQL + lokal zaxira (qoladi)" if STORE.persist_info().get("durable") else "lokal fayl"
     if not STORE.persist_info().get("durable") and is_production():
@@ -5819,7 +5914,7 @@ def main():
   |  Kirish: login + parol majburiy          |
   |  Saqlash: {persist_line:<29} |
   |  HR API: {hr_line:<30} |
-  |  Yordamchi: {ai_line:<27} |{seed_note}
+  |  Yordamchi: {ai_line:<27} |{seed_note}{viewer_note}
   +==========================================+
   Toxtatish: Ctrl+C
 """)
