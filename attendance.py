@@ -623,9 +623,9 @@ class AttendanceStore:
     def _slot_ok(self, kind: str, settings: dict) -> tuple[bool, str, bool]:
         """return ok, message, is_late
 
-        Keldim: in_start dan kun oxirigacha.
+        Keldim: ish kuni davomida istalgan vaqtda (erta kelish mumkin).
         15 daqiqa ruxsat: in_late_after gacha kechikish YO‘Q (masalan 09:15 gacha OK).
-        Ketdim: out_end gacha.
+        Ketdim: erta chiqish mumkin; out_end dan keyin ham yoziladi.
         """
         now_m = minutes_now()
         if kind == "in":
@@ -640,10 +640,15 @@ class AttendanceStore:
             day_end = hhmm_to_min(settings.get("out_end")) or (23 * 60 + 59)
             if a is None:
                 return False, "Kirish vaqti sozlanmagan", False
-            if now_m < a:
-                return False, f"Kirish hali ochilmagan ({settings.get('in_start')} dan)", False
+            # Juda erta (tunda) — faqat 05:00 dan
+            earliest = 5 * 60
+            if now_m < earliest:
+                return False, "Davomat 05:00 dan ochiladi", False
             if now_m > day_end:
                 return False, f"Bugungi ish kuni yopildi ({settings.get('out_end')})", False
+            # Erta kelish — ruxsat (09:00 dan oldin ham)
+            if now_m < a:
+                return True, f"Erta keldi ({settings.get('in_start')} dan oldin)", False
             # 09:15 gacha ruxsat — faqat undan KEYIN kechikish
             late = bool(late_after is not None and now_m > late_after)
             if late:
@@ -652,10 +657,12 @@ class AttendanceStore:
         if kind == "out":
             b = hhmm_to_min(settings.get("out_end")) or (23 * 60 + 59)
             out_start = hhmm_to_min(settings.get("out_start"))
-            if now_m > b:
-                return False, f"Chiqish oynasi yopildi ({settings.get('out_end')})", False
+            # Erta chiqish — istalgan vaqtda (avval Keldim bo'lishi kerak, punch da tekshiriladi)
             if out_start is not None and now_m < out_start:
-                return True, "Erta chiqish", False
+                return True, f"Erta chiqish ({settings.get('out_start')} dan oldin)", False
+            if now_m > b:
+                # Kech chiqish ham yozilsin (kun yopilgandan keyin ham)
+                return True, f"Kech chiqish ({settings.get('out_end')} dan keyin)", False
             return True, "Chiqish qabul qilindi", False
         return False, "Tur noto'g'ri (in/out)", False
 
@@ -1606,7 +1613,8 @@ class AttendanceStore:
             "serverNow": now_tz().isoformat(timespec="seconds"),
             "today": today_str(),
             "scheduleNote": (
-                f"{s.get('in_start')}-{s.get('out_start')} · "
+                f"Reja {s.get('in_start')}–{s.get('out_start')} · "
+                f"Erta kelish/ketish mumkin · "
                 f"{int(s.get('late_grace_min') or 15)} daqiqa ruxsat "
                 f"({s.get('in_late_after')} gacha kechikish yo'q)"
             ),

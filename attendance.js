@@ -2313,13 +2313,13 @@
                   <span class="ico">IN</span>
                   <div class="tag">Keldim</div>
                   <div class="time">${inn ? punchTime(inn) : '—'}</div>
-                  <div class="plan">Reja ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn ? ' · o‘z vaqtida' : '')}</div>
+                  <div class="plan">Reja ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn && (inn.note || '').toLowerCase().indexOf('erta') >= 0 ? ' · erta' : (inn ? ' · o‘z vaqtida' : ' · erta mumkin'))}</div>
                 </button>
                 <button type="button" class="av-punch av-punch-out is-locked" id="btn-ketdim-main" ${(!inn || out || done) ? 'disabled' : ''}>
                   <span class="ico">OUT</span>
                   <div class="tag">Ketdim</div>
                   <div class="time">${out ? punchTime(out) : '—'}</div>
-                  <div class="plan">Reja ${esc(s.out_start || '18:00')}</div>
+                  <div class="plan">Reja ${esc(s.out_start || '18:00')}${out && (out.note || '').toLowerCase().indexOf('erta') >= 0 ? ' · erta' : (out ? ' · qayd' : ' · erta mumkin')}</div>
                 </button>
               </div>
               <button type="button" class="av-continue" id="av-continue" disabled>
@@ -2397,7 +2397,7 @@
                   <span class="dot"></span>
                   <div class="lab">Keldi</div>
                   <div class="val mono">${inn ? punchTime(inn) : '—'}</div>
-                  <div class="meta">${inn ? (inn.late ? 'Kechikdi' : 'O‘z vaqtida') : 'Reja ' + esc(s.in_start || '09:00')}</div>
+                  <div class="meta">${inn ? (inn.late ? 'Kechikdi' : ((inn.note || '').toLowerCase().indexOf('erta') >= 0 ? 'Erta keldi' : 'O‘z vaqtida')) : 'Reja ' + esc(s.in_start || '09:00') + ' · erta ham mumkin'}</div>
                 </div>
                 <div class="rail ${working || done ? 'on' : ''}"></div>
                 <div class="node focus">
@@ -2411,7 +2411,7 @@
                   <span class="dot"></span>
                   <div class="lab">Ketdi</div>
                   <div class="val mono">${out ? punchTime(out) : '—'}</div>
-                  <div class="meta">${out ? 'Qayd etildi' : 'Reja ' + esc(s.out_start || '18:00')}</div>
+                  <div class="meta">${out ? ((out.note || '').toLowerCase().indexOf('erta') >= 0 ? 'Erta chiqdi' : ((out.note || '').toLowerCase().indexOf('kech') >= 0 ? 'Kech chiqdi' : 'Qayd etildi')) : 'Reja ' + esc(s.out_start || '18:00') + ' · erta ham mumkin'}</div>
                 </div>
               </div>
             </div>
