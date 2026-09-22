@@ -3475,7 +3475,15 @@
     if (!HISOBOT) return [];
     const q = String(hisobotQ || '').trim().toLowerCase();
     const holat = hisobotStatus || 'all';
-    let rows = (HISOBOT.rows || []).slice();
+    let rows = (HISOBOT.rows || []).slice().filter((r) => {
+      const role = String(r.role || '').toLowerCase();
+      const uname = String(r.username || '').toLowerCase().replace(/\s+/g, '');
+      const name = String(r.name || '').toLowerCase();
+      if (role === 'admin_pro') return false;
+      if (uname === 'adminpro' || uname === 'admin_pro') return false;
+      if (name === 'admin pro' || name === 'adminpro') return false;
+      return true;
+    });
     if (holat !== 'all') {
       rows = rows.filter((r) => {
         if (holat === 'late') return r.status === 'late' || (r.late_in_min || 0) > 0;
