@@ -4028,8 +4028,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
                 date = att_mod.today_str()
             users = STORE.list_users(viewer_role=sess.get("role"))
-            # Faqat faol haydovchi + adminlar
+            # Faqat faol haydovchi + adminlar (Admin Pro davomat ro'yxatida ko'rinmaydi)
             users = [u for u in users if u.get("active", True)]
+            if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
+                users = ATTENDANCE.roster_users(users)
             self.send_json({"ok": True, **ATTENDANCE.board(date, users)})
             return
 
@@ -4071,6 +4073,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
                 month = att_mod.today_str()[:7]
             users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
+            if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
+                users = ATTENDANCE.roster_users(users)
             self.send_json({"ok": True, **ATTENDANCE.month_report(month, users)})
             return
 
@@ -4087,6 +4091,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             date_from = (qs.get("from") or [""])[0]
             date_to = (qs.get("to") or [""])[0]
             users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
+            if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
+                users = ATTENDANCE.roster_users(users)
             self.send_json({
                 "ok": True,
                 **ATTENDANCE.hisobot(period, users, date=date, date_from=date_from, date_to=date_to),
@@ -4111,6 +4117,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
                 month = att_mod.today_str()[:7]
             users = STORE.list_users(viewer_role=sess.get("role"))
+            if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
+                users = ATTENDANCE.roster_users(users)
             meta = next((u for u in users if str(u.get("id")) == str(uid)), None)
             if not meta:
                 self.send_json({"ok": False, "error": "Foydalanuvchi topilmadi"}, 404)

@@ -852,7 +852,28 @@ class AttendanceStore:
             )
         return rows
 
+    @staticmethod
+    def is_hidden_from_roster(u: dict | None) -> bool:
+        """Admin Pro / adminpro — davomat ro'yxat, hisobot, PDF/Excel da ko'rinmasin."""
+        if not isinstance(u, dict):
+            return True
+        role = str(u.get("role") or "").strip().lower()
+        uname = str(u.get("username") or "").strip().lower().replace(" ", "")
+        name = str(u.get("name") or "").strip().lower()
+        if role == "admin_pro":
+            return True
+        if uname in ("adminpro", "admin_pro", "admin-pro"):
+            return True
+        if name in ("admin pro", "adminpro"):
+            return True
+        return False
+
+    @classmethod
+    def roster_users(cls, users: list | None) -> list:
+        return [u for u in (users or []) if not cls.is_hidden_from_roster(u)]
+
     def board(self, date: str, users: list) -> dict:
+        users = self.roster_users(users)
         day = self.day_records(date)
         rows = []
         for u in users or []:
@@ -1194,6 +1215,7 @@ class AttendanceStore:
 
     def hisobot(self, period: str, users: list, date: str = "", date_from: str = "", date_to: str = "") -> dict:
         """Kunlik / haftalik / oylik / oralik — xodim qatorlari + kech/erta metrikalari."""
+        users = self.roster_users(users)
         today = today_str()
         period = (period or "day").strip().lower()
         if period in ("kunlik", "daily"):
@@ -1352,6 +1374,7 @@ class AttendanceStore:
 
     def month_report(self, month: str, users: list) -> dict:
         """Admin: oy bo'yicha jamoa hisoboti + KPI."""
+        users = self.roster_users(users)
         dates = self._month_dates(month)
         if not dates:
             today = today_str()
