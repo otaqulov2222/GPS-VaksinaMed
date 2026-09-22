@@ -1,7 +1,8 @@
 # Push → Hetzner serverni darhol yangilash (CRON_SECRET orqali).
 # Zaxira: serverda har 1 daqiqalik systemd timer ham pull qiladi.
 #
-# Secrets: CRON_SECRET (majburiy). Ixtiyoriy: HETZNER_DEPLOY_URL
+# Secrets: CRON_SECRET (majburiy, darhol deploy uchun).
+# Ixtiyoriy: HETZNER_DEPLOY_URL (default: https://vaksinamedgps.uz/api/cron/deploy)
 
 name: Deploy Hetzner
 
@@ -25,11 +26,13 @@ jobs:
           HETZNER_DEPLOY_URL: ${{ secrets.HETZNER_DEPLOY_URL }}
         run: |
           set -euo pipefail
+          URL="${HETZNER_DEPLOY_URL:-https://vaksinamedgps.uz/api/cron/deploy}"
           if [ -z "${CRON_SECRET:-}" ]; then
-            echo "CRON_SECRET secret yo'q — faqat server timer (1 daqiqa) ishlaydi."
+            echo "CRON_SECRET yo'q — darhol trigger o'tkazib yuborildi."
+            echo "Server timer (1 daqiqa) baribir pull qiladi (agar o'rnatilgan bo'lsa)."
+            echo "URL: $URL"
             exit 0
           fi
-          URL="${HETZNER_DEPLOY_URL:-http://49.13.152.181/api/cron/deploy}"
           echo "POST $URL"
           code=$(curl -sS -o /tmp/deploy-out.json -w "%{http_code}" \
             -X POST \
@@ -44,3 +47,4 @@ jobs:
             echo "Deploy endpoint javob bermadi — server timer 1 daqiqada pull qiladi."
             exit 0
           fi
+          echo "Deploy qabul qilindi."
