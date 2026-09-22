@@ -4417,7 +4417,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/office/gps/live":
-            sess = self.require_staff()
+            sess = self.require_ops_read()
             if not sess:
                 return
             try:
