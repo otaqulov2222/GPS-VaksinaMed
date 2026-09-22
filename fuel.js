@@ -803,6 +803,10 @@ function setSaveStatus(text, kind) {
 }
 
 function markDirty() {
+  if (window.VM_USER && window.VM_USER.role === 'viewer') {
+    STATE.dirty = false;
+    return;
+  }
   STATE.dirty = true;
   setSaveStatus('Saqlanmoqda…', 'busy');
   clearTimeout(STATE.saveTimer);
@@ -811,6 +815,10 @@ function markDirty() {
 
 /** Yozilayotgan o'nlik (7,) — avto-saqlashni to'xtatish, maydonni buzmaslik */
 function markTypingPause() {
+  if (window.VM_USER && window.VM_USER.role === 'viewer') {
+    STATE.dirty = false;
+    return;
+  }
   STATE.dirty = true;
   clearTimeout(STATE.saveTimer);
   STATE.saveTimer = null;
@@ -863,6 +871,12 @@ function flushSaveKeepalive() {
 
 async function saveMonth(opts) {
   opts = opts || {};
+  if (window.VM_USER && window.VM_USER.role === 'viewer') {
+    STATE.dirty = false;
+    STATE.saveQueued = false;
+    setSaveStatus('Faqat ko‘rish', 'ok');
+    return;
+  }
   if (STATE.saveInFlight) {
     STATE.saveQueued = true;
     return;
@@ -5272,6 +5286,10 @@ function bind() {
     vmLogout();
   };
   window.addEventListener('beforeunload', (ev) => {
+    if (window.VM_USER && window.VM_USER.role === 'viewer') {
+      STATE.dirty = false;
+      return;
+    }
     flushFormToState();
     writeLocalMonth();
     if (STATE.dirty) {
@@ -5281,11 +5299,13 @@ function bind() {
     }
   });
   window.addEventListener('pagehide', () => {
+    if (window.VM_USER && window.VM_USER.role === 'viewer') return;
     flushFormToState();
     writeLocalMonth();
     if (STATE.dirty) flushSaveKeepalive();
   });
   document.addEventListener('visibilitychange', () => {
+    if (window.VM_USER && window.VM_USER.role === 'viewer') return;
     if (document.visibilityState === 'hidden') {
       flushFormToState();
       writeLocalMonth();
@@ -5296,6 +5316,7 @@ function bind() {
   });
   if (!STATE.heartbeatTimer) {
     STATE.heartbeatTimer = setInterval(() => {
+      if (window.VM_USER && window.VM_USER.role === 'viewer') return;
       if (STATE.dirty && !STATE.saveInFlight) saveMonth().catch(() => {});
     }, 20000);
   }
@@ -5311,7 +5332,11 @@ async function refreshGpsKmAuto() {
     let n = 0;
     fleet().forEach(f => { n += fillGpsPlate(f.car, false); });
     if (n) {
-      STATE.dirty = true;
+      if (window.VM_USER && window.VM_USER.role === 'viewer') {
+        STATE.dirty = false;
+      } else {
+        STATE.dirty = true;
+      }
       clearTimeout(STATE.saveTimer);
       await saveMonth();
       renderAll();
