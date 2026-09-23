@@ -24,15 +24,36 @@
 async function vmApi(path, opts) {
     const opt = opts || {};
     const headers = Object.assign({ 'Content-Type': 'application/json' }, opt.headers || {});
-    const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opt, { headers }));
-    let data = {};
-    try { data = await r.json(); } catch (e) { data = {}; }
-    if (r.status === 401 && !opt.noRedirect) {
-        location.replace('/login');
-        throw new Error('Kirish talab qilinadi');
+    const timeoutMs = opt.timeoutMs != null ? Number(opt.timeoutMs) : 16000;
+    const useAbort = !opt.signal && Number.isFinite(timeoutMs) && timeoutMs > 0;
+    const ctrl = useAbort ? new AbortController() : null;
+    const tid = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, timeoutMs) : null;
+    try {
+        const fetchOpts = Object.assign(
+            { credentials: 'same-origin' },
+            opt,
+            { headers },
+            ctrl ? { signal: ctrl.signal } : {}
+        );
+        delete fetchOpts.timeoutMs;
+        delete fetchOpts.noRedirect;
+        const r = await fetch(path, fetchOpts);
+        let data = {};
+        try { data = await r.json(); } catch (e) { data = {}; }
+        if (r.status === 401 && !opt.noRedirect) {
+            location.replace('/login');
+            throw new Error('Kirish talab qilinadi');
+        }
+        if (!r.ok) throw new Error(data.error || ('Xato ' + r.status));
+        return data;
+    } catch (e) {
+        if (e && (e.name === 'AbortError' || /aborted/i.test(String(e.message || '')))) {
+            throw new Error('Server sekin javob berdi — qayta urinib ko‘ring');
+        }
+        throw e;
+    } finally {
+        if (tid) clearTimeout(tid);
     }
-    if (!r.ok) throw new Error(data.error || ('Xato ' + r.status));
-    return data;
 }
 
 async function vmMe() {

@@ -39,6 +39,9 @@
   let PERSON = null;
   let geoWatchId = null;
   let geoProbeTimer = null;
+  let lastGeoPaintAt = 0;
+  let geoPrevStatus = null;
+  let geoPaintDeferTimer = null;
   let geoProbeSeq = 0;
   let clockId = null;
   let attMap = null;
@@ -512,16 +515,33 @@
         moving: motion.moving
       };
     }
-    paintGeoUI();
-    updateAttMap(lat, lng);
-    paintMapOverlay();
+    // Tez GPS oqimida har fixda to‘liq chizish telefonni to‘xtatadi
+    const nowPaint = Date.now();
+    const statusFlip = !geoPrevStatus || geoPrevStatus !== geoLive.status;
+    geoPrevStatus = geoLive.status;
+    if (force || statusFlip || (nowPaint - lastGeoPaintAt) >= 320) {
+      lastGeoPaintAt = nowPaint;
+      paintGeoUI();
+      updateAttMap(lat, lng);
+      paintMapOverlay();
+    } else {
+      if (geoPaintDeferTimer) clearTimeout(geoPaintDeferTimer);
+      geoPaintDeferTimer = setTimeout(() => {
+        geoPaintDeferTimer = null;
+        lastGeoPaintAt = Date.now();
+        paintGeoUI();
+        updateAttMap(geoLive.lat, geoLive.lng);
+        paintMapOverlay();
+      }, 320);
+    }
     scheduleGeoProbe(lat, lng, acc);
     return true;
   }
 
   function scheduleGeoProbe(lat, lng, accuracy) {
     if (geoProbeTimer) clearTimeout(geoProbeTimer);
-    geoProbeTimer = setTimeout(() => { runGeoProbe(lat, lng, accuracy); }, 280);
+    // Kamroq so‘rov — UI muzlamasın / tarmoq band bo‘lmasin
+    geoProbeTimer = setTimeout(() => { runGeoProbe(lat, lng, accuracy); }, 650);
   }
 
   async function runGeoProbe(lat, lng, accuracy) {
@@ -583,11 +603,25 @@
   }
 
   function applyGeoError(err) {
+    const msgTxt = err && err.message ? err.message : 'Joylashuv olinmadi';
+    // Oxirgi yaxshi fix yangi bo'lsa — xato bilan tozalab yuborma
+    if (geoLive && geoLive.lat != null && geoLive.ts && (Date.now() - geoLive.ts) < 180000) {
+      geoLive = Object.assign({}, geoLive, {
+        err: msgTxt,
+        message: geoLive.message || null
+      });
+      paintGeoUI();
+      return;
+    }
     geoLive = {
       inside: false, dist: null, accuracy: null, lat: null, lng: null,
-      err: err && err.message ? err.message : 'Joylashuv olinmadi',
+      err: msgTxt,
       status: 'err',
-      message: null
+      message: null,
+      ts: Date.now(),
+      heading: null,
+      speed: null,
+      moving: false
     };
     paintGeoUI();
     styleZoneCircle(null);
@@ -1143,7 +1177,7 @@
         msg('Oxirgi joy saqlangan. ' + (e.message || ''), 'err');
       } else {
         applyGeoError(e);
-        showGeoHelp(e.message || 'Joylashuv olinmadi');
+        showGeoHelp(e.message || 'Joylashuv olinmadi', { permission: e && e.code === 1 });
         msg(e.message || 'Joylashuv olinmadi', 'err');
       }
     }).finally(() => {
@@ -1179,26 +1213,35 @@
 
   function startGeoWatch() {
     stopGeoWatch();
-    geoLive.status = 'load';
+    geoLive.status = (geoLive.lat != null) ? geoLive.status : 'load';
     paintGeoUI();
     if (!navigator.geolocation) {
-      applyGeoError(new Error('Joylashuv qoʻllab-quvvatlanmaydi'));
+      applyGeoError(Object.assign(new Error('Joylashuv qoʻllab-quvvatlanmaydi'), { code: 0 }));
       return;
     }
-    acquireBestGps(10000).then((g) => {
-      applyGeoFix(g.lat, g.lng, g.accuracy, { force: true });
-      forceCenterOnMe(g.lat, g.lng);
-    }).catch((e) => {
-      if (geoLive.lat == null) applyGeoError(e);
-    });
+    // Tez boshlash: kesh + past aniqlik, keyin yuqori aniqlik watch
+    getGpsOnce({ enableHighAccuracy: false, timeout: 6000, maximumAge: 120000 })
+      .then((g) => {
+        applyGeoFix(g.lat, g.lng, g.accuracy, { force: true });
+        forceCenterOnMe(g.lat, g.lng);
+      })
+      .catch(() => {});
+    getGpsOnce({ enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 })
+      .then((g) => {
+        applyGeoFix(g.lat, g.lng, g.accuracy, { force: true });
+      })
+      .catch(() => {});
     geoWatchId = navigator.geolocation.watchPosition(
       (pos) => {
         applyGeoFix(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, { coords: pos.coords });
       },
       (err) => {
-        if (geoLive.lat == null) applyGeoError(err);
+        // Ruxsat berilgan / fix bor — vaqtinchalik xato bilan UI ni buzma
+        if (geoLive.lat != null && (Date.now() - (geoLive.ts || 0)) < 180000) return;
+        if (err && err.code === 1) applyGeoError(err);
+        else if (geoLive.lat == null) applyGeoError(err);
       },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 25000 }
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
     );
   }
 
@@ -1207,10 +1250,11 @@
     if (box) box.hidden = true;
   }
 
-  function showGeoHelp(detail) {
+  function showGeoHelp(detail, opts) {
     const box = document.getElementById('att-geo-box');
     const text = document.getElementById('att-geo-text');
     const steps = document.getElementById('att-geo-steps');
+    const needPerm = !!(opts && opts.permission);
     if (!box) {
       msg(detail || 'Joylashuv kerak', 'err');
       return;
@@ -1219,10 +1263,18 @@
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (text) {
-      text.textContent = detail || 'Davomat uchun joylashuv ruxsati majburiy. Pastdagi qadamlarni bajaring.';
+      text.textContent = detail || (needPerm
+        ? 'Davomat uchun joylashuv ruxsati majburiy. Pastdagi qadamlarni bajaring.'
+        : 'Joylashuv olinmadi. GPS yoqing va «Tekshirish» bosing.');
     }
     if (steps) {
-      if (isIOS) {
+      if (!needPerm) {
+        steps.innerHTML = [
+          'Telefondagi <b>Joylashuv / GPS</b> yoqilganini tekshiring',
+          'Wi‑Fi yoki mobil internet yoqing',
+          'Oynani ochiq qoldiring — 5–10 soniyada qayta <b>Tekshirish</b>'
+        ].map((x) => '<li>' + x + '</li>').join('');
+      } else if (isIOS) {
         steps.innerHTML = [
           'Sozlamalar → <b>Maxfiylik</b> → <b>Joylashuv xizmatlari</b> → yoqilgan',
           'Shu yerda <b>Safari Veb-saytlari</b> → <b>Ilovadan foydalanganda</b>',
@@ -1244,8 +1296,8 @@
   async function checkGeoNow() {
     try {
       hideGeoHelp();
-      msg('Aniq joylashuv olinmoqda…', 'info');
-      const g = await acquireBestGps(14000);
+      msg('Joylashuv olinmoqda…', 'info');
+      const g = await acquireBestGps(12000);
       forceCenterOnMe(g.lat, g.lng);
       const acc = Math.round(g.accuracy || 0);
       if (geoLive.inside === true) {
@@ -1258,7 +1310,16 @@
       hideGeoHelp();
       paintGeoUI();
     } catch (e) {
-      showGeoHelp(e.message || 'Joylashuv olinmadi');
+      const code = e && e.code;
+      // Timeout / sekin GPS — ruxsat yo'q deb yozilmasin
+      if (code === 3 || code === 2 || !code) {
+        msg(e.message || 'Joylashuv sekin. GPS yoqing va yana bosing.', 'err');
+        if (geoLive.lat == null) showGeoHelp(e.message, { permission: false });
+      } else if (code === 1) {
+        showGeoHelp(e.message || 'Joylashuv ruxsati kerak', { permission: true });
+      } else {
+        showGeoHelp(e.message || 'Joylashuv olinmadi', { permission: false });
+      }
     }
   }
 
@@ -1395,20 +1456,20 @@
   function gpsHelpText(code, permState) {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // Faqat aniq ruxsat rad etilganda
     if (code === 1 || permState === 'denied') {
       if (isIOS) {
-        // Global Safari «Разрешить» yetarli emas — sayt uchun aA orqali ruxsat kerak
-        return 'Bu sayt uchun joylashuv yopiq. Safari «barcha saytlar» ruxsati yetarli emas.';
+        return 'Bu sayt uchun joylashuv yopiq. Safari «barcha saytlar» ruxsati yetarli emas — aA → Joylashuv → Ruxsat.';
       }
       return 'Bu sayt uchun joylashuv yopiq. Manzil qatoridagi qulf → Joylashuv → Ruxsat.';
     }
     if (code === 3) {
-      return 'Joylashuv vaqti tugadi. GPS yoqing va «Tekshirish» bosing.';
+      return 'GPS sekin javob berdi. Telefondagi joylashuv yoqilganini tekshiring va «Tekshirish» ni qayta bosing.';
     }
     if (code === 2) {
       return 'Joylashuv topilmadi. Ochig‘roq joyda «Tekshirish» bosing.';
     }
-    return 'Joylashuv olinmadi. «Tekshirish» bosing.';
+    return 'Joylashuv hali olinmadi. GPS yoqing va «Tekshirish» bosing.';
   }
 
   async function getGps() {
@@ -1416,14 +1477,13 @@
       throw new Error('Joylashuv faqat HTTPS da ishlaydi');
     }
     // Punch uchun: zonada ekanimiz aniq bo'lsa — qayta GPS olish zona holatini buzmasin
-    // (tasdiq oynasi 8+ soniya olishi mumkin)
     if (
       geoLive &&
       geoLive.inside === true &&
       geoLive.lat != null &&
       geoLive.lng != null &&
       geoLive.ts &&
-      (Date.now() - geoLive.ts) < 120000
+      (Date.now() - geoLive.ts) < 180000
     ) {
       return {
         lat: geoLive.lat,
@@ -1436,8 +1496,8 @@
       geoLive.lat != null &&
       geoLive.lng != null &&
       geoLive.ts &&
-      (Date.now() - geoLive.ts) < 15000 &&
-      (geoLive.accuracy == null || geoLive.accuracy <= 150)
+      (Date.now() - geoLive.ts) < 45000 &&
+      (geoLive.accuracy == null || geoLive.accuracy <= 250)
     ) {
       return {
         lat: geoLive.lat,
@@ -1445,7 +1505,7 @@
         accuracy: geoLive.accuracy
       };
     }
-    return acquireBestGps(14000);
+    return acquireBestGps(12000);
   }
 
   /** Stamp uchun joylashuv — faqat ichkaridagi eng so'nggi yaxshi fix. */
@@ -1460,9 +1520,14 @@
     return null;
   }
 
-  /** Bir necha soniya GPS yig'ib eng aniq nuqtani tanlaydi. */
+  /**
+   * Tez + ishonchli GPS:
+   * 1) kesh/Wi‑Fi (tez)
+   * 2) yuqori aniqlik watch
+   * Timeout ≠ ruxsat yo'q
+   */
   function acquireBestGps(maxWaitMs) {
-    maxWaitMs = maxWaitMs || 12000;
+    maxWaitMs = Math.max(8000, maxWaitMs || 12000);
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(Object.assign(new Error('Joylashuv qo‘llab-quvvatlanmaydi'), { code: 0 }));
@@ -1471,6 +1536,19 @@
       const samples = [];
       let settled = false;
       let wid = null;
+      let lastErr = null;
+
+      const pickBest = () => {
+        if (!samples.length) return null;
+        const insideSamples = samples.filter((s) => {
+          const c = computeInside(s.lat, s.lng, s.accuracy);
+          return c && c.inside;
+        });
+        const pool = insideSamples.length ? insideSamples : samples;
+        pool.sort((a, b) => (a.accuracy || 9e9) - (b.accuracy || 9e9));
+        return pool[0];
+      };
+
       const finish = async (err) => {
         if (settled) return;
         settled = true;
@@ -1478,15 +1556,8 @@
           try { navigator.geolocation.clearWatch(wid); } catch (e) {}
         }
         clearTimeout(timer);
-        if (samples.length) {
-          // Avval ichkaridagi fixlarni afzal ko'r (aniqlik yaxshiroq bo'lsa ham tashqari qilib yubormasin)
-          const insideSamples = samples.filter((s) => {
-            const c = computeInside(s.lat, s.lng, s.accuracy);
-            return c && c.inside;
-          });
-          const pool = insideSamples.length ? insideSamples : samples;
-          pool.sort((a, b) => (a.accuracy || 9e9) - (b.accuracy || 9e9));
-          const best = pool[0];
+        const best = pickBest();
+        if (best) {
           applyGeoFix(best.lat, best.lng, best.accuracy, { force: true });
           resolve(best);
           return;
@@ -1495,34 +1566,60 @@
           resolve({ lat: geoLive.lat, lng: geoLive.lng, accuracy: geoLive.accuracy });
           return;
         }
-        const code = err && err.code;
+        const code = (err && err.code) || (lastErr && lastErr.code);
+        // Timeout/position unavailable — ruxsat rad etilgan deb yozilmasin
+        if (!code || code === 2 || code === 3) {
+          reject(Object.assign(
+            new Error(gpsHelpText(code || 3, null)),
+            { code: code || 3 }
+          ));
+          return;
+        }
         const perm = await readGeoPermission();
-        reject(Object.assign(new Error(gpsHelpText(code, perm)), { code: code }));
+        // Brauzer ba'zan prompt/denied deb yolg'on qaytaradi — faqat code===1 da ruxsat xabari
+        reject(Object.assign(new Error(gpsHelpText(code, code === 1 ? perm : null)), { code: code }));
       };
-      const timer = setTimeout(() => finish(null), maxWaitMs);
+
+      const onSample = (g) => {
+        if (!g || g.lat == null) return;
+        samples.push(g);
+        applyGeoFix(g.lat, g.lng, g.accuracy, { force: samples.length === 1 });
+        // Yetarli aniqlik — darhol
+        if (g.accuracy != null && g.accuracy <= 45) finish(null);
+        else if (g.accuracy != null && g.accuracy <= 100 && samples.length >= 2) finish(null);
+        else if (samples.length >= 3 && g.accuracy != null && g.accuracy <= 200) finish(null);
+      };
+
+      const timer = setTimeout(() => finish(lastErr), maxWaitMs);
+
+      // 1) Tez kesh / network
+      getGpsOnce({ enableHighAccuracy: false, timeout: 7000, maximumAge: 180000 })
+        .then(onSample)
+        .catch((e) => { lastErr = e || lastErr; });
+
+      // 2) Aniqroq bir martalik
+      getGpsOnce({ enableHighAccuracy: true, timeout: Math.min(12000, maxWaitMs), maximumAge: 20000 })
+        .then(onSample)
+        .catch((e) => { lastErr = e || lastErr; });
+
+      // 3) Watch — davomiy yaxshilash
       wid = navigator.geolocation.watchPosition(
         (pos) => {
-          const g = {
+          onSample({
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
             accuracy: pos.coords.accuracy
-          };
-          samples.push(g);
-          applyGeoFix(g.lat, g.lng, g.accuracy);
-          if (g.accuracy != null && g.accuracy <= 35) finish(null);
-          else if (g.accuracy != null && g.accuracy <= 60 && samples.length >= 2) finish(null);
+          });
         },
         (err) => {
-          if (!samples.length && geoLive.lat == null) finish(err);
+          lastErr = err || lastErr;
+          // Birinchi xato + hech narsa yo'q — kutamiz (timeout yoki boshqa manba)
+          if (err && err.code === 1 && !samples.length && geoLive.lat == null) {
+            finish(err);
+          }
         },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: maxWaitMs }
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: Math.min(20000, maxWaitMs) }
       );
-      getGpsOnce({ enableHighAccuracy: true, timeout: Math.min(10000, maxWaitMs), maximumAge: 0 })
-        .then((g) => {
-          samples.push(g);
-          applyGeoFix(g.lat, g.lng, g.accuracy);
-        })
-        .catch(() => {});
     });
   }
 
@@ -3185,9 +3282,11 @@
       const okText = r.message || (kind === 'in' ? 'Keldim — vaqt boshlandi ✓' : 'Ketdim — kun yakunlandi ✓');
       msg(okText, 'ok');
       uiTab = 'bugun';
-      await reload();
-      msg(okText, 'ok');
-      restoreMsgAfterRender();
+      // Reload fonida — tugma «tiqilib» qolmasin
+      reload().then(() => {
+        msg(okText, 'ok');
+        restoreMsgAfterRender();
+      }).catch(() => {});
     } catch (e) {
       const text = e.message || 'Xato';
       msg(text, 'err');
@@ -4606,7 +4705,16 @@
   async function probeGeoOnBoot() {
     const perm = await readGeoPermission();
     if (perm === 'denied') {
-      showGeoHelp('Joylashuv bloklangan. Pastdagi qadamlarni bajaring, keyin «Joylashuvni tekshirish».');
+      showGeoHelp('Joylashuv bloklangan. Pastdagi qadamlarni bajaring, keyin «Joylashuvni tekshirish».', { permission: true });
+      return;
+    }
+    // Ruxsat bor / so'ralmagan — darhol tez GPS urinish (prompt chiqishi mumkin)
+    if (perm === 'granted' || perm == null || perm === 'prompt') {
+      getGpsOnce({ enableHighAccuracy: false, timeout: 5000, maximumAge: 180000 })
+        .then((g) => {
+          applyGeoFix(g.lat, g.lng, g.accuracy, { force: true });
+        })
+        .catch(() => {});
     }
   }
 
