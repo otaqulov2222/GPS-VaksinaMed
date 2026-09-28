@@ -2349,7 +2349,7 @@
         <div class="dash-hero-main">
           <div class="dash-kicker">Kunlik pulse</div>
           <div class="dash-hero-title">${rate}<span>%</span> kelgan</div>
-          <p class="dash-hero-sub">${present} / ${total} xodim · ${working} hozir ishda${late ? ' · ' + late + ' kechikish' : ''}${c.enrolled ? ' · QR ' + c.enrolled : ''}</p>
+          <p class="dash-hero-sub">${present} / ${total} xodim · ${working} hozir ishda${late ? ' · ' + late + ' kechikish' : ''}</p>
           <div class="dash-meter" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, rate))}%"></i></div>
         </div>
         <div class="dash-hero-side">
@@ -2960,7 +2960,7 @@
             <div>
               <div class="dash-head-kicker">Control room</div>
               <h2>Sozlamalar</h2>
-              <p>Ofis geozona, ish jadvali va QR plakat</p>
+              <p>Ofis geozona, ish jadvali va masofadan ruxsat</p>
             </div>
           </div>
           <div class="att-card-b att-settings set-body" id="att-settings"></div>
@@ -4034,45 +4034,12 @@
   function renderSettings() {
     const box = document.getElementById('att-settings');
     if (!box || !STATE) return;
-    box.innerHTML = `<p class="att-hint">Ofis QR yuklanmoqda…</p>`;
-    Promise.all([
-      api('/api/attendance/settings'),
-      api('/api/attendance/qr')
-    ]).then(async ([d, qr]) => {
+    box.innerHTML = `<p class="att-hint">Sozlamalar yuklanmoqda…</p>`;
+    api('/api/attendance/settings').then((d) => {
       const s = d.settings || {};
       const o = s.office || {};
-      officeQrMeta = qr;
       box.innerHTML = `
-        <div class="set-grid">
-          <div class="set-card set-card-qr">
-            <div class="set-card-h">
-              <div class="dash-head-kicker">QR poster</div>
-              <h3>Ofis QR</h3>
-              <p>Chop etish · PNG · PDF · yangilash</p>
-            </div>
-            <div class="att-qr-poster-wrap" id="att-qr-print">
-              <div class="att-qr-poster-head">
-                <div>
-                  <div class="att-qr-kicker">Davomat</div>
-                  <h3 class="att-qr-title">Ofis QR</h3>
-                  <p class="att-qr-lead">Devorga osish uchun</p>
-                </div>
-                <div class="att-qr-ver">v${esc(String(qr.version || 1))}</div>
-              </div>
-              <div class="att-qr-stage">
-                <canvas id="office-qr-poster" width="720" height="960" aria-label="Ofis QR plakat"></canvas>
-                <div class="att-qr-loading" id="office-qr-loading">QR chizilmoqda…</div>
-              </div>
-              <div class="att-qr-actions">
-                <button type="button" class="att-btn att-btn-in" id="btn-qr-print">Chop etish</button>
-                <button type="button" class="att-btn att-btn-face" id="btn-qr-png">PNG yuklash</button>
-                <button type="button" class="att-btn att-btn-out" id="btn-qr-pdf">PDF yuklash</button>
-                <button type="button" class="att-btn" id="btn-qr-rotate" style="background:#0b1f3a;color:#fff;border-color:#0b1f3a">QR yangilash</button>
-              </div>
-              <p class="att-hint" id="office-qr-status">v${esc(String(qr.version || 1))} · ${esc(qr.label || o.label || 'Ofis')}</p>
-            </div>
-          </div>
-
+        <div class="set-grid set-grid-no-qr">
           <div class="set-card set-card-form">
             <div class="set-card-h">
               <div class="dash-head-kicker">Schedule & zone</div>
@@ -4162,36 +4129,6 @@
           } catch (e) { msg(e.message, 'err'); }
         };
       }
-      try {
-        await renderOfficeQrPoster(qr);
-        const st = document.getElementById('office-qr-status');
-        if (st) st.textContent = 'Tayyor · v' + (qr.version || 1) + ' · ' + (qr.label || o.label || 'Ofis');
-      } catch (e) {
-        const st = document.getElementById('office-qr-status');
-        if (st) st.textContent = 'QR xato: ' + (e.message || 'chizilmadi');
-        msg(e.message || 'QR chizilmadi', 'err');
-      }
-      const loadEl = document.getElementById('office-qr-loading');
-      if (loadEl) loadEl.hidden = true;
-
-      const printBtn = document.getElementById('btn-qr-print');
-      const pngBtn = document.getElementById('btn-qr-png');
-      const pdfBtn = document.getElementById('btn-qr-pdf');
-      const rotBtn = document.getElementById('btn-qr-rotate');
-      if (printBtn) printBtn.onclick = () => printOfficeQrPoster();
-      if (pngBtn) pngBtn.onclick = () => downloadOfficeQrPng(qr);
-      if (pdfBtn) pdfBtn.onclick = () => downloadOfficeQrPdf(qr);
-      if (rotBtn) rotBtn.onclick = async () => {
-        if (!confirm('Eski chop etilgan QR ishlamaydi. Yangilaysizmi?')) return;
-        try {
-          const nr = await api('/api/attendance/qr/rotate', {
-            method: 'POST',
-            body: JSON.stringify({ confirm: 'yangilash' })
-          });
-          msg('Yangi ofis QR yaratildi — qayta chop eting', 'ok');
-          renderSettings();
-        } catch (e) { msg(e.message || 'Yangilash xato', 'err'); }
-      };
     }).catch((e) => {
       box.innerHTML = `<p class="att-hint">${esc(e.message)}</p>`;
     });

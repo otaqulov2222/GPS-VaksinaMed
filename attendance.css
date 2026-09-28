@@ -1640,8 +1640,11 @@ body.fid-lock { overflow: hidden; }
   gap: 14px;
   align-items: start;
 }
+.set-grid-no-qr {
+  grid-template-columns: 1fr 1fr;
+}
 @media (max-width: 980px) {
-  .set-grid { grid-template-columns: 1fr; }
+  .set-grid, .set-grid-no-qr { grid-template-columns: 1fr; }
 }
 .set-card {
   border: 1px solid #d7e3f0;
