@@ -2045,18 +2045,6 @@
     return (STATE && STATE.settings && STATE.settings.today) || '';
   }
 
-  function kpiCard(label, value, tone) {
-    const icons = { ok: '✓', warn: '!', bad: '×', info: '●' };
-    const mark = icons[tone || ''] != null ? icons[tone || ''] : '◈';
-    return (
-      `<div class="att-kpi dash-kpi ${tone || ''}">` +
-        `<div class="dash-kpi-mark" aria-hidden="true">${mark}</div>` +
-        `<div class="att-kpi-v">${esc(String(value))}</div>` +
-        `<div class="att-kpi-l">${esc(label)}</div>` +
-      `</div>`
-    );
-  }
-
   function dashInitials(name) {
     const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return '?';
@@ -2250,14 +2238,8 @@
         <div class="hb-hero-main">
           <div class="hb-kicker">${esc(periodTitle)}</div>
           <div class="hb-hero-title">${esc(rangeTxt || '—')}</div>
-          <p class="hb-hero-sub">Ko‘rsatilmoqda <b>${rows.length}</b> yozuv · bazada <b>${people}</b> · reja ${esc(sched.label || '09:00–18:00')}</p>
+          <p class="hb-hero-sub">Ko‘rsatilmoqda <b>${rows.length}</b> yozuv · bazada <b>${people}</b> · reja ${esc(sched.label || '09:00–18:00')} · <b>${rate}%</b> kelgan</p>
           <div class="hb-meter" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, rate))}%"></i></div>
-        </div>
-        <div class="hb-hero-side">
-          <div class="dash-chip warn"><b>${st.late_in || 0}</b><span>Kech keldi</span></div>
-          <div class="dash-chip ok"><b>${st.early_in || 0}</b><span>Erta keldi</span></div>
-          <div class="dash-chip bad"><b>${st.early_out || 0}</b><span>Erta ketdi</span></div>
-          <div class="dash-chip info"><b>${st.late_out || 0}</b><span>Kech ketdi</span></div>
         </div>
       </div>
 
@@ -2265,7 +2247,10 @@
         <div class="hb-sum-card"><span>Filtr</span><b>${rows.length}</b></div>
         <div class="hb-sum-card ok"><span>Kelgan</span><b>${presentN}</b></div>
         <div class="hb-sum-card bad"><span>Yo‘q</span><b>${absentN}</b></div>
-        <div class="hb-sum-card"><span>Foiz</span><b>${rate}%</b></div>
+        <div class="hb-sum-card warn"><span>Kech keldi</span><b>${st.late_in || 0}</b></div>
+        <div class="hb-sum-card ok"><span>Erta keldi</span><b>${st.early_in || 0}</b></div>
+        <div class="hb-sum-card bad"><span>Erta ketdi</span><b>${st.early_out || 0}</b></div>
+        <div class="hb-sum-card info"><span>Kech ketdi</span><b>${st.late_out || 0}</b></div>
       </div>
 
       <div class="dash-table-wrap hb-table-wrap">
@@ -2347,24 +2332,16 @@
         <div class="dash-hero-main">
           <div class="dash-kicker">Kunlik pulse</div>
           <div class="dash-hero-title">${rate}<span>%</span> kelgan</div>
-          <p class="dash-hero-sub">${present} / ${total} xodim · ${working} hozir ishda${late ? ' · ' + late + ' kechikish' : ''}</p>
+          <p class="dash-hero-sub">${present} / ${total} xodim · ${working} hozir ishda${late ? ' · ' + late + ' kechikish' : ''}${c.enrolled ? ' · QR ' + c.enrolled : ''}</p>
           <div class="dash-meter" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, rate))}%"></i></div>
         </div>
         <div class="dash-hero-side">
+          <div class="dash-chip"><b>${total}</b><span>Jami</span></div>
           <div class="dash-chip ok"><b>${present}</b><span>Kelgan</span></div>
           <div class="dash-chip info"><b>${working}</b><span>Ishda</span></div>
           <div class="dash-chip warn"><b>${late}</b><span>Kech</span></div>
           <div class="dash-chip bad"><b>${absent}</b><span>Yo‘q</span></div>
         </div>
-      </div>
-
-      <div class="att-kpi-row dash-kpi-row">
-        ${kpiCard('Jami', total)}
-        ${kpiCard('Kelgan', present, 'ok')}
-        ${kpiCard('Ishda', working, 'info')}
-        ${kpiCard('Kechikdi', late, 'warn')}
-        ${kpiCard('Yo‘q', absent, 'bad')}
-        ${kpiCard('QR', c.enrolled || 0, 'info')}
       </div>
 
       <div class="dash-lanes">
@@ -2452,7 +2429,7 @@
         <div class="hb-hero-main">
           <div class="hb-kicker">Xodim profili</div>
           <div class="hb-hero-title">${esc(u.name || u.username || '—')}</div>
-          <p class="hb-hero-sub">@${esc(u.username || '')} · ${esc(roleLabel(u.role))}${u.car ? ' · ' + esc(u.car) : ''} · kelish ${rate}%</p>
+          <p class="hb-hero-sub">@${esc(u.username || '')} · ${esc(roleLabel(u.role))}${u.car ? ' · ' + esc(u.car) : ''} · kelish ${rate}%${st.worked_sec ? ' · ish ' + fmtDur(st.worked_sec) : ''}</p>
           <div class="hb-meter" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, rate))}%"></i></div>
         </div>
         <div class="hb-hero-side">
@@ -2461,14 +2438,6 @@
           <div class="dash-chip bad"><b>${absent}</b><span>Yo‘qlik</span></div>
           <div class="dash-chip info"><b>${esc(st.avgIn || '—')}</b><span>O‘rt. kelish</span></div>
         </div>
-      </div>
-
-      <div class="att-kpi-row dash-kpi-row">
-        ${kpiCard('Kelgan', present, 'ok')}
-        ${kpiCard('Kechikish', late, 'warn')}
-        ${kpiCard('Yo‘qlik', absent, 'bad')}
-        ${kpiCard('O‘rt. kelish', st.avgIn || '—')}
-        ${kpiCard('Jami ish', st.worked_sec ? fmtDur(st.worked_sec) : '—', 'info')}
       </div>
 
       <div class="person-cal-wrap">
