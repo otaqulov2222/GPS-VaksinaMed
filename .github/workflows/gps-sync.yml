@@ -4,7 +4,7 @@
 # YECHIM:
 #   - soat ichida 4 marta heartbeat (Toshkent 05–22)
 #   - job ICHIDA ~35 daqiqa loop (har ~3 daqiqa sync)
-#   - Vercel cron har 10–15 daqiqada O'ZI ham sync qiladi (asosiy ishonch)
+#   - Asosiy server: Hetzner (Vercel ishlatilmaydi)
 #
 # Toshkent 05–22 ≈ UTC 00–17
 #
