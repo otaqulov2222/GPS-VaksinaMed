@@ -839,7 +839,8 @@ class AttendanceStore:
             if inn and out:
                 status = "done"
             elif inn:
-                status = "late" if inn.get("late") else "in"
+                pun = self._punctuality(inn, out)
+                status = "late" if pun["late_in_min"] > 0 else "in"
             rows.append(
                 {
                     "date": d,
@@ -847,7 +848,7 @@ class AttendanceStore:
                     "in": inn,
                     "out": out,
                     "worked_sec": worked,
-                    "late": bool(inn.get("late")) if inn else False,
+                    "late": status == "late",
                 }
             )
         return rows
@@ -947,19 +948,32 @@ class AttendanceStore:
         s = settings or self.settings()
         in_start = hhmm_to_min(s.get("in_start") or "09:00") or 9 * 60
         out_start = hhmm_to_min(s.get("out_start") or "18:00") or 18 * 60
+        try:
+            grace = max(0, min(120, int(s.get("late_grace_min") or 15)))
+        except (TypeError, ValueError):
+            grace = 15
+        late_after = hhmm_to_min(s.get("in_late_after"))
+        if late_after is None:
+            late_after = in_start + grace
         late_in = early_in = early_out = late_out = 0
         in_min = self._min_of_iso(inn.get("at") if inn else None)
         out_min = self._min_of_iso(out.get("at") if out else None)
         if in_min is not None:
-            if in_min > in_start:
+            # ±grace: 09:00–09:15 — kechikish YO‘Q (vaqt ko‘rinadi, holat Kelgan)
+            if late_after is not None and in_min > late_after:
                 late_in = in_min - in_start
             elif in_min < in_start:
                 early_in = in_start - in_min
         if out_min is not None:
+            # ±grace: 17:45–18:15 atrofida erta/kech ketish ogohlantirilmasin
             if out_min < out_start:
-                early_out = out_start - out_min
+                early = out_start - out_min
+                if early > grace:
+                    early_out = early
             elif out_min > out_start:
-                late_out = out_min - out_start
+                late = out_min - out_start
+                if late > grace:
+                    late_out = late
         return {
             "late_in_min": late_in,
             "early_in_min": early_in,
@@ -1001,10 +1015,12 @@ class AttendanceStore:
             if inn and out:
                 status = "done"
             elif inn:
-                status = "late" if inn.get("late") else "in"
+                # Holat grace bo‘yicha pastda aniqlanadi (saqlangan late bayrog‘iga ishonmasin)
+                status = "in"
 
         pun = self._punctuality(inn, out)
-        if status not in ("absent", "vacation") and (pun["late_in_min"] > 0 or (inn and inn.get("late"))):
+        # Faqat grace dan KEYIN kechikish → «Kechikdi» (09:03 → Kelgan)
+        if status not in ("absent", "vacation") and pun["late_in_min"] > 0:
             status = "late"
         elif status in ("in", "done") and out:
             status = "done"
@@ -1040,12 +1056,14 @@ class AttendanceStore:
             return "no_out"
         if status == "absent":
             return "absent"
-        if inn and inn.get("late"):
+        if status == "late":
             return "late"
+        if out:
+            return "done"
         if inn and not out:
             return "no_out"
         if inn:
-            return "present"
+            return "in"
         return "auto"
 
     def _iso_from_date_hhmm(self, date: str, hhmm: str) -> str | None:
@@ -1413,14 +1431,16 @@ class AttendanceStore:
                 )
                 status = "absent"
                 if inn and out:
-                    status = "done"
+                    pun = self._punctuality(inn, out)
+                    status = "late" if pun["late_in_min"] > 0 else "done"
                 elif inn:
-                    status = "late" if inn.get("late") else "in"
+                    pun = self._punctuality(inn, out)
+                    status = "late" if pun["late_in_min"] > 0 else "in"
                 if status == "absent":
                     absent += 1
                 else:
                     present += 1
-                    if inn and inn.get("late"):
+                    if status == "late":
                         late_n += 1
                     hhmm = self._hhmm_from_iso(inn.get("at") if inn else None)
                     if hhmm:
@@ -1439,7 +1459,7 @@ class AttendanceStore:
                         "status": status,
                         "inAt": self._hhmmss_from_iso(inn.get("at") if inn else None),
                         "outAt": self._hhmmss_from_iso(out.get("at") if out else None),
-                        "late": bool(inn.get("late")) if inn else False,
+                        "late": status == "late",
                         "worked_sec": ws,
                         "distance_m": (inn or {}).get("distance_m") if inn else None,
                     }
@@ -1523,15 +1543,17 @@ class AttendanceStore:
             if future:
                 status = "future"
             elif inn and out:
-                status = "done"
+                pun = self._punctuality(inn, out)
+                status = "late" if pun["late_in_min"] > 0 else "done"
                 present += 1
             elif inn:
-                status = "late" if inn.get("late") else "in"
+                pun = self._punctuality(inn, out)
+                status = "late" if pun["late_in_min"] > 0 else "in"
                 present += 1
             else:
                 status = "absent"
                 absent += 1
-            if inn and inn.get("late"):
+            if status == "late":
                 late_n += 1
             hhmm = self._hhmm_from_iso(inn.get("at") if inn else None)
             if hhmm and not future:
@@ -1550,7 +1572,7 @@ class AttendanceStore:
                     "status": status,
                     "inAt": self._hhmmss_from_iso(inn.get("at") if inn else None),
                     "outAt": self._hhmmss_from_iso(out.get("at") if out else None),
-                    "late": bool(inn.get("late")) if inn else False,
+                    "late": status == "late",
                     "worked_sec": ws,
                     "distance_m": (inn or {}).get("distance_m") if inn else None,
                     "note": (inn or {}).get("note") if inn else None,
