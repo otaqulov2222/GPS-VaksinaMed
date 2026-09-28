@@ -4077,12 +4077,13 @@
             </div>
           </div>
 
-          <div class="set-card set-card-form" id="remote-att-card">
+          <div class="set-card set-card-form set-card-remote" id="remote-att-card">
             <div class="set-card-h">
               <div class="dash-head-kicker">Remote punch</div>
               <h3>Masofadan davomat</h3>
               <p>Viloyat / tamojnya — ofisga kelolmaydigan haydovchiga ruxsat. Geozona va VHK o‘zgarmaydi.</p>
             </div>
+            <div class="remote-form">
             <div class="row2">
               <div class="fld"><label>Xodim</label>
                 <select id="remote-user"><option value="">Tanlang…</option></select>
@@ -4107,11 +4108,15 @@
               <button type="button" class="att-btn att-btn-in" id="btn-remote-grant">Ruxsat berish</button>
               <button type="button" class="att-btn att-btn-face" id="btn-remote-refresh">Yangilash</button>
             </div>
-            <div class="scroll-x" style="margin-top:12px">
-              <table class="att-table" id="remote-grants-table">
+            </div>
+            <div class="remote-table-wrap">
+              <div class="remote-table-h">Faol ruxsatlar</div>
+              <div class="scroll-x">
+              <table class="att-table remote-grants-table" id="remote-grants-table">
                 <thead><tr><th>Xodim</th><th>Tur</th><th>Muddat</th><th>Izoh</th><th></th></tr></thead>
                 <tbody><tr><td colspan="5">Yuklanmoqda…</td></tr></tbody>
               </table>
+              </div>
             </div>
           </div>
         </div>
@@ -4623,13 +4628,13 @@
       const d = await api('/api/attendance/remote');
       const grants = (d && d.grants) || [];
       if (!grants.length) {
-        tb.innerHTML = '<tr><td colspan="5">Faol ruxsat yo‘q</td></tr>';
+        tb.innerHTML = '<tr><td colspan="5" class="remote-empty">Faol ruxsat yo‘q</td></tr>';
         return;
       }
       tb.innerHTML = grants.map((g) => `
         <tr>
           <td><b>${esc(g.name || g.username || g.userId)}</b><div class="att-sub">@${esc(g.username || '')}</div></td>
-          <td>${esc(remoteModeLabel(g))}</td>
+          <td><span class="remote-mode-pill ${esc(String(g.mode || 'day'))}">${esc(remoteModeLabel(g))}</span></td>
           <td class="mono">${esc(remotePeriodTxt(g))}</td>
           <td>${esc(g.note || '—')}</td>
           <td><button type="button" class="att-link-btn" data-remote-revoke="${esc(g.id)}">Bekor</button></td>
