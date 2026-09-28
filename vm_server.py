@@ -5572,13 +5572,49 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
             action = str(body.get("action") or "grant").strip().lower()
-            if action == "revoke":
-                ok, err = ATTENDANCE.revoke_remote(str(body.get("id") or body.get("grantId") or ""))
+            if action in ("revoke", "delete"):
+                gid = str(body.get("id") or body.get("grantId") or "")
+                if action == "delete":
+                    ok, err = ATTENDANCE.delete_remote(gid)
+                else:
+                    ok, err = ATTENDANCE.revoke_remote(gid)
                 if not ok:
-                    self.send_json({"ok": False, "error": err or "Bekor qilinmadi"}, 400)
+                    self.send_json({"ok": False, "error": err or "O'chirilmadi"}, 400)
                     return
                 self.send_json({
                     "ok": True,
+                    "grants": ATTENDANCE.list_remote_grants(active_only=True),
+                })
+                return
+            if action == "get":
+                g = ATTENDANCE.get_remote_grant(str(body.get("id") or body.get("grantId") or ""))
+                if not g:
+                    self.send_json({"ok": False, "error": "Ruxsat topilmadi"}, 404)
+                    return
+                self.send_json({"ok": True, "grant": g})
+                return
+            if action == "update":
+                uid = str(body.get("userId") or body.get("user_id") or "").strip()
+                users = STORE.list_users(viewer_role=sess.get("role"))
+                meta = next((u for u in users if str(u.get("id")) == uid), None) if uid else None
+                grant, err = ATTENDANCE.update_remote(
+                    str(body.get("id") or body.get("grantId") or ""),
+                    user_id=uid or None,
+                    username=str((meta or {}).get("username") or body.get("username") or ""),
+                    name=str((meta or {}).get("name") or body.get("name") or ""),
+                    mode=str(body.get("mode") or "") or None,
+                    date=body.get("date"),
+                    date_from=body.get("dateFrom") or body.get("date_from"),
+                    date_to=body.get("dateTo") or body.get("date_to"),
+                    note=body.get("note") if "note" in body else None,
+                    updated_by=str(sess.get("username") or ""),
+                )
+                if err:
+                    self.send_json({"ok": False, "error": err}, 400)
+                    return
+                self.send_json({
+                    "ok": True,
+                    "grant": grant,
                     "grants": ATTENDANCE.list_remote_grants(active_only=True),
                 })
                 return

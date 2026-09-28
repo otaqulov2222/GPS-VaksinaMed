@@ -4113,7 +4113,7 @@
               <div class="remote-table-h">Faol ruxsatlar</div>
               <div class="scroll-x">
               <table class="att-table remote-grants-table" id="remote-grants-table">
-                <thead><tr><th>Xodim</th><th>Tur</th><th>Muddat</th><th>Izoh</th><th></th></tr></thead>
+                <thead><tr><th>Xodim</th><th>Tur</th><th>Muddat</th><th>Izoh</th><th>Amallar</th></tr></thead>
                 <tbody><tr><td colspan="5">Yuklanmoqda…</td></tr></tbody>
               </table>
               </div>
@@ -4607,6 +4607,9 @@
     printOfficeQrPoster();
   }
 
+  let remoteEditId = null;
+  let remoteGrantsCache = [];
+
   function remoteModeLabel(g) {
     const m = String((g && g.mode) || 'day');
     if (m === 'always') return 'Doimiy';
@@ -4621,36 +4624,148 @@
     return g.date || '—';
   }
 
+  function closeRemoteViewModal() {
+    const m = document.getElementById('remote-view-modal');
+    if (m) m.remove();
+  }
+
+  function showRemoteGrantView(g) {
+    if (!g) return;
+    closeRemoteViewModal();
+    const wrap = document.createElement('div');
+    wrap.id = 'remote-view-modal';
+    wrap.className = 'remote-view-modal';
+    wrap.innerHTML = `
+      <div class="remote-view-backdrop" data-close="1"></div>
+      <div class="remote-view-card" role="dialog" aria-label="Ruxsat tafsiloti">
+        <div class="remote-view-h">
+          <div>
+            <div class="dash-head-kicker">To‘liq ko‘rish</div>
+            <h3>Masofadan ruxsat</h3>
+          </div>
+          <button type="button" class="remote-view-x" data-close="1" aria-label="Yopish">×</button>
+        </div>
+        <div class="remote-view-body">
+          <div class="remote-view-row"><span>Xodim</span><b>${esc(g.name || g.username || '—')}</b></div>
+          <div class="remote-view-row"><span>Login</span><b>@${esc(g.username || '—')}</b></div>
+          <div class="remote-view-row"><span>Tur</span><b>${esc(remoteModeLabel(g))}</b></div>
+          <div class="remote-view-row"><span>Muddat</span><b class="mono">${esc(remotePeriodTxt(g))}</b></div>
+          <div class="remote-view-row"><span>Izoh</span><b>${esc(g.note || '—')}</b></div>
+          <div class="remote-view-row"><span>Yaratilgan</span><b class="mono">${esc(g.createdAt || '—')}</b></div>
+          <div class="remote-view-row"><span>Kim bergan</span><b>${esc(g.createdBy || '—')}</b></div>
+          ${g.updatedAt ? `<div class="remote-view-row"><span>Yangilangan</span><b class="mono">${esc(g.updatedAt)}</b></div>` : ''}
+          <div class="remote-view-row"><span>ID</span><b class="mono">${esc(g.id || '—')}</b></div>
+        </div>
+        <div class="remote-view-actions">
+          <button type="button" class="att-btn att-btn-face" data-close="1">Yopish</button>
+          <button type="button" class="att-btn att-btn-in" id="remote-view-edit">Tahrirlash</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelectorAll('[data-close]').forEach((el) => {
+      el.onclick = () => closeRemoteViewModal();
+    });
+    const editBtn = document.getElementById('remote-view-edit');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        closeRemoteViewModal();
+        fillRemoteFormForEdit(g);
+      };
+    }
+  }
+
+  function setRemoteGrantButtonMode(editing) {
+    const grantBtn = document.getElementById('btn-remote-grant');
+    const cancelBtn = document.getElementById('btn-remote-edit-cancel');
+    if (grantBtn) grantBtn.textContent = editing ? 'Saqlash' : 'Ruxsat berish';
+    if (cancelBtn) cancelBtn.hidden = !editing;
+  }
+
+  function clearRemoteEditMode() {
+    remoteEditId = null;
+    setRemoteGrantButtonMode(false);
+  }
+
+  function fillRemoteFormForEdit(g) {
+    if (!g) return;
+    remoteEditId = g.id;
+    const sel = document.getElementById('remote-user');
+    const modeEl = document.getElementById('remote-mode');
+    const noteEl = document.getElementById('remote-note');
+    const dateEl = document.getElementById('remote-date');
+    const fromEl = document.getElementById('remote-from');
+    const toEl = document.getElementById('remote-to');
+    if (sel) sel.value = String(g.userId || '');
+    if (modeEl) {
+      modeEl.value = String(g.mode || 'day');
+      modeEl.dispatchEvent(new Event('change'));
+    }
+    if (noteEl) noteEl.value = g.note || '';
+    if (dateEl && g.date) dateEl.value = g.date;
+    if (fromEl && g.dateFrom) fromEl.value = g.dateFrom;
+    if (toEl && g.dateTo) toEl.value = g.dateTo;
+    setRemoteGrantButtonMode(true);
+    const card = document.getElementById('remote-att-card');
+    if (card) {
+      try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+    }
+    msg('Tahrirlash: o‘zgartirib «Saqlash» bosing', 'info');
+  }
+
   async function loadRemoteGrantsTable() {
     const tb = document.querySelector('#remote-grants-table tbody');
     if (!tb) return;
     try {
       const d = await api('/api/attendance/remote');
       const grants = (d && d.grants) || [];
+      remoteGrantsCache = grants;
       if (!grants.length) {
         tb.innerHTML = '<tr><td colspan="5" class="remote-empty">Faol ruxsat yo‘q</td></tr>';
         return;
       }
       tb.innerHTML = grants.map((g) => `
-        <tr>
+        <tr data-grant-id="${esc(g.id)}">
           <td><b>${esc(g.name || g.username || g.userId)}</b><div class="att-sub">@${esc(g.username || '')}</div></td>
           <td><span class="remote-mode-pill ${esc(String(g.mode || 'day'))}">${esc(remoteModeLabel(g))}</span></td>
           <td class="mono">${esc(remotePeriodTxt(g))}</td>
           <td>${esc(g.note || '—')}</td>
-          <td><button type="button" class="att-link-btn" data-remote-revoke="${esc(g.id)}">Bekor</button></td>
+          <td class="remote-acts">
+            <button type="button" class="remote-act view" data-remote-view="${esc(g.id)}" title="To‘liq ko‘rish">To‘liq ko‘rish</button>
+            <button type="button" class="remote-act edit" data-remote-edit="${esc(g.id)}" title="Tahrirlash">Tahrirlash</button>
+            <button type="button" class="remote-act del" data-remote-del="${esc(g.id)}" title="O‘chirish">O‘chirish</button>
+          </td>
         </tr>`).join('');
-      tb.querySelectorAll('[data-remote-revoke]').forEach((btn) => {
+      tb.querySelectorAll('[data-remote-view]').forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute('data-remote-view');
+          const g = remoteGrantsCache.find((x) => String(x.id) === String(id));
+          if (g) showRemoteGrantView(g);
+          else msg('Ruxsat topilmadi', 'err');
+        };
+      });
+      tb.querySelectorAll('[data-remote-edit]').forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.getAttribute('data-remote-edit');
+          const g = remoteGrantsCache.find((x) => String(x.id) === String(id));
+          if (g) fillRemoteFormForEdit(g);
+          else msg('Ruxsat topilmadi', 'err');
+        };
+      });
+      tb.querySelectorAll('[data-remote-del]').forEach((btn) => {
         btn.onclick = async () => {
-          if (!confirm('Masofadan ruxsatni bekor qilasizmi?')) return;
+          if (!confirm('Ruxsatni butunlay o‘chirasizmi?')) return;
           try {
             await api('/api/attendance/remote', {
               method: 'POST',
-              body: JSON.stringify({ action: 'revoke', id: btn.getAttribute('data-remote-revoke') })
+              body: JSON.stringify({ action: 'delete', id: btn.getAttribute('data-remote-del') })
             });
-            msg('Ruxsat bekor qilindi', 'ok');
+            if (remoteEditId && String(remoteEditId) === String(btn.getAttribute('data-remote-del'))) {
+              clearRemoteEditMode();
+            }
+            msg('Ruxsat o‘chirildi', 'ok');
             loadRemoteGrantsTable();
           } catch (e) {
-            msg(e.message || 'Bekor qilinmadi', 'err');
+            msg(e.message || 'O‘chirilmadi', 'err');
           }
         };
       });
@@ -4660,35 +4775,18 @@
   }
 
   async function bindRemoteAttAdmin() {
+    remoteEditId = null;
     const modeEl = document.getElementById('remote-mode');
     const dayRow = document.getElementById('remote-day-row');
     const rangeRow = document.getElementById('remote-range-row');
     const syncMode = () => {
       const m = modeEl ? modeEl.value : 'day';
-      if (dayRow) dayRow.hidden = m === 'range';
       if (rangeRow) rangeRow.hidden = m !== 'range';
-      const noteFld = document.getElementById('remote-note');
-      if (noteFld && dayRow) {
-        // note stays in day row; for range/always also visible via day row when not range-only
-        if (m === 'range' && dayRow) {
-          // keep note accessible: show day row note only when day; for range put note in range - simpler leave note always in day row and show day row for always/day
-        }
-      }
       if (dayRow) {
-        if (m === 'always') {
-          dayRow.hidden = false;
-          const dateEl = document.getElementById('remote-date');
-          if (dateEl) dateEl.closest('.fld').hidden = true;
-        } else if (m === 'day') {
-          dayRow.hidden = false;
-          const dateEl = document.getElementById('remote-date');
-          if (dateEl && dateEl.closest('.fld')) dateEl.closest('.fld').hidden = false;
-        } else {
-          // range: show note somehow - unhide day row but hide date
-          dayRow.hidden = false;
-          const dateEl = document.getElementById('remote-date');
-          if (dateEl && dateEl.closest('.fld')) dateEl.closest('.fld').hidden = true;
-        }
+        dayRow.hidden = false;
+        const dateEl = document.getElementById('remote-date');
+        const dateFld = dateEl && dateEl.closest('.fld');
+        if (dateFld) dateFld.hidden = m !== 'day';
       }
     };
     if (modeEl) modeEl.onchange = syncMode;
@@ -4707,6 +4805,21 @@
       }
     }
 
+    const actions = document.querySelector('#remote-att-card .set-form-actions');
+    if (actions && !document.getElementById('btn-remote-edit-cancel')) {
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'att-btn att-btn-face';
+      cancel.id = 'btn-remote-edit-cancel';
+      cancel.textContent = 'Bekor (tahrir)';
+      cancel.hidden = true;
+      cancel.onclick = () => {
+        clearRemoteEditMode();
+        msg('Tahrir bekor qilindi', 'info');
+      };
+      actions.appendChild(cancel);
+    }
+
     const grantBtn = document.getElementById('btn-remote-grant');
     if (grantBtn) {
       grantBtn.onclick = async () => {
@@ -4717,11 +4830,12 @@
         }
         const mode = (modeEl && modeEl.value) || 'day';
         const body = {
-          action: 'grant',
+          action: remoteEditId ? 'update' : 'grant',
           userId,
           mode,
           note: (document.getElementById('remote-note') && document.getElementById('remote-note').value) || ''
         };
+        if (remoteEditId) body.id = remoteEditId;
         if (mode === 'day') {
           body.date = (document.getElementById('remote-date') && document.getElementById('remote-date').value) || '';
         } else if (mode === 'range') {
@@ -4730,15 +4844,17 @@
         }
         try {
           await api('/api/attendance/remote', { method: 'POST', body: JSON.stringify(body) });
-          msg('Masofadan ruxsat berildi', 'ok');
+          msg(remoteEditId ? 'Ruxsat yangilandi' : 'Masofadan ruxsat berildi', 'ok');
+          clearRemoteEditMode();
           loadRemoteGrantsTable();
         } catch (e) {
-          msg(e.message || 'Ruxsat berilmadi', 'err');
+          msg(e.message || 'Saqlanmadi', 'err');
         }
       };
     }
     const refBtn = document.getElementById('btn-remote-refresh');
     if (refBtn) refBtn.onclick = () => loadRemoteGrantsTable();
+    setRemoteGrantButtonMode(false);
     loadRemoteGrantsTable();
   }
 

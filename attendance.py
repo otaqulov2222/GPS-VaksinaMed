@@ -496,6 +496,102 @@ class AttendanceStore:
             self._save_remote_bag({"grants": grants})
         return True, None
 
+    def delete_remote(self, grant_id: str) -> tuple[bool, str | None]:
+        """Butunlay o'chirish (jadvaldan)."""
+        gid = str(grant_id or "").strip()
+        if not gid:
+            return False, "Ruxsat ID yo'q"
+        with self.lock:
+            bag = self._load_remote_bag()
+            grants = list(bag.get("grants") or [])
+            n = len(grants)
+            grants = [g for g in grants if not (isinstance(g, dict) and str(g.get("id") or "") == gid)]
+            if len(grants) == n:
+                return False, "Ruxsat topilmadi"
+            self._save_remote_bag({"grants": grants})
+        return True, None
+
+    def get_remote_grant(self, grant_id: str) -> dict | None:
+        gid = str(grant_id or "").strip()
+        if not gid:
+            return None
+        bag = self._load_remote_bag()
+        for g in bag.get("grants") or []:
+            if isinstance(g, dict) and str(g.get("id") or "") == gid:
+                return dict(g)
+        return None
+
+    def update_remote(
+        self,
+        grant_id: str,
+        *,
+        user_id: str | None = None,
+        username: str = "",
+        name: str = "",
+        mode: str | None = None,
+        date: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        note: str | None = None,
+        updated_by: str = "",
+    ) -> tuple[dict | None, str | None]:
+        gid = str(grant_id or "").strip()
+        if not gid:
+            return None, "Ruxsat ID yo'q"
+        with self.lock:
+            bag = self._load_remote_bag()
+            grants = list(bag.get("grants") or [])
+            idx = -1
+            cur = None
+            for i, g in enumerate(grants):
+                if isinstance(g, dict) and str(g.get("id") or "") == gid:
+                    idx = i
+                    cur = dict(g)
+                    break
+            if idx < 0 or not cur:
+                return None, "Ruxsat topilmadi"
+            if cur.get("revoked"):
+                return None, "Bekor qilingan ruxsatni tahrirlab bo'lmaydi"
+
+            uid = str(user_id or cur.get("userId") or "").strip()
+            if not uid:
+                return None, "Xodim tanlanmagan"
+            new_mode = str(mode or cur.get("mode") or "day").strip().lower()
+            if new_mode not in ("day", "range", "always"):
+                return None, "Mode: day | range | always"
+
+            ng = dict(cur)
+            ng["userId"] = uid
+            if username:
+                ng["username"] = str(username)[:60]
+            if name:
+                ng["name"] = str(name)[:80]
+            ng["mode"] = new_mode
+            if note is not None:
+                ng["note"] = str(note or "")[:200]
+            ng["updatedAt"] = now_tz().isoformat(timespec="seconds")
+            ng["updatedBy"] = str(updated_by or "")[:60]
+            ng.pop("date", None)
+            ng.pop("dateFrom", None)
+            ng.pop("dateTo", None)
+            if new_mode == "day":
+                d = str(date or cur.get("date") or today_str())
+                if not DATE_RE.match(d):
+                    return None, "Sana noto'g'ri (YYYY-MM-DD)"
+                ng["date"] = d
+            elif new_mode == "range":
+                a = str(date_from or cur.get("dateFrom") or "")
+                b = str(date_to or cur.get("dateTo") or "")
+                if not DATE_RE.match(a) or not DATE_RE.match(b):
+                    return None, "Sana oralig'i noto'g'ri"
+                if a > b:
+                    a, b = b, a
+                ng["dateFrom"] = a
+                ng["dateTo"] = b
+            grants[idx] = ng
+            self._save_remote_bag({"grants": grants})
+        return ng, None
+
     def _gps_inside_office(
         self,
         settings: dict,
