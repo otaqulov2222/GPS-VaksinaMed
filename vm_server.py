@@ -228,6 +228,21 @@ def compact_plate(plate):
     return re.sub(r"\s+", "", str(plate or "").upper())
 
 
+def normalize_due_ymd(v):
+    s = str(v or "").strip()
+    if not s:
+        return ""
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    m = re.match(r"^(\d{1,2})[./](\d{1,2})[./](\d{4})$", s)
+    if m:
+        try:
+            return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+        except Exception:
+            return ""
+    return ""
+
+
 def find_by_plate(mapping, plate):
     if not isinstance(mapping, dict):
         return None, None
@@ -2205,6 +2220,75 @@ class OfficeStore:
         except Exception:
             pass
         return cur
+
+    def docs_alerts(self, hot_days=30):
+        """Hujjat muddati yaqin / o'tgan — topbar badge uchun (≤ hot_days)."""
+        try:
+            hot_n = int(hot_days)
+        except Exception:
+            hot_n = 30
+        if hot_n < 0:
+            hot_n = 0
+        if hot_n > 90:
+            hot_n = 90
+        doc_keys = (
+            ("insurance", "Sug'urta"),
+            ("tech", "Texnik ko'rik"),
+            ("ads", "Reklama"),
+            ("cylinder", "Gaz ballon sinovi"),
+        )
+        meta = self.fuel_meta() or {}
+        docs = meta.get("docs") if isinstance(meta.get("docs"), dict) else {}
+        vehicles = meta.get("vehicles") if isinstance(meta.get("vehicles"), dict) else {}
+        today = datetime.now(TZ_TASHKENT).date()
+        items = []
+        seen = set()
+
+        def _rec_for(plate):
+            if plate in docs and isinstance(docs.get(plate), dict):
+                return docs[plate]
+            want = compact_plate(plate)
+            if not want:
+                return {}
+            for k, v in docs.items():
+                if compact_plate(k) == want and isinstance(v, dict):
+                    return v
+            return {}
+
+        for plate, veh in vehicles.items():
+            if not isinstance(veh, dict) or veh.get("hidden"):
+                continue
+            p = str(plate or "").strip()
+            if not p:
+                continue
+            ck = compact_plate(p)
+            if ck in seen:
+                continue
+            seen.add(ck)
+            rec = _rec_for(p)
+            name = str(veh.get("short") or veh.get("name") or p)[:80]
+            for key, title in doc_keys:
+                block = rec.get(key) if isinstance(rec.get(key), dict) else None
+                if not block:
+                    continue
+                due_s = normalize_due_ymd(block.get("due"))
+                if not due_s:
+                    continue
+                try:
+                    due = datetime.strptime(due_s, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                left = (due - today).days
+                if left < 0 or left <= hot_n:
+                    items.append({
+                        "car": p,
+                        "name": name,
+                        "title": title,
+                        "due": due_s,
+                        "left": left,
+                    })
+        items.sort(key=lambda x: (x.get("left") if x.get("left") is not None else 9999, str(x.get("car") or "")))
+        return {"count": len(items), "items": items[:50], "hotDays": hot_n}
 
     def fuel_month(self, month):
         if not month or not MONTH_RE.match(str(month)):
@@ -4471,6 +4555,26 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
                 return
             self.send_json({"ok": True, "meta": OFFICE.fuel_meta()})
+            return
+
+        if path == "/api/office/fuel/docs-alerts":
+            sess = self.require_user()
+            if not sess:
+                return
+            if is_driver(sess):
+                self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
+                return
+            if not can_ops_read(sess):
+                self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
+                return
+            hot = 30
+            try:
+                if qs.get("hot"):
+                    hot = int((qs.get("hot") or [30])[0])
+            except Exception:
+                hot = 30
+            data = OFFICE.docs_alerts(hot_days=hot)
+            self.send_json({"ok": True, **data})
             return
 
         if path == "/api/office/fuel/month":

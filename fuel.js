@@ -5332,6 +5332,7 @@ function bind() {
   };
   document.getElementById('btn-reload').onclick = () => reloadOriginal().catch(err => toast(err.message));
   document.getElementById('docs-badge').onclick = () => setTab('docs');
+  window.setTab = setTab;
   const logoutBtn = document.getElementById('btn-logout');
   if (logoutBtn) logoutBtn.onclick = async () => {
     flushFormToState();
@@ -5407,7 +5408,17 @@ async function refreshGpsKmAuto() {
   vmGatePage(user);
   vmStartHeartbeat();
   bind();
+  window.setTab = setTab;
   await loadAll();
+  const hash = String(location.hash || '').replace(/^#/, '').toLowerCase();
+  const q = new URLSearchParams(location.search || '');
+  const tabWant = hash || String(q.get('tab') || '').toLowerCase();
+  if (tabWant === 'docs') {
+    try { await setTab('docs'); } catch (e) {}
+  }
+  if (typeof window.vmRefreshDocsBadge === 'function') {
+    window.vmRefreshDocsBadge().catch(() => {});
+  }
   setInterval(() => refreshGpsKmAuto().catch(() => {}), 5 * 60 * 1000);
 })().catch(err => {
   toast(err.message || 'Yuklanmadi');

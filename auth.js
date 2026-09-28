@@ -720,10 +720,114 @@ function vmLoadSupportChat() {
     document.head.appendChild(s);
 }
 
+/** Hujjat muddati badge — barcha bo'limlarda (haydovchidan tashqari) */
+function vmDocsBadgeHost() {
+    return document.querySelector('.app-main .topbar .acts, .app-main .topbar .tb-actions, .topbar .acts, .topbar .tb-actions');
+}
+
+function vmEnsureDocsBadgeEl() {
+    let el = document.getElementById('docs-badge');
+    if (el) return el;
+    const host = vmDocsBadgeHost();
+    if (!host) return null;
+    el = document.createElement('span');
+    el.id = 'docs-badge';
+    el.className = 'badge badge-bad vm-docs-badge';
+    el.style.display = 'none';
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
+    host.insertBefore(el, host.firstChild);
+    return el;
+}
+
+function vmDocsBadgeGo() {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    const onFuel = /\/fuel(\.html)?$/.test(path);
+    if (onFuel && typeof window.setTab === 'function') {
+        try { window.setTab('docs'); return; } catch (e) {}
+    }
+    if (onFuel) {
+        location.hash = 'docs';
+        return;
+    }
+    location.href = '/fuel#docs';
+}
+
+function vmPaintDocsBadge(payload) {
+    const el = vmEnsureDocsBadgeEl();
+    if (!el) return;
+    const count = Number((payload && payload.count) || 0);
+    const items = (payload && payload.items) || [];
+    if (!count) {
+        el.style.display = 'none';
+        el.removeAttribute('title');
+        el.textContent = '0 hujjat muddati';
+        return;
+    }
+    el.style.display = 'inline-flex';
+    el.textContent = count + ' hujjat muddati!';
+    el.title = items.map((a) => {
+        const left = Number(a.left);
+        const when = left < 0
+            ? ("o'tgan " + Math.abs(left) + ' kun')
+            : (left + ' kun');
+        return String(a.car || '') + ' · ' + String(a.title || '') + ' · ' + when;
+    }).join('\n');
+    el.onclick = (e) => {
+        e.preventDefault();
+        vmDocsBadgeGo();
+    };
+    el.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            vmDocsBadgeGo();
+        }
+    };
+}
+
+async function vmRefreshDocsBadge() {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    if (/\/login(\.html)?$/.test(path)) return;
+    let user = window.VM_USER;
+    if (!user) {
+        try { user = await vmMe(); } catch (e) { return; }
+    }
+    if (!vmCanViewOps(user)) return;
+    try {
+        const d = await vmApi('/api/office/fuel/docs-alerts', { noRedirect: true, timeoutMs: 12000 });
+        vmPaintDocsBadge(d);
+        window._vmDocsBadgeLast = d;
+    } catch (e) {
+        /* badge ixtiyoriy — xato chiqarmaymiz */
+    }
+}
+
+function vmLoadDocsBadge() {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    if (/\/login(\.html)?$/.test(path)) return;
+    if (window._vmDocsBadgeInit) return;
+    window._vmDocsBadgeInit = true;
+    const kick = () => { vmRefreshDocsBadge().catch(() => {}); };
+    kick();
+    // Sahifa chrome kech yuklansa
+    setTimeout(kick, 800);
+    setTimeout(kick, 2500);
+    if (!window._vmDocsBadgeTimer) {
+        window._vmDocsBadgeTimer = setInterval(kick, 5 * 60 * 1000);
+    }
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') kick();
+    });
+}
+
 function vmInitShellExtras() {
     vmInitHScroll();
     vmLoadSupportChat();
+    vmLoadDocsBadge();
 }
+
+window.vmRefreshDocsBadge = vmRefreshDocsBadge;
+window.vmPaintDocsBadge = vmPaintDocsBadge;
 
 document.addEventListener('DOMContentLoaded', vmInitShellExtras);
 if (document.readyState !== 'loading') vmInitShellExtras();
