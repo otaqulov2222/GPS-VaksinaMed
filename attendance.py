@@ -1270,21 +1270,23 @@ class AttendanceStore:
         in_min = self._min_of_iso(inn.get("at") if inn else None)
         out_min = self._min_of_iso(out.get("at") if out else None)
         if in_min is not None:
-            # ±grace: 09:00–09:15 — kechikish YO‘Q (vaqt ko‘rinadi, holat Kelgan)
+            # ±grace: 09:00–09:15 — kechikish YO‘Q; undan keyin faqat ORTIQCHA daqiqa
+            # (09:16 → 1 daq, 16 emas)
             if late_after is not None and in_min > late_after:
-                late_in = in_min - in_start
+                late_in = in_min - late_after
             elif in_min < in_start:
                 early_in = in_start - in_min
         if out_min is not None:
-            # ±grace: 17:45–18:15 atrofida erta/kech ketish ogohlantirilmasin
+            # ±grace: 17:45–18:15 atrofida erta/kech ketish ogohlantirilmasin;
+            # faqat grace dan ortiqcha daqiqa ko‘rsatiladi
             if out_min < out_start:
                 early = out_start - out_min
                 if early > grace:
-                    early_out = early
+                    early_out = early - grace
             elif out_min > out_start:
                 late = out_min - out_start
                 if late > grace:
-                    late_out = late
+                    late_out = late - grace
         return {
             "late_in_min": late_in,
             "early_in_min": early_in,
