@@ -447,9 +447,71 @@ table.dtable input.w-note { font-family: var(--sans); font-weight: 500; }
 
 .warn-box { background: #eef4fb; border: 1px solid #c5d4e6; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; line-height: 1.5; border-radius: 10px; }
 .alert-box { background: #eef4fb; border: 1px solid #c5d4e6; padding: 10px 12px; margin-bottom: 12px; border-radius: 10px; }
-.st-ok { background: #e3eef9; color: var(--ok); }
-.st-mid { background: #e8eef5; color: var(--warn); }
-.st-hot { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+.doc-alert-box {
+  padding: 10px 12px;
+  margin: 0 0 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: 600 13px/1.45 var(--sans);
+}
+.doc-alert-title {
+  font: 800 11px/1.2 var(--sans);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.doc-alert-line { margin: 4px 0; }
+.doc-alert-dead {
+  background: #fef2f2;
+  border-color: #dc2626;
+  color: #7f1d1d;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.25);
+}
+.doc-alert-dead .doc-alert-title { color: #b91c1c; }
+.doc-alert-hot {
+  background: #fff1f2;
+  border-color: #e11d48;
+  color: #9f1239;
+}
+.doc-alert-hot .doc-alert-title { color: #e11d48; }
+.doc-alert-warn {
+  background: #fff7ed;
+  border-color: #ea580c;
+  color: #9a3412;
+}
+.doc-alert-warn .doc-alert-title { color: #c2410c; }
+.doc-alert-mid {
+  background: #fffbeb;
+  border-color: #d97706;
+  color: #92400e;
+}
+.doc-alert-mid .doc-alert-title { color: #b45309; }
+.doc-left-badge {
+  font-weight: 800 !important;
+  letter-spacing: .02em;
+  border-width: 1.5px;
+}
+.st-ok { background: #e3eef9; color: #1a5fb4; border-color: #b6cce4; }
+.st-mid {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #f59e0b;
+  font-weight: 800;
+}
+.st-warn {
+  background: #ffedd5;
+  color: #9a3412;
+  border-color: #ea580c;
+  font-weight: 800;
+  box-shadow: 0 0 0 1px rgba(234, 88, 12, 0.2);
+}
+.st-hot {
+  background: #fecaca;
+  color: #7f1d1d;
+  border-color: #dc2626;
+  font-weight: 800;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.35);
+}
 .st-dead {
   background: #dc2626;
   color: #fff;
@@ -2222,7 +2284,7 @@ table.dtable td.day {
 <script src="auth.js?v=42"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="ph-delete-btn.js?v=3"></script>
-<script src="fuel.js?v=87"></script>
+<script src="fuel.js?v=88"></script>
 <script src="journal.js?v=13"></script>
 </body>
 </html>

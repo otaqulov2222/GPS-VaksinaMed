@@ -1888,8 +1888,8 @@ function collectDocAlerts() {
 
 function renderDocsBadge() {
   const alerts = collectDocAlerts();
-  // Qizil badge: faqat muddati o'tgan yoki ≤15 kun qolgan
-  const hot = alerts.filter(d => d.left < 0 || d.left <= 15);
+  // Badge: o'tgan yoki ≤30 kun (45 ichidagi ogohlantirish jadvalda ham ko'rinadi)
+  const hot = alerts.filter(d => d.left < 0 || d.left <= 30);
   const el = document.getElementById('docs-badge');
   if (!el) return;
   if (!hot.length) {
@@ -2462,18 +2462,27 @@ async function renderYear() {
   if (pdfYear) pdfYear.onclick = () => downloadFuelPdf('year').catch(err => toast(err.message));
 }
 
+function docLeftClass(left) {
+  if (left == null) return '';
+  if (left < 0) return 'st-dead';
+  if (left <= 15) return 'st-hot';
+  if (left <= 30) return 'st-warn';
+  if (left <= 45) return 'st-mid';
+  return 'st-ok';
+}
+
+function docLeftLabel(left) {
+  if (left == null) return 'kiritilmagan';
+  if (left < 0) return 'muddati o\'tgan ' + Math.abs(left) + ' kun';
+  return left + ' kun';
+}
+
 function docCell(car, key, rec) {
   const d = rec[key] || { due: '', months: 12 };
   const due = normalizeDueYmd(d.due);
   const left = daysLeft(due);
-  let cls = '', lab = 'kiritilmagan';
-  if (left != null) {
-    lab = left < 0 ? ('muddati o\'tgan ' + Math.abs(left) + ' kun') : (left + ' kun');
-    if (left < 0) cls = 'st-dead';
-    else if (left < 15) cls = 'st-hot';
-    else if (left < 45) cls = 'st-mid';
-    else cls = 'st-ok';
-  }
+  const cls = docLeftClass(left);
+  const lab = docLeftLabel(left);
   return `<td>
     <input type="date" data-doc="${esc(car)}" data-k="${key}" data-f="due" value="${esc(due)}" title="Muddat tugash sanasi — qanday kiritilsa shunday saqlanadi">
     <div class="doc-row">
@@ -2481,15 +2490,23 @@ function docCell(car, key, rec) {
       <span class="muted">oy</span>
       <button type="button" class="btn btn-ink btn-sm doc-renew" data-doc="${esc(car)}" data-k="${key}" title="Kiritilgan sanaga oy QO'SHMAYDI. Bugundan yangi muddat belgilaydi (bugun + N oy)">Bugundan</button>
     </div>
-    <div class="badge ${cls}" style="margin-top:4px;height:auto;padding:3px 6px;" title="${due ? ('Muddat: ' + dueDisp(due)) : ''}">${esc(lab)}</div>
+    <div class="badge doc-left-badge ${cls}" style="margin-top:4px;height:auto;padding:4px 8px;" title="${due ? ('Muddat: ' + dueDisp(due)) : ''}">${esc(lab)}</div>
   </td>`;
 }
 
 function renderDocs() {
   const today = todayYmd();
   const alerts = collectDocAlerts();
-  const hot = alerts.filter(d => d.left < 0 || d.left <= 15);
-  const warn = alerts.filter(d => d.left > 15 && d.left <= 45);
+  const overdue = alerts.filter(d => d.left < 0);
+  const hot = alerts.filter(d => d.left >= 0 && d.left <= 15);
+  const warn30 = alerts.filter(d => d.left > 15 && d.left <= 30);
+  const warn45 = alerts.filter(d => d.left > 30 && d.left <= 45);
+  const alertLine = (a) =>
+    `<div class="doc-alert-line"><b>${esc(plateDisp(a.car))}</b> ${esc(a.name)} — ${esc(a.title)} → ` +
+    (a.left < 0
+      ? ('<b>muddati o\'tgan ' + Math.abs(a.left) + ' kun</b>')
+      : ('<b>' + a.left + ' kun qoldi</b>')) +
+    ` <span class="muted">(${esc(dueDisp(a.due))})</span></div>`;
   document.getElementById('panel-docs').innerHTML = `
     <div class="card"><div class="card-h"><h3>Hujjat muddatlari hisoboti — ${esc(dueDisp(today))}</h3></div>
       <div class="card-b">
@@ -2498,13 +2515,11 @@ function renderDocs() {
           Pastdagi kunlar faqat shu sanadan hisoblanadi (masalan 28.06.2027 → shu kungacha qolgan kun).
           <b>Bugundan</b> — faqat yangi muddat kerak bo‘lganda: bugun + N oy (eski sanaga qo‘shilmaydi).
         </div>
-        ${hot.length ? `<div class="alert-box">${hot.map(a =>
-          `<div><b>${esc(plateDisp(a.car))}</b> ${esc(a.name)} — ${esc(a.title)} → ${a.left < 0 ? ('muddati o\'tgan ' + Math.abs(a.left) + ' kun') : (a.left + ' kun qoldi')} <span class="muted">(${esc(dueDisp(a.due))})</span></div>`
-        ).join('')}</div>` : ''}
-        ${warn.length ? `<div class="hint" style="margin-top:8px">45 kun ichida: ${warn.slice(0, 8).map(a =>
-          esc(plateDisp(a.car)) + ' ' + esc(a.title) + ' (' + a.left + ' kun, ' + dueDisp(a.due) + ')'
-        ).join(' · ')}</div>` : ''}
-        <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
+        ${overdue.length ? `<div class="doc-alert-box doc-alert-dead"><div class="doc-alert-title">Muddati o'tgan</div>${overdue.map(alertLine).join('')}</div>` : ''}
+        ${hot.length ? `<div class="doc-alert-box doc-alert-hot"><div class="doc-alert-title">15 kun ichida</div>${hot.map(alertLine).join('')}</div>` : ''}
+        ${warn30.length ? `<div class="doc-alert-box doc-alert-warn"><div class="doc-alert-title">30 kun ichida</div>${warn30.map(alertLine).join('')}</div>` : ''}
+        ${warn45.length ? `<div class="doc-alert-box doc-alert-mid"><div class="doc-alert-title">45 kun ichida</div>${warn45.map(alertLine).join('')}</div>` : ''}
+        <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring. Qizil / to‘q sariq — muddat yaqin yoki o‘tgan.</p>
         <div class="scroll-x">
           <table class="gtable">
             <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th>${DOC_KEYS.map(d => `<th>${esc(d.t)}</th>`).join('')}</tr></thead>
