@@ -17,6 +17,7 @@ try:
 except Exception:
     TZ = timezone(timedelta(hours=5))  # Toshkent UTC+5
 SETTINGS_KEY = "attendance:settings"
+REMOTE_KEY = "attendance:remote"
 FACE_PREFIX = "attendance:face:"
 DAY_PREFIX = "attendance:day:"
 CHALLENGE_PREFIX = "attendance:chal:"
@@ -315,6 +316,185 @@ class AttendanceStore:
         if len(secret) < 16:
             return None, None
         return ver, secret
+
+    def _load_remote_bag(self) -> dict:
+        raw = self._load(REMOTE_KEY, {})
+        if not isinstance(raw, dict):
+            return {"grants": []}
+        grants = raw.get("grants")
+        if not isinstance(grants, list):
+            grants = []
+        return {"grants": grants}
+
+    def _save_remote_bag(self, bag: dict) -> None:
+        grants = bag.get("grants") if isinstance(bag, dict) else []
+        if not isinstance(grants, list):
+            grants = []
+        self._save(REMOTE_KEY, {"grants": grants})
+
+    @staticmethod
+    def _grant_covers(g: dict, user_id: str, date: str) -> bool:
+        if not isinstance(g, dict):
+            return False
+        if str(g.get("userId") or "") != str(user_id):
+            return False
+        if g.get("revoked"):
+            return False
+        mode = str(g.get("mode") or "day").strip().lower()
+        if mode == "always":
+            return True
+        if mode == "day":
+            return str(g.get("date") or "") == str(date)
+        if mode == "range":
+            a = str(g.get("dateFrom") or "")
+            b = str(g.get("dateTo") or "")
+            if not DATE_RE.match(a) or not DATE_RE.match(b):
+                return False
+            if a > b:
+                a, b = b, a
+            return a <= str(date) <= b
+        return False
+
+    def remote_grant_for(self, user_id: str, date: str | None = None) -> dict | None:
+        """Bugun (yoki berilgan sana) uchun faol masofadan ruxsat."""
+        d = str(date or today_str())
+        uid = str(user_id or "")
+        if not uid or not DATE_RE.match(d):
+            return None
+        bag = self._load_remote_bag()
+        best = None
+        for g in bag.get("grants") or []:
+            if not self._grant_covers(g, uid, d):
+                continue
+            # always > range > day — birinchi mos kelganini qaytaramiz
+            mode = str(g.get("mode") or "")
+            if mode == "always":
+                return dict(g)
+            if best is None:
+                best = dict(g)
+            elif mode == "range" and str(best.get("mode") or "") == "day":
+                best = dict(g)
+        return best
+
+    def list_remote_grants(self, *, active_only: bool = True) -> list:
+        bag = self._load_remote_bag()
+        today = today_str()
+        out = []
+        for g in bag.get("grants") or []:
+            if not isinstance(g, dict):
+                continue
+            if g.get("revoked"):
+                if active_only:
+                    continue
+            else:
+                mode = str(g.get("mode") or "day")
+                if active_only and mode == "day" and str(g.get("date") or "") < today:
+                    continue
+                if active_only and mode == "range":
+                    b = str(g.get("dateTo") or "")
+                    if DATE_RE.match(b) and b < today:
+                        continue
+            out.append(dict(g))
+        out.sort(key=lambda x: (
+            0 if str(x.get("mode")) == "always" else 1,
+            str(x.get("dateFrom") or x.get("date") or ""),
+            str(x.get("name") or x.get("username") or ""),
+        ))
+        return out
+
+    def grant_remote(
+        self,
+        *,
+        user_id: str,
+        username: str = "",
+        name: str = "",
+        mode: str = "day",
+        date: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        note: str = "",
+        created_by: str = "",
+    ) -> tuple[dict | None, str | None]:
+        uid = str(user_id or "").strip()
+        if not uid:
+            return None, "Xodim tanlanmagan"
+        mode = str(mode or "day").strip().lower()
+        if mode not in ("day", "range", "always"):
+            return None, "Mode: day | range | always"
+        g = {
+            "id": secrets.token_urlsafe(10),
+            "userId": uid,
+            "username": str(username or "")[:60],
+            "name": str(name or "")[:80],
+            "mode": mode,
+            "note": str(note or "")[:200],
+            "createdAt": now_tz().isoformat(timespec="seconds"),
+            "createdBy": str(created_by or "")[:60],
+            "revoked": False,
+        }
+        if mode == "day":
+            d = str(date or today_str())
+            if not DATE_RE.match(d):
+                return None, "Sana noto'g'ri (YYYY-MM-DD)"
+            g["date"] = d
+        elif mode == "range":
+            a = str(date_from or "")
+            b = str(date_to or "")
+            if not DATE_RE.match(a) or not DATE_RE.match(b):
+                return None, "Sana oralig'i noto'g'ri"
+            if a > b:
+                a, b = b, a
+            g["dateFrom"] = a
+            g["dateTo"] = b
+        with self.lock:
+            bag = self._load_remote_bag()
+            grants = list(bag.get("grants") or [])
+            # Shu user uchun bir xil mode/day ni yangilash (dublikat kamaytirish)
+            if mode == "day":
+                grants = [
+                    x for x in grants
+                    if not (
+                        isinstance(x, dict)
+                        and str(x.get("userId")) == uid
+                        and str(x.get("mode")) == "day"
+                        and str(x.get("date")) == g["date"]
+                        and not x.get("revoked")
+                    )
+                ]
+            elif mode == "always":
+                grants = [
+                    x for x in grants
+                    if not (
+                        isinstance(x, dict)
+                        and str(x.get("userId")) == uid
+                        and str(x.get("mode")) == "always"
+                        and not x.get("revoked")
+                    )
+                ]
+            grants.append(g)
+            self._save_remote_bag({"grants": grants})
+        return g, None
+
+    def revoke_remote(self, grant_id: str) -> tuple[bool, str | None]:
+        gid = str(grant_id or "").strip()
+        if not gid:
+            return False, "Ruxsat ID yo'q"
+        with self.lock:
+            bag = self._load_remote_bag()
+            grants = list(bag.get("grants") or [])
+            found = False
+            for i, g in enumerate(grants):
+                if isinstance(g, dict) and str(g.get("id") or "") == gid:
+                    ng = dict(g)
+                    ng["revoked"] = True
+                    ng["revokedAt"] = now_tz().isoformat(timespec="seconds")
+                    grants[i] = ng
+                    found = True
+                    break
+            if not found:
+                return False, "Ruxsat topilmadi"
+            self._save_remote_bag({"grants": grants})
+        return True, None
 
     def _gps_inside_office(
         self,
@@ -694,31 +874,55 @@ class AttendanceStore:
             return None, "Tur: in yoki out"
 
         # Avval GPS — ticketni behuda sarflamaslik
+        # Masofadan ruxsat: geozona majburiy emas (GPS ixtiyoriy yoziladi)
+        remote = self.remote_grant_for(user_id, today_str())
+        remote_ok = bool(remote)
         ok_gps, dist_gps, gerr = self._gps_inside_office(settings, lat, lng, accuracy)
-        if not ok_gps:
+        if remote_ok:
+            # Zona tashqarida ham OK; joylashuv bo'lsa yozamiz
+            ok_gps = True
+            gerr = None
+            if dist_gps is None and lat is not None and lng is not None:
+                try:
+                    office = settings.get("office") or {}
+                    dist_gps = haversine_m(
+                        float(lat), float(lng),
+                        float(office.get("lat")), float(office.get("lng")),
+                    )
+                except (TypeError, ValueError):
+                    dist_gps = None
+        elif not ok_gps:
             return None, gerr or "Ofis zonasiga kiring"
         try:
             lat_f = float(lat) if lat is not None else None
             lng_f = float(lng) if lng is not None else None
         except (TypeError, ValueError):
             lat_f = lng_f = None
-        if settings.get("require_gps", True):
+        if settings.get("require_gps", True) and not remote_ok:
             try:
                 lat_f = float(lat)
                 lng_f = float(lng)
             except (TypeError, ValueError):
                 return None, "Joylashuv ruxsati kerak"
+        # Remote: GPS bo'lmasa ham ruxsat (telefon GPS yo'q / rad etilgan)
+        if remote_ok and settings.get("require_gps", True):
+            try:
+                if lat is not None and lng is not None:
+                    lat_f = float(lat)
+                    lng_f = float(lng)
+            except (TypeError, ValueError):
+                lat_f = lng_f = None
 
         face_score = None
         photo_out = None
-        method = "geofence"
+        method = "remote" if remote_ok else "geofence"
 
-        if settings.get("require_qr", False):
+        if settings.get("require_qr", False) and not remote_ok:
             terr = self.consume_qr_ticket(user_id, qr_ticket or "")
             if terr:
                 return None, terr
             method = "office_qr"
-        elif settings.get("require_face", False):
+        elif settings.get("require_face", False) and not remote_ok:
             ok_m, dist, merr = self.match_face(user_id, descriptor)
             if not ok_m:
                 return None, merr or "Yuz tasdiqlanmadi"
@@ -732,7 +936,8 @@ class AttendanceStore:
             if chal_err:
                 return None, chal_err
         else:
-            method = "geofence"
+            if not remote_ok:
+                method = "geofence"
             if challenge:
                 chal_err = self.consume_challenge(user_id, challenge or "", purpose=str(kind))
                 if chal_err:
@@ -741,6 +946,11 @@ class AttendanceStore:
         slot_ok, slot_msg, is_late = self._slot_ok(kind, settings)
         if not slot_ok:
             return None, slot_msg
+        if remote_ok:
+            note_extra = "Masofadan"
+            if remote.get("note"):
+                note_extra += " · " + str(remote.get("note"))[:80]
+            slot_msg = (slot_msg + " · " + note_extra) if slot_msg else note_extra
 
         date = today_str()
         ts = now_tz().isoformat(timespec="seconds")
@@ -775,6 +985,7 @@ class AttendanceStore:
                 "face_score": round(float(face_score), 4) if face_score is not None else None,
                 "late": bool(is_late) if kind == "in" else False,
                 "method": method,
+                "remote": bool(remote_ok),
                 "note": slot_msg,
                 "photoHash": hashlib.sha256((photo_out or "")[:8000].encode("utf-8", "ignore")).hexdigest()[:16]
                 if photo_out
@@ -784,6 +995,9 @@ class AttendanceStore:
                 entry["photo"] = photo_out
 
             urec[kind] = entry
+            if remote_ok:
+                urec["remote"] = True
+                urec["remoteGrantId"] = remote.get("id")
             urec["updatedAt"] = ts
             day[str(user_id)] = urec
             self._save(self.day_key(date), day)
@@ -793,6 +1007,7 @@ class AttendanceStore:
             "date": date,
             "kind": kind,
             "late": bool(is_late) if kind == "in" else False,
+            "remote": bool(remote_ok),
             "message": slot_msg,
             "faceMatched": False,
             "faceScore": entry.get("face_score"),
@@ -1025,6 +1240,12 @@ class AttendanceStore:
         elif status in ("in", "done") and out:
             status = "done"
 
+        remote = bool(
+            (urec or {}).get("remote")
+            or (inn and (inn.get("remote") or inn.get("method") == "remote"))
+            or (out and (out.get("remote") or out.get("method") == "remote"))
+        )
+
         return {
             "userId": uid,
             "username": u.get("username"),
@@ -1034,6 +1255,7 @@ class AttendanceStore:
             "car": u.get("car") or "",
             "date": date,
             "status": status,
+            "remote": remote,
             "holatMode": self._holat_mode_from_record(urec, inn, out, status),
             "note": urec.get("manualNote") or "",
             "in": inn,
@@ -1688,6 +1910,7 @@ class AttendanceStore:
             out["atDisplay"] = self._hhmmss_from_iso(out.get("at"))
             today_rec["out"] = out
         ticket = self.get_qr_ticket(user_id)
+        remote = self.remote_grant_for(user_id, date)
         return {
             "ok": True,
             "settings": self.public_settings(uinfo),
@@ -1699,5 +1922,18 @@ class AttendanceStore:
             "today": today_rec,
             "history": self.user_history(user_id, 45),
             "user": uinfo,
+            "remoteToday": bool(remote),
+            "remoteGrant": (
+                {
+                    "id": remote.get("id"),
+                    "mode": remote.get("mode"),
+                    "date": remote.get("date"),
+                    "dateFrom": remote.get("dateFrom"),
+                    "dateTo": remote.get("dateTo"),
+                    "note": remote.get("note") or "",
+                }
+                if remote
+                else None
+            ),
             "serverNow": now_tz().isoformat(timespec="seconds"),
         }

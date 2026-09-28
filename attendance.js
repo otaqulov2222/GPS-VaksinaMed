@@ -184,8 +184,12 @@
     return false;
   }
 
+  function remoteAllowedToday() {
+    return !!(STATE && STATE.remoteToday);
+  }
+
   function punchGateOk() {
-    return geoLive.inside === true;
+    return geoLive.inside === true || remoteAllowedToday();
   }
 
   let punchCooldownUntil = 0;
@@ -286,7 +290,7 @@
       msg('Bugun allaqachon ketganingiz yozilgan', 'info');
       return;
     }
-    if (geoLive.inside !== true) {
+    if (geoLive.inside !== true && !remoteAllowedToday()) {
       msg('Faqat ofis radiusida ochiladi — «Qayta tekshirish» bosing', 'err');
       return;
     }
@@ -645,8 +649,13 @@
     const accTxt = geoLive.accuracy != null ? Math.round(geoLive.accuracy) : null;
 
     if (badge) {
-      badge.className = 'av-geo-badge ' + (geoLive.status === 'ok' ? 'ok' : (geoLive.status === 'out' || geoLive.status === 'err' ? 'bad' : 'load'));
+      badge.className = 'av-geo-badge ' + (
+        remoteAllowedToday() && geoLive.status !== 'ok'
+          ? 'ok'
+          : (geoLive.status === 'ok' ? 'ok' : (geoLive.status === 'out' || geoLive.status === 'err' ? 'bad' : 'load'))
+      );
       if (geoLive.status === 'ok') badge.textContent = '✓ Siz ofis hududidasiz';
+      else if (remoteAllowedToday()) badge.textContent = '✓ Masofadan ruxsat';
       else if (geoLive.status === 'out') badge.textContent = '✗ Ofisdan tashqarida';
       else if (geoLive.status === 'err') badge.textContent = 'GPS yoʻq';
       else badge.textContent = 'Joylashuv…';
@@ -673,6 +682,10 @@
         } else {
           gate.textContent = 'Ofis zonasidasiz — pastidagi Keldim / Ketdim tugmasini bosing.';
         }
+      } else if (remoteAllowedToday()) {
+        gate.className = 'av-gate-banner on ok';
+        const note = (STATE.remoteGrant && STATE.remoteGrant.note) ? (' · ' + STATE.remoteGrant.note) : '';
+        gate.textContent = 'Masofadan ruxsat berilgan' + note + ' — ofisga kelmasdan Keldim / Ketdim ochiq.';
       } else if (geoLive.status === 'out') {
         gate.className = 'av-gate-banner on';
         if (geoLive.message || geoLive.err) {
@@ -2052,8 +2065,8 @@
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
-  function statusLabel(s) {
-    return ({
+  function statusLabel(s, row) {
+    const base = ({
       in: 'Kelgan',
       late: 'Kechikdi',
       done: 'Kelgan',
@@ -2062,6 +2075,10 @@
       no_out: 'Kelgan',
       future: '—'
     })[s] || s;
+    if (row && row.remote && (s === 'in' || s === 'done' || s === 'late' || s === 'no_out')) {
+      return base + ' · masofa';
+    }
+    return base;
   }
 
   function statusBadgeClass(s) {
@@ -2292,7 +2309,7 @@
                   </div>
                 </td>
                 <td>${esc(r.lavozim || roleLabel(r.role))}</td>
-                <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status))}</span></td>
+                <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status, r))}</span></td>
                 <td class="mono">${r.inAt ? esc(r.inAt) : '—'}</td>
                 <td class="mono">${r.outAt ? esc(r.outAt) : '—'}</td>
                 <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.inAt && !r.outAt ? '…' : '0:00')}</td>
@@ -2391,7 +2408,7 @@
                 </td>
                 <td>${esc(roleLabel(r.role))}</td>
                 <td class="mono">${esc(r.car || '—')}</td>
-                <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status))}</span></td>
+                <td><span class="att-badge ${esc(statusBadgeClass(r.status))}">${esc(statusLabel(r.status, r))}</span></td>
                 <td class="mono">${r.inAt || (r.in ? punchTime(r.in) : '—')}${r.late_in_txt ? ' · ' + esc(r.late_in_txt) : ''}</td>
                 <td class="mono">${r.outAt || (r.out ? punchTime(r.out) : '—')}</td>
                 <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
@@ -2474,7 +2491,7 @@
                 <td class="mono">${d.outAt ? esc(d.outAt) : '—'}</td>
                 <td class="mono">${d.worked_sec != null ? fmtDur(d.worked_sec) : '—'}</td>
                 <td class="mono">${d.distance_m != null ? Math.round(d.distance_m) + ' m' : '—'}</td>
-                <td><span class="att-badge ${esc(d.status)}">${esc(statusLabel(d.status))}</span></td>
+                <td><span class="att-badge ${esc(d.status)}">${esc(statusLabel(d.status, d))}</span></td>
               </tr>`).join('') || '<tr><td colspan="6">Yozuv yo‘q</td></tr>'}
           </tbody>
         </table></div>
@@ -2520,9 +2537,9 @@
     const stepPunch = done ? 'done' : (gateOk ? 'now' : 'wait');
     const nextAction = done
       ? 'Bugun yakunlandi'
-      : (!geoLive.inside
+      : (!geoLive.inside && !remoteAllowedToday()
         ? 'Ofis zonasiga boring'
-        : (needQr && !ticketOk
+        : (needQr && !ticketOk && !remoteAllowedToday()
           ? 'Ofis QR skanerlang'
           : (!inn ? 'Keldimni bosing' : 'Ketdimni bosing')));
     const dayStatus = done ? 'Yakunlangan' : (working ? 'Ishda' : (inn ? 'Kelgan' : 'Kutilmoqda'));
@@ -2755,7 +2772,7 @@
                           <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
                           <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
                           <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
-                          <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
+                          <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status, r))}</span></td>
                         </tr>`).join('')}
                     </tbody>
                   </table></div>
@@ -2814,7 +2831,7 @@
                         <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
                         <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
                         <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
-                        <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status))}</span></td>
+                        <td><span class="att-badge ${esc(r.status)}">${esc(statusLabel(r.status, r))}</span></td>
                       </tr>`).join('')}
                   </tbody>
                 </table></div>
@@ -3126,7 +3143,7 @@
       if (!punchGateOk()) {
         hideGeoHelp();
         startGeoWatch();
-        msg('Avval ofis zonasiga kiring', 'info');
+        msg(remoteAllowedToday() ? 'Joylashuv tekshirilmoqda…' : 'Avval ofis zonasiga kiring', 'info');
         return;
       }
       const kind = nextPunchKind();
@@ -3193,7 +3210,8 @@
 
   async function executePunch(kind) {
     if (busy) return;
-    if (geoLive.inside !== true) {
+    const remoteOk = remoteAllowedToday();
+    if (geoLive.inside !== true && !remoteOk) {
       msg('Faqat ofis radiusida ochiladi — «Qayta tekshirish» bosing', 'err');
       return;
     }
@@ -3208,18 +3226,26 @@
       // Muhim: tasdiqdan keyin qayta GPS olish zona holatini buzmasin
       let gps = gpsForPunch();
       if (!gps) {
-        gps = await getGps();
+        try {
+          gps = await getGps();
+        } catch (ge) {
+          if (!remoteOk) throw ge;
+          gps = { lat: null, lng: null, accuracy: null };
+        }
       }
-      const calc = computeInside(gps.lat, gps.lng, gps.accuracy);
-      if (!calc.inside) {
-        throw new Error(
-          'Joylashuv ofis zonasidan tashqarida (~' +
-          Math.round(calc.dist || 0) +
-          ' m). «Qayta tekshirish» qilib qayta urinib ko\'ring.'
-        );
+      if (!remoteOk) {
+        const calc = computeInside(gps.lat, gps.lng, gps.accuracy);
+        if (!calc.inside) {
+          throw new Error(
+            'Joylashuv ofis zonasidan tashqarida (~' +
+            Math.round(calc.dist || 0) +
+            ' m). «Qayta tekshirish» qilib qayta urinib ko\'ring.'
+          );
+        }
+        applyGeoFix(gps.lat, gps.lng, gps.accuracy, { force: true });
+      } else if (gps.lat != null && gps.lng != null) {
+        applyGeoFix(gps.lat, gps.lng, gps.accuracy, { force: true });
       }
-      // UI ni ichkarida saqlab qolamiz
-      applyGeoFix(gps.lat, gps.lng, gps.accuracy, { force: true });
 
       const r = await api('/api/attendance/punch', {
         method: 'POST',
@@ -3311,7 +3337,7 @@
           d.outAt || '',
           d.late ? 'ha' : '',
           d.worked_sec != null ? Math.round(d.worked_sec / 60) : '',
-          statusLabel(d.status)
+          statusLabel(d.status, d)
         ]);
       });
     });
@@ -3439,7 +3465,7 @@
         d.late ? 'ha' : '',
         d.worked_sec != null ? fmtDur(d.worked_sec) : '',
         d.distance_m != null ? Math.round(d.distance_m) + ' m' : '',
-        statusLabel(d.status)
+        statusLabel(d.status, d)
       ]);
     });
     const wb = XLSX.utils.book_new();
@@ -3485,7 +3511,7 @@
         d.outAt || '—',
         d.late ? '!' : '',
         d.worked_sec != null ? fmtDur(d.worked_sec) : '—',
-        statusLabel(d.status)
+        statusLabel(d.status, d)
       ]);
     if (doc.autoTable) {
       doc.autoTable({
@@ -3739,7 +3765,7 @@
 
     rowsData.forEach((r, i) => {
       const zebra = i % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
-      const statusTxt = statusLabel(r.status);
+      const statusTxt = statusLabel(r.status, r);
       const base = xStyle({
         fill: { patternType: 'solid', fgColor: { rgb: zebra } },
         alignment: center
@@ -3856,7 +3882,7 @@
       line.push(
         r.name || r.username || '',
         r.lavozim || roleLabel(r.role),
-        statusLabel(r.status),
+        statusLabel(r.status, r),
         r.inAt || '—',
         r.outAt || '—',
         r.worked_sec != null ? fmtDur(r.worked_sec) : '—',
@@ -4083,9 +4109,48 @@
               ${canSeeOfficeCoords() ? `<button type="button" class="att-btn att-btn-face" id="btn-here">Hozirgi joyimni ofis qil</button>` : ''}
             </div>
           </div>
+
+          <div class="set-card set-card-form" id="remote-att-card">
+            <div class="set-card-h">
+              <div class="dash-head-kicker">Remote punch</div>
+              <h3>Masofadan davomat</h3>
+              <p>Viloyat / tamojnya — ofisga kelolmaydigan haydovchiga ruxsat. Geozona va VHK o‘zgarmaydi.</p>
+            </div>
+            <div class="row2">
+              <div class="fld"><label>Xodim</label>
+                <select id="remote-user"><option value="">Tanlang…</option></select>
+              </div>
+              <div class="fld"><label>Tur</label>
+                <select id="remote-mode">
+                  <option value="day">Faqat 1 kun</option>
+                  <option value="range">Sana oralig‘i</option>
+                  <option value="always">Doimiy</option>
+                </select>
+              </div>
+            </div>
+            <div class="row2" id="remote-day-row">
+              <div class="fld"><label>Sana</label><input type="date" id="remote-date" value="${esc(dayInputValue((STATE && STATE.settings && STATE.settings.today) || ''))}"></div>
+              <div class="fld"><label>Izoh</label><input id="remote-note" placeholder="masalan: tamojnya / viloyat"></div>
+            </div>
+            <div class="row2" id="remote-range-row" hidden>
+              <div class="fld"><label>Dan</label><input type="date" id="remote-from"></div>
+              <div class="fld"><label>Gacha</label><input type="date" id="remote-to"></div>
+            </div>
+            <div class="set-form-actions">
+              <button type="button" class="att-btn att-btn-in" id="btn-remote-grant">Ruxsat berish</button>
+              <button type="button" class="att-btn att-btn-face" id="btn-remote-refresh">Yangilash</button>
+            </div>
+            <div class="scroll-x" style="margin-top:12px">
+              <table class="att-table" id="remote-grants-table">
+                <thead><tr><th>Xodim</th><th>Tur</th><th>Muddat</th><th>Izoh</th><th></th></tr></thead>
+                <tbody><tr><td colspan="5">Yuklanmoqda…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       `;
       document.getElementById('btn-save-set').onclick = saveSettings;
+      bindRemoteAttAdmin();
       const btnHere = document.getElementById('btn-here');
       if (btnHere) {
         btnHere.onclick = async () => {
@@ -4598,6 +4663,141 @@
 
   function printOfficeQr() {
     printOfficeQrPoster();
+  }
+
+  function remoteModeLabel(g) {
+    const m = String((g && g.mode) || 'day');
+    if (m === 'always') return 'Doimiy';
+    if (m === 'range') return 'Oraliq';
+    return '1 kun';
+  }
+
+  function remotePeriodTxt(g) {
+    if (!g) return '—';
+    if (g.mode === 'always') return 'Doim';
+    if (g.mode === 'range') return (g.dateFrom || '') + ' → ' + (g.dateTo || '');
+    return g.date || '—';
+  }
+
+  async function loadRemoteGrantsTable() {
+    const tb = document.querySelector('#remote-grants-table tbody');
+    if (!tb) return;
+    try {
+      const d = await api('/api/attendance/remote');
+      const grants = (d && d.grants) || [];
+      if (!grants.length) {
+        tb.innerHTML = '<tr><td colspan="5">Faol ruxsat yo‘q</td></tr>';
+        return;
+      }
+      tb.innerHTML = grants.map((g) => `
+        <tr>
+          <td><b>${esc(g.name || g.username || g.userId)}</b><div class="att-sub">@${esc(g.username || '')}</div></td>
+          <td>${esc(remoteModeLabel(g))}</td>
+          <td class="mono">${esc(remotePeriodTxt(g))}</td>
+          <td>${esc(g.note || '—')}</td>
+          <td><button type="button" class="att-link-btn" data-remote-revoke="${esc(g.id)}">Bekor</button></td>
+        </tr>`).join('');
+      tb.querySelectorAll('[data-remote-revoke]').forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm('Masofadan ruxsatni bekor qilasizmi?')) return;
+          try {
+            await api('/api/attendance/remote', {
+              method: 'POST',
+              body: JSON.stringify({ action: 'revoke', id: btn.getAttribute('data-remote-revoke') })
+            });
+            msg('Ruxsat bekor qilindi', 'ok');
+            loadRemoteGrantsTable();
+          } catch (e) {
+            msg(e.message || 'Bekor qilinmadi', 'err');
+          }
+        };
+      });
+    } catch (e) {
+      tb.innerHTML = '<tr><td colspan="5">' + esc(e.message || 'Xato') + '</td></tr>';
+    }
+  }
+
+  async function bindRemoteAttAdmin() {
+    const modeEl = document.getElementById('remote-mode');
+    const dayRow = document.getElementById('remote-day-row');
+    const rangeRow = document.getElementById('remote-range-row');
+    const syncMode = () => {
+      const m = modeEl ? modeEl.value : 'day';
+      if (dayRow) dayRow.hidden = m === 'range';
+      if (rangeRow) rangeRow.hidden = m !== 'range';
+      const noteFld = document.getElementById('remote-note');
+      if (noteFld && dayRow) {
+        // note stays in day row; for range/always also visible via day row when not range-only
+        if (m === 'range' && dayRow) {
+          // keep note accessible: show day row note only when day; for range put note in range - simpler leave note always in day row and show day row for always/day
+        }
+      }
+      if (dayRow) {
+        if (m === 'always') {
+          dayRow.hidden = false;
+          const dateEl = document.getElementById('remote-date');
+          if (dateEl) dateEl.closest('.fld').hidden = true;
+        } else if (m === 'day') {
+          dayRow.hidden = false;
+          const dateEl = document.getElementById('remote-date');
+          if (dateEl && dateEl.closest('.fld')) dateEl.closest('.fld').hidden = false;
+        } else {
+          // range: show note somehow - unhide day row but hide date
+          dayRow.hidden = false;
+          const dateEl = document.getElementById('remote-date');
+          if (dateEl && dateEl.closest('.fld')) dateEl.closest('.fld').hidden = true;
+        }
+      }
+    };
+    if (modeEl) modeEl.onchange = syncMode;
+    syncMode();
+
+    const sel = document.getElementById('remote-user');
+    if (sel) {
+      try {
+        const u = await api('/api/users');
+        const users = ((u && u.users) || []).filter((x) => x && x.active !== false && x.role !== 'admin_pro');
+        sel.innerHTML = '<option value="">Tanlang…</option>' + users.map((x) =>
+          `<option value="${esc(x.id)}">${esc(x.name || x.username)} (${esc(x.role || '')}${x.car ? ' · ' + esc(x.car) : ''})</option>`
+        ).join('');
+      } catch (e) {
+        sel.innerHTML = '<option value="">Xodimlar yuklanmadi</option>';
+      }
+    }
+
+    const grantBtn = document.getElementById('btn-remote-grant');
+    if (grantBtn) {
+      grantBtn.onclick = async () => {
+        const userId = sel && sel.value;
+        if (!userId) {
+          msg('Xodimni tanlang', 'err');
+          return;
+        }
+        const mode = (modeEl && modeEl.value) || 'day';
+        const body = {
+          action: 'grant',
+          userId,
+          mode,
+          note: (document.getElementById('remote-note') && document.getElementById('remote-note').value) || ''
+        };
+        if (mode === 'day') {
+          body.date = (document.getElementById('remote-date') && document.getElementById('remote-date').value) || '';
+        } else if (mode === 'range') {
+          body.dateFrom = (document.getElementById('remote-from') && document.getElementById('remote-from').value) || '';
+          body.dateTo = (document.getElementById('remote-to') && document.getElementById('remote-to').value) || '';
+        }
+        try {
+          await api('/api/attendance/remote', { method: 'POST', body: JSON.stringify(body) });
+          msg('Masofadan ruxsat berildi', 'ok');
+          loadRemoteGrantsTable();
+        } catch (e) {
+          msg(e.message || 'Ruxsat berilmadi', 'err');
+        }
+      };
+    }
+    const refBtn = document.getElementById('btn-remote-refresh');
+    if (refBtn) refBtn.onclick = () => loadRemoteGrantsTable();
+    loadRemoteGrantsTable();
   }
 
   async function saveSettings() {

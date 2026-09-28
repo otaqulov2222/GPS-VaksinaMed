@@ -4217,6 +4217,19 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "settings": s})
             return
 
+        if path == "/api/attendance/remote":
+            sess = self.require_ops_read()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            self.send_json({
+                "ok": True,
+                "grants": ATTENDANCE.list_remote_grants(active_only=True),
+            })
+            return
+
         if path == "/api/attendance/qr":
             sess = self.require_ops_read()
             if not sess:
@@ -5549,6 +5562,51 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             pub.pop("office_qr_secret", None)
             pub["officeCoordsVisible"] = True
             self.send_json({"ok": True, "settings": pub})
+            return
+
+        if path == "/api/attendance/remote":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            action = str(body.get("action") or "grant").strip().lower()
+            if action == "revoke":
+                ok, err = ATTENDANCE.revoke_remote(str(body.get("id") or body.get("grantId") or ""))
+                if not ok:
+                    self.send_json({"ok": False, "error": err or "Bekor qilinmadi"}, 400)
+                    return
+                self.send_json({
+                    "ok": True,
+                    "grants": ATTENDANCE.list_remote_grants(active_only=True),
+                })
+                return
+            uid = str(body.get("userId") or body.get("user_id") or "").strip()
+            users = STORE.list_users(viewer_role=sess.get("role"))
+            meta = next((u for u in users if str(u.get("id")) == uid), None)
+            if not meta:
+                self.send_json({"ok": False, "error": "Xodim topilmadi"}, 404)
+                return
+            grant, err = ATTENDANCE.grant_remote(
+                user_id=uid,
+                username=str(meta.get("username") or ""),
+                name=str(meta.get("name") or ""),
+                mode=str(body.get("mode") or "day"),
+                date=body.get("date"),
+                date_from=body.get("dateFrom") or body.get("date_from"),
+                date_to=body.get("dateTo") or body.get("date_to"),
+                note=str(body.get("note") or ""),
+                created_by=str(sess.get("username") or ""),
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({
+                "ok": True,
+                "grant": grant,
+                "grants": ATTENDANCE.list_remote_grants(active_only=True),
+            })
             return
 
         if path == "/api/attendance/geo-check":
