@@ -2003,6 +2003,7 @@ function monthDayDetailHtml(plate) {
   const info = fleet().find(f => f.car === plate) || { car: plate, name: '—' };
   const car = getCar(plate);
   const rows = calcCar(car);
+  const t = totals(rows);
   const dim = daysInMonth(STATE.month);
   return `
     <div class="month-days-wrap">
@@ -2011,6 +2012,7 @@ function monthDayDetailHtml(plate) {
         <strong>${esc(plateDisp(plate))}</strong>
         <span>${esc(info.name)}</span>
         <span class="muted">${dim} kun</span>
+        <span class="month-days-car-jami">Jami: ${fmt(t.km, 2)} km · ${money(t.cost)}</span>
       </div>
       <div class="scroll-x">
         <table class="gtable gtable-days">
@@ -2042,7 +2044,24 @@ function monthDayDetailHtml(plate) {
               <td class="num ${remainClass(r.gasR)}">${fmt(r.gasR, 4)}</td>
               <td class="num ${remainClass(r.benR)}">${fmt(r.benR, 4)}</td>
             </tr>`;
-          }).join('')}</tbody>
+          }).join('')}
+          <tr class="month-car-total-row">
+            <td colspan="2"><b>JAMI — ${esc(plateDisp(plate))}</b></td>
+            <td class="num"><b>${fmt(t.km, 2)}</b></td>
+            <td class="num"><b>${fmt(t.gasKm, 2)}</b></td>
+            <td class="num"><b>${fmt(t.liqKm, 2)}</b></td>
+            <td></td><td></td>
+            <td class="num"><b>${fmt(t.gasIn, 4)}</b></td>
+            <td class="num"><b>${money(t.gasSum)}</b></td>
+            <td class="num"><b>${fmt(t.benzinIn, 4)}</b></td>
+            <td class="num"><b>${money(t.benzinSum)}</b></td>
+            <td class="num"><b>${money(t.extra)}</b></td>
+            <td class="num"><b>${fmt(t.gasUsed, 4)}</b></td>
+            <td class="num"><b>${fmt(t.benUsed, 4)}</b></td>
+            <td class="num ${remainClass(t.gasR)}"><b>${fmt(t.gasR, 4)}</b></td>
+            <td class="num ${remainClass(t.benR)}"><b>${fmt(t.benR, 4)}</b></td>
+          </tr>
+          </tbody>
         </table>
       </div>
     </div>`;
@@ -2100,7 +2119,7 @@ function renderMonth() {
     <div class="card"><div class="card-h"><h3>Oylik jamlanma — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
       <button class="btn btn-sm no-print" type="button" id="btn-pdf-month" title="Jami + har mashina kunma-kun PDF">PDF · jami + kunma-kun</button></div>
     <div class="card-b">
-      <p class="note no-print" style="margin:0 0 10px;">Chapdagi <b>▶</b> yoki mashina qatoriga bosing — <b>kunma-kun</b> jadval ochiladi. Yopish uchun qayta bosing.</p>
+      <p class="note no-print" style="margin:0 0 10px;">Har qator — <b>shu mashinaning oylik jamisi</b>. Chapdagi <b>▶</b> yoki qatorga bosing — kunma-kun ochiladi; pastda yana shu mashina <b>JAMI</b> qatori bor. Eng pastda — barcha mashinalar jami.</p>
       ${mobSwipeHint()}<div class="scroll-x">
       <table class="gtable" id="month-summary-table">
         <thead><tr><th></th><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
@@ -2116,7 +2135,7 @@ function renderMonth() {
           <td class="num ${remainClass(r.gasR)}">${fmt(r.gasR, 4)}</td>
           <td class="num ${remainClass(r.benR)}">${fmt(r.benR, 4)}</td>
         </tr>`).join('')}
-        <tr class="month-total-row"><td></td><td colspan="3"><b>JAMI</b></td>
+        <tr class="month-total-row"><td></td><td colspan="3"><b>JAMI (barcha mashinalar)</b></td>
           <td class="num"><b>${fmt(sum.km, 2)}</b></td>
           <td class="num"><b>${fmt(sum.gasKm, 2)}</b></td>
           <td class="num"><b>${fmt(sum.liqKm, 2)}</b></td>
@@ -4667,7 +4686,7 @@ async function downloadFuelPdf(kind) {
       fmt(r.benR, 3)
     ]);
     body.push([
-      { content: 'JAMI', colSpan: 3, styles: { fontStyle: 'bold' } },
+      { content: 'JAMI (barcha)', colSpan: 3, styles: { fontStyle: 'bold' } },
       fmt(sum.km, 2), fmt(sum.gasKm, 2), fmt(sum.liqKm, 2),
       fmt(sum.gasIn, 2), money(sum.gasSum),
       fmt(sum.benzinIn, 2), money(sum.benzinSum), money(sum.extra), money(sum.cost), '', ''
@@ -4740,6 +4759,24 @@ async function downloadFuelPdf(kind) {
         fmt(r.gasR, 3),
         fmt(r.benR, 3)
       ]);
+      // Har mashina oxirida alohida JAMI (faqat shu mashina)
+      dayBody.push([
+        { content: 'JAMI', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [232, 236, 242] } },
+        { content: fmt(sumRow.km, 2), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: fmt(sumRow.gasKm, 2), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: fmt(sumRow.liqKm, 2), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: '', styles: { fillColor: [232, 236, 242] } },
+        { content: '', styles: { fillColor: [232, 236, 242] } },
+        { content: fmt(sumRow.gasIn, 3), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: money(sumRow.gasSum), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: fmt(sumRow.benzinIn, 3), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: money(sumRow.benzinSum), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: money(sumRow.extra), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: fmt(sumRow.gasUsed, 3), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: fmt(sumRow.benUsed, 3), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right' } },
+        { content: fmt(sumRow.gasR, 3), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right', textColor: n(sumRow.gasR) < 0 ? [155, 28, 28] : [18, 21, 28] } },
+        { content: fmt(sumRow.benR, 3), styles: { fontStyle: 'bold', fillColor: [232, 236, 242], halign: 'right', textColor: n(sumRow.benR) < 0 ? [155, 28, 28] : [18, 21, 28] } }
+      ]);
       fuelPdfTable(doc, w, {
         pageLabel,
         startY: yPos,
@@ -4772,6 +4809,7 @@ async function downloadFuelPdf(kind) {
         },
         didParseCell: (data) => {
           if (data.section !== 'body') return;
+          if (data.row.index >= dayRows.length) return; // JAMI qatori
           const r = dayRows[data.row.index];
           if (!r) return;
           if (data.column.index === 14 && n(r.gasR) < 0) data.cell.styles.textColor = [155, 28, 28];
