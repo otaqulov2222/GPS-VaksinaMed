@@ -811,12 +811,19 @@ class WialonGPSClient {
             isStop,
             isTrip,
             place,
-            inTime: this.formatClock(this.cellText(startCell)),
-            outTime: this.formatClock(this.cellText(endCell)),
+            inTime: this.cellClock(startCell),
+            outTime: this.cellClock(endCell),
             duration: this.cellText(c[6] || c[5] || ''),
             lat: loc.lat || start.lat || (r.pos ? r.pos.y : 0),
             lng: loc.lng || start.lng || (r.pos ? r.pos.x : 0)
         };
+    }
+
+    /** Hisobot vaqti: matn API sessiyada UTC keladi — epoch ("v") dan Toshkent soati */
+    cellClock(cell) {
+        const ts = cell && typeof cell === 'object' ? Number(cell.v) : 0;
+        if (ts > 1e9) return this.formatTime(ts);
+        return this.formatClock(this.cellText(cell));
     }
 
     formatClock(s) {
@@ -923,8 +930,8 @@ class WialonGPSClient {
                         num: chronology.stops.length + 1,
                         type: 'stop',
                         place: this.cellText(loc) || 'Noma\'lum manzil',
-                        inTime: this.formatClock(this.cellText(begin)),
-                        outTime: this.formatClock(this.cellText(end)),
+                        inTime: this.cellClock(begin),
+                        outTime: this.cellClock(end),
                         duration: this.cellText(durC || ''),
                         lat: locXY.lat,
                         lng: locXY.lng

@@ -276,6 +276,44 @@ def normalize_clock(s):
     return "%02d:%02d:%02d" % (h, mi, sec)
 
 
+# To'xtash inTime/outTime qaysi zonada saqlangani (yozuvdagi "clockTz").
+# Belgisiz eski yozuvlar Wialon hisobot matnidan olingan — UTC.
+CLOCK_TZ = 5
+
+
+def shift_clock(s, hours=CLOCK_TZ):
+    """HH:MM[:SS] ni soatga surish (24 soat aylanadi); vaqt bo'lmasa o'zgarmaydi."""
+    raw = str(s or "").strip()
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", raw)
+    if not m:
+        return s
+    sec = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3) or 0)
+    sec = (sec + int(hours) * 3600) % 86400
+    return "%02d:%02d:%02d" % (sec // 3600, (sec % 3600) // 60, sec % 60)
+
+
+def upgrade_record_clock(rec):
+    """Eski (UTC) yozuvni Toshkent soatiga o'tkazish. O'zgargan bo'lsa True."""
+    if not isinstance(rec, dict) or rec.get("clockTz") == CLOCK_TZ:
+        return False
+    for st in rec.get("stops") or []:
+        if isinstance(st, dict):
+            for k in ("inTime", "outTime"):
+                if st.get(k):
+                    st[k] = shift_clock(st[k])
+    rec["clockTz"] = CLOCK_TZ
+    return True
+
+
+def upgrade_review_key(key):
+    """vmStopKey: date|car|HH:MM:SS|lat|lng|place — vaqt qismini Toshkentga surish."""
+    parts = str(key).split("|")
+    if len(parts) < 6:
+        return key
+    parts[2] = shift_clock(parts[2])
+    return "|".join(parts)
+
+
 def duration_sec_from_inout(in_t, out_t):
     if not in_t or not out_t:
         return 0
@@ -784,6 +822,19 @@ class WialonClient:
         return str(v)
 
     @staticmethod
+    def cell_clock(v):
+        """Hisobot vaqti: matn API sessiyada UTC keladi — epoch ("v") dan Toshkent soati."""
+        if isinstance(v, dict):
+            try:
+                ts = int(v.get("v") or 0)
+            except (TypeError, ValueError):
+                ts = 0
+            if ts > 1000000000:
+                return datetime.fromtimestamp(ts, TZ5).strftime("%H:%M:%S")
+        m = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", WialonClient.cell_text(v))
+        return normalize_clock(m.group(0)) if m else ""
+
+    @staticmethod
     def cell_num(v):
         m = re.search(r"-?\d+(?:\.\d+)?", str(WialonClient.cell_text(v)).replace(",", "."))
         return float(m.group(0)) if m else 0.0
@@ -904,14 +955,12 @@ class WialonClient:
             place = self.cell_text(loc_cell) or self.cell_text(c[5] if len(c) > 5 else "") or "Noma'lum manzil"
             if is_coord_place(place) and (lat or lng):
                 place = "%.5f, %.5f" % (lat, lng)
-            in_t = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", self.cell_text(start_cell))
-            out_t = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", self.cell_text(end_cell))
             dur = self.cell_text(c[6] if len(c) > 6 else c[5] if len(c) > 5 else "")
             return {
                 "is_stop": is_stop,
                 "place": place,
-                "inTime": (normalize_clock(in_t.group(0)) if in_t else ""),
-                "outTime": (normalize_clock(out_t.group(0)) if out_t else ""),
+                "inTime": self.cell_clock(start_cell),
+                "outTime": self.cell_clock(end_cell),
                 "duration": dur,
                 "lat": lat,
                 "lng": lng,
@@ -951,12 +1000,10 @@ class WialonClient:
                 place = self.cell_text(loc) or "Noma'lum manzil"
                 if is_coord_place(place) and (lat or lng):
                     place = "%.5f, %.5f" % (lat, lng)
-                in_t = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", self.cell_text(begin))
-                out_t = re.search(r"\d{1,2}:\d{2}(?::\d{2})?", self.cell_text(end))
                 out.append({
                     "place": place,
-                    "inTime": normalize_clock(in_t.group(0)) if in_t else "",
-                    "outTime": normalize_clock(out_t.group(0)) if out_t else "",
+                    "inTime": self.cell_clock(begin),
+                    "outTime": self.cell_clock(end),
                     "duration": self.cell_text(dur_c),
                     "lat": lat,
                     "lng": lng,
@@ -2483,6 +2530,7 @@ def sync_today(
                 "points": points if isinstance(points, list) else [],
                 "analysis": analysis,
                 "syncedAt": int(time.time()),
+                "clockTz": CLOCK_TZ,
             }
             cars[drv["car"]].pop("stale", None)
             done += 1

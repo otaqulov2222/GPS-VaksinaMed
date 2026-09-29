@@ -125,6 +125,8 @@ function gpsConfigSafe(cfg) {
     };
 }
 
+const VM_LOCAL_KEY = 'vm_gps_v4';
+
 function saveAll() {
     try {
         // Trek nuqtalari localStorage ga yozilmasin — stringify sekin + kvota
@@ -146,12 +148,13 @@ function saveAll() {
                     stats: rec.stats,
                     analysis: rec.analysis,
                     score: rec.score,
-                    syncedAt: rec.syncedAt
+                    syncedAt: rec.syncedAt,
+                    clockTz: rec.clockTz
                     // points — faqat xotirada
                 };
             });
         });
-        localStorage.setItem('vm_gps_v3', JSON.stringify({
+        localStorage.setItem(VM_LOCAL_KEY, JSON.stringify({
             data: slim,
             history: hist,
             fuelNorms: STATE.fuelNorms,
@@ -171,9 +174,17 @@ function saveAll() {
 
 function loadAll() {
     try {
-        const s = localStorage.getItem('vm_gps_v3');
+        let s = localStorage.getItem(VM_LOCAL_KEY);
+        let legacy = false;
+        if (!s) {
+            // v3 to'xtash soatlari UTC edi — kunlar serverdan qayta olinadi
+            s = localStorage.getItem('vm_gps_v3');
+            legacy = !!s;
+            localStorage.removeItem('vm_gps_v3');
+        }
         if (!s) return;
         const p = JSON.parse(s);
+        if (legacy) p.data = {};
         STATE.data      = p.data      || {};
         STATE.history   = p.history   || [];
         STATE.fuelNorms = p.fuelNorms || { gas:14, benzin:12, diesel:10 };
@@ -775,7 +786,8 @@ async function processXLSX(file) {
                     date:     dateFound,
                     stats:    stats,
                     stops:    stops,
-                    analysis: analyzeDataLocal(stops, carKey, stats, dateFound)
+                    analysis: analyzeDataLocal(stops, carKey, stats, dateFound),
+                    clockTz:  5
                 };
 
                 if (!STATE.data[dateFound]) STATE.data[dateFound] = {};
@@ -3491,7 +3503,8 @@ async function syncFromGPS(dateVal, cfg, opts) {
                     stops: scored.stops || stops,
                     points,
                     analysis: scored.analysis,
-                    syncedAt: Date.now()
+                    syncedAt: Date.now(),
+                    clockTz: 5
                 };
                 STATE.data[dateVal] = Object.assign({}, STATE.data[dateVal] || {}, fresh);
                 done = Object.keys(fresh).length;

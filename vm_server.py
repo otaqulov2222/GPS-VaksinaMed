@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import argparse
+import posixpath
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -72,7 +73,18 @@ PUBLIC_STATIC_EXT = {
     ".ico",
     ".webmanifest",
 }
-BLOCKED_EXT = {".py", ".bat", ".md", ".txt", ".env"}
+BLOCKED_EXT = {".py", ".pyc", ".bat", ".sh", ".ps1", ".md", ".txt", ".env", ".log", ".sqlite", ".db", ".pem", ".key"}
+BLOCKED_DIRS = {
+    "data",
+    "agent-transcripts",
+    "scripts",
+    "tests",
+    "secrets",
+    "node_modules",
+    "__pycache__",
+    "kunlik kiritish uchun malumotlar",
+    "yunalishlar dorixona mashina",
+}
 BLOCKED_NAMES = {
     "users.json",
     "vm_server.py",
@@ -582,6 +594,18 @@ def make_persist(root):
     # Render’da deploydan keyin ham qoladigan disk (volume) bo‘lsa, uni shu yerga ulab qo‘ying.
     # Agar PERSIST_DIR berilmasa, eski holatdagi workspace ichidagi lokal fayl ishlaydi.
     return FilePersist(persist_root)
+
+
+def upgrade_report_cars_clock(cars):
+    """clockTz belgisiz yozuv (eski sync / eski brauzer, UTC soat) — Toshkent soatiga. O'zgargan bo'lsa True."""
+    if not isinstance(cars, dict):
+        return False
+    import gps_sync
+
+    changed = False
+    for rec in cars.values():
+        changed = gps_sync.upgrade_record_clock(rec) or changed
+    return changed
 
 
 class AuthStore:
@@ -1634,7 +1658,10 @@ class OfficeStore:
             return None
         with self.lock:
             data = self._load("office:report:" + date, None)
-            return data if isinstance(data, dict) else None
+            if not isinstance(data, dict):
+                return None
+            upgrade_report_cars_clock(data.get("cars"))
+            return data
 
     def pharmacy_place_suggestions(self, limit_days=60):
         """GPS joylari: Boomerang geozona katalogi + hisobot to'xtashlari.
@@ -1797,6 +1824,7 @@ class OfficeStore:
             return None, "Sana noto'g'ri"
         if not isinstance(cars, dict):
             return None, "Ma'lumot noto'g'ri"
+        upgrade_report_cars_clock(cars)
         payload = {
             "date": date,
             "savedAt": iso_now(),
@@ -1806,6 +1834,39 @@ class OfficeStore:
         with self.lock:
             self._save("office:report:" + date, payload)
         return payload, None
+
+    def migrate_stop_clock(self):
+        """Bir martalik: eski hisobot to'xtash vaqtlari (UTC) va review kalitlarini Toshkentga o'tkazish."""
+        import gps_sync
+
+        with self.lock:
+            done = self._load("office:migrations", {})
+            if not isinstance(done, dict):
+                done = {}
+            if done.get("stop_clock_tz5"):
+                return None
+            # Avval band qilamiz — server va GitHub cron bir vaqtda boshlasa ikki marta surilmasin
+            done["stop_clock_tz5"] = "running " + iso_now()
+            self._save("office:migrations", done)
+            reports = 0
+            for key in self.persist.keys("office:report:"):
+                data = self._load(key, None)
+                cars = data.get("cars") if isinstance(data, dict) else None
+                if not isinstance(cars, dict):
+                    continue
+                if upgrade_report_cars_clock(cars):
+                    self._save(key, data)
+                    reports += 1
+            review_days = 0
+            for key in self.persist.keys("office:reviews:"):
+                data = self._load(key, {})
+                if not isinstance(data, dict) or not data:
+                    continue
+                self._save(key, {gps_sync.upgrade_review_key(k): v for k, v in data.items()})
+                review_days += 1
+            done["stop_clock_tz5"] = iso_now()
+            self._save("office:migrations", done)
+        return {"reports": reports, "reviewDays": review_days}
 
     def gps_config_internal(self):
         with self.lock:
@@ -3884,15 +3945,19 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         return False
 
     def is_blocked(self, path):
-        name = os.path.basename(path).lower()
+        # Fayl dekodlangan yo'l bo'yicha beriladi — tekshiruv ham shunday bo'lsin (%2E, \, ..)
+        decoded = urllib.parse.unquote(path or "/").replace("\\", "/")
+        norm = posixpath.normpath("/" + decoded.lstrip("/")).lower()
+        segments = [s for s in norm.split("/") if s]
+        if any(s.startswith(".") and s != ".well-known" for s in segments):
+            return True
+        if segments and segments[0] in BLOCKED_DIRS:
+            return True
+        name = segments[-1].rstrip(" .") if segments else ""
         if name in BLOCKED_NAMES:
             return True
-        if name.startswith(".env"):
-            return True
-        ext = os.path.splitext(path)[1].lower()
+        ext = os.path.splitext(name)[1]
         if ext in BLOCKED_EXT:
-            return True
-        if path.startswith("/data/") or path.startswith("/agent-transcripts"):
             return True
         return False
 
@@ -4009,6 +4074,23 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         return super().do_GET()
+
+    def do_HEAD(self):
+        path = urllib.parse.urlparse(self.path).path or "/"
+        if self.is_blocked(path):
+            self.send_error(403, "Ruxsat yo'q")
+            return
+        if path.startswith("/api/"):
+            self.send_error(405, "Method Not Allowed")
+            return
+        if not self.is_public(path) and not self.current_session():
+            self.send_error(401, "Kirish talab qilinadi")
+            return
+        return super().do_HEAD()
+
+    def list_directory(self, path):
+        self.send_error(404, "Not found")
+        return None
 
     def serve_page_file(self, filename):
         """Oddiy HTML sahifa (UTF-8, no-store)."""
@@ -6095,6 +6177,12 @@ def init_app(base_dir=None):
         except Exception as e:
             print("[attendance-init]", e)
             ATTENDANCE = None
+        try:
+            mig = OFFICE.migrate_stop_clock()
+            if mig:
+                print("[stop-clock-migrate]", mig)
+        except Exception as e:
+            print("[stop-clock-migrate]", e)
         seed_gps_from_env(OFFICE)
         if not is_serverless():
             start_gps_worker(OFFICE, base_dir)
