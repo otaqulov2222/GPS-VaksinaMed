@@ -92,6 +92,8 @@ BLOCKED_NAMES = {
     "hr-logistika-ulash.md",
 }
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+ATT_EXEMPT_MSG = "Siz davomat ro'yxatiga kiritilmagansiz — Keldim/Ketdim belgilash shart emas"
+ATT_EXEMPT_STAFF_MSG = "Bu xodim davomatdan ozod qilingan (Admin panel → Foydalanuvchilar)"
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 # Toza URL: /fuel → fuel.html (brauzerda .html ko‘rinmasin)
@@ -235,6 +237,18 @@ def retired_plates():
         return _retired(DIRECTORY)
     except Exception:
         return frozenset()
+
+
+def attendance_roster(users):
+    """Davomat ro'yxati: parkdan chiqarilgan mashina haydovchilari va ozod/tizim userlarisiz."""
+    retired = retired_plates()
+    users = [
+        u for u in (users or [])
+        if not (u.get("role") == "driver" and compact_plate(u.get("car")) in retired)
+    ]
+    if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
+        users = ATTENDANCE.roster_users(users)
+    return users
 
 
 def normalize_due_ymd(v):
@@ -816,7 +830,11 @@ class AuthStore:
             "name": u.get("name") or u["username"],
             "role": u.get("role") or "admin",
             "car": u.get("car") or "",
+            "carRetired": bool(
+                (u.get("role") == "driver") and compact_plate(u.get("car")) in retired_plates()
+            ),
             "active": bool(u.get("active", True)),
+            "attendanceExempt": bool(u.get("attendance_exempt")),
             "protected": bool(u.get("protected")),
             "created_at": u.get("created_at"),
             "last_login": u.get("last_login"),
@@ -954,6 +972,15 @@ class AuthStore:
                 show_pw = viewer_role in ("admin_pro", "admin")
                 out.append(self.public_user(u, include_password=show_pw))
             return out
+
+    def is_attendance_exempt(self, uid):
+        with self.lock:
+            user = self.find_user(self._read(), uid=uid)
+            if not user:
+                return False
+            if user.get("attendance_exempt"):
+                return True
+            return user.get("role") == "driver" and compact_plate(user.get("car")) in retired_plates()
 
     def can_manage(self, actor_role, target):
         if not target:
@@ -1130,11 +1157,19 @@ class AuthStore:
                             self._removed_sids.add(sid)
                     self._save_sessions()
 
+            # Davomatdan ozod: Davomat ro'yxati/hisobotlarida ko'rinmaydi, boshqa bo'limlarda qoladi
+            if "attendanceExempt" in body and body.get("attendanceExempt") is not None:
+                user["attendance_exempt"] = bool(body.get("attendanceExempt"))
+
             self._audit(
                 data,
                 "user_edit",
                 actor,
-                "%s · %s" % (user.get("username"), user.get("role")),
+                "%s · %s%s" % (
+                    user.get("username"),
+                    user.get("role"),
+                    " · davomatdan ozod" if user.get("attendance_exempt") else "",
+                ),
             )
             self._write(data)
             # Sessiyadagi ism/login yangilansin
@@ -4176,16 +4211,16 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not ATTENDANCE:
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
-            self.send_json(
-                ATTENDANCE.me_payload(
-                    str(sess["user_id"]),
-                    {
-                        "username": sess.get("username"),
-                        "name": sess.get("name"),
-                        "role": sess.get("role"),
-                    },
-                )
+            payload = ATTENDANCE.me_payload(
+                str(sess["user_id"]),
+                {
+                    "username": sess.get("username"),
+                    "name": sess.get("name"),
+                    "role": sess.get("role"),
+                },
             )
+            payload["attendanceExempt"] = STORE.is_attendance_exempt(sess["user_id"])
+            self.send_json(payload)
             return
 
         if path == "/api/attendance/board":
@@ -4204,8 +4239,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             users = STORE.list_users(viewer_role=sess.get("role"))
             # Faqat faol haydovchi + adminlar (Admin Pro davomat ro'yxatida ko'rinmaydi)
             users = [u for u in users if u.get("active", True)]
-            if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
-                users = ATTENDANCE.roster_users(users)
+            users = attendance_roster(users)
             self.send_json({"ok": True, **ATTENDANCE.board(date, users)})
             return
 
@@ -4247,8 +4281,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
                 month = att_mod.today_str()[:7]
             users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
-            if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
-                users = ATTENDANCE.roster_users(users)
+            users = attendance_roster(users)
             self.send_json({"ok": True, **ATTENDANCE.month_report(month, users)})
             return
 
@@ -4265,8 +4298,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             date_from = (qs.get("from") or [""])[0]
             date_to = (qs.get("to") or [""])[0]
             users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
-            if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
-                users = ATTENDANCE.roster_users(users)
+            users = attendance_roster(users)
             self.send_json({
                 "ok": True,
                 **ATTENDANCE.hisobot(period, users, date=date, date_from=date_from, date_to=date_to),
@@ -4291,8 +4323,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
                 month = att_mod.today_str()[:7]
             users = STORE.list_users(viewer_role=sess.get("role"))
-            if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
-                users = ATTENDANCE.roster_users(users)
+            users = attendance_roster(users)
             meta = next((u for u in users if str(u.get("id")) == str(uid)), None)
             if not meta:
                 self.send_json({"ok": False, "error": "Foydalanuvchi topilmadi"}, 404)
@@ -5637,6 +5668,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not ATTENDANCE:
                 self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
                 return
+            if STORE.is_attendance_exempt(sess["user_id"]):
+                self.send_json({"ok": False, "error": ATT_EXEMPT_MSG}, 400)
+                return
             result, err = ATTENDANCE.punch(
                 user_id=str(sess["user_id"]),
                 username=str(sess.get("username") or ""),
@@ -5714,6 +5748,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 uid = str(body.get("userId") or body.get("user_id") or "").strip()
                 users = STORE.list_users(viewer_role=sess.get("role"))
                 meta = next((u for u in users if str(u.get("id")) == uid), None) if uid else None
+                if meta and (meta.get("attendanceExempt") or meta.get("carRetired")):
+                    self.send_json({"ok": False, "error": ATT_EXEMPT_STAFF_MSG}, 400)
+                    return
                 grant, err = ATTENDANCE.update_remote(
                     str(body.get("id") or body.get("grantId") or ""),
                     user_id=uid or None,
@@ -5740,6 +5777,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             meta = next((u for u in users if str(u.get("id")) == uid), None)
             if not meta:
                 self.send_json({"ok": False, "error": "Xodim topilmadi"}, 404)
+                return
+            if meta.get("attendanceExempt") or meta.get("carRetired"):
+                self.send_json({"ok": False, "error": ATT_EXEMPT_STAFF_MSG}, 400)
                 return
             grant, err = ATTENDANCE.grant_remote(
                 user_id=uid,
@@ -5796,6 +5836,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     {"ok": False, "error": "Xodim topilmadi yoki ruxsat yo'q"},
                     404,
                 )
+                return
+            if meta.get("attendanceExempt") or meta.get("carRetired"):
+                self.send_json({"ok": False, "error": ATT_EXEMPT_STAFF_MSG}, 400)
                 return
             result, err = ATTENDANCE.admin_save_record(
                 editor=sess,

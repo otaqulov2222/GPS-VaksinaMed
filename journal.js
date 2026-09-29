@@ -93,6 +93,7 @@ function inRange(entry) {
 function filtered() {
   const q = (J.q || '').toLowerCase();
   return (J.items || []).filter(it => {
+    if (it.car && typeof fleetIsRetired === 'function' && fleetIsRetired(it.car)) return false;
     if (!inRange(it)) return false;
     if (J.filter === 'bad' && it.kind !== 'bad') return false;
     if (J.filter === 'good' && it.kind !== 'good') return false;
@@ -265,7 +266,7 @@ function renderJournal() {
   if (!panel) return;
   const cars = (typeof fleet === 'function') ? fleet() : [];
   const rows = filtered();
-  const all = J.items || [];
+  const all = (J.items || []).filter(it => !(it.car && typeof fleetIsRetired === 'function' && fleetIsRetired(it.car)));
   const r = periodRange();
   const badN = rows.filter(x => x.kind === 'bad').length;
   const goodN = rows.filter(x => x.kind === 'good').length;

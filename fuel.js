@@ -1054,6 +1054,7 @@ function applyDocsSeedToMeta() {
   Object.keys(seed).forEach((plate) => {
     const seedRec = seed[plate];
     if (!seedRec || typeof seedRec !== 'object') return;
+    if (typeof fleetIsRetired === 'function' && fleetIsRetired(plate)) return;
     const dest = ensureDocsRec(plate);
     if (!dest) return;
     DOC_KEYS.forEach((dk) => {

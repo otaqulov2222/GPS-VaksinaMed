@@ -669,7 +669,7 @@ body.app-body {
 </div><!-- /.app-shell -->
 
 <script src="uz-latin.js?v=3"></script>
-<script src="fleet-data.js?v=14"></script>
+<script src="fleet-data.js?v=15"></script>
 
 <script src="auth.js?v=43"></script>
 
@@ -1324,7 +1324,7 @@ function paint(day) {
 
     const users = await vmApi('/api/users');
 
-    const drivers = (users.users || []).filter(u => u.role === 'driver');
+    const drivers = (users.users || []).filter(u => u.role === 'driver' && !u.carRetired);
 
     const fleet = window.DRIVERS || [];
 

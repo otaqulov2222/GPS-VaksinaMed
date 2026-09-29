@@ -2580,6 +2580,10 @@
       </div>
 
       <div class="att-panel" id="panel-bugun" ${uiTab === 'bugun' ? '' : 'hidden'}>
+        ${STATE.attendanceExempt ? `<div class="att-exempt-note" role="status">
+          <b>Davomat roʻyxatiga kiritilmagansiz</b>
+          <span>Keldim / Ketdim belgilash shart emas. Savol boʻlsa, administratorga murojaat qiling.</span>
+        </div>` : ''}
         <div class="av-studio av-cmd">
 
           <header class="av-cmd-head">
@@ -4796,7 +4800,7 @@
     if (sel) {
       try {
         const u = await api('/api/users');
-        const users = ((u && u.users) || []).filter((x) => x && x.active !== false && x.role !== 'admin_pro');
+        const users = ((u && u.users) || []).filter((x) => x && x.active !== false && x.role !== 'admin_pro' && !x.attendanceExempt && !x.carRetired);
         sel.innerHTML = '<option value="">Tanlang…</option>' + users.map((x) =>
           `<option value="${esc(x.id)}">${esc(x.name || x.username)} (${esc(x.role || '')}${x.car ? ' · ' + esc(x.car) : ''})</option>`
         ).join('');

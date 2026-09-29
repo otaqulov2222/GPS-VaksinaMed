@@ -1166,8 +1166,10 @@ class AttendanceStore:
 
     @staticmethod
     def is_hidden_from_roster(u: dict | None) -> bool:
-        """Admin Pro / adminpro — davomat ro'yxat, hisobot, PDF/Excel da ko'rinmasin."""
+        """Admin Pro / adminpro va davomatdan ozod xodimlar — davomat ro'yxat, hisobot, PDF/Excel da ko'rinmasin."""
         if not isinstance(u, dict):
+            return True
+        if u.get("attendanceExempt") or u.get("attendance_exempt"):
             return True
         role = str(u.get("role") or "").strip().lower()
         uname = str(u.get("username") or "").strip().lower().replace(" ", "")

@@ -783,6 +783,49 @@ tbody tr:hover td { background: #f8fafc; }
   border-color: #d0d5dd;
 }
 
+.u-st { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.u-att {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 4px;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #027a48;
+  background: #fff;
+  border: 1px solid #a6f4c5;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.u-att i {
+  position: relative;
+  width: 22px; height: 12px;
+  border-radius: 999px;
+  background: #12b76a;
+  transition: background .15s;
+}
+.u-att i::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 12px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left .15s;
+}
+.u-att.is-off { color: #667085; border-color: #d0d5dd; background: #f9fafb; }
+.u-att.is-off i { background: #d0d5dd; }
+.u-att.is-off i::after { left: 2px; }
+.u-att:hover { border-color: #6ce9a6; }
+.u-att.is-off:hover { border-color: #98a2b3; }
+.u-att:disabled { opacity: .6; cursor: progress; }
+.u-att:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Faqat Admin Pro — oddiy admin ko'rmasin */
 .pro-only[hidden],
 .pro-only[aria-hidden="true"] {
@@ -1818,7 +1861,7 @@ body { overflow-x: clip; }
 
 
 <script src="uz-latin.js?v=4"></script>
-<script src="fleet-data.js?v=14"></script>
+<script src="fleet-data.js?v=15"></script>
 
 <script src="auth.js?v=43"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
@@ -1948,7 +1991,8 @@ async function loadAll() {
   const sess = results[1];
   const audit = (isPro || isViewer) ? results[2] : { audit: [] };
 
-  window._VM_USERS = users.users || [];
+  users.users = (users.users || []).filter(u => !u.carRetired);
+  window._VM_USERS = users.users;
 
   const drvN = (users.users || []).filter(u => u.role === 'driver').length;
 
@@ -1970,6 +2014,12 @@ async function loadAll() {
       : '<span class="chip chip-off">Blok</span>';
     const isSuper = u.protected || u.role === 'admin_pro';
     const canManage = !isSuper && !isViewer;
+    const attEx = !!u.attendanceExempt;
+    const attCtl = isSuper || u.role === 'viewer'
+      ? ''
+      : (canManage
+        ? `<button type="button" class="u-att${attEx ? ' is-off' : ''}" data-act="att" data-id="${esc(u.id)}" data-ex="${attEx ? '0' : '1'}" data-name="${esc(u.name || u.username)}" aria-pressed="${attEx ? 'false' : 'true'}" title="${attEx ? 'Davomat roʻyxatiga qaytarish' : 'Davomat roʻyxatidan chiqarish — boshqa boʻlimlarda qoladi'}"><i aria-hidden="true"></i>Davomat</button>`
+        : (attEx ? '<span class="chip chip-off" title="Davomat roʻyxatida koʻrinmaydi">Davomatsiz</span>' : ''));
     let displayName = u.name || u.username || '';
     if (u.role === 'driver' && u.car && typeof resolveDriver === 'function') {
       const live = resolveDriver(u.car);
@@ -2019,7 +2069,7 @@ async function loadAll() {
       <td>${pwCell}</td>
       <td>${role}</td>
       <td>${carCell}</td>
-      <td>${st}</td>
+      <td><div class="u-st">${st}${attCtl}</div></td>
       <td class="u-login-at">${esc(fmtUserLoginAt(u.last_login))}</td>
       <td class="amal">${acts}</td>
     </tr>`;
@@ -2093,7 +2143,7 @@ async function loadTasks() {
 
     const d = await vmApi('/api/driver/tasks?all=1');
 
-    const tasks = d.tasks || [];
+    const tasks = (d.tasks || []).filter(t => !(t.car && typeof fleetIsRetired === 'function' && fleetIsRetired(t.car)));
 
     const fleet = window.DRIVERS || [];
 
@@ -2272,6 +2322,14 @@ document.getElementById('tb-users').addEventListener('click', async (e) => {
 
       await vmApi('/api/users/toggle', { method: 'POST', body: JSON.stringify({ id, active: btn.getAttribute('data-on') === '1' }) });
 
+    } else if (act === 'att') {
+      const exempt = btn.getAttribute('data-ex') === '1';
+      btn.disabled = true;
+      await vmApi('/api/users/update', { method: 'POST', body: JSON.stringify({ id, attendanceExempt: exempt }) });
+      const who = btn.getAttribute('data-name') || '';
+      show('msg-users', exempt
+        ? who + ' — Davomat roʻyxatidan chiqarildi (boshqa boʻlimlarda qoladi)'
+        : who + ' — Davomat roʻyxatiga qaytarildi', true);
     } else if (act === 'save') {
       const tr = btn.closest('tr');
       if (!tr) return;

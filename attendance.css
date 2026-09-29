@@ -5207,3 +5207,20 @@ section.av-pulse-row > .av-pulse-card {
   border-radius: 10px !important;
 }
 
+
+/* Davomatdan ozod xodim — shaxsiy panel ogohlantirishi */
+.att-exempt-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border: 1px solid #fedf89;
+  border-left: 4px solid #f79009;
+  border-radius: 12px;
+  background: #fffaeb;
+  color: #7a2e0e;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.att-exempt-note b { font-size: 14px; color: #93370d; }

@@ -35,7 +35,6 @@ const FLEET_DRIVERS = [
   { car: '01 844 FKA', kind: 'truck', model: 'isuzu', fullName: 'Норқулов Гулом', shortName: 'Гулом', color: '#16a085', routes: '—', fuelType: 'dizel_gaz', pharmacies: '' },
   { car: '01 699 UKA', kind: 'car', model: 'cobalt', fullName: 'Турдиев Сардор', shortName: 'Сардор Т.', color: '#f39c12', routes: '—', pharmacies: '' },
   { car: '01 592 YNA', kind: 'labo', model: 'labo', fullName: 'Турсунқулов Нурбек', shortName: 'Нурбек', color: '#2c3e50', routes: '—', pharmacies: '' },
-  { car: '01 849 SNA', kind: 'car', model: 'onix', fullName: 'Абдурахимов Козим', shortName: 'Козим', color: '#27ae60', routes: '—', pharmacies: '' },
   { car: '01 309 YNA', kind: 'labo', model: 'labo', fullName: 'Абдусатторов Акмал', shortName: 'Акмал', color: '#e84393',
     routes: 'М.Улугбек, Қибрай',
     pharmacies: 'Учхоз,Учхоз макро,Кибрай фарход мадад,Поселка,Салар,МУ Налоговый,Ит Парк,Дархон,Кардиалогия,Алайский Ардус,Паркент,Ганга' },
@@ -44,7 +43,7 @@ const FLEET_DRIVERS = [
 ];
 
 /* Parkda yo'q — server metasida qolgan bo'lsa ham hech qayerda ko'rsatilmaydi */
-const FLEET_RETIRED = ['01A055MA', '01567SGA'];
+const FLEET_RETIRED = ['01A055MA', '01567SGA', '01849SNA'];
 
 /* Haqiqiy foto (Wikimedia Commons): fon olib tashlangan, begona raqam yopilgan, old tomoni chapga.
    CC BY / CC BY-SA — muallif title'da qolishi shart */
