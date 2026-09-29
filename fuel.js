@@ -370,6 +370,7 @@ function fleet() {
     const c = plateCompact(p);
     if (seen.has(c)) return;
     seen.add(c);
+    if (typeof fleetIsRetired === 'function' && fleetIsRetired(c)) return;
     plates.push(canonicalPlate(p));
   };
   DEFAULT_FLEET.forEach(d => add(d.car));
@@ -1658,14 +1659,427 @@ function modesForCar(car) {
   return MODES.filter(m => m.v !== 'dizel');
 }
 
+const VCLASS = {
+  car: { t: 'Yengil', hint: 'Yengil avtomobillar (Cobalt, Lacetti, Onix)' },
+  mini: { t: 'Mini yuk', hint: 'Kichik bortli yuk mashinalari (Labo, Changan)' },
+  van: { t: 'Furgon', hint: 'Mikroavtobus / furgon (Damas)' },
+  truck: { t: 'Yuk', hint: 'Katta yuk mashinalari (Isuzu)' }
+};
+const VCLASS_ORDER = ['car', 'mini', 'van', 'truck'];
+/** fleet-data.js FLEET_MODELS — Dashboard bilan umumiy katalog */
+const VMODEL = window.FLEET_MODELS || {};
+const VFUEL_LABEL = { mixed: 'Gaz + benzin', gaz: 'Gaz', benzin: 'Benzin', dizel: 'Dizel', dizel_gaz: 'Dizel + gaz' };
+const VSTATUS = {
+  ok: { t: 'To‘liq', hint: 'O‘tgan har bir kunga km kiritilgan' },
+  run: { t: 'Jarayonda', hint: 'Oy davomida km kiritilmoqda' },
+  warn: { t: 'Tekshiring', hint: 'GPS km bor, lekin kiritilmagan yoki qoldiq manfiy' },
+  idle: { t: 'Boshlanmagan', hint: 'Bu oy hali hech narsa kiritilmagan' }
+};
+const VSEL_STATE = { q: '', kind: 'all', status: 'all', sort: 'default', view: '' };
+
+/** fleet-data.js model (asosiy manba) → meta model → brand matni → kind */
+function vehicleModel(plate) {
+  const rec = vehicleMetaRec(plate) || {};
+  const base = DEFAULT_FLEET.find(d => plateCompact(d.car) === plateCompact(plate)) || {};
+  const pick = String(base.model || rec.model || '').toLowerCase();
+  if (VMODEL[pick]) return pick;
+  const brand = String(rec.brand || base.brand || '').toLowerCase();
+  const hit = Object.keys(VMODEL).find(m => brand.includes(m)) || (/gentra/.test(brand) ? 'lacetti' : '');
+  if (hit) return hit;
+  const kind = String(rec.kind || base.kind || '').toLowerCase();
+  return (kind === 'damas' || kind === 'labo') ? kind : '';
+}
+
+function vehicleClass(plate, model) {
+  if (model && VMODEL[model]) return VMODEL[model].cls;
+  const rec = vehicleMetaRec(plate) || {};
+  const base = DEFAULT_FLEET.find(d => plateCompact(d.car) === plateCompact(plate)) || {};
+  const kind = String(rec.kind || base.kind || '').toLowerCase();
+  if (kind === 'car') return 'car';
+  if (kind === 'damas') return 'van';
+  if (kind === 'labo') return 'mini';
+  return 'truck';
+}
+
+function vehicleModelLabel(model, cls) {
+  return model && VMODEL[model] ? VMODEL[model].t : (VCLASS[cls] || VCLASS.truck).t + ' mashina';
+}
+
+function vehicleColor(plate) {
+  const src = (typeof FLEET_DRIVERS !== 'undefined' && Array.isArray(FLEET_DRIVERS)) ? FLEET_DRIVERS : DEFAULT_FLEET;
+  const base = src.find(d => plateCompact(d.car) === plateCompact(plate)) || {};
+  return /^#[0-9a-f]{6}$/i.test(String(base.color || '')) ? base.color : '#1a5fb4';
+}
+
+function vcNum(v, dec) {
+  const x = n(v);
+  if (!x) return '0';
+  const p = Math.pow(10, dec || 0);
+  return fmt(Math.round(x * p) / p);
+}
+
+/** Umumiy gradientlar — bitta marta; kartochka yashirilsa ham ishlashi uchun display:none emas */
+const VC_DEFS = `<svg class="vc-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+  <linearGradient id="vcBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".62" stop-color="#f3f7fb"/><stop offset="1" stop-color="#dde7f1"/></linearGradient>
+  <linearGradient id="vcCab" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#eef3f8"/><stop offset="1" stop-color="#d3dfeb"/></linearGradient>
+  <linearGradient id="vcGlass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e3f0fc"/><stop offset=".5" stop-color="#a9cdef"/><stop offset="1" stop-color="#6fa3d6"/></linearGradient>
+  <radialGradient id="vcRim" cx=".5" cy=".42" r=".6"><stop offset="0" stop-color="#f1f5f9"/><stop offset=".7" stop-color="#b8c4d2"/><stop offset="1" stop-color="#7c8a9c"/></radialGradient>
+  <radialGradient id="vcLamp" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff7cc"/><stop offset="1" stop-color="#f59e0b"/></radialGradient>
+</defs></svg>`;
+
+function vcWheel(cx, cy, r) {
+  const spokes = [0, 72, 144, 216, 288].map(a => {
+    const rad = a * Math.PI / 180;
+    const x = (cx + Math.cos(rad) * r * 0.52).toFixed(2);
+    const y = (cy + Math.sin(rad) * r * 0.52).toFixed(2);
+    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>`;
+  }).join('');
+  return `<g class="vc-wheel"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#111827"/><circle cx="${cx}" cy="${cy}" r="${(r * 0.62).toFixed(2)}" fill="url(#vcRim)"/><g stroke="#64748b" stroke-width="1.3" stroke-linecap="round">${spokes}</g><circle cx="${cx}" cy="${cy}" r="${(r * 0.2).toFixed(2)}" fill="#334155"/></g>`;
+}
+
+/** Yon ko'rinish — viewBox 0 0 160 72, o'ngga qaragan */
+function vehicleSvg(kind, accent) {
+  const a = esc(accent || '#1a5fb4');
+  const shadow = '<ellipse class="vc-shadow" cx="82" cy="66.5" rx="72" ry="3.4" fill="#0b1f3a" opacity=".12"/>';
+  if (kind === 'damas') {
+    return `<svg class="vc-svg" viewBox="0 0 160 72" aria-hidden="true">${shadow}
+      <g class="vc-body">
+        <path d="M10 56V28q0-16 16-16h80q12 0 20 9l19 21q4 4 4 9v5z" fill="url(#vcBody)" stroke="#a8bacd" stroke-width="1.3"/>
+        <path d="M22 18h24a3 3 0 0 1 3 3v11H19V21a3 3 0 0 1 3-3zM54 18h24a3 3 0 0 1 3 3v11H51V21a3 3 0 0 1 3-3z" fill="url(#vcGlass)"/>
+        <path d="M86 18h14a3 3 0 0 1 3 3v11H83V21a3 3 0 0 1 3-3z" fill="url(#vcGlass)"/>
+        <path d="M108 18h2q8 0 13 6l10 11h-25z" fill="url(#vcGlass)"/>
+        <path d="M24 20l6 0-8 10h-3zM56 20l6 0-8 10h-3z" fill="#fff" opacity=".45"/>
+        <path d="M82 14v40M106 14v40" stroke="#b6c5d6" stroke-width="1"/>
+        <rect x="10" y="38" width="138" height="4.5" fill="${a}"/>
+        <rect x="10" y="43.5" width="138" height="1.4" fill="${a}" opacity=".35"/>
+        <rect x="95" y="46" width="7" height="1.8" rx=".9" fill="#94a3b8"/>
+        <rect x="143" y="44" width="6" height="4.5" rx="1.5" fill="url(#vcLamp)"/>
+        <rect x="9" y="44" width="3" height="5" rx="1" fill="#ef4444"/>
+        <rect x="138" y="53" width="14" height="4" rx="2" fill="#334155"/>
+        <rect x="8" y="53" width="12" height="4" rx="2" fill="#334155"/>
+        <path d="M24 56a12 12 0 0 1 24 0M110 56a12 12 0 0 1 24 0" fill="#1e293b"/>
+      </g>
+      ${vcWheel(36, 57, 9)}${vcWheel(122, 57, 9)}
+    </svg>`;
+  }
+  if (kind === 'labo') {
+    return `<svg class="vc-svg" viewBox="0 0 160 72" aria-hidden="true">${shadow}
+      <g class="vc-body">
+        <rect x="8" y="31" width="88" height="23" rx="2" fill="url(#vcBody)" stroke="#a8bacd" stroke-width="1.3"/>
+        <rect x="6" y="28" width="92" height="4" rx="2" fill="#94a3b8"/>
+        <path d="M22 32v21M38 32v21M54 32v21M70 32v21M86 32v21" stroke="#dbe4ee" stroke-width="1"/>
+        <rect x="8" y="41" width="88" height="4" fill="${a}" opacity=".9"/>
+        <path d="M98 55V21q0-7 7-7h17q8 0 12 7l13 17q3 4 3 9v8z" fill="url(#vcCab)" stroke="#a8bacd" stroke-width="1.3"/>
+        <path d="M104 20h17q5 0 8 4l9 12h-34z" fill="url(#vcGlass)"/>
+        <path d="M106 22h5l-6 12h-1z" fill="#fff" opacity=".5"/>
+        <rect x="98" y="41" width="52" height="4" fill="${a}"/>
+        <path d="M121 38v16" stroke="#b6c5d6" stroke-width="1"/>
+        <rect x="110" y="46" width="7" height="1.8" rx=".9" fill="#94a3b8"/>
+        <rect x="136" y="24" width="3" height="8" rx="1" fill="#475569"/>
+        <rect x="145" y="44" width="5.5" height="4.5" rx="1.5" fill="url(#vcLamp)"/>
+        <rect x="6" y="45" width="3" height="5" rx="1" fill="#ef4444"/>
+        <rect x="140" y="53" width="13" height="4" rx="2" fill="#334155"/>
+        <path d="M18 56a12 12 0 0 1 24 0M112 56a12 12 0 0 1 24 0" fill="#1e293b"/>
+      </g>
+      ${vcWheel(30, 57, 9)}${vcWheel(124, 57, 9)}
+    </svg>`;
+  }
+  return `<svg class="vc-svg" viewBox="0 0 160 72" aria-hidden="true">${shadow}
+    <g class="vc-body">
+      <rect x="4" y="7" width="100" height="45" rx="4" fill="url(#vcBody)" stroke="#a8bacd" stroke-width="1.3"/>
+      <path d="M16 11v37M28 11v37M40 11v37M52 11v37M64 11v37M76 11v37M88 11v37" stroke="#e3eaf2" stroke-width="1"/>
+      <rect x="4" y="35" width="100" height="5" fill="${a}"/>
+      <rect x="4" y="41" width="100" height="1.6" fill="${a}" opacity=".35"/>
+      <rect x="3" y="43" width="3" height="6" rx="1" fill="#ef4444"/>
+      <path d="M108 53V25q0-5 5-5h19q6 0 9 4l12 16q3 3 3 7v6z" fill="url(#vcCab)" stroke="#a8bacd" stroke-width="1.3"/>
+      <path d="M114 24h17q4 0 7 3l9 11h-33z" fill="url(#vcGlass)"/>
+      <path d="M116 26h5l-5 10h-1z" fill="#fff" opacity=".5"/>
+      <path d="M113 40h30M131 40v12" stroke="#b6c5d6" stroke-width="1"/>
+      <rect x="119" y="43" width="7" height="1.8" rx=".9" fill="#94a3b8"/>
+      <rect x="145" y="20" width="3" height="10" rx="1" fill="#475569"/>
+      <rect x="149" y="42" width="6" height="5" rx="1.5" fill="url(#vcLamp)"/>
+      <path d="M150 49h5M150 51h5" stroke="#64748b" stroke-width="1"/>
+      <rect x="2" y="52" width="154" height="5" rx="2" fill="#1e293b"/>
+      <rect x="146" y="51" width="11" height="5" rx="2" fill="#334155"/>
+    </g>
+    ${vcWheel(22, 58, 9)}${vcWheel(43, 58, 9)}${vcWheel(130, 58, 9)}
+  </svg>`;
+}
+
+function vehicleArt(model, cls, accent) {
+  const p = VMODEL[model];
+  if (!p) return vehicleSvg(cls === 'van' ? 'damas' : (cls === 'mini' ? 'labo' : 'truck'), accent);
+  return `<img class="vc-photo cls-${cls} m-${model}" src="${p.src}" alt="${esc(p.t)}" title="${esc(p.t + ' · Foto: ' + p.credit + ' / Wikimedia Commons')}" loading="lazy" decoding="async" draggable="false">`;
+}
+
+function plateBadge(plate) {
+  const s = String(plate || '').trim();
+  const m = s.match(/^(\d{2})\s*[\/ ]?\s*(.+)$/);
+  const reg = m ? m[1] : '';
+  const rest = m ? m[2] : s;
+  return `<span class="vc-plate"><span class="vc-plate-reg">${esc(reg)}</span><span class="vc-plate-num">${esc(rest)}</span><span class="vc-plate-uz"><i></i>UZ</span></span>`;
+}
+
+function carMonthInfo(car) {
+  const dim = daysInMonth(STATE.month);
+  const today = todayYmd();
+  const curYm = today.slice(0, 7);
+  let elapsed = dim;
+  if (STATE.month === curYm) elapsed = Number(today.slice(8, 10));
+  else if (STATE.month > curYm) elapsed = 0;
+  const rows = calcCar(car);
+  const days = rows.map(r => {
+    if (n(r.km) > 0) return 'ok';
+    return r.d <= elapsed ? 'miss' : 'fut';
+  });
+  const filled = days.filter((s, i) => s === 'ok' && i < elapsed).length;
+  const t = totals(rows);
+  const pct = elapsed > 0 ? Math.min(100, Math.round((filled / elapsed) * 100)) : 0;
+  return { filled, elapsed, pct, days, t, isCur: STATE.month === curYm, todayD: Number(today.slice(8, 10)) };
+}
+
+function vcDaysStrip(info) {
+  return info.days.map((s, i) => {
+    const d = i + 1;
+    const today = info.isCur && d === info.todayD ? ' today' : '';
+    const lbl = s === 'ok' ? 'kiritilgan' : (s === 'miss' ? 'kiritilmagan' : 'hali kelmagan');
+    return `<i class="${s}${today}" title="${d}-kun: ${lbl}"></i>`;
+  }).join('');
+}
+
+function vcFuelStats(f, t) {
+  const ft = f.fuelType || 'mixed';
+  const out = [`<div><b>${vcNum(t.km)}</b><span>km</span></div>`];
+  if (ft !== 'benzin' && ft !== 'dizel') out.push(`<div><b>${vcNum(t.gasUsed, 1)}</b><span>m³ gaz</span></div>`);
+  if (ft !== 'gaz') out.push(`<div><b>${vcNum(t.benUsed, 1)}</b><span>l ${ft === 'dizel' || ft === 'dizel_gaz' ? 'dizel' : 'benzin'}</span></div>`);
+  return out.join('');
+}
+
+function vselView() {
+  if (VSEL_STATE.view) return VSEL_STATE.view;
+  let v = 'grid';
+  try { v = localStorage.getItem('vm_vsel_view') || 'grid'; } catch (e) {}
+  VSEL_STATE.view = v === 'strip' ? 'strip' : 'grid';
+  return VSEL_STATE.view;
+}
+
+function ensureVselShell(box) {
+  if (box.querySelector('.vsel-cards')) return;
+  box.classList.add('vsel');
+  box.innerHTML = `${VC_DEFS}
+    <div class="vsel-bar no-print">
+      <div class="vsel-title">
+        <span class="vsel-title-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16V7a1 1 0 0 1 1-1h10v10"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7.5" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></svg></span>
+        <div><b>Mashinalar parki</b><span id="vsel-count">—</span></div>
+      </div>
+      <div class="vsel-kinds" role="tablist" aria-label="Mashina turi">
+        <button type="button" data-vkind="all" class="on">Hammasi<em data-vkc="all"></em></button>
+        ${VCLASS_ORDER.map(k => `<button type="button" data-vkind="${k}" title="${esc(VCLASS[k].hint)}">${esc(VCLASS[k].t)}<em data-vkc="${k}"></em></button>`).join('')}
+      </div>
+      <label class="vsel-search">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input type="search" id="vsel-q" placeholder="Raqam, haydovchi yoki model" autocomplete="off">
+      </label>
+      <label class="vsel-sort" title="Tartib">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></svg>
+        <select id="vsel-sort">
+          <option value="default">Standart</option>
+          <option value="miss">Kam kiritilgan</option>
+          <option value="km">Ko‘p km</option>
+          <option value="doc">Hujjat muddati</option>
+          <option value="name">Ism (A–Z)</option>
+        </select>
+      </label>
+      <div class="vsel-view" aria-label="Ko‘rinish">
+        <button type="button" data-vview="grid" title="Kartochkalar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>Grid</button>
+        <button type="button" data-vview="strip" title="Bir qator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="6" height="10" rx="1.5"/><rect x="10" y="7" width="6" height="10" rx="1.5"/><path d="M18 7h3M18 17h3"/></svg>Qator</button>
+      </div>
+    </div>
+    <div class="vsel-stats no-print" role="tablist" aria-label="Holat"></div>
+    <div class="vsel-cards"></div>`;
+  const q = box.querySelector('#vsel-q');
+  q.value = VSEL_STATE.q;
+  q.addEventListener('input', () => { VSEL_STATE.q = q.value; applyVselFilter(box); });
+  const sortSel = box.querySelector('#vsel-sort');
+  sortSel.value = VSEL_STATE.sort;
+  sortSel.addEventListener('change', () => { VSEL_STATE.sort = sortSel.value; applyVselSort(box); });
+  box.querySelector('.vsel-cards').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.chip-car');
+    if (!card) return;
+    e.preventDefault();
+    card.click();
+  });
+  box.querySelector('.vsel-kinds').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-vkind]');
+    if (!b) return;
+    VSEL_STATE.kind = b.getAttribute('data-vkind');
+    box.querySelectorAll('[data-vkind]').forEach(x => x.classList.toggle('on', x === b));
+    applyVselFilter(box);
+  });
+  box.querySelector('.vsel-stats').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-vstatus]');
+    if (!b) return;
+    const v = b.getAttribute('data-vstatus');
+    VSEL_STATE.status = VSEL_STATE.status === v ? 'all' : v;
+    applyVselFilter(box);
+  });
+  box.querySelector('.vsel-view').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-vview]');
+    if (!b) return;
+    VSEL_STATE.view = b.getAttribute('data-vview') === 'strip' ? 'strip' : 'grid';
+    try { localStorage.setItem('vm_vsel_view', VSEL_STATE.view); } catch (err) {}
+    applyVselView(box);
+  });
+}
+
+function applyVselView(box) {
+  const view = vselView();
+  box.classList.toggle('is-strip', view === 'strip');
+  box.querySelectorAll('[data-vview]').forEach(x => x.classList.toggle('on', x.getAttribute('data-vview') === view));
+  if (view === 'strip') {
+    const on = box.querySelector('.chip-car.on');
+    const wrap = box.querySelector('.vsel-cards');
+    if (on && wrap) wrap.scrollLeft = Math.max(0, on.offsetLeft - wrap.clientWidth / 2 + on.clientWidth / 2);
+  }
+}
+
+function applyVselSort(box) {
+  const cards = [...box.querySelectorAll('.vsel-cards .chip-car')];
+  const key = VSEL_STATE.sort;
+  const val = (el) => {
+    if (key === 'miss') return -Number(el.getAttribute('data-miss') || 0);
+    if (key === 'km') return -Number(el.getAttribute('data-km') || 0);
+    if (key === 'doc') return Number(el.getAttribute('data-doc') || 9999);
+    return Number(el.getAttribute('data-idx') || 0);
+  };
+  const sorted = key === 'name'
+    ? cards.slice().sort((a, b) => String(a.getAttribute('data-name')).localeCompare(String(b.getAttribute('data-name')), 'uz'))
+    : cards.slice().sort((a, b) => (val(a) - val(b)) || (Number(a.getAttribute('data-idx')) - Number(b.getAttribute('data-idx'))));
+  sorted.forEach((el, i) => { el.style.order = String(i); });
+}
+
+function applyVselFilter(box) {
+  const q = String(VSEL_STATE.q || '').trim().toLowerCase();
+  const qc = plateCompact(q).toLowerCase();
+  let shown = 0, total = 0;
+  const counts = { all: 0, ok: 0, run: 0, warn: 0, idle: 0, doc: 0 };
+  const kindCounts = { all: 0 };
+  box.querySelectorAll('.vsel-cards .chip-car').forEach(el => {
+    total += 1;
+    const kind = el.getAttribute('data-kind');
+    const okKind = VSEL_STATE.kind === 'all' || kind === VSEL_STATE.kind;
+    const hay = el.getAttribute('data-search') || '';
+    const okQ = !q || hay.includes(q) || (qc && hay.includes(qc));
+    if (okQ) {
+      kindCounts.all += 1;
+      kindCounts[kind] = (kindCounts[kind] || 0) + 1;
+    }
+    const st = el.getAttribute('data-status');
+    const hasDoc = el.getAttribute('data-doc') !== '';
+    if (okKind && okQ) {
+      counts.all += 1;
+      counts[st] = (counts[st] || 0) + 1;
+      if (hasDoc) counts.doc += 1;
+    }
+    const okSt = VSEL_STATE.status === 'all'
+      || (VSEL_STATE.status === 'doc' ? hasDoc : st === VSEL_STATE.status);
+    const vis = okKind && okQ && okSt;
+    el.hidden = !vis;
+    if (vis) shown += 1;
+  });
+  box.querySelectorAll('[data-vkc]').forEach(em => {
+    const c = kindCounts[em.getAttribute('data-vkc')] || 0;
+    em.textContent = String(c);
+    em.parentElement.classList.toggle('dim', !c);
+  });
+  const cnt = box.querySelector('#vsel-count');
+  if (cnt) cnt.textContent = shown === total ? (total + ' ta mashina') : (shown + ' / ' + total + ' ta');
+  const stats = box.querySelector('.vsel-stats');
+  if (stats) {
+    const items = [
+      ['all', 'Hammasi', counts.all],
+      ['ok', VSTATUS.ok.t, counts.ok],
+      ['run', VSTATUS.run.t, counts.run],
+      ['warn', VSTATUS.warn.t, counts.warn],
+      ['idle', VSTATUS.idle.t, counts.idle],
+      ['doc', 'Hujjat muddati', counts.doc]
+    ];
+    stats.innerHTML = items.map(([k, t, c]) => {
+      const on = VSEL_STATE.status === k ? ' on' : '';
+      const dim = !c && k !== 'all' ? ' dim' : '';
+      const hint = VSTATUS[k] ? VSTATUS[k].hint : (k === 'doc' ? '30 kun ichida tugaydigan yoki o‘tgan hujjat' : 'Barcha holatlar');
+      return `<button type="button" class="vs-pill ${k}${on}${dim}" data-vstatus="${k}" title="${esc(hint)}"><i></i>${esc(t)}<b>${c}</b></button>`;
+    }).join('');
+  }
+  let empty = box.querySelector('.vsel-empty');
+  if (!shown && total) {
+    if (!empty) {
+      empty = document.createElement('div');
+      empty.className = 'vsel-empty';
+      empty.innerHTML = '<b>Mos mashina topilmadi</b><span>Filtr yoki qidiruvni o‘zgartiring</span>';
+      box.querySelector('.vsel-cards').appendChild(empty);
+    }
+  } else if (empty) {
+    empty.remove();
+  }
+}
+
 function renderChips() {
   const box = document.getElementById('chips');
-  box.innerHTML = fleet().map(f => {
+  if (!box) return;
+  ensureVselShell(box);
+  const docsBy = {};
+  collectDocAlerts().forEach(a => {
+    const k = plateCompact(a.car);
+    if (!docsBy[k]) docsBy[k] = [];
+    docsBy[k].push(a);
+  });
+  const cards = fleet().map((f, idx) => {
     const on = f.car === STATE.car ? ' on' : '';
-    const warn = carHasWarn(f.car) ? ' warn' : '';
+    const warn = carHasWarn(f.car);
+    const model = vehicleModel(f.car);
+    const kind = vehicleClass(f.car, model);
+    const modelLabel = vehicleModelLabel(model, kind);
+    const color = vehicleColor(f.car);
     const name = String(f.name || f.short || '').trim();
-    return `<div class="chip-car${on}${warn}" data-car="${esc(f.car)}"><b>${esc(plateCode(f.car))}</b><i>${esc(name)}</i></div>`;
+    const info = carMonthInfo(getCar(f.car));
+    const docs = (docsBy[plateCompact(f.car)] || []).filter(d => d.left <= 30);
+    const docMin = docs.length ? Math.min.apply(null, docs.map(d => d.left)) : null;
+    let st = 'idle';
+    if (warn) st = 'warn';
+    else if (info.elapsed && info.filled >= info.elapsed) st = 'ok';
+    else if (info.filled > 0) st = 'run';
+    const miss = Math.max(0, info.elapsed - info.filled);
+    const docTitle = docs.map(d => d.title + ' · ' + (d.left < 0 ? ('o‘tgan ' + Math.abs(d.left) + ' kun') : (d.left + ' kun qoldi'))).join('\n');
+    const search = [f.car, plateCompact(f.car), name, f.short, modelLabel, VCLASS[kind].t].join(' ').toLowerCase();
+    const docBadge = docMin == null ? '' : `<span class="vc-doc${docMin < 0 ? ' dead' : ''}" title="${esc(docTitle)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 12v3M12 18h.01"/></svg>${docMin < 0 ? 'O‘tgan' : docMin + ' kun'}</span>`;
+    return `<div class="chip-car vcard${on} st-${st}" style="--vc:${esc(color)}" data-car="${esc(f.car)}" data-kind="${kind}" data-status="${st}" data-idx="${idx}" data-km="${Math.round(info.t.km)}" data-miss="${miss}" data-doc="${docMin == null ? '' : docMin}" data-name="${esc(name)}" data-search="${esc(search)}" role="button" tabindex="0" aria-pressed="${on ? 'true' : 'false'}">
+      <div class="vc-top">
+        <span class="vc-st ${st}" title="${esc(VSTATUS[st].hint)}"><i></i>${esc(VSTATUS[st].t)}</span>
+        ${docBadge}
+      </div>
+      <div class="vc-stage${VMODEL[model] ? ' has-photo cls-' + kind : ''}">
+        ${plateBadge(f.car)}
+        <span class="vc-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 8"/></svg></span>
+        ${vehicleArt(model, kind, color)}
+        <span class="vc-road" aria-hidden="true"></span>
+      </div>
+      <div class="vc-id">
+        <div class="vc-name" title="${esc(name)}">${esc(name)}</div>
+        <div class="vc-meta"><span class="vc-kind" title="${esc(VCLASS[kind].t)}">${esc(modelLabel)}</span><span class="vc-fuel ${esc(f.fuelType || 'mixed')}">${esc(VFUEL_LABEL[f.fuelType] || f.fuelType || '')}</span></div>
+      </div>
+      <div class="vc-stats">${vcFuelStats(f, info.t)}</div>
+      <div class="vc-days">
+        <div class="vc-days-h"><span>Kunlik kiritish</span><b>${info.filled}<em>/${info.elapsed || 0}</em></b>${miss ? `<s>${miss} kun bo‘sh</s>` : ''}</div>
+        <div class="vc-seg" style="--dim:${info.days.length}">${vcDaysStrip(info)}</div>
+      </div>
+    </div>`;
   }).join('');
+  box.querySelector('.vsel-cards').innerHTML = cards;
+  applyVselSort(box);
+  applyVselFilter(box);
+  applyVselView(box);
 }
 
 function modeSelect(d, mode) {
@@ -2676,11 +3090,16 @@ function renderCars() {
     rec.brand = brand;
     rec.hidden = false;
     if (!Array.isArray(rec.nameHistory)) rec.nameHistory = [];
-    if (brand && /tahoe|cobalt|nexia|spark|labo|damas/i.test(brand)) {
+    if (brand) {
       const b = brand.toLowerCase();
-      if (/damas/.test(b)) rec.kind = 'damas';
-      else if (/labo/.test(b)) rec.kind = 'labo';
-      else rec.kind = 'truck';
+      const model = Object.keys(VMODEL).find(m => b.includes(m)) || (/gentra/.test(b) ? 'lacetti' : '');
+      if (model) {
+        rec.model = model;
+        const cls = VMODEL[model].cls;
+        rec.kind = cls === 'van' ? 'damas' : (cls === 'mini' ? 'labo' : (cls === 'car' ? 'car' : 'truck'));
+      } else if (/nexia|spark|gentra|malibu|tracker|captiva/.test(b)) {
+        rec.kind = 'car';
+      }
     }
     getCar(car);
     try {

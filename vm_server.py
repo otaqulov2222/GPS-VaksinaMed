@@ -228,6 +228,15 @@ def compact_plate(plate):
     return re.sub(r"\s+", "", str(plate or "").upper())
 
 
+def retired_plates():
+    try:
+        from gps_sync import retired_plates as _retired
+
+        return _retired(DIRECTORY)
+    except Exception:
+        return frozenset()
+
+
 def normalize_due_ymd(v):
     s = str(v or "").strip()
     if not s:
@@ -2063,8 +2072,11 @@ class OfficeStore:
                     "hidden": bool(rec.get("hidden")),
                 }
                 kind = str(rec.get("kind") or "").strip().lower()[:12]
-                if kind in ("truck", "damas", "labo"):
+                if kind in ("truck", "damas", "labo", "car"):
                     entry["kind"] = kind
+                model = str(rec.get("model") or "").strip().lower()[:16]
+                if re.fullmatch(r"[a-z0-9_]{2,16}", model):
+                    entry["model"] = model
                 # Haydovchi ism tarixi (sana + buyruq asosi/raqami)
                 ck = _compact(p)
                 old_key = by_compact.get(ck)
@@ -2243,6 +2255,7 @@ class OfficeStore:
         today = datetime.now(TZ_TASHKENT).date()
         items = []
         seen = set()
+        retired = retired_plates()
 
         def _rec_for(plate):
             if plate in docs and isinstance(docs.get(plate), dict):
@@ -2262,7 +2275,7 @@ class OfficeStore:
             if not p:
                 continue
             ck = compact_plate(p)
-            if ck in seen:
+            if ck in seen or ck in retired:
                 continue
             seen.add(ck)
             rec = _rec_for(p)

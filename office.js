@@ -566,6 +566,7 @@ const VMOffice = {
         });
         Object.keys(day).forEach(car => {
             if (isUsed(car)) return;
+            if (typeof fleetIsRetired === 'function' && fleetIsRetired(car)) return;
             const rec = day[car];
             const drv = (typeof resolveDriver === 'function')
               ? resolveDriver(car, (rec && rec.driver) || null)
@@ -605,10 +606,16 @@ const VMOffice = {
             const scoreTxt = empty ? '—' : (r.score == null ? '—' : Number(r.score).toFixed(1));
             const scoreCls = empty ? '' : (r.score >= 8 ? 'rk-ok' : r.score >= 5 ? 'rk-mid' : 'rk-bad');
             const plan = r.total ? `${r.own}/${r.total}` : '—';
+            const model = typeof fleetModelOf === 'function' ? fleetModelOf(r.drv.car) : '';
+            const minfo = model && window.FLEET_MODELS ? window.FLEET_MODELS[model] : null;
+            const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(r.drv.car, 'fb-photo') : '';
             return `<tr class="rank-row${active}${empty ? ' is-empty' : ''}" data-car="${vmEsc(r.drv.car)}">
                 <td class="font-mono text-muted">${i + 1}</td>
                 <td><strong>${vmEsc(r.drv.shortName)}</strong></td>
-                <td class="font-mono">${vmEsc(r.drv.car)}</td>
+                <td class="fb-car-cell"><div class="fb-car">
+                    <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
+                    <span class="fb-car-txt"><b class="font-mono">${vmEsc(r.drv.car)}</b><em>${vmEsc(minfo ? minfo.t : '—')}</em></span>
+                </div></td>
                 <td class="${scoreCls}">${scoreTxt}</td>
                 <td class="font-mono">${empty ? '—' : (typeof fmtKm === 'function' ? fmtKm(r.km) : r.km)}</td>
                 <td class="font-mono">${empty ? '—' : plan}</td>

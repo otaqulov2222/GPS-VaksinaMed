@@ -2407,11 +2407,20 @@ function renderBanner(driver, data) {
         if (firstText && firstText.nodeType === 3) firstText.nodeValue = driverName + ' ';
         else nameEl.insertBefore(document.createTextNode(driverName + ' '), nameEl.firstChild);
     }
+    const modelKey = driver && typeof fleetModelOf === 'function' ? fleetModelOf(driver.car) : '';
+    const modelInfo = modelKey && window.FLEET_MODELS ? window.FLEET_MODELS[modelKey] : null;
+    const modelHtml = modelInfo ? `<span class="db-model">${modelInfo.t}</span>` : '';
     if (carEl)  carEl.textContent  = carNum;
-    if (metaEl) metaEl.innerHTML   = `<strong>Yo'nalish:</strong> ${routes} &nbsp;|&nbsp; <strong>Sana:</strong> ${dateFmt}`;
+    if (metaEl) metaEl.innerHTML   = `${modelHtml}<strong>Yo'nalish:</strong> ${routes} &nbsp;|&nbsp; <strong>Sana:</strong> ${dateFmt}`;
     if (avaEl) {
         const initials = driver ? String(driver.shortName).slice(0, 2).toUpperCase() : '—';
-        avaEl.textContent = initials;
+        const photo = driver && typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(driver.car, 'db-photo') : '';
+        avaEl.classList.toggle('has-photo', !!photo);
+        avaEl.classList.remove('cls-car', 'cls-mini', 'cls-van', 'cls-truck');
+        if (photo && modelInfo) avaEl.classList.add('cls-' + modelInfo.cls);
+        avaEl.style.setProperty('--vc', (driver && driver.color) || '#1a5fb4');
+        if (photo) avaEl.innerHTML = photo;
+        else avaEl.textContent = initials;
         avaEl.style.background = '';
         const banner = document.getElementById('driver-banner');
         if (banner) banner.style.borderLeftColor = driver ? driver.color : '#0b1f3a';

@@ -560,6 +560,72 @@ body {
   letter-spacing: .08em;
   border-radius: 8px;
 }
+.db-avatar.has-photo {
+  position: relative;
+  width: 118px; height: 66px;
+  padding: 4px 6px 6px;
+  overflow: hidden;
+  border: 1px solid #e3eaf2;
+  background:
+    radial-gradient(120% 120% at 85% 110%, color-mix(in srgb, var(--vc, #1a5fb4) 28%, transparent) 0%, transparent 60%),
+    linear-gradient(180deg, #f7fafd 0%, #e7eef6 100%);
+}
+.db-avatar.has-photo::after {
+  content: '';
+  position: absolute;
+  left: 14%; right: 10%; bottom: 4px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(11, 31, 58, 0.3), rgba(11, 31, 58, 0));
+}
+.db-photo {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 2px 3px rgba(11, 31, 58, 0.18));
+  user-select: none;
+}
+.db-avatar.cls-car .db-photo { height: 84%; margin-top: auto; }
+.db-avatar.has-photo { display: flex; align-items: flex-end; justify-content: center; }
+.db-model {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef4fb;
+  border: 1px solid #dbe6f2;
+  color: #0b1f3a;
+  font-weight: 700;
+  font-size: 11.5px;
+}
+.fb-car { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fb-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 64px; height: 36px;
+  border-radius: 9px;
+  overflow: hidden;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: linear-gradient(180deg, #f7fafd 0%, #e6edf5 100%);
+  border: 1px solid #e3eaf2;
+}
+.fb-photo {
+  display: block;
+  width: 92%; height: 92%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 1px 2px rgba(11, 31, 58, 0.2));
+  user-select: none;
+}
+.fb-thumb.cls-car .fb-photo { height: 76%; margin-bottom: 2px; }
+.fb-thumb.cls-truck .fb-photo { width: 98%; height: 96%; }
+.fb-car-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; line-height: 1.15; }
+.fb-car-txt b { font-weight: 600; white-space: nowrap; }
+.fb-car-txt em { font-style: normal; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.rank-row.is-active .fb-thumb { border-color: #9cc0ea; box-shadow: 0 0 0 2px rgba(26, 95, 180, 0.15); }
 .db-meta { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.4; overflow-wrap: anywhere; }
 .db-meta strong { color: var(--ink-2); font-weight: 600; }
 
@@ -905,6 +971,8 @@ table.gtable tr.row-problem td{ background: #f8f1f1; }
 table.gtable tr.row-office td { background: #f4f5f7; }
 
 table.gtable tr.rank-row { cursor: pointer; }
+
+table.gtable tr.rank-row td { white-space: nowrap; }
 
 table.gtable tr.rank-row.is-active td { background: #e6edf4; }
 
@@ -2368,7 +2436,7 @@ input, select, textarea { max-width: 100%; }
 
               <th>Haydovchi</th>
 
-              <th>Raqam</th>
+              <th>Mashina</th>
 
               <th>Ball</th>
 
@@ -2794,7 +2862,7 @@ input, select, textarea { max-width: 100%; }
 <script src="wialon-api.js?v=32"></script>
 
 <script src="uz-latin.js?v=4"></script>
-<script src="fleet-data.js?v=9"></script>
+<script src="fleet-data.js?v=14"></script>
 
 <script src="/api/live-nav.js?v=m106"></script>
 <script src="auth.js?v=43"></script>
@@ -2802,9 +2870,9 @@ input, select, textarea { max-width: 100%; }
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=7"></script>
 
-<script src="app-m96.js?v=m143"></script>
+<script src="app-m96.js?v=m144"></script>
 
-<script src="office.js?v=25"></script>
+<script src="office.js?v=26"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

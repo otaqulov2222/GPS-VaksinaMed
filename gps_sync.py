@@ -112,6 +112,28 @@ def compact_car(s):
     return re.sub(r"\s+", "", str(s or "").upper())
 
 
+_RETIRED_CACHE = {"mtime": None, "set": frozenset()}
+
+
+def retired_plates(base_dir=None):
+    """fleet-data.js FLEET_RETIRED — parkda yo'q raqamlar (meta/GPS da qolgan bo'lsa ham)."""
+    path = os.path.join(base_dir or os.path.dirname(os.path.abspath(__file__)), "fleet-data.js")
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        return frozenset()
+    if _RETIRED_CACHE["mtime"] != mt:
+        try:
+            text = open(path, encoding="utf-8").read()
+        except OSError:
+            return _RETIRED_CACHE["set"]
+        m = re.search(r"FLEET_RETIRED\s*=\s*\[([^\]]*)\]", text)
+        items = re.findall(r"'([^']+)'", m.group(1)) if m else []
+        _RETIRED_CACHE["set"] = frozenset(compact_car(x) for x in items)
+        _RETIRED_CACHE["mtime"] = mt
+    return _RETIRED_CACHE["set"]
+
+
 def load_fleet_drivers(base_dir):
     path = os.path.join(base_dir, "fleet-data.js")
     if not os.path.isfile(path):
@@ -167,11 +189,12 @@ def overlay_fuel_driver_names(office, drivers):
         d["fullName"] = name
         d["shortName"] = short
         d["name"] = name
+    retired = retired_plates()
     for plate, rec in vehicles.items():
         if not isinstance(rec, dict) or rec.get("hidden"):
             continue
         want = compact_car(plate)
-        if want in seen:
+        if want in seen or want in retired:
             continue
         name = str(rec.get("name") or "").strip() or str(plate).strip()
         short = str(rec.get("short") or "").strip()
@@ -1322,9 +1345,12 @@ def fetch_live_fleet(office, base_dir):
     by_plate = {compact_car(d.get("car")): d for d in drivers if isinstance(d, dict)}
 
     now = int(datetime.now(tz=TZ5).timestamp())
+    retired = retired_plates(base_dir)
     units = []
     for u in raw:
         plate_key = compact_car(u.get("carNumber") or u.get("name"))
+        if plate_key in retired:
+            continue
         drv = by_plate.get(plate_key)
         if not drv:
             for k, d in by_plate.items():
