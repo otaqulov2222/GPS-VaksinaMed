@@ -22,6 +22,7 @@ const LIVE_KIND_SRC = {
   truck: '/assets/live/icon-truck.png?v=3',
   damas: '/assets/live/icon-damas.png?v=3',
   labo: '/assets/live/icon-labo.png?v=3',
+  car: '/assets/live/icon-car.png?v=1',
 };
 
 /* Ikonka faylida old tomon YUQORIGA qaragan (0° = shimol). */
@@ -35,7 +36,7 @@ const LIVE_ARROW_SVG = LIVE_HEAD_SVG;
 
 function liveNormKind(k) {
   const s = String(k || '').toLowerCase();
-  if (s === 'damas' || s === 'labo' || s === 'truck') return s;
+  if (s === 'damas' || s === 'labo' || s === 'truck' || s === 'car') return s;
   return 'truck';
 }
 
