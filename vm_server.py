@@ -1525,6 +1525,80 @@ class OfficeStore:
             "savedBy": str(data.get("savedBy") or "")[:40],
         }
 
+    def map_geozones(self):
+        """
+        Xarita qatlami: Boomerang geozonalari (egasi bilan) + Boomerangda yo'q,
+        koordinatasi ma'lum dorixonalar. Katalog/dorixonalar o'zgarmaguncha keshda.
+        """
+        import gps_sync as gs
+
+        zones = self.gps_zones_catalog() or []
+        pharms = [p for p in (self.pharmacies() or []) if p.get("name") and p.get("car")]
+        sig = (
+            self.gps_zones_catalog_meta().get("savedAt"),
+            len(zones),
+            json.dumps(pharms, sort_keys=True, ensure_ascii=False),
+        )
+        cached = getattr(self, "_map_geo_cache", None)
+        if cached and cached[0] == sig:
+            return cached[1]
+
+        def _owner(p):
+            return {"name": p["name"], "car": p["car"]}
+
+        out = []
+        placed = set()
+        for z in zones:
+            try:
+                zlat, zlng = float(z["lat"]), float(z["lng"])
+                zrad = int(z.get("radiusM") or 100)
+            except (TypeError, ValueError, KeyError):
+                continue
+            key = gs.pharmacy_key(z.get("name")) or gs.norm_ph(z.get("name"))
+            owners = []
+            for p in pharms:
+                if key and gs._pharm_best_score(key, p) >= 55:
+                    owners.append(_owner(p))
+                    placed.add(p["id"])
+            out.append({
+                "id": z.get("id") or ("wz_" + key),
+                "name": z.get("name"),
+                "lat": zlat,
+                "lng": zlng,
+                "radiusM": zrad,
+                "kind": "office" if gs.is_office(z.get("name")) else "zone",
+                "src": "gps",
+                "owners": owners,
+            })
+        gps_count = len(out)
+        for p in pharms:
+            if p["id"] in placed or p.get("lat") is None or p.get("lng") is None:
+                continue
+            try:
+                plat, plng = float(p["lat"]), float(p["lng"])
+            except (TypeError, ValueError):
+                continue
+            host = None
+            for z in out[:gps_count]:
+                if gs.haversine_m(plat, plng, z["lat"], z["lng"]) <= z["radiusM"]:
+                    host = z
+                    break
+            if host is not None:
+                host["owners"].append(_owner(p))
+                continue
+            out.append({
+                "id": p["id"],
+                "name": p["name"],
+                "lat": plat,
+                "lng": plng,
+                "radiusM": int(p.get("radiusM") or 120),
+                "kind": "pharmacy",
+                "src": "vm",
+                "owners": [_owner(p)],
+            })
+        self._map_geo_cache = (sig, out)
+        return out
+
     def save_gps_zones_catalog(self, zones, saved_by=""):
         """Faqat katalog — office:pharmacies ga yozilmaydi."""
         cleaned = []
@@ -4550,6 +4624,19 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 "places": places,
                 "zonesCatalog": meta,
             })
+            return
+
+        if path == "/api/office/geozones":
+            sess = self.require_user()
+            if not sess:
+                return
+            try:
+                zones = OFFICE.map_geozones()
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:160], "zones": []}, 500)
+                return
+            meta = OFFICE.gps_zones_catalog_meta()
+            self.send_json({"ok": True, "zones": zones, "savedAt": meta.get("savedAt") or ""})
             return
 
         if path == "/api/office/geocode/reverse":

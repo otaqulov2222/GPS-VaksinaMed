@@ -562,6 +562,7 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 <script src="map-tiles.js?v=4"></script>
 <script src="map-route.js?v=8"></script>
 <script src="map-telemetry.js?v=1"></script>
+<script src="map-geozones.js?v=4"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
@@ -715,6 +716,7 @@ let drvMap = null;
 let drvLayer = null;
 let drvRouteLayer = null;
 let drvTeleLayer = null;
+let drvGeo = null;
 let drvMarkers = Object.create(null);
 let drvTrack = [];
 let drvGen = 0;
@@ -756,6 +758,7 @@ function initDriverMap() {
   bindDrvMapLock();
   if (typeof vmAddMapTiles === 'function') vmAddMapTiles(drvMap);
   else L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { subdomains: 'abc', maxZoom: 20, maxNativeZoom: 18 }).addTo(drvMap);
+  if (window.vmGeozones) drvGeo = vmGeozones.attach(drvMap, { car: (ME && ME.car) || '' });
   drvLayer = L.layerGroup().addTo(drvMap);
 }
 function pinIcon(label, color, isEnd) {
@@ -848,7 +851,8 @@ function refreshDriverMap(day) {
   const tele = document.getElementById('chk-tele');
   if (tele) tele.disabled = !track.some(p => p.length >= 3);
 
-  geos.forEach(p => {
+  if (drvGeo) drvGeo.setCar(day.car || (ME && ME.car) || '');
+  if (!drvGeo) geos.forEach(p => {
     if (!validUz(p.lat, p.lng)) return;
     drvLayer.addLayer(L.circle([p.lat, p.lng], {
       radius: p.radiusM || 120, color: '#1a5fb4', weight: 1, fillColor: '#1a5fb4', fillOpacity: 0.08, interactive: false

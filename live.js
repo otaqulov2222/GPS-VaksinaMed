@@ -158,6 +158,7 @@ function liveInitMap() {
       attribution: '',
     }).addTo(LIVE.map);
   }
+  if (window.vmGeozones) LIVE.geo = vmGeozones.attach(LIVE.map, { car: LIVE.selected || '' });
   setTimeout(() => {
     try { LIVE.map.invalidateSize(); } catch (e) {}
   }, 200);
@@ -395,6 +396,7 @@ function liveSelect(key, pan) {
     row.classList.toggle('on', row.getAttribute('data-key') === key);
   });
   const unit = LIVE.units.find((u) => String(u.car || u.id || u.name) === key);
+  if (LIVE.geo) LIVE.geo.setCar(unit ? unit.car : '');
   if (unit && unit.pos && LIVE.map && pan !== false) {
     LIVE.map.setView([unit.pos.lat, unit.pos.lng], Math.max(LIVE.map.getZoom(), 15));
     const m = LIVE.markers[key];

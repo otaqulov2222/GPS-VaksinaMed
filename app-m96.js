@@ -1285,6 +1285,7 @@ function initMap() {
         minZoom: 3
     }).setView([41.3111, 69.2797], 12);
     addMapTiles(STATE.map);
+    if (window.vmGeozones) STATE.mapGeo = vmGeozones.attach(STATE.map, { car: STATE.currentCar });
     bindMapLock();
     lockMapInteraction();
     mapInvalidate();
@@ -1742,6 +1743,7 @@ async function ensureTrackPoints(rec, opts) {
 async function refreshMap(stops, points) {
     initMap();
     if (!STATE.map) return;
+    if (STATE.mapGeo) STATE.mapGeo.setCar(STATE.currentCar);
 
     const rawList = Array.isArray(stops) ? stops : [];
     let track = normalizeTrackPoints(points);
@@ -1942,7 +1944,7 @@ async function refreshMap(stops, points) {
         STATE.map.setView([41.3111, 69.2797], 12);
         setMapStats([], 0);
     }
-    if (window.VMOffice) {
+    if (window.VMOffice && !STATE.mapGeo) {
         const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => { setTimeout(fn, ms || 200); };
         defer(() => VMOffice.drawGeofences(STATE.map, STATE.currentCar), 220);
     }
