@@ -378,6 +378,26 @@ function fleet() {
   return plates.map(vehicleInfo).filter(v => !v.hidden);
 }
 
+/** Hisobotlar uchun: park + shu oyda km/yoqilg'i/xarajati bor chiqarilgan yoki yashirilgan mashinalar.
+ *  Xarajat qilingan pul yo'qolmasin va oylik jami yillik jamlanma bilan bir xil bo'lsin. */
+function reportFleet() {
+  const list = fleet();
+  const seen = new Set(list.map(f => plateCompact(f.car)));
+  const extra = [];
+  Object.keys(STATE.cars || {}).slice().forEach(k => {
+    const c = plateCompact(k);
+    if (!c || seen.has(c)) return;
+    seen.add(c);
+    const plate = canonicalPlate(k);
+    const t = totals(calcCar(getCar(plate)));
+    if (!(t.km || t.gasIn || t.benzinIn || t.extra)) return;
+    const info = vehicleInfo(plate);
+    const tag = ' (chiqarilgan)';
+    extra.push(Object.assign({}, info, { retired: true, name: (info.name || plate) + tag, short: (info.short || plate) + tag }));
+  });
+  return list.concat(extra);
+}
+
 function blankCar(info) {
   const v = info || {};
   const diesel = v.fuelType === 'dizel' || v.fuelType === 'dizel_gaz';
@@ -2277,7 +2297,7 @@ function paintCalc() {
 
 function fleetTotals() {
   const t = { km: 0, gasIn: 0, benzinIn: 0, gasUsed: 0, benUsed: 0, cost: 0, extra: 0, cars: 0 };
-  fleet().forEach(f => {
+  reportFleet().forEach(f => {
     const x = totals(calcCar(getCar(f.car)));
     if (x.km || x.gasIn || x.benzinIn) t.cars += 1;
     t.km += x.km; t.gasIn += x.gasIn; t.benzinIn += x.benzinIn;
@@ -2362,7 +2382,7 @@ function renderDayRep() {
   const dim = daysInMonth(STATE.month);
   STATE.dayRep = Math.min(Math.max(1, n(STATE.dayRep) || 1), dim);
   const day = STATE.dayRep;
-  const rows = fleet().map((f, i) => {
+  const rows = reportFleet().map((f, i) => {
     const car = getCar(f.car);
     const r = calcCar(car)[day - 1] || {};
     return Object.assign({ n: i + 1, plate: f.car, name: driverOnDay(f, car, day) }, r);
@@ -2520,7 +2540,7 @@ function bindMonthExpand(root) {
 }
 
 function renderMonth() {
-  const rows = fleet().map((f, i) => {
+  const rows = reportFleet().map((f, i) => {
     const t = totals(calcCar(getCar(f.car)));
     return Object.assign({ n: i + 1, plate: f.car, name: f.name, short: f.short }, t);
   });
@@ -2568,7 +2588,7 @@ function renderMonth() {
 
 function renderOfficial() {
   const firm = STATE.meta.firm || {};
-  const list = fleet().map(f => {
+  const list = reportFleet().map(f => {
     const car = getCar(f.car);
     const t = totals(calcCar(car));
     return { f, car, t };
@@ -2660,7 +2680,7 @@ function renderOfficial() {
 
 function collectFills() {
   const out = [];
-  fleet().forEach(f => {
+  reportFleet().forEach(f => {
     calcCar(getCar(f.car)).forEach(r => {
       if (r.gasIn > 0) out.push({ plate: f.car, name: f.name, short: f.short, d: r.d, station: r.station, type: 'Gaz', qty: r.gasIn, price: r.gasPrice, sum: r.gasSum, kind: 'gaz' });
       if (r.benzinIn > 0) out.push({ plate: f.car, name: f.name, short: f.short, d: r.d, station: r.station, type: ['dizel', 'dizel_gaz'].includes(getCar(f.car).fuelType) ? 'Dizel' : 'Benzin', qty: r.benzinIn, price: r.benzinPrice, sum: r.benzinSum, kind: 'benzin' });
@@ -2763,7 +2783,7 @@ function renderGasAct() {
   const nextStr = String(next.getDate()).padStart(2,'0') + '.' + String(next.getMonth()+1).padStart(2,'0') + '.' + next.getFullYear();
   const startStr = '01.' + String(mo).padStart(2,'0') + '.' + y;
   const lastDay = daysInMonth(STATE.month);
-  const rows = fleet().map((f, i) => {
+  const rows = reportFleet().map((f, i) => {
     const car = getCar(f.car);
     const t = totals(calcCar(car));
     return { n: i + 1, f, car, t };
@@ -2816,8 +2836,14 @@ function monthTotalsFor(ym, carsMap) {
   const hold = STATE.month;
   STATE.month = ym;
   const t = { km: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0 };
-  Object.keys(carsMap || {}).forEach(plate => {
-    const x = totals(calcCar(carsMap[plate]));
+  const merged = {};
+  Object.keys(carsMap || {}).forEach(k => {
+    const c = plateCompact(k);
+    if (!c || !carsMap[k]) return;
+    merged[c] = merged[c] ? mergeCarRecs(merged[c], carsMap[k]) : carsMap[k];
+  });
+  Object.keys(merged).forEach(plate => {
+    const x = totals(calcCar(merged[plate]));
     t.km += x.km; t.gasIn += x.gasIn; t.benzinIn += x.benzinIn;
     t.gasSum += x.gasSum; t.benzinSum += x.benzinSum; t.extra += x.extra; t.cost += x.cost;
   });
@@ -3802,7 +3828,7 @@ function exportExcel() {
     ['Yoqilg\'i oylik hisobot — ' + monthLabel],
     ['№', 'Mashina', 'Haydovchi', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Gaz m3', 'Gaz summa', 'Benzin l', 'Benzin summa', 'Qoshimcha', 'Jami', 'Gaz qoldiq', 'Benzin qoldiq']
   ];
-  fleet().forEach((f, i) => {
+  reportFleet().forEach((f, i) => {
     const t = totals(calcCar(getCar(f.car)));
     monthRows.push([i + 1, f.car, f.name, t.km, t.gasKm, t.liqKm, t.gasIn, t.gasSum, t.benzinIn, t.benzinSum, t.extra, t.cost, t.gasR, t.benR]);
   });
@@ -5054,7 +5080,7 @@ function fuelPdfTable(doc, w, opts) {
 }
 
 function monthReportData() {
-  const rows = fleet().map((f, i) => {
+  const rows = reportFleet().map((f, i) => {
     const t = totals(calcCar(getCar(f.car)));
     return Object.assign({ n: i + 1, plate: f.car, name: f.name, short: f.short, brand: f.brand }, t);
   });
@@ -5156,7 +5182,7 @@ async function downloadFuelPdf(kind) {
     // Kunma-kun: har mashina alohida sahifa
     rows.forEach((sumRow, idx) => {
       const car = getCar(sumRow.plate);
-      const info = fleet().find(f => f.car === sumRow.plate) || { name: sumRow.name, car: sumRow.plate };
+      const info = reportFleet().find(f => f.car === sumRow.plate) || { name: sumRow.name, car: sumRow.plate };
       const dayRows = calcCar(car);
       doc.addPage();
       fuelPdfHeader(doc, w, pageLabel);
@@ -5262,7 +5288,7 @@ async function downloadFuelPdf(kind) {
   if (kind === 'dayrep') {
     const dim = daysInMonth(STATE.month);
     const day = Math.min(Math.max(1, n(STATE.dayRep) || 1), dim);
-    const rows = fleet().map((f, i) => {
+    const rows = reportFleet().map((f, i) => {
       const car = getCar(f.car);
       const r = calcCar(car)[day - 1] || {};
       return Object.assign({ n: i + 1, plate: f.car, name: driverOnDay(f, car, day) }, r);
@@ -5305,7 +5331,7 @@ async function downloadFuelPdf(kind) {
   }
 
   if (kind === 'official') {
-    const list = fleet().map(f => {
+    const list = reportFleet().map(f => {
       const car = getCar(f.car);
       const t = totals(calcCar(car));
       return { f, car, t };
@@ -5342,7 +5368,7 @@ async function downloadFuelPdf(kind) {
     const nextStr = String(next.getDate()).padStart(2, '0') + '.' + String(next.getMonth() + 1).padStart(2, '0') + '.' + next.getFullYear();
     const startStr = '01.' + String(mo).padStart(2, '0') + '.' + yy;
     const lastDay = daysInMonth(STATE.month);
-    const rows = fleet().map((f, i) => {
+    const rows = reportFleet().map((f, i) => {
       const car = getCar(f.car);
       const t = totals(calcCar(car));
       return { n: i + 1, f, car, t };
