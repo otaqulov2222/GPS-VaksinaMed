@@ -914,6 +914,21 @@ body {
 .car-pharm-modal-hint {
   margin: 0 0 14px; font-size: 12px; color: var(--muted); line-height: 1.4;
 }
+.car-pharm-near { margin-bottom: 8px; }
+.car-pharm-near > span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.car-pharm-near-list {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  max-height: 132px; overflow-y: auto;
+}
+.car-pharm-near-list label {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid #a8bdd4; background: #fff;
+  padding: 4px 8px; font-size: 12px; font-weight: 600; color: var(--ink);
+  cursor: pointer; user-select: none;
+}
+.car-pharm-near-list label:has(input:checked) { border-color: #1f6f43; background: #e9f6ee; color: #14532d; }
+.car-pharm-near-list input { margin: 0; }
+.car-pharm-near-empty { font-size: 12px; color: var(--faint); }
 .car-pharm-modal-actions {
   display: flex; justify-content: flex-end; gap: 8px;
 }
@@ -2854,11 +2869,11 @@ input, select, textarea { max-width: 100%; }
 <script src="map-tiles.js?v=4"></script>
 <script src="map-route.js?v=8"></script>
 <script src="map-telemetry.js?v=1"></script>
-<script src="map-geozones.js?v=4"></script>
+<script src="map-geozones.js?v=5"></script>
 
-<script src="app-m96.js?v=m149"></script>
+<script src="app-m96.js?v=m150"></script>
 
-<script src="office.js?v=27"></script>
+<script src="office.js?v=28"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

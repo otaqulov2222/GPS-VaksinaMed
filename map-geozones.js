@@ -190,7 +190,8 @@
                 const circle = L.circle(ll, Object.assign({ radius: Number(z.radiusM) || 100, pane: ZONE_PANE }, zoneStyle(z, own)));
                 circle.bindPopup(() => popupHtml(z, car), { maxWidth: 280 });
                 zoneLayer.addLayer(circle);
-                const text = ui(z.name);
+                const linked = own ? (z.linked || []).filter(o => plate(o.car) === plate(car)) : [];
+                const text = [ui(z.name)].concat(linked.map(o => ui(o.name))).join(' + ');
                 const cls = 'vm-gz-label' + (own ? ' is-own' : '') + (z.kind === 'office' ? ' is-office' : '');
                 const label = L.marker(ll, {
                     pane: LABEL_PANE,

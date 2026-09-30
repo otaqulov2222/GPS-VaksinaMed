@@ -365,7 +365,20 @@ const VMOffice = {
         return (STATE.pharmacies || []).find(p => this.pharmKey(p.name) === k) || null;
     },
 
-    async assignToCar(name, car, lat, lng, radiusM, aliases) {
+    /** «Yonma-yon» bog'lanish ikki tomonlama: row.nearby = ids, boshqalarida row.id qo'shiladi/olinadi. */
+    applyNearby(list, row, ids) {
+        const want = new Set((ids || []).filter(i => i && i !== row.id));
+        const car = plateCompact(row.car);
+        row.nearby = Array.from(want).slice(0, 12);
+        list.forEach(p => {
+            if (!p || p === row || !p.id) return;
+            const cur = Array.isArray(p.nearby) ? p.nearby.filter(i => i !== row.id) : [];
+            if (want.has(p.id) && plateCompact(p.car) === car) cur.push(row.id);
+            p.nearby = cur.slice(0, 12);
+        });
+    },
+
+    async assignToCar(name, car, lat, lng, radiusM, aliases, nearby) {
         name = String(name || '').trim();
         car = String(car || '').trim();
         if (!name || !car) throw new Error('Nom va mashina kerak');
@@ -386,16 +399,19 @@ const VMOffice = {
             if (radiusM != null) keep.radiusM = Math.max(40, Math.min(500, Number(radiusM) || 120));
             if (Array.isArray(aliases)) keep.aliases = aliases.slice(0, 12);
         } else {
-            list.push({
+            keep = {
                 id: 'ph_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9),
                 car,
                 name,
                 lat: lat == null || lat === '' ? null : Number(lat),
                 lng: lng == null || lng === '' ? null : Number(lng),
                 radiusM: Math.max(40, Math.min(500, Number(radiusM) || 120)),
-                aliases: Array.isArray(aliases) ? aliases.slice(0, 12) : []
-            });
+                aliases: Array.isArray(aliases) ? aliases.slice(0, 12) : [],
+                nearby: []
+            };
+            list.push(keep);
         }
+        if (Array.isArray(nearby)) this.applyNearby(list, keep, nearby);
         return this.savePharmacies(list);
     },
 
@@ -404,7 +420,7 @@ const VMOffice = {
         return this.savePharmacies(list);
     },
 
-    async renamePharm(id, newName, aliases) {
+    async renamePharm(id, newName, aliases, nearby) {
         newName = String(newName || '').trim();
         if (!newName) throw new Error('Nom boʻsh');
         const list = Array.isArray(STATE.pharmacies) ? STATE.pharmacies.slice() : [];
@@ -415,6 +431,7 @@ const VMOffice = {
         const row = cleaned.find(p => p.id === id);
         row.name = newName;
         if (Array.isArray(aliases)) row.aliases = aliases.slice(0, 12);
+        if (Array.isArray(nearby)) this.applyNearby(cleaned, row, nearby);
         return this.savePharmacies(cleaned);
     },
 

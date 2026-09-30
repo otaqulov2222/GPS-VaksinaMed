@@ -1331,6 +1331,11 @@ def clean_pharmacy(p):
     radius = max(40, min(radius, 500))
     aliases = p.get("aliases") if isinstance(p.get("aliases"), list) else []
     aliases = [str(a).strip()[:60] for a in aliases if str(a).strip()][:12]
+    nearby = []
+    for n in p.get("nearby") if isinstance(p.get("nearby"), list) else []:
+        n = str(n or "").strip()[:40]
+        if n and n != rid and n not in nearby:
+            nearby.append(n)
     return {
         "id": rid,
         "car": car,
@@ -1339,6 +1344,7 @@ def clean_pharmacy(p):
         "lng": to_float(p.get("lng")),
         "radiusM": radius,
         "aliases": aliases,
+        "nearby": nearby[:12],
     }
 
 
@@ -1387,6 +1393,12 @@ def dedupe_pharmacies(items):
                 aliases.append(old_name)
             merged["aliases"] = aliases[:12]
             merged["id"] = old.get("id") or merged.get("id")
+            nearby = []
+            for src in (old.get("nearby") or [], merged.get("nearby") or []):
+                for n in src:
+                    if n and n != merged["id"] and n not in nearby:
+                        nearby.append(n)
+            merged["nearby"] = nearby[:12]
             by_key[k] = merged
         else:
             by_key[k] = p
@@ -1585,6 +1597,7 @@ class OfficeStore:
                     break
             if host is not None:
                 host["owners"].append(_owner(p))
+                host.setdefault("linked", []).append(_owner(p))
                 continue
             out.append({
                 "id": p["id"],
@@ -1596,6 +1609,15 @@ class OfficeStore:
                 "src": "vm",
                 "owners": [_owner(p)],
             })
+        by_key = {(p["name"], p["car"]): p for p in pharms}
+        for z in out:
+            hits = [by_key[(o["name"], o["car"])] for o in z["owners"] if (o["name"], o["car"]) in by_key]
+            for car in {p["car"] for p in hits}:
+                same = [p for p in pharms if p["car"] == car]
+                for p in gs.linked_pharmacies([h for h in hits if h["car"] == car], same):
+                    if _owner(p) not in z["owners"]:
+                        z["owners"].append(_owner(p))
+                        z.setdefault("linked", []).append(_owner(p))
         self._map_geo_cache = (sig, out)
         return out
 
@@ -1942,6 +1964,55 @@ class OfficeStore:
             done["stop_clock_tz5"] = iso_now()
             self._save("office:migrations", done)
         return {"reports": reports, "reviewDays": review_days}
+
+    NEARBY_SEED = (
+        ("01 269 KMA", "1-gor", "Gor-2"),
+    )
+
+    def migrate_nearby_seed(self):
+        """Bir martalik: ma'lum yonma-yon dorixonalarni bog'lash (Wialon'da alohida geozonasi yo'q)."""
+        import gps_sync as gs
+
+        with self.lock:
+            done = self._load("office:migrations", {})
+            if not isinstance(done, dict):
+                done = {}
+            if done.get("nearby_seed_v1"):
+                return None
+        rows = list(self.pharmacies() or [])
+
+        def _find(car, name):
+            key = gs.pharmacy_key(name) or gs.norm_ph(name)
+            want = gs.compact_car(car)
+            best, best_sc = None, 0
+            for p in rows:
+                if gs.compact_car(p.get("car")) != want:
+                    continue
+                sc = gs._pharm_best_score(key, p)
+                if sc >= 90 and sc > best_sc:
+                    best, best_sc = p, sc
+            return best
+
+        linked = []
+        for car, a_name, b_name in self.NEARBY_SEED:
+            a, b = _find(car, a_name), _find(car, b_name)
+            if not a or not b or a["id"] == b["id"]:
+                continue
+            for x, y in ((a, b), (b, a)):
+                nb = list(x.get("nearby") or [])
+                if y["id"] not in nb:
+                    x["nearby"] = nb + [y["id"]]
+            linked.append(a["name"] + " + " + b["name"])
+        if not linked:
+            return None
+        self.save_pharmacies(rows)
+        with self.lock:
+            done = self._load("office:migrations", {})
+            if not isinstance(done, dict):
+                done = {}
+            done["nearby_seed_v1"] = iso_now() + " " + "; ".join(linked)
+            self._save("office:migrations", done)
+        return linked
 
     def gps_config_internal(self):
         with self.lock:
@@ -5122,6 +5193,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             def _reprocess_pharms():
                 try:
                     import gps_sync
+                    pharms = list(OFFICE.pharmacies())
+                    if gps_sync.anchor_pharmacies(pharms, OFFICE.gps_zones_catalog()):
+                        gps_sync.save_learned_geozones(OFFICE, pharms)
                     gps_sync.reprocess_recent(OFFICE, DIRECTORY, limit=45)
                 except Exception:
                     pass
@@ -5246,6 +5320,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         body.get("phName"),
                         body.get("lat"),
                         body.get("lng"),
+                        gps_sync.pharmacy_anchors(pharms, OFFICE.gps_zones_catalog()),
                     ):
                         OFFICE.save_pharmacies(pharms)
                 if valid_date(date_val):
@@ -6277,6 +6352,12 @@ def init_app(base_dir=None):
                 print("[stop-clock-migrate]", mig)
         except Exception as e:
             print("[stop-clock-migrate]", e)
+        try:
+            mig = OFFICE.migrate_nearby_seed()
+            if mig:
+                print("[nearby-seed]", mig)
+        except Exception as e:
+            print("[nearby-seed]", e)
         seed_gps_from_env(OFFICE)
         if not is_serverless():
             start_gps_worker(OFFICE, base_dir)

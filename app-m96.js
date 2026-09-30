@@ -2154,8 +2154,13 @@ function renderCarPharmacyRoster(carKey) {
         ${records.map((ph, i) => {
             const id = String(ph.id || '');
             const als = Array.isArray(ph.aliases) ? ph.aliases.filter(Boolean) : [];
+            const near = records.filter(p => p !== ph && p.id && (
+                (Array.isArray(ph.nearby) && ph.nearby.includes(p.id))
+                || (Array.isArray(p.nearby) && id && p.nearby.includes(id))
+            ));
             const nm = uiTxt(ph.name)
-                + (als.length ? `<span class="al" title="GPS’dagi boshqa nomlari">≡ ${als.map(a => escAttr(uiTxt(a))).join(', ')}</span>` : '');
+                + (als.length ? `<span class="al" title="GPS’dagi boshqa nomlari">≡ ${als.map(a => escAttr(uiTxt(a))).join(', ')}</span>` : '')
+                + (near.length ? `<span class="al" title="Yonma-yon: biriga borilsa, ikkinchisi ham borilgan">↔ ${near.map(p => escAttr(uiTxt(p.name))).join(', ')}</span>` : '');
             const actions = (canEdit && !ph._ephemeral)
                 ? `<span class="car-pharm-actions">
                     <button type="button" class="car-pharm-btn" data-ph-edit="${escAttr(id)}" title="Tahrirlash">Tahrir</button>
@@ -2198,7 +2203,11 @@ function ensureCarPharmModal() {
           <span>GPS’dagi boshqa nomlari (vergul bilan)</span>
           <input type="text" id="car-pharm-modal-aliases" maxlength="400" autocomplete="off" placeholder="masalan: Ташми-2, 1-гор" />
         </label>
-        <p class="car-pharm-modal-hint">GPS geozona nomi boshqacha boʻlsa yoki dorixona boshqasi bilan bir joyda (yonma-yon) boʻlsa — oʻsha geozona nomini yozing. Shu joyda toʻxtash bu dorixonaga ham «borildi» hisoblanadi.</p>
+        <p class="car-pharm-modal-hint">GPS geozona nomi boshqacha boʻlsa — oʻsha geozona nomini yozing. Shu joyda toʻxtash bu dorixonaga ham «borildi» hisoblanadi.</p>
+        <div class="car-pharm-near">
+          <span>Yonma-yon dorixonalar (biriga borilsa, ikkinchisi ham «borildi»)</span>
+          <div class="car-pharm-near-list" id="car-pharm-modal-near"></div>
+        </div>
         <p class="car-pharm-modal-hint" id="car-pharm-modal-hint"></p>
         <div class="car-pharm-modal-actions">
           <button type="button" class="btn btn-sm" id="car-pharm-modal-cancel">Bekor</button>
@@ -2230,6 +2239,19 @@ function openCarPharmModal(mode, rec) {
     input.value = rec && rec.name ? rec.name : '';
     const aliasEl = document.getElementById('car-pharm-modal-aliases');
     if (aliasEl) aliasEl.value = (rec && Array.isArray(rec.aliases) ? rec.aliases : []).join(', ');
+    const nearEl = document.getElementById('car-pharm-modal-near');
+    if (nearEl) {
+        const selfId = rec && rec.id ? rec.id : '';
+        const mine = new Set(rec && Array.isArray(rec.nearby) ? rec.nearby : []);
+        const others = (STATE.currentCar ? ownPharmacyRecords(STATE.currentCar) : [])
+            .filter(p => p && p.id && !p._ephemeral && p.id !== selfId);
+        nearEl.innerHTML = others.length
+            ? others.map(p => {
+                const on = mine.has(p.id) || (selfId && Array.isArray(p.nearby) && p.nearby.includes(selfId));
+                return `<label><input type="checkbox" value="${escAttr(p.id)}"${on ? ' checked' : ''} />${escAttr(uiTxt(p.name))}</label>`;
+            }).join('')
+            : '<span class="car-pharm-near-empty">Bu mashinada boshqa dorixona yoʻq</span>';
+    }
     hint.textContent = mode === 'add'
         ? 'Shu mashinaga biriktiriladi. Agar nom boshqa mashinada boʻlsa — avtomatik oʻtkaziladi.'
         : 'Nom «Shirin filial» kabi boʻlsa ham «Shirin» bilan bir joy hisoblanadi.';
@@ -2265,15 +2287,18 @@ async function submitCarPharmModal() {
             return true;
         })
         .slice(0, 12);
+    const nearby = Array.from(document.querySelectorAll('#car-pharm-modal-near input[type="checkbox"]:checked'))
+        .map(i => i.value)
+        .filter(Boolean);
     try {
         if (!window.VMOffice || typeof VMOffice.assignToCar !== 'function') {
             throw new Error('Ofis moduli yuklanmagan');
         }
         if (_carPharmModalMode === 'edit' && _carPharmModalId) {
-            await VMOffice.renamePharm(_carPharmModalId, name, aliases);
+            await VMOffice.renamePharm(_carPharmModalId, name, aliases, nearby);
             if (typeof showToast === 'function') showToast('Yangilandi', 'ok');
         } else {
-            await VMOffice.assignToCar(name, car, null, null, null, aliases.length ? aliases : undefined);
+            await VMOffice.assignToCar(name, car, null, null, null, aliases.length ? aliases : undefined, nearby);
             if (typeof showToast === 'function') showToast('"' + name + '" biriktirildi', 'ok');
         }
         closeCarPharmModal();

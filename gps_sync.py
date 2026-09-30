@@ -1921,7 +1921,7 @@ def co_visited_pharmacies(stop, car_key, pharmacies, zones=None):
         k = pharmacy_key(n) or norm_ph(n)
         if k and k not in keys:
             keys.append(k)
-    out = []
+    hits = []
     for p in own:
         hit = any(_pharm_best_score(k, p) >= 55 for k in keys)
         if not hit and lat and p.get("lat") is not None and p.get("lng") is not None:
@@ -1930,8 +1930,33 @@ def co_visited_pharmacies(stop, car_key, pharmacies, zones=None):
                 hit = d <= float(p.get("radiusM") or 120)
             except (TypeError, ValueError):
                 hit = False
-        if hit and p.get("name") not in out:
+        if hit:
+            hits.append(p)
+    out = []
+    for p in hits + linked_pharmacies(hits, own):
+        if p.get("name") not in out:
             out.append(p.get("name"))
+    return out
+
+
+def linked_pharmacies(hits, pool):
+    """
+    «Yonma-yon» bog'langan dorixonalar (nearby: [id]) — ikki tomonlama, bir qadam.
+    1-gor ga borilsa, u bilan bog'langan Gor-2 ham borilgan.
+    """
+    hit_ids = {p.get("id") for p in hits or [] if p.get("id")}
+    if not hit_ids:
+        return []
+    want = set()
+    for p in hits:
+        want.update(i for i in (p.get("nearby") or []) if i)
+    out = []
+    for p in pool or []:
+        pid = p.get("id")
+        if not pid or pid in hit_ids:
+            continue
+        if pid in want or hit_ids.intersection(p.get("nearby") or []):
+            out.append(p)
     return out
 
 
@@ -2168,7 +2193,121 @@ def save_learned_geozones(office, learned):
     return changed
 
 
-def learn_geozone(pharmacies, car, ph_name, lat, lng):
+LEARN_MAX_JUMP_M = 300
+ANCHOR_TOLERANCE_M = 60
+ZONE_CONFLICT_M = 1500
+
+
+def zone_for_pharmacy(ph, zones):
+    """
+    Nomi yoki taxallusi aniq mos Wialon geozonasi (1-gor ≡ 1-гор).
+    Bir xil nomli bir nechta zona bo'lsa — dorixonaning ma'lum joyiga eng yaqini;
+    ma'lum joydan ZONE_CONFLICT_M dan uzoq bo'lsa (boshqa shahardagi adash) — None.
+    """
+    cands, best_sc = [], 0
+    for z, key in _keyed_zones(zones):
+        sc = _pharm_best_score(key, ph)
+        if sc < 90 or sc < best_sc:
+            continue
+        if sc > best_sc:
+            cands, best_sc = [], sc
+        cands.append(z)
+    if not cands:
+        return None
+    try:
+        here = (float(ph["lat"]), float(ph["lng"])) if ph.get("lat") is not None and ph.get("lng") is not None else None
+    except (TypeError, ValueError):
+        here = None
+    if here is None:
+        return cands[0] if len(cands) == 1 else None
+    z = min(cands, key=lambda c: haversine_m(here[0], here[1], *_zone_point(c)))
+    return z if haversine_m(here[0], here[1], *_zone_point(z)) <= ZONE_CONFLICT_M else None
+
+
+def _keyed_zones(zones):
+    """[(zone, key)] — dorixona geozonalari (ofis/skladsiz, koordinatasi to'g'ri)."""
+    if isinstance(zones, _KeyedZones):
+        return zones
+    out = _KeyedZones()
+    for z in zones or []:
+        if not isinstance(z, dict) or not z.get("name") or is_office(z.get("name")) or not _zone_point(z):
+            continue
+        key = pharmacy_key(z["name"]) or norm_ph(z["name"])
+        if key:
+            out.append((z, key))
+    return out
+
+
+class _KeyedZones(list):
+    pass
+
+
+def _zone_point(z):
+    try:
+        y, x = float(z["lat"]), float(z["lng"])
+    except (TypeError, ValueError, KeyError):
+        return None
+    return (y, x) if valid_uz_coord(y, x) else None
+
+
+def pharmacy_anchors(pharmacies, zones):
+    """
+    Dorixona joyining ishonchli manbasi, id -> (lat, lng):
+    1) o'z nomidagi Wialon geozonasi;
+    2) yonma-yon bog'langan sherigining geozonasi yoki koordinatasi.
+    Langari bor dorixonani bitta to'xtash / review boshqa joyga ko'chira olmaydi.
+    """
+    rows = [p for p in pharmacies or [] if isinstance(p, dict) and p.get("id") and p.get("name")]
+    zones = _keyed_zones(zones)
+    own_zone = {}
+    for p in rows:
+        z = zone_for_pharmacy(p, zones)
+        pt = _zone_point(z) if z else None
+        if pt:
+            own_zone[p["id"]] = pt
+    anchors = dict(own_zone)
+    for p in rows:
+        if p["id"] in anchors:
+            continue
+        want = compact_car(p.get("car"))
+        same = [q for q in rows if compact_car(q.get("car")) == want]
+        partners = linked_pharmacies([p], same)
+        pt = next((own_zone[q["id"]] for q in partners if q["id"] in own_zone), None)
+        if pt is None:
+            for q in partners:
+                if q.get("lat") is not None and q.get("lng") is not None and valid_uz_coord(q["lat"], q["lng"]):
+                    pt = (float(q["lat"]), float(q["lng"]))
+                    break
+        if pt:
+            anchors[p["id"]] = pt
+    return anchors
+
+
+def _place_at(ph, lat, lng):
+    if ph.get("lat") is not None and ph.get("lng") is not None:
+        try:
+            if haversine_m(float(ph["lat"]), float(ph["lng"]), lat, lng) <= ANCHOR_TOLERANCE_M:
+                return False
+        except (TypeError, ValueError):
+            pass
+    ph["lat"], ph["lng"] = round(lat, 6), round(lng, 6)
+    if not ph.get("radiusM"):
+        ph["radiusM"] = 120
+    return True
+
+
+def anchor_pharmacies(pharmacies, zones, anchors=None):
+    """Langari bor dorixonalarni langar joyiga qo'yadi. O'zgarganlar soni."""
+    anchors = pharmacy_anchors(pharmacies, zones) if anchors is None else anchors
+    moved = 0
+    for p in pharmacies or []:
+        pt = anchors.get(p.get("id")) if isinstance(p, dict) else None
+        if pt and _place_at(p, pt[0], pt[1]):
+            moved += 1
+    return moved
+
+
+def learn_geozone(pharmacies, car, ph_name, lat, lng, anchors=None):
     ph = find_pharmacy(pharmacies, car, ph_name)
     if not ph:
         return False
@@ -2178,22 +2317,31 @@ def learn_geozone(pharmacies, car, ph_name, lat, lng):
         return False
     if not y or not x:
         return False
+    pt = (anchors or {}).get(ph.get("id"))
+    if pt:
+        return _place_at(ph, pt[0], pt[1])
+    if ph.get("lat") is not None and ph.get("lng") is not None:
+        try:
+            if haversine_m(float(ph["lat"]), float(ph["lng"]), y, x) > LEARN_MAX_JUMP_M:
+                return False
+        except (TypeError, ValueError):
+            pass
     merge_geozone(ph, y, x)
     return True
 
 
-def learn_geozones_from_stops(pharmacies, car, stops):
+def learn_geozones_from_stops(pharmacies, car, stops, anchors=None):
     learned = 0
     for st in stops or []:
         if not isinstance(st, dict) or st.get("matchType") != "own":
             continue
         ph_name = st.get("phName") or st.get("place")
-        if ph_name and learn_geozone(pharmacies, car, ph_name, st.get("lat"), st.get("lng")):
+        if ph_name and learn_geozone(pharmacies, car, ph_name, st.get("lat"), st.get("lng"), anchors):
             learned += 1
     return learned
 
 
-def learn_geozones_from_reviews(pharmacies, reviews):
+def learn_geozones_from_reviews(pharmacies, reviews, anchors=None):
     learned = 0
     for key, rv in (reviews or {}).items():
         if not isinstance(rv, dict) or rv.get("status") != "allowed":
@@ -2201,7 +2349,7 @@ def learn_geozones_from_reviews(pharmacies, reviews):
         ph_name = rv.get("phName") or ""
         parts = str(key).split("|")
         car = rv.get("car") or (parts[1] if len(parts) > 1 else "")
-        if ph_name and car and learn_geozone(pharmacies, car, ph_name, rv.get("lat"), rv.get("lng")):
+        if ph_name and car and learn_geozone(pharmacies, car, ph_name, rv.get("lat"), rv.get("lng"), anchors):
             learned += 1
     return learned
 
@@ -2360,7 +2508,8 @@ def reprocess_recent(office, base_dir, limit=45):
 
 def learn_geozones_from_reports(office, base_dir):
     pharmacies = list(office.pharmacies())
-    learned = 0
+    anchors = pharmacy_anchors(pharmacies, office_zones(office))
+    learned = anchor_pharmacies(pharmacies, None, anchors)
     for date_str in office.report_dates():
         report = office.get_report(date_str)
         cars = (report or {}).get("cars") if isinstance(report, dict) else {}
@@ -2370,8 +2519,8 @@ def learn_geozones_from_reports(office, base_dir):
             if not isinstance(rec, dict):
                 continue
             car = rec.get("car") or car_key
-            learned += learn_geozones_from_stops(pharmacies, car, rec.get("stops") or [])
-        learned += learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
+            learned += learn_geozones_from_stops(pharmacies, car, rec.get("stops") or [], anchors)
+        learned += learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {}, anchors)
     if learned:
         save_learned_geozones(office, pharmacies)
     return learned
@@ -2715,11 +2864,13 @@ def sync_today(
 
         # Vercel bo'laklarida geozona o'rganishni o'tkazib yuborish — vaqt tejash
         if budget is None and left() > 5:
+            anchors = pharmacy_anchors(pharmacies, zones)
+            anchor_pharmacies(pharmacies, None, anchors)
             for row in unit_rows:
                 drv, raw_stops = row[0], row[1]
                 stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies, zones=zones)
-                learn_geozones_from_stops(pharmacies, drv["car"], stops)
-            learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
+                learn_geozones_from_stops(pharmacies, drv["car"], stops, anchors)
+            learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {}, anchors)
             if any(isinstance(p, dict) and p.get("lat") is not None for p in pharmacies):
                 save_learned_geozones(office, pharmacies)
                 pharmacies = office.pharmacies()
