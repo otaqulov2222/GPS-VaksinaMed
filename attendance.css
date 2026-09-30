@@ -5224,3 +5224,33 @@ section.av-pulse-row > .av-pulse-card {
   line-height: 1.4;
 }
 .att-exempt-note b { font-size: 14px; color: #93370d; }
+
+.av-map-wrap { isolation: isolate; }
+.av-map-wrap::before {
+  content: "Xaritani bosing — keyin zoom/surish";
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 450;
+  pointer-events: none;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0b1f3a;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #c5d4e6;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(11, 31, 58, 0.12);
+}
+.av-map-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 440;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.av-map-wrap.is-active::before { display: none; }
+.av-map-wrap.is-active::after { box-shadow: inset 0 0 0 2px #1a5fb4; }

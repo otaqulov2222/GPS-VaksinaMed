@@ -209,6 +209,9 @@
     }
   }
 
+  const CONFIRM_ICO_IN = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>';
+  const CONFIRM_ICO_OUT = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>';
+
   function askPunchConfirm(kind) {
     return new Promise((resolve) => {
       const m = document.getElementById('att-confirm-modal');
@@ -229,13 +232,13 @@
       const yes = document.getElementById('att-confirm-yes');
       const no = document.getElementById('att-confirm-no');
       if (kind === 'out') {
-        if (ico) { ico.textContent = 'OUT'; ico.className = 'att-confirm-ico out'; }
+        if (ico) { ico.innerHTML = CONFIRM_ICO_OUT; ico.className = 'att-confirm-ico out'; }
         if (title) title.textContent = 'Ishdan ketish';
         if (lead) lead.textContent = 'Ishdan ketishni bosayapsiz. Bugungi ish kuni yopiladi va ketish vaqti yoziladi.';
         if (note) note.textContent = 'Faqat ofisdan haqiqatan chiqayotgan bo‘lsangiz «Ha, ketdim» ni bosing.';
         if (yes) yes.textContent = 'Ha, ketdim';
       } else {
-        if (ico) { ico.textContent = 'IN'; ico.className = 'att-confirm-ico in'; }
+        if (ico) { ico.innerHTML = CONFIRM_ICO_IN; ico.className = 'att-confirm-ico in'; }
         if (title) title.textContent = 'Ishga kelish';
         if (lead) lead.textContent = 'Ishga keldingizmi? Tasdiqlasangiz, bugungi kelish vaqti yoziladi.';
         if (note) note.textContent = 'Ofis zonasida ekanligingiz GPS orqali tekshiriladi.';
@@ -607,7 +610,13 @@
   }
 
   function applyGeoError(err) {
-    const msgTxt = err && err.message ? err.message : 'Joylashuv olinmadi';
+    const code = err && typeof err.code === 'number' ? err.code : 0;
+    const byCode = {
+      1: 'Joylashuvga ruxsat berilmagan',
+      2: 'Joylashuv aniqlanmadi',
+      3: 'GPS javobi kechikdi'
+    };
+    const msgTxt = byCode[code] || (err && err.message ? err.message : 'Joylashuv olinmadi');
     // Oxirgi yaxshi fix yangi bo'lsa — xato bilan tozalab yuborma
     if (geoLive && geoLive.lat != null && geoLive.ts && (Date.now() - geoLive.ts) < 180000) {
       geoLive = Object.assign({}, geoLive, {
@@ -896,6 +905,33 @@
     );
   }
 
+  let attMapLockDocBound = false;
+
+  /** Xarita faqat bir marta bosilgandan keyin zoom/surishga javob beradi; tashqariga bosilsa yoki sichqoncha chiqsa yana qulflanadi. */
+  function setAttMapInteractive(on) {
+    const frame = document.querySelector('.av-map-wrap');
+    if (frame) frame.classList.toggle('is-active', !!on);
+    if (!attMap) return;
+    ['scrollWheelZoom', 'dragging', 'doubleClickZoom', 'boxZoom', 'touchZoom', 'tap'].forEach((k) => {
+      try { if (attMap[k]) attMap[k][on ? 'enable' : 'disable'](); } catch (e) {}
+    });
+  }
+
+  function bindAttMapLock(frame) {
+    frame.classList.remove('is-active');
+    frame.addEventListener('click', () => setAttMapInteractive(true));
+    frame.addEventListener('touchend', () => setAttMapInteractive(true), { passive: true });
+    frame.addEventListener('mouseleave', () => setAttMapInteractive(false));
+    if (attMapLockDocBound) return;
+    attMapLockDocBound = true;
+    const outside = (e) => {
+      const f = document.querySelector('.av-map-wrap');
+      if (f && !f.contains(e.target)) setAttMapInteractive(false);
+    };
+    document.addEventListener('click', outside);
+    document.addEventListener('touchstart', outside, { passive: true });
+  }
+
   function initAttMap() {
     destroyAttMap();
     const el = document.getElementById('av-map');
@@ -903,7 +939,11 @@
     const off = officeInfo();
     const startLat = (geoLive.lat != null) ? geoLive.lat : (off.hasCoords ? off.lat : 41.31);
     const startLng = (geoLive.lng != null) ? geoLive.lng : (off.hasCoords ? off.lng : 69.24);
-    attMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([startLat, startLng], 17);
+    attMap = L.map(el, {
+      zoomControl: true, attributionControl: false,
+      scrollWheelZoom: false, dragging: false, doubleClickZoom: false, boxZoom: false, touchZoom: false, tap: false
+    }).setView([startLat, startLng], 17);
+    bindAttMapLock(el.closest('.av-map-wrap') || el);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 20
     }).addTo(attMap);
@@ -2627,13 +2667,11 @@
               <div class="av-punch-row">
                 <div class="av-punch av-punch-in av-punch-display ${inn ? 'is-done' : 'is-empty'}" id="btn-keldim-main" aria-hidden="true">
                   <div class="tag">Keldim</div>
-                  <span class="ico">IN</span>
                   <div class="time">${inn ? punchTime(inn) : '—'}</div>
                   <div class="plan">Reja ${esc(s.in_start || '09:00')}${inn && inn.late ? ' · kechikdi' : (inn && (inn.note || '').toLowerCase().indexOf('erta') >= 0 ? ' · erta' : (inn ? ' · o‘z vaqtida' : ' · erta mumkin'))}</div>
                 </div>
                 <div class="av-punch av-punch-out av-punch-display ${out ? 'is-done' : 'is-empty'}" id="btn-ketdim-main" aria-hidden="true">
                   <div class="tag">Ketdim</div>
-                  <span class="ico">OUT</span>
                   <div class="time">${out ? punchTime(out) : '—'}</div>
                   <div class="plan">Reja ${esc(s.out_start || '18:00')}${out && (out.note || '').toLowerCase().indexOf('erta') >= 0 ? ' · erta' : (out ? ' · qayd' : ' · erta mumkin')}</div>
                 </div>
@@ -2761,7 +2799,6 @@
               <div class="av-hist-h">
                 <div>
                   <h3>So‘nggi yozuvlar</h3>
-                  <p class="av-hist-sub">Shaxsiy stamp jurnal</p>
                 </div>
               </div>
               <div class="av-hist-b">

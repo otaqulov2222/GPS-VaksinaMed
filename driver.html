@@ -1,23 +1,14 @@
 <!DOCTYPE html>
-
 <html lang="uz">
-
 <head>
 <script src="canonical-url.js"></script>
 <meta charset="UTF-8">
-
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-
 <title>VAKSINA-GPS</title>
-
 <link rel="preconnect" href="https://fonts.googleapis.com">
-
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-
 <link rel="stylesheet" href="shell.css?v=31"/>
-
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scrollbar-width: thin; scrollbar-color: #9bb4d0 #eef3f9; }
@@ -33,10 +24,9 @@ html { scrollbar-width: thin; scrollbar-color: #9bb4d0 #eef3f9; }
   --ink: #0b1f3a;
   --muted: #5a7190;
   --line: #d5e2f0;
+  --line-2: #c5d4e6;
   --accent: #1a5fb4;
   --accent-2: #2a74c9;
-  --header: #0b1f3a;
-  --mark: #1a5fb4;
   --ok: #1a7a4c;
   --bad: #b42318;
   --warn: #b54708;
@@ -47,689 +37,657 @@ html { scrollbar-width: thin; scrollbar-color: #9bb4d0 #eef3f9; }
   --shadow: 0 10px 28px rgba(11, 31, 58, 0.07);
 }
 
-body.app-body {
-  font-family: var(--sans);
-  color: var(--ink);
-  font-size: 13px;
-}
+body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
+[hidden] { display: none !important; }
 
-.drv-note {
-  margin: 12px 16px 0;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(26,95,180,.08), rgba(26,95,180,.02));
-  border: 1px solid rgba(26,95,180,.16);
-  color: #123050;
-  font-size: 12px;
-  line-height: 1.45;
-  font-weight: 500;
-}
+.wrap { max-width: 1240px; margin: 0 auto; padding: 16px 18px 40px; }
 
-.wrap {
-  max-width: 920px;
-  margin: 0 auto;
-  padding: 14px 16px 40px;
-}
-
-.drv-daybar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  margin-bottom: 14px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.drv-daybar label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.drv-daybar label[hidden] {
-  display: none !important;
-}
-
-.drv-daybar input,
-.drv-daybar select {
-  height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  background: var(--soft);
-  border-radius: 12px;
-  font: 600 13px/1 var(--mono);
-  color: var(--ink);
-}
-
-.drv-daybar select {
-  min-width: 200px;
-  max-width: min(100%, 320px);
-  cursor: pointer;
-}
-
-.drv-day-meta {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--muted);
-  font-family: var(--mono);
-}
-
-.drv-live {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  background: linear-gradient(135deg, #0b1f3a 0%, #123a66 55%, #1a5fb4 140%);
-  color: #e8eef5;
-  box-shadow: var(--shadow);
-}
-
-.drv-live-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #5d6b7c;
-  box-shadow: 0 0 0 3px rgba(255,255,255,.08);
-  flex-shrink: 0;
-}
-
-.drv-live.is-on .drv-live-dot {
-  background: #3ddc97;
-  box-shadow: 0 0 0 3px rgba(61,220,151,.22);
-  animation: drvPulse 1.6s ease-in-out infinite;
-}
-
-.drv-live.is-busy .drv-live-dot {
-  background: #ffd166;
-  animation: drvPulse 0.9s ease-in-out infinite;
-}
-
-.drv-live.is-off .drv-live-dot { background: #8aa0b8; }
-
-@keyframes drvPulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: .7; }
-}
-
-.drv-live-main { min-width: 0; flex: 1; }
-.drv-live-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .02em;
-}
-.drv-live-sub {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #9bb8d8;
-  font-family: var(--mono);
-  line-height: 1.35;
-}
-
-.drv-live-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.drv-live-btn {
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid rgba(255,255,255,.22);
-  background: rgba(255,255,255,.12);
-  color: #fff;
-  border-radius: 11px;
-  font: 700 12px/1 var(--sans);
-  letter-spacing: .04em;
-  cursor: pointer;
-}
-
-.drv-live-btn:hover { background: rgba(255,255,255,.2); }
-.drv-live-btn:disabled {
-  opacity: .55;
-  cursor: wait;
-}
-
-.drv-live-chip {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.16);
-  color: #d7e6f7;
-  font-family: var(--sans);
-}
-
-.kpis {
+/* ── Sarlavha (mashina + haydovchi + sana + jonli holat) ── */
+.hero {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) minmax(280px, 380px);
+  gap: 18px;
+  align-items: center;
+  padding: 16px 18px;
   margin-bottom: 14px;
-}
-
-.kpi {
-  position: relative;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px 14px 12px;
-  box-shadow: var(--shadow);
+  border-radius: 22px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(42,116,201,.35) 0%, rgba(42,116,201,0) 55%),
+    linear-gradient(135deg, #0b1f3a 0%, #123a66 60%, #1a5fb4 140%);
+  color: #e8eef5;
+  box-shadow: 0 16px 36px rgba(11, 31, 58, 0.22);
   overflow: hidden;
-  min-width: 0;
 }
-
-.kpi::before {
-  content: "";
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 4px;
-  background: var(--accent);
+.hero-car {
+  width: 168px; height: 104px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,.95) 0%, #e6eef8 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.6), 0 10px 22px rgba(0,0,0,.18);
+  overflow: hidden;
 }
+.hero-car img { width: 100%; height: 100%; object-fit: contain; padding: 6px 8px; }
+.hero-car .hero-car-ph { font: 700 11px/1.3 var(--sans); color: #5a7190; letter-spacing: .08em; text-transform: uppercase; text-align: center; padding: 8px; }
+.hero-kicker { font-size: 10px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: #9bb8d8; }
+.hero-name { margin-top: 4px; font-size: clamp(20px, 2.6vw, 28px); font-weight: 700; color: #fff; line-height: 1.15; overflow-wrap: anywhere; }
+.hero-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.plate {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 10px 0 6px;
+  border-radius: 8px;
+  background: #fff; color: #0b1f3a;
+  font: 700 14px/1 var(--mono); letter-spacing: .06em;
+  box-shadow: inset 0 0 0 2px #0b1f3a, 0 4px 10px rgba(0,0,0,.18);
+  white-space: nowrap;
+}
+.plate::before {
+  content: "UZ"; display: inline-flex; align-items: center; justify-content: center;
+  height: 20px; padding: 0 5px; border-radius: 4px;
+  background: #1a5fb4; color: #fff; font: 700 9px/1 var(--sans); letter-spacing: .06em;
+}
+.hero-chip {
+  display: inline-flex; align-items: center; height: 28px; padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18);
+  color: #d7e6f7; font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.hero-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.hero-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+.fld { display: flex; flex-direction: column; gap: 4px; flex: 1 1 140px; min-width: 0; }
+.fld[hidden] { display: none !important; }
+.fld > span { font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #9bb8d8; }
+.fld input, .fld select {
+  height: 40px; width: 100%; padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.96);
+  border-radius: 12px;
+  font: 600 13px/1 var(--mono); color: var(--ink);
+}
+.fld select { cursor: pointer; font-family: var(--sans); }
+.live {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 14px;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+}
+.live-dot { width: 9px; height: 9px; border-radius: 50%; background: #8aa0b8; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(255,255,255,.08); }
+.live.is-on .live-dot { background: #3ddc97; box-shadow: 0 0 0 3px rgba(61,220,151,.22); animation: drvPulse 1.6s ease-in-out infinite; }
+.live.is-busy .live-dot { background: #ffd166; animation: drvPulse .9s ease-in-out infinite; }
+@keyframes drvPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: .7; } }
+.live-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.live-main b { font-size: 12px; font-weight: 700; color: #fff; letter-spacing: .02em; }
+.live-main span { font-size: 10.5px; color: #9bb8d8; font-family: var(--mono); line-height: 1.35; }
+.live-chip {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  padding: 5px 9px; border-radius: 999px;
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16); color: #d7e6f7;
+}
+.hero-meta { font-size: 10.5px; color: #9bb8d8; font-family: var(--mono); line-height: 1.4; }
 
+/* ── KPI ── */
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.kpi {
+  position: relative; background: #fff;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 13px 14px 12px 16px; box-shadow: var(--shadow);
+  overflow: hidden; min-width: 0;
+}
+.kpi::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--accent); }
 .kpi.is-score::before { background: #0b1f3a; }
+.kpi.is-stop::before { background: #5b9fe0; }
 .kpi.is-miss::before { background: var(--warn); }
 .kpi.is-bad::before { background: var(--bad); }
-
-.kpi i {
-  display: block;
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--muted);
+.kpi i { display: block; font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.kpi b { display: block; font-size: clamp(18px, 2.4vw, 24px); font-weight: 700; margin-top: 6px; font-family: var(--mono); color: var(--ink); line-height: 1.1; overflow-wrap: anywhere; }
+.kpi s { display: block; text-decoration: none; font-size: 11px; color: var(--muted); margin-top: 4px; }
+.kpi .grade {
+  position: absolute; top: 12px; right: 12px;
+  min-width: 30px; height: 30px; padding: 0 8px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 14px/1 var(--mono); color: #fff; background: #8aa0b8;
 }
+.grade.g-a { background: var(--ok); }
+.grade.g-b { background: var(--accent); }
+.grade.g-c { background: var(--warn); }
+.grade.g-d, .grade.g-e, .grade.g-f { background: var(--bad); }
 
-.kpi b {
-  display: block;
-  font-size: clamp(18px, 4vw, 24px);
-  font-weight: 700;
-  margin-top: 6px;
-  font-family: var(--mono);
-  color: var(--ink);
-  line-height: 1.1;
-  overflow-wrap: anywhere;
+/* ── Davomat kartochkasi ── */
+.att-strip {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 14px; align-items: center;
+  padding: 12px 14px; margin-bottom: 14px;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
 }
-
-.kpi s {
-  display: block;
-  text-decoration: none;
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 4px;
+.att-strip[hidden] { display: none !important; }
+.att-ico {
+  width: 40px; height: 40px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: #eef3f9; color: var(--accent);
 }
+.att-ico svg { width: 20px; height: 20px; }
+.att-strip.is-in .att-ico { background: #e8f5ee; color: var(--ok); }
+.att-strip.is-wait .att-ico { background: #fff4e5; color: var(--warn); }
+.att-strip.is-late .att-ico { background: #fdecea; color: var(--bad); }
+.att-title { font-size: 13px; font-weight: 700; color: var(--ink); }
+.att-sub { margin-top: 2px; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.att-times { display: flex; gap: 8px; }
+.att-t {
+  min-width: 86px; padding: 7px 10px; border-radius: 12px;
+  background: var(--soft); border: 1px solid var(--line); text-align: center;
+}
+.att-t i { display: block; font-style: normal; font-size: 8.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.att-t b { display: block; margin-top: 3px; font: 700 14px/1.1 var(--mono); color: var(--ink); }
+.att-t.is-late b { color: var(--bad); }
+.att-go {
+  display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px;
+  border-radius: 11px; background: var(--accent); color: #fff; text-decoration: none;
+  font-size: 12px; font-weight: 700; letter-spacing: .03em; white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(26,95,180,.25);
+}
+.att-go:hover { background: var(--accent-2); }
 
+/* ── Kartalar ── */
 .card {
-  background: #fff;
-  border: 1px solid var(--line);
-  margin-bottom: 14px;
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow);
+  background: #fff; border: 1px solid var(--line);
+  margin-bottom: 14px; border-radius: var(--radius);
+  overflow: hidden; box-shadow: var(--shadow);
 }
-
 .card-h {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 13px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px;
   background: linear-gradient(180deg, #ffffff 0%, #f4f8fc 100%);
-  color: var(--ink);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .12em;
-  text-transform: uppercase;
+  color: var(--ink); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
   border-bottom: 1px solid var(--line);
 }
-
+.card-h .cnt { font: 700 11px/1 var(--mono); color: var(--muted); letter-spacing: 0; }
 .card-b { padding: 14px 16px; }
 
-.fuel-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+/* ── Xarita (Dashboard bilan bir xil uslub) ── */
+.map-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
+  border-bottom: 1px solid var(--line-2);
+}
+.map-kicker { font-size: 9px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.map-head h3 { font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.map-head-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.map-stat { min-width: 70px; padding: 7px 11px; background: #fff; border: 1px solid var(--line-2); border-radius: 12px; box-shadow: 0 2px 6px rgba(11,31,58,.04); }
+.map-stat i { display: block; font-style: normal; font-size: 8px; font-weight: 700; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; }
+.map-stat b { display: block; font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--ink); margin-top: 2px; }
+.map-stat.is-bad { background: linear-gradient(180deg, #fff 0%, #eef3f9 100%); border-color: #b8c9dc; }
+.map-tele-toggle {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
+  background: #fff; border: 1px solid var(--line-2); border-radius: 12px;
+  font-size: 11px; font-weight: 700; color: var(--ink); letter-spacing: .04em;
+  cursor: pointer; user-select: none;
+}
+.map-tele-toggle input { accent-color: var(--accent); margin: 0; cursor: pointer; }
+.map-legend { display: flex; flex-wrap: wrap; gap: 7px; padding: 10px 16px; background: #f6f9fc; border-bottom: 1px solid var(--line-2); }
+.leg-item {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px;
+  font-size: 10px; font-weight: 600; color: #1a3558;
+  background: #fff; border: 1px solid var(--line-2); border-radius: 999px;
+}
+.leg-dot { width: 9px; height: 9px; flex-shrink: 0; border-radius: 3px; box-shadow: 0 0 0 2px rgba(26,95,180,.1); }
+.leg-dot.is-line { width: 14px; height: 2px; border-radius: 1px; box-shadow: none; }
+.leg-dot.is-chev { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 8px solid var(--accent); border-radius: 0; background: transparent; box-shadow: none; }
+
+.map-frame { position: relative; overflow: hidden; isolation: isolate; background: #dce6f0; }
+.map-frame::before {
+  content: "Xaritani bosing — keyin zoom/surish";
+  position: absolute; left: 12px; bottom: 12px; z-index: 450; pointer-events: none;
+  padding: 8px 12px; font-size: 11px; font-weight: 600; letter-spacing: .03em; color: var(--ink);
+  background: rgba(255,255,255,.96); border: 1px solid var(--line-2); border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(11,31,58,.12);
+}
+.map-frame::after { content: ""; position: absolute; inset: 0; z-index: 400; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(11,31,58,.06); }
+.map-frame.is-active::before { display: none; }
+.map-frame.is-active::after { box-shadow: inset 0 0 0 2px var(--accent); }
+#driver-map { height: min(62vh, 520px); min-height: 380px; background: #dce6f0; cursor: grab; }
+#driver-map:active { cursor: grabbing; }
+.map-info {
+  position: absolute; top: 12px; right: 12px; z-index: 460; pointer-events: none;
+  padding: 8px 12px; font-size: 11px; font-weight: 700; color: var(--ink);
+  background: rgba(255,255,255,.96); border: 1px solid var(--line-2); border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(11,31,58,.12); max-width: calc(100% - 80px);
+}
+.map-info[hidden] { display: none; }
+.map-empty {
+  position: absolute; inset: 0; z-index: 455; display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.map-empty span {
+  padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.96);
+  border: 1px solid var(--line-2); font-size: 12px; font-weight: 600; color: var(--muted);
 }
 
-.fuel-cell {
-  background: var(--soft);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px 12px 10px;
-  min-width: 0;
+.leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #dce6f0; }
+.leaflet-popup-content-wrapper { background: #0b1f3a; color: #e8eef5; border-radius: 12px !important; box-shadow: 0 14px 28px rgba(11,31,58,.28) !important; }
+.leaflet-popup-content { margin: 12px 14px; font-size: 12px; line-height: 1.5; }
+.leaflet-popup-content b { color: #fff; }
+.leaflet-popup-tip { background: #0b1f3a; }
+.leaflet-bar { border: 1px solid var(--line-2) !important; border-radius: 12px !important; overflow: hidden; box-shadow: 0 8px 18px rgba(11,31,58,.12) !important; }
+.leaflet-bar a { color: var(--ink) !important; background: #fff !important; width: 34px !important; height: 34px !important; line-height: 34px !important; }
+.vm-pin { background: none !important; border: none !important; }
+.vm-pin-dot {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; font-family: var(--mono); font-size: 10px; font-weight: 700; color: #fff;
+  border: 2px solid #fff; border-radius: 50%; box-shadow: 0 3px 10px rgba(11,31,58,.32);
+}
+.vm-pin-end { width: 28px; height: 28px; background: #0b1f3a !important; border-radius: 9px; }
+.vm-pin-dot.is-focus { box-shadow: 0 0 0 4px rgba(26,95,180,.35), 0 3px 10px rgba(11,31,58,.32); }
+.vm-route-chev { background: none !important; border: none !important; }
+.vm-route-chev-inner {
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  transform: rotate(var(--brg, 0deg)); filter: drop-shadow(0 1px 2px rgba(11,31,58,.65));
+}
+.vm-route-chev-inner svg { width: 17px; height: 17px; display: block; overflow: visible; }
+.vm-route-chev-inner path { fill: #fff; stroke: #0b1f3a; stroke-width: 2; stroke-linejoin: round; }
+.leaflet-container path.vm-route-flow { animation: vmRouteFlow 1.55s linear infinite; pointer-events: none; }
+@keyframes vmRouteFlow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -22; } }
+.leaflet-tooltip.vm-boom-tip {
+  background: #1a5fb4 !important; border: none !important; color: #fff !important;
+  font-size: 11px; font-weight: 600; line-height: 1.35; padding: 5px 9px !important;
+  border-radius: 4px; box-shadow: 0 2px 10px rgba(11,31,58,.35); white-space: nowrap;
+}
+.leaflet-tooltip.vm-boom-tip::before { border-right-color: #1a5fb4 !important; }
+.leaflet-tooltip.vm-boom-tip.leaflet-tooltip-left::before { border-left-color: #1a5fb4 !important; border-right-color: transparent !important; }
+
+/* ── Ikki ustun ── */
+.cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.side .card { margin-bottom: 14px; }
+@media (min-width: 1101px) {
+  .side { position: sticky; top: 12px; }
+  #stop-box { max-height: 780px; overflow-y: auto; overscroll-behavior: contain; }
 }
 
-.fuel-cell .lab {
-  display: block;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 4px;
+/* ── To'xtashlar (xarita raqamlari bilan) ── */
+.seg { display: inline-flex; gap: 4px; padding: 3px; border-radius: 11px; background: #eef3f9; border: 1px solid var(--line); text-transform: none; letter-spacing: 0; }
+.seg button {
+  height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent;
+  font: 600 11px/1 var(--sans); color: var(--muted); cursor: pointer; white-space: nowrap;
 }
-
-.fuel-cell .val {
-  display: block;
-  font-family: var(--mono);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--ink);
-  overflow-wrap: anywhere;
+.seg button b { font-family: var(--mono); margin-left: 4px; }
+.seg button.on { background: #fff; color: var(--ink); box-shadow: 0 2px 6px rgba(11,31,58,.08); }
+.tl { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.tl::before { content: ""; position: absolute; left: 13px; top: 14px; bottom: 14px; width: 2px; background: linear-gradient(180deg, #d5e2f0, #e8eff7); }
+.tl-item {
+  position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; align-items: start;
+  width: 100%; text-align: left; font: inherit; color: inherit;
+  padding: 0; background: none; border: 0; cursor: pointer;
 }
-
-.fuel-cell.is-neg .val { color: var(--bad); }
-
-.stop-list { display: flex; flex-direction: column; gap: 10px; }
-
-.stop-item {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: start;
-  padding: 12px 12px 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 4px 14px rgba(11, 31, 58, 0.04);
-  border-left: 4px solid #8aa0b8;
+.tl-num {
+  position: relative; z-index: 1;
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid #fff; box-shadow: 0 3px 8px rgba(11,31,58,.22);
+  font: 700 10px/1 var(--mono); color: #fff; background: #8aa0b8;
 }
-
-.stop-item.is-ok { border-left-color: var(--accent); }
-.stop-item.is-bad { border-left-color: var(--bad); background: #fff8f7; }
-.stop-item.is-warn { border-left-color: var(--warn); background: #fffaf3; }
-.stop-item.is-office { border-left-color: #123050; }
-
-.stop-item .nm {
-  font-weight: 700;
-  font-size: 13px;
-  color: var(--ink);
-  line-height: 1.35;
-  overflow-wrap: anywhere;
+.tl-num.is-office { border-radius: 9px; font-family: var(--sans); }
+.tl-card {
+  min-width: 0; padding: 10px 12px; border-radius: 14px;
+  background: #fff; border: 1px solid var(--line); border-left: 4px solid #8aa0b8;
+  box-shadow: 0 4px 14px rgba(11,31,58,.04);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
-
-.stop-item .meta {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  font-family: var(--mono);
-  line-height: 1.4;
-}
-
-.stop-item .note {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #6b7c90;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
+.tl-item:hover .tl-card, .tl-item:focus-visible .tl-card { box-shadow: 0 8px 20px rgba(11,31,58,.1); transform: translateX(2px); }
+.tl-item:focus-visible { outline: none; }
+.tl-item.is-ok .tl-card { border-left-color: var(--accent); }
+.tl-item.is-bad .tl-card { border-left-color: var(--bad); background: #fff8f7; }
+.tl-item.is-warn .tl-card { border-left-color: var(--warn); background: #fffaf3; }
+.tl-item.is-office .tl-card { border-left-color: #123050; }
+.tl-item.is-sel .tl-card { box-shadow: 0 0 0 2px var(--accent), 0 8px 20px rgba(11,31,58,.1); }
+.tl-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.tl-name { font-weight: 700; font-size: 13px; color: var(--ink); line-height: 1.35; overflow-wrap: anywhere; }
+.tl-meta { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font: 500 11.5px/1.4 var(--mono); }
+.tl-meta b { color: var(--ink); font-weight: 600; }
+.tl-note { margin-top: 6px; font-size: 12px; color: #6b7c90; line-height: 1.4; overflow-wrap: anywhere; }
 
 .badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  border: 1px solid transparent;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 24px; padding: 0 9px; border-radius: 999px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  white-space: nowrap; border: 1px solid transparent; flex-shrink: 0;
 }
-
 .badge-ok { background: #e8f5ee; color: var(--ok); border-color: #c6e6d4; }
 .badge-bad { background: #fdecea; color: var(--bad); border-color: #f3c4bf; }
 .badge-warn { background: #fff4e5; color: var(--warn); border-color: #f0d2a8; }
 .badge-mute { background: #eef3f9; color: #5a7190; border-color: #d5e2f0; }
 .badge-office { background: #123050; color: #fff; border-color: #123050; }
+.badge-blue { background: #e3eef9; color: var(--accent); border-color: #c5d9ef; }
 
-.pharm-list { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+/* ── Yon panel ── */
+.fuel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.fuel-cell { background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px 9px; min-width: 0; }
+.fuel-cell .lab { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.fuel-cell .val { display: block; font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.pharm-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .pharm-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--soft);
-  border: 1px solid var(--line);
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; border-radius: 12px; background: var(--soft); border: 1px solid var(--line);
+  font-weight: 600; overflow-wrap: anywhere;
 }
-
-.sec-label {
-  margin: 12px 0 6px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
+.sec-label { margin: 12px 0 6px; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.sec-label:first-child { margin-top: 0; }
 .task-cards { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
-.task-card {
-  background: linear-gradient(135deg, #0b1f3a 0%, #123050 100%);
-  border-radius: 14px;
-  padding: 12px 14px;
-  box-shadow: 0 8px 18px rgba(11, 31, 58, 0.18);
-}
+.task-card { background: linear-gradient(135deg, #0b1f3a 0%, #123050 100%); border-radius: 14px; padding: 12px 14px; box-shadow: 0 8px 18px rgba(11,31,58,.18); }
 .task-text { font-weight: 600; color: #f1f5f9; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
 .task-meta { margin-top: 6px; font-size: 12px; color: #8eb6df; display: flex; gap: 8px; flex-wrap: wrap; }
+.route-chip { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 12px; background: var(--soft); border: 1px solid var(--line); font-weight: 600; color: var(--ink); }
+.jr-list { display: flex; flex-direction: column; gap: 8px; }
+.jr-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); border-left: 4px solid var(--accent); }
+.jr-item.is-bad { border-left-color: var(--bad); background: #fff8f7; }
+.jr-item .nm { font-weight: 700; font-size: 13px; }
+.jr-item .note { margin-top: 4px; font-size: 12px; color: #6b7c90; line-height: 1.4; overflow-wrap: anywhere; }
+.empty { color: var(--muted); padding: 16px 8px; text-align: center; font-size: 13px; line-height: 1.45; }
+.empty.is-warn { color: var(--warn); text-align: left; padding: 8px 0; }
 
-.empty {
-  color: var(--muted);
-  padding: 18px 8px;
-  text-align: center;
-  font-size: 13px;
-  line-height: 1.45;
+@media (max-width: 1100px) {
+  .hero { grid-template-columns: auto minmax(0, 1fr); }
+  .hero-side { grid-column: 1 / -1; }
+  .cols { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-
-.map-frame {
-  position: relative;
-  border-radius: 0 0 var(--radius) var(--radius);
-  overflow: hidden;
-  isolation: isolate;
-}
-.map-frame::before {
-  content: "Xaritani bosing — keyin zoom/surish";
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 450;
-  pointer-events: none;
-  padding: 8px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .03em;
-  color: #0b1f3a;
-  background: rgba(255,255,255,.96);
-  border: 1px solid #c5d4e6;
-  border-radius: 10px;
-  box-shadow: 0 8px 20px rgba(11, 31, 58, 0.12);
-}
-.map-frame::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 400;
-  pointer-events: none;
-  box-shadow: inset 0 0 0 1px rgba(11, 31, 58, 0.06);
-}
-.map-frame.is-active::before { display: none; }
-.map-frame.is-active::after {
-  box-shadow: inset 0 0 0 2px #1a5fb4;
-}
-
-#driver-map {
-  height: 360px;
-  background: #dce6f0;
-  cursor: grab;
-}
-
-#driver-map:active { cursor: grabbing; }
-
-.leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #dce6f0; }
-.leaflet-popup-content-wrapper {
-  background: #0b1f3a; color: #e8eef5; border-radius: 12px !important;
-  box-shadow: 0 14px 28px rgba(11,31,58,.28) !important;
-}
-.leaflet-popup-content { margin: 12px 14px; font-size: 12px; line-height: 1.5; }
-.leaflet-popup-content b { color: #fff; }
-.leaflet-popup-tip { background: #0b1f3a; }
-.vm-pin { background: none !important; border: none !important; }
-.vm-pin-dot {
-  display: flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; font-family: var(--mono);
-  font-size: 9px; font-weight: 700; color: #fff;
-  border: 2px solid #fff; border-radius: 50%;
-  box-shadow: 0 3px 10px rgba(11,31,58,.3);
-}
-.vm-pin-end {
-  width: 26px; height: 26px; background: #0b1f3a !important;
-  border-radius: 8px; color: #fff;
-}
-
-.route-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--soft);
-  border: 1px solid var(--line);
-  font-weight: 600;
-  color: var(--ink);
-}
-
-@media (max-width: 980px) {
-  .kpis { grid-template-columns: 1fr 1fr; }
-  #driver-map { height: min(44dvh, 320px); min-height: 240px; }
-  .fuel-grid { grid-template-columns: 1fr 1fr; }
-  input, select, textarea { font-size: 16px; }
-  .drv-live-btn, .btn, button.btn {
-    min-height: 44px !important;
-    touch-action: manipulation;
-  }
-  .drv-daybar input, .drv-daybar select {
-    min-height: 44px;
-    height: 44px;
-  }
-  .wrap { padding-bottom: 24px; }
-}
-
-@media (max-width: 520px) {
+@media (max-width: 760px) {
   .wrap { padding: 12px 12px 24px; }
-  .drv-day-meta { width: 100%; margin-left: 0; }
-  .stop-item { grid-template-columns: 1fr; }
-  .badge { justify-self: start; }
+  .hero { grid-template-columns: 1fr; gap: 14px; padding: 14px; }
+  .hero-car { width: 100%; height: 132px; }
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpis .kpi:first-child { grid-column: 1 / -1; }
+  .att-strip { grid-template-columns: auto minmax(0, 1fr); }
+  .att-times, .att-go { grid-column: 1 / -1; }
+  .att-times .att-t { flex: 1; }
+  .att-go { justify-content: center; }
+  .map-head-meta { width: 100%; }
+  .map-stat { flex: 1 1 28%; min-width: 0; }
+  .map-tele-toggle { flex: 1 1 100%; justify-content: center; }
+  #driver-map { height: min(52dvh, 380px); min-height: 280px; }
+  input, select, textarea { font-size: 16px !important; }
+  .fld input, .fld select { height: 44px; }
+  .card-h { padding: 11px 12px; }
+  .card-b { padding: 12px; }
+  .seg { width: 100%; }
+  .seg button { flex: 1; padding: 0 6px; }
 }
 </style>
-
 </head>
 
 <body class="app-body">
 
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
-
 <label for="nav-open" class="nav-scrim" aria-hidden="true"></label>
-
-
 
 <div class="app-shell">
 
   <aside class="nav-rail">
-
     <div class="nav-brand">
-
       <img src="/logo/mark.svg?v=3" alt="">
-
       <div>
-
         <div class="tb-name">VAKSINA <span>MED</span></div>
-
         <div class="tb-line">MACHINE CONTROL</div>
-
       </div>
-
     </div>
-
     <nav class="nav-links">
-
       <a class="nav-link on" href="/driver" aria-current="page">Kabinet</a>
       <a class="nav-link" href="/attendance" id="nav-davomat">Davomat</a>
-
     </nav>
-
     <div class="nav-foot">
       <a class="nav-link" href="/profile">Profil</a>
     </div>
-
-</aside>
-
-
+  </aside>
 
   <div class="app-main">
 
     <header class="topbar">
-
       <label for="nav-open" class="nav-burger" title="Menyu" aria-label="Menyu">
         <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>
         <span class="nav-burger-lbl">Menyu</span>
       </label>
-
       <div class="tb-page">
-
         <div class="tb-title">Haydovchi kabineti</div>
-
         <div class="tb-sub" id="who-line">Faqat ko'rish</div>
-
       </div>
-
       <div class="acts"></div>
-
     </header>
-
-<div class="drv-note">Kabinet avtomatik yangilanadi. Bugungi kun uchun GPS ma'lumotlari doimiy kuzatiladi — o'zgartirish faqat admin orqali.</div>
 
 <div class="wrap">
 
-  <div class="drv-daybar">
-    <label>Sana <input type="date" id="d-date"></label>
-    <label id="staff-pick" hidden>Mashina <select id="d-car"></select></label>
-    <span class="drv-day-meta" id="day-updated"></span>
-  </div>
-
-  <div class="drv-live is-off" id="drv-live" aria-live="polite">
-    <span class="drv-live-dot" aria-hidden="true"></span>
-    <div class="drv-live-main">
-      <div class="drv-live-title" id="live-title">Avto-yangilanish</div>
-      <div class="drv-live-sub" id="live-sub">Ma'lumotlar yuklanmoqda…</div>
+  <section class="hero" aria-label="Haydovchi va mashina">
+    <div class="hero-car" id="hero-car"><span class="hero-car-ph">Mashina</span></div>
+    <div class="hero-main">
+      <div class="hero-kicker">Haydovchi kabineti</div>
+      <h1 class="hero-name" id="hero-name">—</h1>
+      <div class="hero-tags">
+        <span class="plate" id="hero-plate">—</span>
+        <span class="hero-chip" id="hero-model" hidden></span>
+        <span class="hero-chip" id="hero-route" hidden></span>
+      </div>
     </div>
-    <div class="drv-live-actions">
-      <span class="drv-live-chip" id="live-chip">—</span>
+    <div class="hero-side">
+      <div class="hero-controls">
+        <label class="fld"><span>Sana</span><input type="date" id="d-date"></label>
+        <label class="fld" id="staff-pick" hidden><span>Mashina</span><select id="d-car"></select></label>
+      </div>
+      <div class="live is-off" id="drv-live" aria-live="polite">
+        <span class="live-dot" aria-hidden="true"></span>
+        <div class="live-main">
+          <b id="live-title">Avto-yangilanish</b>
+          <span id="live-sub">Ma'lumotlar yuklanmoqda…</span>
+        </div>
+        <span class="live-chip" id="live-chip">—</span>
+      </div>
+      <div class="hero-meta"><span id="day-updated"></span> · O'zgartirish faqat admin orqali</div>
     </div>
-  </div>
+  </section>
 
   <div class="kpis">
-    <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys / to'xtash</s></div>
-    <div class="kpi is-score"><i>Ball</i><b id="k-score">—</b><s id="k-grade">Kunlik baho</s></div>
-    <div class="kpi is-miss"><i>O'tkazib yuborilgan</i><b id="k-miss">—</b><s>nuqta</s></div>
-    <div class="kpi is-bad"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s>belgilangan to'xtash</s></div>
+    <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys</s></div>
+    <div class="kpi is-score"><i>Kunlik ball</i><b id="k-score">—</b><s id="k-grade">Kunlik baho</s><span class="grade" id="k-grade-badge" hidden></span></div>
+    <div class="kpi is-stop"><i>To'xtashlar</i><b id="k-stops">—</b><s id="k-moto">harakat vaqti</s></div>
+    <div class="kpi is-bad"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s id="k-prob">muammoli to'xtash</s></div>
+    <div class="kpi is-miss"><i>O'tkazib yuborilgan</i><b id="k-miss">—</b><s>dorixona</s></div>
   </div>
 
-  <div class="card">
-    <div class="card-h">Xarita — yo'nalish va to'xtashlar</div>
+  <section class="att-strip" id="att-strip" hidden aria-live="polite">
+    <span class="att-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+    <div>
+      <div class="att-title" id="att-title">Davomat</div>
+      <div class="att-sub" id="att-sub">Yuklanmoqda…</div>
+    </div>
+    <div class="att-times">
+      <div class="att-t" id="att-in"><i>Keldim</i><b>—</b></div>
+      <div class="att-t" id="att-out"><i>Ketdim</i><b>—</b></div>
+    </div>
+    <a class="att-go" href="/attendance">Davomat →</a>
+  </section>
+
+  <section class="card">
+    <div class="map-head">
+      <div>
+        <div class="map-kicker">GPS · yo'nalish</div>
+        <h3>Marshrut xaritasi</h3>
+      </div>
+      <div class="map-head-meta">
+        <div class="map-stat"><i>To'xtash</i><b id="map-stat-stops">0</b></div>
+        <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
+        <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
+        <label class="map-tele-toggle" title="Har bir GPS nuqtada vaqt va tezlik">
+          <input type="checkbox" id="chk-tele">
+          <span>Vaqt / tezlik</span>
+        </label>
+      </div>
+    </div>
+    <div class="map-legend">
+      <span class="leg-item"><span class="leg-dot" style="background:#1a5fb4"></span> O'z dorixonasi / ruxsat</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#5b9fe0"></span> Boshqa yo'nalish</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a"></span> Muammo</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#8eb6df"></span> Shahardan tashqari</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#123050"></span> Ofis / sklad</span>
+      <span class="leg-item"><span class="leg-dot is-line" style="background:#1a5fb4"></span> GPS marshrut</span>
+      <span class="leg-item"><span class="leg-dot is-chev"></span> Yo'nalish strelkasi</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a;border-radius:4px"></span> A / B</span>
+    </div>
     <div class="map-frame" id="map-frame">
       <div id="driver-map"></div>
+      <div class="map-info" id="map-info" hidden></div>
+      <div class="map-empty" id="map-empty" hidden><span>Bu kun uchun GPS marshrut yo'q</span></div>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <div class="card-h">Yoqilg'i</div>
-    <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilg'i yozuvi yo'q</div></div>
-  </div>
+  <div class="cols">
+    <section class="card">
+      <div class="card-h">
+        <span>Yo'nalish va to'xtashlar</span>
+        <div class="seg" id="stop-filter" role="tablist" aria-label="To'xtashlar filtri"></div>
+      </div>
+      <div class="card-b" id="stop-box"></div>
+    </section>
 
-  <div class="card">
-    <div class="card-h">Topshiriqlar — biriktirilgan nuqtalar</div>
-    <div class="card-b" id="task-box"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-h">Yo'nalish va to'xtashlar</div>
-    <div class="card-b" id="stop-box"></div>
-  </div>
-
-  <div class="card">
-    <div class="card-h">Jurnal</div>
-    <div class="card-b" id="jr-box"></div>
+    <aside class="side">
+      <section class="card">
+        <div class="card-h">Topshiriqlar — biriktirilgan nuqtalar</div>
+        <div class="card-b" id="task-box"></div>
+      </section>
+      <section class="card">
+        <div class="card-h">Yoqilg'i</div>
+        <div class="card-b" id="fuel-box"><div class="empty">Bu kun uchun yoqilg'i yozuvi yo'q</div></div>
+      </section>
+      <section class="card">
+        <div class="card-h">Jurnal</div>
+        <div class="card-b" id="jr-box"></div>
+      </section>
+    </aside>
   </div>
 
 </div>
 
   </div><!-- /.app-main -->
-
 </div><!-- /.app-shell -->
 
 <script src="uz-latin.js?v=5"></script>
 <script src="fleet-data.js?v=15"></script>
-
 <script src="auth.js?v=43"></script>
-
 <script src="map-tiles.js?v=3"></script>
 <script src="map-route.js?v=8"></script>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-
 function esc(s) {
-
-  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-
+function ui(s) {
+  return typeof uzUi === 'function' ? uzUi(s) : String(s == null ? '' : s);
+}
 function todayStr() {
-
   const d = new Date();
-
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
-
 function modeLabel(m) {
-
   return ({ gaz: 'Gaz', benzin: 'Benzin', dizel: 'Dizel', aralash: 'Aralash' })[m] || (m || '—');
-
+}
+function normPlate(s) {
+  return String(s || '').replace(/\s+/g, '').toUpperCase();
+}
+function validUz(lat, lng) {
+  const y = Number(lat), x = Number(lng);
+  return Number.isFinite(y) && Number.isFinite(x) && y >= 37 && y <= 46 && x >= 55 && x <= 74;
+}
+function clockSec(t) {
+  const m = String(t || '').match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+(m[3] || 0)) : null;
+}
+function stopDurSec(s) {
+  const a = clockSec(s.inTime), b = clockSec(s.outTime);
+  if (a != null && b != null) return b >= a ? b - a : b + 86400 - a;
+  const d = clockSec(s.duration);
+  return d != null ? d : (Number(s.durSec) || 0);
+}
+function fmtDur(sec) {
+  sec = Math.max(0, Math.round(Number(sec) || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  if (h) return h + ' soat ' + m + ' daq';
+  if (m) return m + ' daq';
+  return sec + ' s';
+}
+/** Unix soniya → Toshkent HH:MM:SS (brauzer zonasiga bog'lanmasdan) */
+function fmtTs(sec) {
+  const d = new Date((Number(sec) + 5 * 3600) * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
 }
 
 function stopKind(st) {
   if (st && st.reviewStatus === 'violation') return ['Qoidabuzarlik', 'badge-bad', 'is-bad'];
   if (st && st.reviewStatus === 'allowed') return ['Ruxsat', 'badge-ok', 'is-ok'];
-  if (st.isOffice) return ['Ofis', 'badge-office', 'is-office'];
+  if (st.isOffice) return ['Ofis / sklad', 'badge-office', 'is-office'];
   if (st.isOutside) return ['Shahar tashqari', 'badge-warn', 'is-warn'];
   if (st.isProblem) return ['Muammo', 'badge-bad', 'is-bad'];
-  if (st.matchType === 'own') return ["O'z nuqtasi", "badge-ok", "is-ok"];
-  if (st.matchType === 'other') return ["Boshqa yo'nalish", "badge-warn", "is-warn"];
-  return ["To'xtash", "badge-mute", ""];
+  if (st.matchType === 'own') return ["O'z dorixonasi", 'badge-ok', 'is-ok'];
+  if (st.matchType === 'other') return ["Boshqa yo'nalish", 'badge-blue', 'is-warn'];
+  return ["To'xtash", 'badge-mute', ''];
+}
+function stopColor(st) {
+  if (st.reviewStatus === 'allowed') return '#1a5fb4';
+  if (st.reviewStatus === 'violation') return '#0b1f3a';
+  if (st.isOffice) return '#123050';
+  if (st.isOutside) return '#8eb6df';
+  if (st.isProblem) return '#0b1f3a';
+  if (st.matchType === 'own') return '#1a5fb4';
+  if (st.matchType === 'other') return '#5b9fe0';
+  return '#8aa0b8';
+}
+function stopIsProblem(st) {
+  if (st.reviewStatus === 'allowed') return false;
+  return st.reviewStatus === 'violation' || !!st.isProblem;
+}
+function stopLabel(s) {
+  const place = ui(String(s.place || s.phName || '').trim());
+  if (place && !/^\d+\.\d+,\s*\d+\.\d+$/.test(place)) return place;
+  if (validUz(s.lat, s.lng)) return Number(s.lat).toFixed(5) + ', ' + Number(s.lng).toFixed(5);
+  return place || '—';
+}
+function stopKey(s) {
+  return [s.inTime || '', s.outTime || '', s.place || '', s.lat || '', s.lng || ''].join('|');
+}
+function fleetPharmacies(car) {
+  const fleet = window.DRIVERS || window.FLEET_DRIVERS || [];
+  const d = fleet.find(x => normPlate(x.car) === normPlate(car));
+  if (!d || !d.pharmacies) return [];
+  return d.pharmacies.split(',').map(s => s.trim()).filter(Boolean);
+}
+function normPh(s) {
+  if (!s) return '';
+  return String(s).toLowerCase()
+    .replace(/ё/g, 'е').replace(/қ/g, 'к').replace(/ў/g, 'у')
+    .replace(/ҳ/g, 'х').replace(/ғ/g, 'г').replace(/ң/g, 'н')
+    .replace(/['`']/g, '').replace(/\s+/g, ' ').trim();
 }
 
-
+/** Ofis = "Of", qolganlari kirish vaqti bo'yicha 1..n (Dashboard bilan bir xil) */
+function buildNumbering(stops) {
+  const adj = t => (t == null ? 1e12 : (t < 4 * 3600 ? t + 86400 : t));
+  const route = stops.filter(s => !s.isOffice);
+  const ordered = route.slice().sort((a, b) => adj(clockSec(a.inTime)) - adj(clockSec(b.inTime)));
+  const byKey = Object.create(null);
+  ordered.forEach((s, i) => { byKey[stopKey(s)] = String(i + 1); });
+  stops.forEach(s => { if (s.isOffice) byKey[stopKey(s)] = 'Of'; });
+  return { byKey, ordered };
+}
 
 let ME = null;
-
+let DAY = null;
+let NUMS = { byKey: {}, ordered: [] };
+let stopFilter = 'all';
 let dayTimer = null;
 let gpsTimer = null;
 let liveBusy = false;
 let lastPaintKey = '';
 let liveVisBound = false;
 
-let drvMap = null;
-let drvMapActive = false;
-let drvMapLayers = [];
-
 function isTodaySelected() {
   const dt = document.getElementById('d-date');
   return !!(dt && dt.value === todayStr());
 }
-
 function fmtClock(ts) {
   try {
     return new Date(ts).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
@@ -737,304 +695,527 @@ function fmtClock(ts) {
     return '—';
   }
 }
-
 function setLiveState(mode, title, sub, chip) {
   const box = document.getElementById('drv-live');
-  const t = document.getElementById('live-title');
-  const s = document.getElementById('live-sub');
-  const c = document.getElementById('live-chip');
-  if (box) box.className = 'drv-live ' + (mode || 'is-off');
-  if (t) t.textContent = title || '';
-  if (s) s.textContent = sub || '';
-  if (c) c.textContent = chip || '—';
+  if (box) box.className = 'live ' + (mode || 'is-off');
+  document.getElementById('live-title').textContent = title || '';
+  document.getElementById('live-sub').textContent = sub || '';
+  document.getElementById('live-chip').textContent = chip || '—';
 }
-
 function updateLiveFromDay(day, opts) {
   const o = opts || {};
   const upd = document.getElementById('day-updated');
   const now = Date.now();
-  let gpsTxt = '';
-  if (day && day.syncedAt) {
-    gpsTxt = 'GPS: ' + fmtClock(Number(day.syncedAt) * 1000);
-  } else if (day && day.updatedAt) {
-    gpsTxt = 'GPS: ' + String(day.updatedAt).slice(11, 16);
-  } else {
-    gpsTxt = "GPS hali yo'q";
-  }
-  if (upd) {
-    upd.textContent = 'Ekran: ' + fmtClock(now) + (gpsTxt ? ' · ' + gpsTxt : '');
-  }
+  let gpsTxt;
+  if (day && day.syncedAt) gpsTxt = 'GPS: ' + fmtClock(Number(day.syncedAt) * 1000);
+  else if (day && day.updatedAt) gpsTxt = 'GPS: ' + String(day.updatedAt).slice(11, 16);
+  else gpsTxt = "GPS hali yo'q";
+  if (upd) upd.textContent = 'Ekran: ' + fmtClock(now) + ' · ' + gpsTxt;
   if (o.busy) {
-    setLiveState("is-busy", "Yangilanmoqda…", "GPS dan so'nggi ma'lumot olinmoqda", "SYNC");
+    setLiveState('is-busy', 'Yangilanmoqda…', "GPS dan so'nggi ma'lumot olinmoqda", 'SYNC');
     return;
   }
   if (!isTodaySelected()) {
-    setLiveState("is-off", "Arxiv kuni", "O'tgan sanalar avto-yangilanmaydi — faqat saqlangan natija", "ARXIV");
+    setLiveState('is-off', 'Arxiv kuni', "O'tgan sanalar avto-yangilanmaydi — saqlangan natija", 'ARXIV');
     return;
   }
   const ageMin = day && day.syncedAt ? Math.max(0, Math.round((now / 1000 - Number(day.syncedAt)) / 60)) : null;
   const ageLabel = ageMin == null ? 'GPS kutilmoqda' : (ageMin <= 1 ? 'Hozirgina yangilandi' : ageMin + ' daqiqa oldin');
-  setLiveState(
-    'is-on',
-    'Jonli kabinet',
-    ageLabel + ' · har daqiqada tekshiriladi · GPS ~3 daqiqada yangilanadi',
-    'GPS'
-  );
+  setLiveState('is-on', 'Jonli kabinet', ageLabel + ' · GPS ~3 daqiqada yangilanadi', 'GPS');
 }
 
-
-function normPlate(s) {
-
-  return String(s || '').replace(/\s+/g, '').toUpperCase();
-
-}
-
-function fleetPharmacies(car) {
-
-  const fleet = window.DRIVERS || window.FLEET_DRIVERS || [];
-
-  const d = fleet.find(x => normPlate(x.car) === normPlate(car));
-
-  if (!d || !d.pharmacies) return [];
-
-  return d.pharmacies.split(',').map(s => s.trim()).filter(Boolean);
-
-}
-
-function stopLabel(s) {
-
-  const place = String(s.place || s.phName || '').trim();
-
-  if (place && !/^\d+\.\d+,\s*\d+\.\d+$/.test(place)) return place;
-
-  if (s.lat != null && s.lng != null) return Number(s.lat).toFixed(5) + ', ' + Number(s.lng).toFixed(5);
-
-  return place || '—';
-
-}
-
-function drvStopColor(st) {
-
-  if (st.reviewStatus === 'violation' || st.isProblem) return '#0b1f3a';
-
-  if (st.reviewStatus === 'allowed' || st.matchType === 'own') return '#1a5fb4';
-
-  if (st.isOutside || st.matchType === 'other') return '#5b9fe0';
-
-  if (st.isOffice) return '#123050';
-
-  return '#8aa0b8';
-
-}
-
-function drvPinIcon(label, color, isEnd) {
-
-  return L.divIcon({
-
-    className: 'vm-pin',
-
-    html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color}">${label}</span>`,
-
-    iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -12]
-
-  });
-
-}
+/* ════════════ Xarita ════════════ */
+let drvMap = null;
+let drvLayer = null;
+let drvRouteLayer = null;
+let drvTeleLayer = null;
+let drvMarkers = Object.create(null);
+let drvTrack = [];
+let drvGen = 0;
+let drvFitSig = '';
+let showTele = false;
+try { showTele = localStorage.getItem('vm_drv_tele') === '1'; } catch (e) {}
 
 function setDrvMapActive(on) {
   const frame = document.getElementById('map-frame');
   if (frame) frame.classList.toggle('is-active', !!on);
 }
-
-function lockDrvMap() {
+function setMapInteractive(on) {
   if (!drvMap) return;
-  try { drvMap.scrollWheelZoom.disable(); } catch (e) {}
-  try { drvMap.dragging.disable(); } catch (e) {}
-  try { drvMap.doubleClickZoom.disable(); } catch (e) {}
-  try { drvMap.boxZoom.disable(); } catch (e) {}
-  try { if (drvMap.touchZoom) drvMap.touchZoom.disable(); } catch (e) {}
-  try { if (drvMap.tap) drvMap.tap.disable(); } catch (e) {}
-  drvMapActive = false;
-  setDrvMapActive(false);
+  ['scrollWheelZoom', 'dragging', 'doubleClickZoom', 'boxZoom', 'touchZoom', 'tap'].forEach(k => {
+    try { if (drvMap[k]) drvMap[k][on ? 'enable' : 'disable'](); } catch (e) {}
+  });
+  setDrvMapActive(on);
 }
-
-function unlockDrvMap() {
-  if (!drvMap) return;
-  try { drvMap.scrollWheelZoom.enable(); } catch (e) {}
-  try { drvMap.dragging.enable(); } catch (e) {}
-  try { drvMap.doubleClickZoom.enable(); } catch (e) {}
-  try { drvMap.boxZoom.enable(); } catch (e) {}
-  try { if (drvMap.touchZoom) drvMap.touchZoom.enable(); } catch (e) {}
-  try { if (drvMap.tap) drvMap.tap.enable(); } catch (e) {}
-  drvMapActive = true;
-  setDrvMapActive(true);
-}
-
 function bindDrvMapLock() {
   const frame = document.getElementById('map-frame');
-  if (!frame || frame._drvMapLockBound) return;
-  frame._drvMapLockBound = true;
-  frame.addEventListener('click', () => unlockDrvMap());
-  frame.addEventListener('mouseleave', () => lockDrvMap());
-  frame.addEventListener('touchend', (e) => {
-    if (e.target && frame.contains(e.target)) unlockDrvMap();
-  }, { passive: true });
-  document.addEventListener('click', (e) => {
-    if (!frame.contains(e.target)) lockDrvMap();
-  });
-  document.addEventListener('touchstart', (e) => {
-    if (!frame.contains(e.target)) lockDrvMap();
-  }, { passive: true });
+  if (!frame || frame._lockBound) return;
+  frame._lockBound = true;
+  frame.addEventListener('click', () => setMapInteractive(true));
+  frame.addEventListener('mouseleave', () => setMapInteractive(false));
+  frame.addEventListener('touchend', () => setMapInteractive(true), { passive: true });
+  document.addEventListener('click', e => { if (!frame.contains(e.target)) setMapInteractive(false); });
+  document.addEventListener('touchstart', e => { if (!frame.contains(e.target)) setMapInteractive(false); }, { passive: true });
 }
-
 function initDriverMap() {
   const el = document.getElementById('driver-map');
   if (!el || typeof L === 'undefined') return;
-  if (drvMap) { drvMap.invalidateSize(); return; }
-
+  if (drvMap) return;
   drvMap = L.map(el, {
-    zoomControl: true,
-    attributionControl: false,
-    scrollWheelZoom: false,
-    dragging: false,
-    doubleClickZoom: false,
-    boxZoom: false,
-    touchZoom: false,
-    tap: false,
-    maxZoom: 18,
-    minZoom: 3
+    zoomControl: true, attributionControl: false,
+    scrollWheelZoom: false, dragging: false, doubleClickZoom: false, boxZoom: false, touchZoom: false, tap: false,
+    maxZoom: 18, minZoom: 3
   }).setView([41.3111, 69.2797], 12);
-
-  // Scroll sahifani siljitadi; xarita faqat bir marta bosilganda ochiladi
-  lockDrvMap();
+  setMapInteractive(false);
   bindDrvMapLock();
-
   if (typeof vmAddMapTiles === 'function') vmAddMapTiles(drvMap);
-  else L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-    attribution: '', subdomains: 'abc', maxZoom: 18, maxNativeZoom: 18, detectRetina: false
-  }).addTo(drvMap);
+  else L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { subdomains: 'abc', maxZoom: 18 }).addTo(drvMap);
+  drvLayer = L.layerGroup().addTo(drvMap);
 }
-
-function normalizeDrvTrack(pts) {
-  if (!Array.isArray(pts)) return [];
+function pinIcon(label, color, isEnd) {
+  const text = String(label);
+  return L.divIcon({
+    className: 'vm-pin',
+    html: `<span class="vm-pin-dot${isEnd ? ' vm-pin-end' : ''}" style="background:${color};font-size:${text.length > 1 ? '8px' : '10px'}${text === 'Of' ? ';font-family:var(--sans)' : ''}">${esc(text)}</span>`,
+    iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -14]
+  });
+}
+function normTrack(pts) {
   const out = [];
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    let lat, lng;
-    if (Array.isArray(p) && p.length >= 2) {
-      lat = Number(p[0]); lng = Number(p[1]);
-    } else if (p && typeof p === 'object') {
-      lat = Number(p.lat != null ? p.lat : p.y);
-      lng = Number(p.lng != null ? p.lng : p.x);
-    } else continue;
-    if (!(lat >= 37 && lat <= 46 && lng >= 55 && lng <= 74)) continue;
-    out.push([lat, lng]);
-  }
+  (Array.isArray(pts) ? pts : []).forEach(p => {
+    if (!Array.isArray(p) || p.length < 2 || !validUz(p[0], p[1])) return;
+    const row = [Number(p[0]), Number(p[1])];
+    if (p.length >= 4 && Number(p[2]) > 1e8) row.push(Number(p[2]), Number(p[3]) || 0);
+    const prev = out[out.length - 1];
+    if (prev && Math.abs(prev[0] - row[0]) < 1e-7 && Math.abs(prev[1] - row[1]) < 1e-7 && row.length < 3) return;
+    out.push(row);
+  });
   return out;
 }
-
+function bearingDeg(a, b) {
+  if (typeof vmRouteBearing === 'function') return vmRouteBearing(a, b);
+  const f1 = a[0] * Math.PI / 180, f2 = b[0] * Math.PI / 180, dl = (b[1] - a[1]) * Math.PI / 180;
+  const y = Math.sin(dl) * Math.cos(f2);
+  const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+/** Dashboard uslubi: soya + ko'k chiziq + oqim + oq strelkalar */
+function drawRoute(latlngs) {
+  if (drvRouteLayer) { try { drvMap.removeLayer(drvRouteLayer); } catch (e) {} drvRouteLayer = null; }
+  const pts = (latlngs || []).filter(p => p && validUz(p[0], p[1])).map(p => [Number(p[0]), Number(p[1])]);
+  if (pts.length < 2) return;
+  const layers = [
+    L.polyline(pts, { color: '#0b1f3a', weight: 8, opacity: 0.18, lineJoin: 'round', lineCap: 'round', interactive: false }),
+    L.polyline(pts, { color: '#1a5fb4', weight: 4, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false }),
+    L.polyline(pts, { color: '#ffffff', weight: 1.4, opacity: 0.4, dashArray: '5 12', className: 'vm-route-flow', interactive: false })
+  ];
+  const dist = [0];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) {
+    total += L.latLng(pts[i - 1]).distanceTo(L.latLng(pts[i]));
+    dist.push(total);
+  }
+  const n = Math.min(120, Math.max(8, Math.round(total / 260)));
+  const spacing = total / (n + 1);
+  let seg = 1;
+  for (let k = 1; k <= n && total > 1; k++) {
+    const at = spacing * k;
+    while (seg < dist.length - 1 && dist[seg] < at) seg++;
+    const a = pts[seg - 1], b = pts[seg];
+    const len = dist[seg] - dist[seg - 1];
+    const f = len > 0 ? (at - dist[seg - 1]) / len : 0;
+    const brg = bearingDeg(a, b);
+    layers.push(L.marker([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], {
+      interactive: false, keyboard: false, zIndexOffset: 400,
+      icon: L.divIcon({
+        className: 'vm-route-chev',
+        html: `<div class="vm-route-chev-inner" style="--brg:${brg.toFixed(1)}deg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8L21 20.2l-9-4.2-9 4.2z"/></svg></div>`,
+        iconSize: [22, 22], iconAnchor: [11, 11]
+      })
+    }));
+  }
+  drvRouteLayer = L.layerGroup(layers).addTo(drvMap);
+}
+function drawTelemetry() {
+  if (drvTeleLayer) { try { drvMap.removeLayer(drvTeleLayer); } catch (e) {} drvTeleLayer = null; }
+  if (!showTele || !drvMap) return;
+  const pts = drvTrack.filter(p => p.length >= 3);
+  if (!pts.length) return;
+  const step = Math.max(1, Math.ceil(pts.length / 90));
+  const layers = [];
+  for (let i = 0, n = 0; i < pts.length; i += step, n++) {
+    const p = pts[i];
+    const m = L.circleMarker([p[0], p[1]], { radius: 4.5, color: '#fff', weight: 1.5, fillColor: '#e11d48', fillOpacity: 1 });
+    m.bindTooltip(`<b>${fmtTs(p[2])}</b><br>${Math.round(p[3] || 0)} km/soat`, {
+      permanent: true, direction: n % 2 ? 'left' : 'right', offset: n % 2 ? [-10, 0] : [10, 0],
+      className: 'vm-boom-tip', opacity: 0.96
+    });
+    layers.push(m);
+  }
+  drvTeleLayer = L.layerGroup(layers).addTo(drvMap);
+}
 function refreshDriverMap(day) {
   initDriverMap();
   if (!drvMap) return;
+  const gen = ++drvGen;
+  drvLayer.clearLayers();
+  drvMarkers = Object.create(null);
+  if (drvRouteLayer) { try { drvMap.removeLayer(drvRouteLayer); } catch (e) {} drvRouteLayer = null; }
 
-  drvMapLayers.forEach(l => { try { drvMap.removeLayer(l); } catch (e) {} });
-  drvMapLayers = [];
-
-  const stops = (day.stops || []).filter(s => s.lat != null && s.lng != null);
+  const stops = (day.stops || []).filter(s => validUz(s.lat, s.lng));
   const geos = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo : [];
-  const track = normalizeDrvTrack(day.points);
+  drvTrack = normTrack(day.points);
+  const track = drvTrack;
+
+  document.getElementById('map-stat-stops').textContent = String((day.stops || []).length);
+  document.getElementById('map-stat-pts').textContent = String(track.length);
+  document.getElementById('map-stat-prob').textContent = String((day.stops || []).filter(stopIsProblem).length);
+  const tele = document.getElementById('chk-tele');
+  if (tele) tele.disabled = !track.some(p => p.length >= 3);
 
   geos.forEach(p => {
-    if (p.lat == null || p.lng == null) return;
-    drvMapLayers.push(L.circle([p.lat, p.lng], {
-      radius: p.radiusM || 120, color: '#1a5fb4', weight: 1,
-      fillColor: '#1a5fb4', fillOpacity: 0.08, interactive: false
-    }).addTo(drvMap));
-    const m = L.circleMarker([p.lat, p.lng], {
+    if (!validUz(p.lat, p.lng)) return;
+    drvLayer.addLayer(L.circle([p.lat, p.lng], {
+      radius: p.radiusM || 120, color: '#1a5fb4', weight: 1, fillColor: '#1a5fb4', fillOpacity: 0.08, interactive: false
+    }));
+    drvLayer.addLayer(L.circleMarker([p.lat, p.lng], {
       radius: 4, color: '#1a5fb4', fillColor: '#1a5fb4', fillOpacity: 0.9, weight: 1
-    }).addTo(drvMap);
-    m.bindTooltip(p.name || '', { direction: 'top' });
-    drvMapLayers.push(m);
+    }).bindTooltip(ui(p.name || ''), { direction: 'top' }));
   });
 
-  if (!stops.length && !geos.length && track.length < 2) return;
+  const empty = !stops.length && track.length < 2;
+  document.getElementById('map-empty').hidden = !empty || !!geos.length;
 
-  const sorted = stops.slice().sort((a, b) => String(a.inTime || '').localeCompare(String(b.inTime || '')));
-  const stopLatlngs = sorted.map(s => [Number(s.lat), Number(s.lng)]);
-  const routeGen = ++refreshDriverMap._gen;
-
-  function drawRouteLines(pts) {
-    if (!pts || pts.length < 2) return;
-    drvMapLayers.push(L.polyline(pts, { color: '#0b1f3a', weight: 5, opacity: 0.35 }).addTo(drvMap));
-    drvMapLayers.push(L.polyline(pts, { color: '#1a5fb4', weight: 2.4, opacity: 0.95 }).addTo(drvMap));
+  const numbered = NUMS.ordered.filter(s => validUz(s.lat, s.lng));
+  const routeRaw = track.length >= 2 ? track.map(p => [p[0], p[1]]) : numbered.map(s => [Number(s.lat), Number(s.lng)]);
+  if (routeRaw.length >= 2) {
+    drawRoute(routeRaw);
+    if (track.length >= 2 && typeof vmPrepareRouteTrack === 'function') {
+      vmPrepareRouteTrack(routeRaw, { simplifyM: 16, minStepM: 12, clusterRM: 26, snap: true }).then(r => {
+        if (gen !== drvGen || !r || !r.points || r.points.length < 2) return;
+        drawRoute(r.points);
+        if (r.snapped) setMapInfo(day, true);
+      }).catch(() => {});
+    } else if (track.length < 2 && typeof vmFetchRoadRoute === 'function') {
+      vmFetchRoadRoute(routeRaw.slice(0, 25)).then(road => {
+        if (gen !== drvGen || !road || road.length < 2) return;
+        drawRoute(road);
+      }).catch(() => {});
+    }
   }
+  setMapInfo(day, false);
 
-  function clearPolylines() {
-    drvMapLayers.slice(0).forEach(l => {
-      if (l instanceof L.Polyline) {
-        try { drvMap.removeLayer(l); } catch (e) {}
-        drvMapLayers = drvMapLayers.filter(x => x !== l);
-      }
-    });
-  }
-
-  // Avvalo haqiqiy GPS trek — to'g'ri chiziq "flash" bo'lmasin
   if (track.length >= 2) {
-    drawRouteLines(track);
-  } else if (stopLatlngs.length > 1 && typeof vmFetchRoadRoute === 'function') {
-    vmFetchRoadRoute(stopLatlngs).then(road => {
-      if (routeGen !== refreshDriverMap._gen) return;
-      clearPolylines();
-      drawRouteLines(road && road.length >= 2 ? road : stopLatlngs);
-    }).catch(() => {
-      if (routeGen !== refreshDriverMap._gen) return;
-      clearPolylines();
-      drawRouteLines(stopLatlngs);
-    });
-  } else if (stopLatlngs.length > 1) {
-    drawRouteLines(stopLatlngs);
+    drvLayer.addLayer(L.marker(track[0].slice(0, 2), { icon: pinIcon('A', '#0b1f3a', true), zIndexOffset: 80 })
+      .bindPopup('<b>A · Boshlanish</b><br>Kunlik marshrut boshlangan nuqta'));
+    drvLayer.addLayer(L.marker(track[track.length - 1].slice(0, 2), { icon: pinIcon('B', '#1a5fb4', true), zIndexOffset: 80 })
+      .bindPopup('<b>B · Tugash</b><br>Kunlik marshrut yakunlangan nuqta'));
   }
 
-  const lastI = sorted.length - 1;
-  sorted.forEach((st, i) => {
-    const color = drvStopColor(st);
-    const label = i === 0 ? 'A' : (i === lastI ? 'B' : String(i + 1));
-    const isEnd = i === 0 || i === lastI;
-    const mk = L.marker([st.lat, st.lng], { icon: drvPinIcon(label, color, isEnd) }).addTo(drvMap);
+  const seen = Object.create(null);
+  stops.forEach(st => {
+    const key = stopKey(st);
+    const num = NUMS.byKey[key] || '·';
+    let lat = Number(st.lat), lng = Number(st.lng);
+    const ck = lat.toFixed(4) + ',' + lng.toFixed(4);
+    const dup = seen[ck] || 0;
+    seen[ck] = dup + 1;
+    if (dup) { lat += 0.00028 * dup * Math.cos(dup * 0.95); lng += 0.00028 * dup * Math.sin(dup * 0.95); }
     const [lab] = stopKind(st);
-    mk.bindPopup(`<b>${esc(stopLabel(st))}</b><br>${esc(st.inTime || '')}${st.outTime ? ' → ' + esc(st.outTime) : ''}<br>${st.duration ? esc(st.duration) : ''}<br><span style="color:#1a5fb4">${esc(lab)}</span>`);
-    drvMapLayers.push(mk);
+    const mk = L.marker([lat, lng], {
+      icon: pinIcon(num, stopColor(st), false),
+      zIndexOffset: num === 'Of' ? 120 : 1000 + (Number(num) || 0)
+    }).bindPopup(`
+      <div style="min-width:190px">
+        <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#8eb6df;font-weight:700;margin-bottom:6px">${esc(lab)}</div>
+        <b style="font-size:13px">${num === 'Of' ? 'Of' : '#' + esc(num)} — ${esc(stopLabel(st))}</b>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12);color:#c5d4e6;font-size:11px;line-height:1.55">
+          Kirish: <span style="color:#fff">${esc(st.inTime || '—')}</span><br>
+          Chiqish: <span style="color:#fff">${esc(st.outTime || '—')}</span><br>
+          Turgani: <span style="color:#fff">${esc(fmtDur(stopDurSec(st)))}</span>
+          ${st.phName ? '<br>Dorixona: <span style="color:#fff">' + esc(ui(st.phName)) + '</span>' : ''}
+        </div>
+      </div>`);
+    mk.on('click', () => selectStop(key, false));
+    drvLayer.addLayer(mk);
+    drvMarkers[key] = mk;
   });
 
-  const allPts = (track.length >= 2 ? track : stopLatlngs).concat(geos.map(p => [p.lat, p.lng]));
-  if (allPts.length > 1) drvMap.fitBounds(L.latLngBounds(allPts), { padding: [36, 36], maxZoom: 15 });
-  else if (allPts.length === 1) drvMap.setView(allPts[0], 14);
+  drawTelemetry();
 
+  const fitPts = routeRaw.concat(stops.map(s => [Number(s.lat), Number(s.lng)])).concat(geos.filter(p => validUz(p.lat, p.lng)).map(p => [p.lat, p.lng]));
+  const fitSig = [day.date, day.car, fitPts.length].join('|');
+  if (fitSig !== drvFitSig) {
+    drvFitSig = fitSig;
+    if (fitPts.length > 1) drvMap.fitBounds(L.latLngBounds(fitPts), { padding: [40, 40], maxZoom: 15 });
+    else if (fitPts.length === 1) drvMap.setView(fitPts[0], 14);
+  }
   setTimeout(() => { if (drvMap) drvMap.invalidateSize(); }, 120);
 }
+function setMapInfo(day, snapped) {
+  const el = document.getElementById('map-info');
+  const bits = [];
+  const km = Number((day.stats || {}).km) || 0;
+  if (km > 0) bits.push(km.toFixed(2) + ' km');
+  if (drvTrack.length) bits.push(drvTrack.length + ' GPS nuqta');
+  bits.push(NUMS.ordered.length + " to'xtash");
+  if (snapped) bits.push("yo'l bo'ylab");
+  el.textContent = bits.join(' · ');
+  el.hidden = !(drvTrack.length || NUMS.ordered.length);
+}
+function selectStop(key, fromList) {
+  document.querySelectorAll('.tl-item.is-sel').forEach(x => x.classList.remove('is-sel'));
+  const row = document.querySelector(`.tl-item[data-key="${CSS.escape(key)}"]`);
+  if (row) {
+    row.classList.add('is-sel');
+    if (!fromList) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  const mk = drvMarkers[key];
+  if (!mk || !drvMap) return;
+  if (fromList) {
+    const frame = document.getElementById('map-frame');
+    const r = frame.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight) frame.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    drvMap.setView(mk.getLatLng(), Math.max(drvMap.getZoom(), 16), { animate: true });
+  }
+  mk.openPopup();
+}
 
-refreshDriverMap._gen = 0;
+/* ════════════ Chizish ════════════ */
+function paintHero(day) {
+  const car = day.car || ME.car || '';
+  const drv = typeof resolveDriver === 'function' ? resolveDriver(car) : null;
+  const name = ui(day.name || (drv && drv.fullName) || ME.name || ME.username || '');
+  document.getElementById('hero-name').textContent = name || '—';
+  document.getElementById('hero-plate').textContent = car || '—';
+  const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(car, 'hero-photo') : '';
+  const box = document.getElementById('hero-car');
+  if (box.dataset.car !== car) {
+    box.dataset.car = car;
+    box.innerHTML = photo || '<span class="hero-car-ph">Mashina</span>';
+  }
+  const model = typeof fleetModelOf === 'function' && window.FLEET_MODELS ? (FLEET_MODELS[fleetModelOf(car)] || {}).t : '';
+  const mEl = document.getElementById('hero-model');
+  mEl.textContent = model || '';
+  mEl.hidden = !model;
+  const routes = ui(day.routes && day.routes !== '—' ? day.routes : '');
+  const rEl = document.getElementById('hero-route');
+  rEl.textContent = routes ? "Yo'nalish: " + routes : '';
+  rEl.hidden = !routes;
+  const whoEl = document.getElementById('who-line');
+  if (whoEl) whoEl.textContent = [name, car].filter(Boolean).join(' · ') || "Faqat ko'rish";
+}
+function paintKpis(day) {
+  const a = day.analysis || {};
+  const st = day.stats || {};
+  const stops = day.stops || [];
+  const viol = (day.reviews || []).filter(r => r.status === 'violation');
+  const missed = Array.isArray(a.missedList) ? a.missedList : [];
+  const prob = stops.filter(stopIsProblem).length;
+  document.getElementById('k-km').textContent = st.km ? Number(st.km).toFixed(1) + ' km' : '—';
+  document.getElementById('k-trips').textContent = (st.trips || 0) + ' reys' + (st.maxSpeed ? ' · maks ' + Math.round(st.maxSpeed) + ' km/soat' : '');
+  document.getElementById('k-score').textContent = day.hasGps && a.score != null ? Number(a.score).toFixed(1) : '—';
+  const grade = a.grade && a.grade !== '—' ? String(a.grade) : '';
+  document.getElementById('k-grade').textContent = grade ? 'Kunlik baho' : "GPS hisobot yo'q";
+  const gb = document.getElementById('k-grade-badge');
+  gb.textContent = grade;
+  gb.className = 'grade g-' + grade.toLowerCase().charAt(0);
+  gb.hidden = !grade;
+  document.getElementById('k-stops').textContent = String(st.stops || stops.length || 0);
+  document.getElementById('k-moto').textContent = st.motoChas && st.motoChas !== '—' ? 'Harakatda: ' + st.motoChas : 'harakat vaqti';
+  document.getElementById('k-bad').textContent = String(viol.length);
+  document.getElementById('k-prob').textContent = prob + " ta muammoli to'xtash";
+  document.getElementById('k-miss').textContent = String(missed.length);
+}
+function paintStops(day) {
+  const sb = document.getElementById('stop-box');
+  const fb = document.getElementById('stop-filter');
+  const stops = day.stops || [];
+  if (!day.hasGps) {
+    fb.innerHTML = '';
+    sb.innerHTML = '<div class="empty">Bu kun uchun GPS hali yuklanmagan. Bir oz kuting — kabinet avtomatik yangilanadi.</div>';
+    return;
+  }
+  if (!stops.length) {
+    fb.innerHTML = '';
+    sb.innerHTML = "<div class=\"empty\">To'xtashlar ro'yxati yo'q</div>";
+    return;
+  }
+  const groups = {
+    all: () => true,
+    prob: s => stopIsProblem(s),
+    ph: s => s.reviewStatus === 'allowed' || s.matchType === 'own' || s.matchType === 'other',
+    office: s => !!s.isOffice
+  };
+  const labels = { all: 'Hammasi', prob: 'Muammo', ph: 'Dorixona', office: 'Ofis' };
+  fb.innerHTML = Object.keys(groups).map(k => {
+    const n = stops.filter(groups[k]).length;
+    return `<button type="button" role="tab" data-f="${k}" class="${stopFilter === k ? 'on' : ''}" aria-selected="${stopFilter === k}">${labels[k]}<b>${n}</b></button>`;
+  }).join('');
+  const list = stops.filter(groups[stopFilter] || groups.all);
+  if (!list.length) {
+    sb.innerHTML = "<div class=\"empty\">Bu filtr bo'yicha to'xtash yo'q</div>";
+    return;
+  }
+  sb.innerHTML = '<div class="tl">' + list.map(s => {
+    const [lab, badgeCls, itemCls] = stopKind(s);
+    const key = stopKey(s);
+    const num = NUMS.byKey[key] || '·';
+    const note = s.reviewNote || s.problemRule || '';
+    const dur = stopDurSec(s);
+    return `<button type="button" class="tl-item ${itemCls}" data-key="${esc(key)}" title="Xaritada ko'rsatish">
+      <span class="tl-num${num === 'Of' ? ' is-office' : ''}" style="background:${stopColor(s)}">${esc(num)}</span>
+      <span class="tl-card">
+        <span class="tl-top"><span class="tl-name">${esc(stopLabel(s))}</span><span class="badge ${badgeCls}">${esc(lab)}</span></span>
+        <span class="tl-meta"><span><b>${esc(s.inTime || '—')}</b>${s.outTime ? ' → <b>' + esc(s.outTime) + '</b>' : ''}</span><span>${esc(fmtDur(dur))}</span></span>
+        ${note ? `<span class="tl-note">${esc(note)}</span>` : ''}
+      </span>
+    </button>`;
+  }).join('') + '</div>';
+}
+function paintFuel(day) {
+  const fuel = day.fuel;
+  const fb = document.getElementById('fuel-box');
+  if (!fuel) {
+    fb.innerHTML = "<div class=\"empty\">Bu kun uchun yoqilg'i yozuvi yo'q</div>";
+    return;
+  }
+  const gasR = Math.max(0, Number(fuel.gasR || 0));
+  const benR = Math.max(0, Number(fuel.benR || 0));
+  fb.innerHTML = `
+    <div class="fuel-grid">
+      <div class="fuel-cell"><span class="lab">Rejim</span><span class="val">${esc(modeLabel(fuel.mode))}</span></div>
+      <div class="fuel-cell"><span class="lab">Km (Boshqaruv)</span><span class="val">${Number(fuel.km || 0).toFixed(1)}</span></div>
+      <div class="fuel-cell"><span class="lab">Sarf gaz</span><span class="val">${Number(fuel.gasUsed || 0).toFixed(2)} m³</span></div>
+      <div class="fuel-cell"><span class="lab">Sarf benzin/dizel</span><span class="val">${Number(fuel.benUsed || 0).toFixed(2)} l</span></div>
+      <div class="fuel-cell"><span class="lab">Olingan gaz / benzin</span><span class="val">${Number(fuel.gasIn || 0).toFixed(2)} / ${Number(fuel.benzinIn || 0).toFixed(2)}</span></div>
+      <div class="fuel-cell"><span class="lab">Qoldiq gaz / benzin</span><span class="val">${gasR.toFixed(2)} / ${benR.toFixed(2)}</span></div>
+      ${fuel.station ? `<div class="fuel-cell" style="grid-column:1/-1"><span class="lab">Zapravka</span><span class="val">${esc(fuel.station)}</span></div>` : ''}
+    </div>`;
+}
+function paintTasks(day) {
+  const a = day.analysis || {};
+  const missed = Array.isArray(a.missedList) ? a.missedList : [];
+  const missedSet = new Set(missed.map(normPh).filter(Boolean));
+  const tasks = day.tasks || [];
+  const hasGps = !!day.hasGps;
+  const ph = (Array.isArray(day.pharmacies) && day.pharmacies.length)
+    ? day.pharmacies
+    : (Array.isArray(a.ownPharms) && a.ownPharms.length ? a.ownPharms : fleetPharmacies(day.car));
+  let th = '';
+  if (day.routes && day.routes !== '—') th += `<div class="route-chip">Yo'nalish: ${esc(ui(day.routes))}</div>`;
+  const geoCount = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo.length : 0;
+  if (hasGps && ph.length && !geoCount) {
+    th += "<div class=\"empty is-warn\">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi.</div>";
+  } else if (hasGps && geoCount) {
+    th += `<div class="sec-label" style="margin-top:10px">${geoCount} ta geozona faol</div>`;
+  }
+  if (ph.length) {
+    th += '<div class="sec-label">Biriktirilgan dorixonalar</div>';
+    th += '<ul class="pharm-list">' + ph.map(n => {
+      let tag;
+      if (!hasGps) tag = '<span class="badge badge-mute">reja</span>';
+      else if (missedSet.has(normPh(n))) tag = '<span class="badge badge-warn">borilmadi</span>';
+      else tag = '<span class="badge badge-ok">borildi</span>';
+      return `<li><span>${esc(ui(n))}</span>${tag}</li>`;
+    }).join('') + '</ul>';
+  }
+  if (tasks.length) {
+    th += "<div class=\"sec-label\">Admin topshirig'i</div>";
+    th += '<div class="task-cards">' + tasks.map(t => {
+      const created = (t.createdAt || '').slice(0, 10);
+      return `<div class="task-card"><span class="task-text">${esc(t.text)}</span><div class="task-meta">${t.date ? '<span>' + esc(t.date) + '</span>' : ''}${t.by ? '<span>— ' + esc(t.by) + '</span>' : ''}${created ? '<span>' + esc(created) + '</span>' : ''}</div></div>`;
+    }).join('') + '</div>';
+  }
+  if (!th) th = '<div class="empty">Hali topshiriq yozilmagan</div>';
+  if (missed.length) {
+    th += "<div class=\"sec-label\" style=\"color:var(--warn);margin-top:14px\">O'tkazib yuborilgan</div><div style=\"color:var(--warn);font-weight:600;line-height:1.45\">" + missed.map(x => esc(ui(x))).join(', ') + '</div>';
+  }
+  document.getElementById('task-box').innerHTML = th;
+}
+function paintJournal(day) {
+  const jr = day.journal || [];
+  document.getElementById('jr-box').innerHTML = jr.length
+    ? '<div class="jr-list">' + jr.map(j => {
+        const good = j.kind === 'good';
+        return `<div class="jr-item${good ? '' : ' is-bad'}">
+          <div><div class="nm">${esc(j.reason || (good ? 'Maqtov' : 'Kamchilik'))}</div>${j.note ? `<div class="note">${esc(j.note)}</div>` : ''}</div>
+          <span class="badge ${good ? 'badge-ok' : 'badge-bad'}">${good ? 'Yaxshi' : 'Kamchilik'}</span>
+        </div>`;
+      }).join('') + '</div>'
+    : "<div class=\"empty\">Jurnal yozuvi yo'q</div>";
+}
+function paint(day) {
+  DAY = day;
+  const stops = day.stops || [];
+  NUMS = buildNumbering(stops);
+  paintHero(day);
+  paintKpis(day);
+  paintTasks(day);
+  paintFuel(day);
+  paintStops(day);
+  paintJournal(day);
+  refreshDriverMap(day);
+}
 
+/* ════════════ Davomat (faqat haydovchining o'zi) ════════════ */
+async function loadAttendance() {
+  const box = document.getElementById('att-strip');
+  if (!ME || ME.role !== 'driver') { box.hidden = true; return; }
+  let d;
+  try { d = await vmApi('/api/attendance/me'); } catch (e) { box.hidden = true; return; }
+  box.hidden = false;
+  const t = d.today || {};
+  const s = d.settings || {};
+  const inAt = t.in && (t.in.atDisplay || String(t.in.at || '').slice(11, 19));
+  const outAt = t.out && (t.out.atDisplay || String(t.out.at || '').slice(11, 19));
+  const late = !!(t.in && t.in.late);
+  const inEl = document.getElementById('att-in');
+  const outEl = document.getElementById('att-out');
+  inEl.querySelector('b').textContent = inAt || '—';
+  outEl.querySelector('b').textContent = outAt || '—';
+  inEl.classList.toggle('is-late', late);
+  let cls, title, sub;
+  if (d.attendanceExempt) {
+    cls = ''; title = 'Davomatdan ozod qilingansiz'; sub = "Keldim / Ketdim belgilash shart emas";
+  } else if (outAt) {
+    cls = 'is-in'; title = 'Bugungi ish kuni yakunlangan'; sub = 'Keldim ' + inAt + ' · Ketdim ' + outAt;
+  } else if (inAt) {
+    cls = late ? 'is-late' : 'is-in';
+    title = late ? 'Ishdasiz — kechikib kelingan' : 'Ishdasiz';
+    sub = 'Ish tugagach «Ketdim» belgilashni unutmang' + (s.out_start ? ' (reja ' + s.out_start + ')' : '');
+  } else if (d.remoteToday) {
+    cls = 'is-wait'; title = 'Masofaviy ruxsat bor'; sub = "Bugun ofisga kelmasdan «Keldim» belgilash mumkin";
+  } else {
+    cls = 'is-wait'; title = "«Keldim» hali belgilanmagan";
+    sub = 'Ofis zonasiga kirib Davomat bo‘limida belgilang' + (s.in_start ? ' (reja ' + s.in_start + ')' : '');
+  }
+  box.className = 'att-strip ' + cls;
+  document.getElementById('att-title').textContent = title;
+  document.getElementById('att-sub').textContent = sub;
+}
 
-
+/* ════════════ Yuklash / avto-yangilash ════════════ */
 async function loadDay(opts) {
   const o = opts || {};
   const date = document.getElementById('d-date').value;
   const carSel = document.getElementById('d-car');
   const q = new URLSearchParams({ date });
   if (vmIsStaff(ME) && carSel && carSel.value) q.set('car', carSel.value);
-
   const d = await vmApi('/api/driver/day?' + q.toString());
   const day = d.day || {};
   const key = JSON.stringify({
+    car: day.car,
+    date: day.date,
     km: (day.stats || {}).km,
     stops: (day.stops || []).length,
+    pts: (day.points || []).length,
     syncedAt: day.syncedAt,
     score: (day.analysis || {}).score,
     fuel: day.fuel,
     tasks: (day.tasks || []).length,
     miss: ((day.analysis || {}).missedList || []).length,
-    bad: (day.reviews || []).length,
+    rev: (day.reviews || []).map(r => r.status + r.inTime).join(','),
   });
   if (key !== lastPaintKey || o.forcePaint) {
     lastPaintKey = key;
@@ -1052,32 +1233,21 @@ async function refreshGpsFromServer(opts) {
   const carSel = document.getElementById('d-car');
   const body = { date };
   if (vmIsStaff(ME) && carSel && carSel.value) body.car = carSel.value;
-
   liveBusy = true;
   updateLiveFromDay({}, { busy: true });
-
   try {
-    const r = await vmApi('/api/driver/refresh', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-    const day = r.day || null;
-    if (day) {
+    const r = await vmApi('/api/driver/refresh', { method: 'POST', body: JSON.stringify(body) });
+    if (r.day) {
       lastPaintKey = '';
-      paint(day);
-      updateLiveFromDay(day);
+      paint(r.day);
+      updateLiveFromDay(r.day);
     } else {
       await loadDay({ forcePaint: true });
     }
     if (r.busy) {
       setLiveState('is-busy', 'Server band', 'Boshqa sync ketmoqda — birozdan keyin qayta uriniladi', 'BUSY');
     } else if (r.skipped && r.reason === 'cooldown') {
-      setLiveState(
-        'is-on',
-        'Jonli kabinet',
-        "GPS yaqinda yangilangan · qayta so'rov ~" + (r.retryIn || 60) + " s dan keyin",
-        'GPS'
-      );
+      setLiveState('is-on', 'Jonli kabinet', "GPS yaqinda yangilangan · qayta so'rov ~" + (r.retryIn || 60) + ' s dan keyin', 'GPS');
     }
     return r;
   } catch (err) {
@@ -1091,294 +1261,107 @@ async function refreshGpsFromServer(opts) {
 function startDayAutoRefresh() {
   if (dayTimer) clearInterval(dayTimer);
   if (gpsTimer) clearInterval(gpsTimer);
-
   dayTimer = setInterval(() => {
     if (document.hidden) return;
     loadDay().catch(() => {});
+    if (isTodaySelected()) loadAttendance().catch(() => {});
   }, 60 * 1000);
-
   gpsTimer = setInterval(() => {
-    if (document.hidden) return;
-    if (!isTodaySelected()) return;
+    if (document.hidden || !isTodaySelected()) return;
     refreshGpsFromServer().catch(() => {});
   }, 3 * 60 * 1000);
-
   if (!liveVisBound) {
     liveVisBound = true;
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) return;
       loadDay().catch(() => {});
+      loadAttendance().catch(() => {});
       if (isTodaySelected()) refreshGpsFromServer().catch(() => {});
     });
   }
 }
 
-
-
-function normPh(s) {
-  if (!s) return '';
-  return String(s).toLowerCase()
-    .replace(/ё/g, 'е').replace(/қ/g, 'к').replace(/ў/g, 'у')
-    .replace(/ҳ/g, 'х').replace(/ғ/g, 'г').replace(/ң/g, 'н')
-    .replace(/['`']/g, '').replace(/\s+/g, ' ').trim();
-}
-
-
-
-function paint(day) {
-
-  const a = day.analysis || {};
-
-  const st = day.stats || {};
-
-  const fuel = day.fuel;
-
-  const titleName = day.name || ME.name || ME.username || '';
-
-  const titleCar = day.car || ME.car || '';
-
-  const whoEl = document.getElementById('who-line');
-
-  if (whoEl) whoEl.textContent = [titleName, titleCar].filter(Boolean).join(' · ') || "Faqat ko'rish";
-
-  const missed = Array.isArray(a.missedList) ? a.missedList : [];
-
-  const missedSet = new Set(missed.map(normPh).filter(Boolean));
-
-  const viol = (day.reviews || []).filter(r => r.status === 'violation');
-
-  document.getElementById('k-km').textContent = st.km ? Number(st.km).toFixed(1) + ' km' : '—';
-
-  document.getElementById('k-trips').textContent = (st.trips || 0) + ' reys · ' + (st.stops || 0) + " to'xtash";
-
-  document.getElementById('k-score').textContent = day.hasGps && a.score != null ? Number(a.score).toFixed(1) : '—';
-
-  document.getElementById('k-grade').textContent = a.grade && a.grade !== '—' ? ('Bahosi ' + a.grade) : "GPS hisobot yo'q";
-
-  document.getElementById('k-miss').textContent = String(missed.length);
-
-  document.getElementById('k-bad').textContent = String(viol.length || a.problemStops || 0);
-
-
-
-  const fb = document.getElementById('fuel-box');
-
-  if (!fuel) {
-    fb.innerHTML = "<div class=\"empty\">Bu kun uchun yoqilg'i yozuvi yo'q</div>";
-  } else {
-    const gasR = Math.max(0, Number(fuel.gasR || 0));
-    const benR = Math.max(0, Number(fuel.benR || 0));
-    fb.innerHTML = `
-      <div class="fuel-grid">
-        <div class="fuel-cell"><span class="lab">Rejim</span><span class="val">${esc(modeLabel(fuel.mode))}</span></div>
-        <div class="fuel-cell"><span class="lab">Km (Boshqaruv)</span><span class="val">${Number(fuel.km||0).toFixed(1)}</span></div>
-        <div class="fuel-cell"><span class="lab">Sarf gaz</span><span class="val">${Number(fuel.gasUsed||0).toFixed(2)} m³</span></div>
-        <div class="fuel-cell"><span class="lab">Sarf benzin/dizel</span><span class="val">${Number(fuel.benUsed||0).toFixed(2)} l</span></div>
-        <div class="fuel-cell"><span class="lab">Olingan gaz / benzin</span><span class="val">${Number(fuel.gasIn||0).toFixed(2)} / ${Number(fuel.benzinIn||0).toFixed(2)}</span></div>
-        <div class="fuel-cell"><span class="lab">Qoldiq gaz / benzin</span><span class="val">${gasR.toFixed(2)} / ${benR.toFixed(2)}</span></div>
-        ${fuel.station ? `<div class="fuel-cell" style="grid-column:1/-1"><span class="lab">Zapravka</span><span class="val">${esc(fuel.station)}</span></div>` : ''}
-      </div>`;
-  }
-
-
-
-  const tasks = day.tasks || [];
-
-  const hasGps = !!day.hasGps;
-
-  const ph = (Array.isArray(day.pharmacies) && day.pharmacies.length)
-
-    ? day.pharmacies
-
-    : (Array.isArray(a.ownPharms) && a.ownPharms.length ? a.ownPharms : fleetPharmacies(day.car));
-
-  let th = '';
-
-  if (day.routes) th += `<div class="route-chip">Yo'nalish: ${esc(day.routes)}</div>`;
-
-  const geoCount = Array.isArray(day.pharmacyGeo) ? day.pharmacyGeo.length : 0;
-
-  if (hasGps && ph.length && !geoCount) {
-    th += "<div class=\"empty\" style=\"color:var(--warn);text-align:left\">Geozonalar hali sozlanmagan — tashriflar avtomatik aniqlanmaydi. Dashboard da to'xtashga «Ruxsat» bering (dorixona tanlang).</div>";
-  } else if (hasGps && geoCount) {
-    th += `<div class="sec-label" style="margin-top:10px">${geoCount} ta geozona faol</div>`;
-  }
-
-  if (ph.length) {
-    th += '<div class="sec-label">Biriktirilgan dorixonalar</div>';
-    th += '<ul class="pharm-list">' + ph.map(n => {
-      const miss = missedSet.has(normPh(n));
-      let tag;
-      if (!hasGps) tag = '<span class="badge badge-mute">reja</span>';
-      else if (miss) tag = '<span class="badge badge-warn">borilmadi</span>';
-      else tag = '<span class="badge badge-ok">borildi</span>';
-      return `<li><span>${esc(n)}</span>${tag}</li>`;
-    }).join('') + '</ul>';
-  }
-
-  if (tasks.length) {
-    th += "<div class=\"sec-label\">Admin topshirig'i</div>";
-    th += '<div class="task-cards">' + tasks.map(t => {
-      const byStr = t.by ? `<span>— ${esc(t.by)}</span>` : '';
-      const dateStr = t.date ? `<span>${esc(t.date)}</span>` : '';
-      const created = (t.createdAt || '').slice(0, 10);
-      return `<div class="task-card"><span class="task-text">${esc(t.text)}</span><div class="task-meta">${dateStr} ${byStr} ${created ? '<span>' + esc(created) + '</span>' : ''}</div></div>`;
-    }).join('') + '</div>';
-  }
-
-  if (!th) th = '<div class="empty">Hali topshiriq yozilmagan</div>';
-
-  if (missed.length) {
-    th += "<div class=\"sec-label\" style=\"color:var(--warn);margin-top:14px\">O'tkazib yuborilgan</div><div style=\"color:var(--warn);font-weight:600;line-height:1.45\">" + missed.map(esc).join(', ') + "</div>";
-  }
-
-  document.getElementById('task-box').innerHTML = th;
-
-
-
-  const stops = day.stops || [];
-
-  const sb = document.getElementById('stop-box');
-
-  if (!day.hasGps) {
-
-    sb.innerHTML = '<div class="empty">Bu kun uchun GPS hali yuklanmagan. Bir oz kuting — kabinet avtomatik yangilanadi.</div>';
-
-  } else if (!stops.length) {
-
-    sb.innerHTML = "<div class=\"empty\">To'xtashlar ro'yxati yo'q</div>";
-
-  } else {
-    sb.innerHTML = '<div class="stop-list">' + stops.map(s => {
-      const [lab, badgeCls, itemCls] = stopKind(s);
-      const note = s.reviewNote || s.problemRule || '';
-      const noteHtml = note ? `<div class="note">${esc(note)}</div>` : '';
-      const durHtml = s.duration ? `<div class="meta">Turgani: ${esc(s.duration)}</div>` : '';
-      return `<div class="stop-item ${itemCls}">
-        <div>
-          <div class="nm">${esc(stopLabel(s))}</div>
-          <div class="meta">${esc(s.inTime || '')}${s.outTime ? ' → ' + esc(s.outTime) : ''}</div>
-          ${durHtml}
-          ${noteHtml}
-        </div>
-        <span class="badge ${badgeCls}">${lab}</span>
-      </div>`;
-    }).join('') + '</div>';
-  }
-
-  refreshDriverMap(day);
-
-  const jr = day.journal || [];
-  document.getElementById('jr-box').innerHTML = jr.length
-    ? '<div class="stop-list">' + jr.map(j => {
-        const good = j.kind === 'good';
-        return `<div class="stop-item ${good ? 'is-ok' : 'is-bad'}">
-          <div>
-            <div class="nm">${esc(j.reason || (good ? 'Maktov' : 'Kamchilik'))}</div>
-            <div class="note">${esc(j.note || '')}</div>
-          </div>
-          <span class="badge ${good ? 'badge-ok' : 'badge-bad'}">${good ? 'Yaxshi' : 'Kamchilik'}</span>
-        </div>`;
-      }).join('') + '</div>'
-    : "<div class=\"empty\">Jurnal yozuvi yo'q</div>";
-}
-
-
-
 (async function init() {
-
   ME = await vmMe();
-
   vmApplyChrome(ME);
-
   vmGatePage(ME);
-
   vmStartHeartbeat();
-
   const logoutBtn = document.getElementById('btn-logout');
   if (logoutBtn) logoutBtn.onclick = () => vmLogout();
 
-  const who = [ME.name || ME.username, ME.car].filter(Boolean).join(' · ');
-
-  document.getElementById('who-line').textContent = who || 'Faqat ko‘rish';
+  document.getElementById('who-line').textContent = [ME.name || ME.username, ME.car].filter(Boolean).join(' · ') || "Faqat ko'rish";
 
   const dt = document.getElementById('d-date');
-
   const q = new URLSearchParams(location.search);
-
   dt.value = q.get('date') || todayStr();
-
+  dt.max = todayStr();
   dt.addEventListener('change', () => {
     loadDay({ forcePaint: true })
       .then(() => { if (isTodaySelected()) return refreshGpsFromServer(); })
       .catch(err => alert(err.message));
   });
 
+  document.getElementById('stop-filter').addEventListener('click', e => {
+    const b = e.target.closest('button[data-f]');
+    if (!b || !DAY) return;
+    stopFilter = b.dataset.f;
+    paintStops(DAY);
+  });
+  document.getElementById('stop-box').addEventListener('click', e => {
+    const row = e.target.closest('.tl-item[data-key]');
+    if (row) selectStop(row.dataset.key, true);
+  });
+  const tele = document.getElementById('chk-tele');
+  tele.checked = showTele;
+  tele.addEventListener('change', () => {
+    showTele = tele.checked;
+    try { localStorage.setItem('vm_drv_tele', showTele ? '1' : '0'); } catch (e) {}
+    drawTelemetry();
+  });
+
   if (vmIsStaff(ME)) {
-
     const wrap = document.getElementById('staff-pick');
-
     wrap.hidden = false;
-
     const sel = document.getElementById('d-car');
-
     const users = await vmApi('/api/users');
-
     const drivers = (users.users || []).filter(u => u.role === 'driver' && !u.carRetired);
-
     const fleet = window.DRIVERS || [];
-
-    const keyOf = p => (typeof fleetPlateKey === 'function' ? fleetPlateKey(p) : String(p || '').replace(/\s+/g, '').toUpperCase());
-
+    const keyOf = p => (typeof fleetPlateKey === 'function' ? fleetPlateKey(p) : normPlate(p));
     const opts = drivers.length ? drivers.map(u => {
-
-      const d = (typeof resolveDriver === 'function')
-
-        ? resolveDriver(u.car)
-
-        : (fleet.find(x => keyOf(x.car) === keyOf(u.car)) || {});
-
+      const d = typeof resolveDriver === 'function' ? resolveDriver(u.car) : (fleet.find(x => keyOf(x.car) === keyOf(u.car)) || {});
       return `<option value="${esc(u.car)}">${esc(d.shortName || d.fullName || u.name)} — ${esc(u.car)}</option>`;
-
-    }) : fleet.map(d => `<option value="${esc(d.car)}">${esc(d.shortName)} — ${esc(d.car)}</option>`);
-
+    }) : fleet.filter(d => !(typeof fleetIsRetired === 'function' && fleetIsRetired(d.car)))
+      .map(d => `<option value="${esc(d.car)}">${esc(d.shortName)} — ${esc(d.car)}</option>`);
     sel.innerHTML = opts.join('');
-
-    if (q.get('car')) sel.value = q.get('car');
-
+    const wantCar = q.get('car');
+    if (wantCar) {
+      const hit = [...sel.options].find(o => keyOf(o.value) === keyOf(wantCar));
+      if (hit) sel.value = hit.value;
+      else {
+        sel.insertAdjacentHTML('afterbegin', `<option value="${esc(wantCar)}">${esc(wantCar)}</option>`);
+        sel.value = wantCar;
+      }
+    }
     sel.addEventListener('change', () => {
       loadDay({ forcePaint: true })
         .then(() => { if (isTodaySelected()) return refreshGpsFromServer(); })
         .catch(err => alert(err.message));
     });
-
   }
 
   if (typeof listenFleetNameOverrides === 'function') {
-
-    listenFleetNameOverrides(() => loadDay().catch(() => {}));
-
+    listenFleetNameOverrides(() => loadDay({ forcePaint: true }).catch(() => {}));
   }
 
+  loadAttendance().catch(() => {});
   await loadDay({ forcePaint: true });
   startDayAutoRefresh();
-  if (isTodaySelected()) {
-    refreshGpsFromServer().catch(() => {});
-  }
-
+  if (isTodaySelected()) refreshGpsFromServer().catch(() => {});
 })().catch(err => {
-
   const upd = document.getElementById('day-updated');
-
   if (upd) upd.textContent = 'Xato: ' + err.message;
-
   else alert(err.message);
-
 });
-
 </script>
-
 </body>
-
 </html>
-

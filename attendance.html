@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shell.css?v=31"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="attendance.css?v=76"/>
+<link rel="stylesheet" href="attendance.css?v=77"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -28,9 +28,9 @@
       <a class="nav-link staff-only" href="/" id="nav-vhk" hidden>Dashboard</a>
       <a class="nav-link staff-only" href="/fuel" id="nav-fuel" hidden>Boshqaruv</a>
       <a class="nav-link staff-only" href="/live" id="nav-live" hidden>Live</a>
+      <a class="nav-link driver-only" href="/driver" id="nav-driver" hidden>Kabinet</a>
       <a class="nav-link on" href="/attendance" id="nav-davomat" aria-current="page">Davomat</a>
       <a class="nav-link staff-only" href="/admin" id="btn-admin-panel" hidden>Panel</a>
-      <a class="nav-link driver-only" href="/driver" id="nav-driver" hidden>Kabinet</a>
     </nav>
     <div class="nav-foot">
       <a class="nav-link" href="/profile">Profil</a>
@@ -102,7 +102,7 @@
 <div id="att-confirm-modal" class="att-confirm" hidden aria-hidden="true">
   <div class="att-confirm-backdrop" id="att-confirm-backdrop"></div>
   <div class="att-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="att-confirm-title">
-    <div class="att-confirm-ico" id="att-confirm-ico" aria-hidden="true">IN</div>
+    <div class="att-confirm-ico" id="att-confirm-ico" aria-hidden="true"></div>
     <h3 id="att-confirm-title">Tasdiqlash</h3>
     <p class="att-confirm-lead" id="att-confirm-lead"></p>
     <p class="att-confirm-note" id="att-confirm-note"></p>
@@ -165,6 +165,6 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="auth.js?v=43"></script>
 <script src="uz-latin.js?v=5"></script>
-<script src="attendance.js?v=80"></script>
+<script src="attendance.js?v=82"></script>
 </body>
 </html>

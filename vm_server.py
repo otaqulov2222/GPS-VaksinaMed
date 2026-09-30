@@ -3143,7 +3143,13 @@ class OfficeStore:
                     continue
                 if not (37.0 <= lat <= 46.0 and 55.0 <= lng <= 74.0):
                     continue
-                points_out.append([round(lat, 5), round(lng, 5)])
+                row = [round(lat, 5), round(lng, 5)]
+                if isinstance(p, (list, tuple)) and len(p) >= 4:
+                    try:
+                        row += [int(p[2] or 0), round(float(p[3] or 0), 1)]
+                    except (TypeError, ValueError):
+                        pass
+                points_out.append(row)
                 if len(points_out) >= 500:
                     break
         pharms = []
