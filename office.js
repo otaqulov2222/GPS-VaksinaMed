@@ -365,7 +365,7 @@ const VMOffice = {
         return (STATE.pharmacies || []).find(p => this.pharmKey(p.name) === k) || null;
     },
 
-    async assignToCar(name, car, lat, lng, radiusM) {
+    async assignToCar(name, car, lat, lng, radiusM, aliases) {
         name = String(name || '').trim();
         car = String(car || '').trim();
         if (!name || !car) throw new Error('Nom va mashina kerak');
@@ -384,6 +384,7 @@ const VMOffice = {
                 keep.lng = Number(lng);
             }
             if (radiusM != null) keep.radiusM = Math.max(40, Math.min(500, Number(radiusM) || 120));
+            if (Array.isArray(aliases)) keep.aliases = aliases.slice(0, 12);
         } else {
             list.push({
                 id: 'ph_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9),
@@ -392,7 +393,7 @@ const VMOffice = {
                 lat: lat == null || lat === '' ? null : Number(lat),
                 lng: lng == null || lng === '' ? null : Number(lng),
                 radiusM: Math.max(40, Math.min(500, Number(radiusM) || 120)),
-                aliases: []
+                aliases: Array.isArray(aliases) ? aliases.slice(0, 12) : []
             });
         }
         return this.savePharmacies(list);
@@ -403,7 +404,7 @@ const VMOffice = {
         return this.savePharmacies(list);
     },
 
-    async renamePharm(id, newName) {
+    async renamePharm(id, newName, aliases) {
         newName = String(newName || '').trim();
         if (!newName) throw new Error('Nom boʻsh');
         const list = Array.isArray(STATE.pharmacies) ? STATE.pharmacies.slice() : [];
@@ -413,6 +414,7 @@ const VMOffice = {
         const cleaned = list.filter(p => p.id === id || !k || this.pharmKey(p.name) !== k);
         const row = cleaned.find(p => p.id === id);
         row.name = newName;
+        if (Array.isArray(aliases)) row.aliases = aliases.slice(0, 12);
         return this.savePharmacies(cleaned);
     },
 
@@ -458,8 +460,10 @@ const VMOffice = {
         if (placeOk && typeof pharmNameScore === 'function') {
             let bestSc = 0, bestPh = null, bestD = 1e12;
             candidates.forEach(({ d, ph }) => {
-                const en = (typeof pharmacyKey === 'function' ? pharmacyKey(ph.name) : null) || normPh(ph.name);
-                const sc = pharmNameScore(pk, en);
+                const sc = Math.max(0, ...[ph.name].concat(ph.aliases || []).map(n => {
+                    const en = (typeof pharmacyKey === 'function' ? pharmacyKey(n) : null) || normPh(n);
+                    return pharmNameScore(pk, en);
+                }));
                 if (sc >= 55 && (sc > bestSc || (sc === bestSc && d < bestD))) {
                     bestSc = sc;
                     bestPh = ph;

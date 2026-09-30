@@ -483,13 +483,29 @@ function buildPharmIndex() {
     });
 }
 
+/** gps_sync._pharm_name_score bilan bir xil */
 function pharmNameScore(pn, en) {
     if (!pn || !en || pn.length < 3 || en.length < 3) return 0;
     if (pn === en) return 100;
+    // Ташкент/Tashkent ≡ Toshkent
+    pn = pn.replace(/tash/g, 'tosh');
+    en = en.replace(/tash/g, 'tosh');
+    if (pn === en) return 98;
+    const pnDigits = (pn.match(/\d+/g) || []).join(',');
+    const enDigits = (en.match(/\d+/g) || []).join(',');
     const pn2 = pn.replace(/\d+/g, '');
     const en2 = en.replace(/\d+/g, '');
     // qorasuv2 ≡ qorasuv5 bo'lib ketmasin
     if (pn2 && en2 && pn2.length >= 10 && pn2 === en2) return 95;
+    if (pnDigits && pnDigits === enDigits && pn2 && en2) {
+        // 1-гор ≡ Гор-1
+        if (pn2 === en2 && pn2.length >= 3) return 90;
+        // Ташми-1 ≡ Tosh-1: bir xil raqam, qisqartma prefiks (≤2 harf farq)
+        const [short, long] = pn2.length <= en2.length ? [pn2, en2] : [en2, pn2];
+        if (short.length >= 4 && long.startsWith(short) && long.length - short.length <= 2) return 75;
+    }
+    // Yunusobod-1 ≠ ЮНУСОБОД 18: ikkalasida raqam bor va farqli — boshqa dorixona
+    if (pnDigits && enDigits && pnDigits !== enDigits) return 0;
     if (pn.includes(en) || en.includes(pn)) {
         const shorter = Math.min(pn.length, en.length);
         const longer = Math.max(pn.length, en.length);
@@ -506,8 +522,10 @@ function ownPharmacyKeyMap(carKey) {
     (STATE.pharmacies || []).forEach(p => {
         if (!p || !p.name || !p.car) return;
         if (p.car !== carKey && plateKey(p.car) !== want) return;
-        const k = (typeof pharmacyKey === 'function' ? pharmacyKey(p.name) : null) || normPh(p.name);
-        if (k && !map.has(k)) map.set(k, p);
+        [p.name].concat(p.aliases || []).forEach(n => {
+            const k = (typeof pharmacyKey === 'function' ? pharmacyKey(n) : null) || normPh(n);
+            if (k && !map.has(k)) map.set(k, p);
+        });
     });
     if (!map.size) {
         (ownPharmacyList(carKey) || []).forEach(name => {
@@ -967,6 +985,12 @@ function analyzeDataLocal(stops, carKey, stats, dateVal) {
         // own to'xtash YOKI biriktirilgan dorixona kaliti (noto'g'ri "other" ham hisob)
         if (s.matchType === 'own' || ownKeys.has(k)) visitedKeys.add(k);
     });
+    (stops || []).forEach((s) => {
+        (Array.isArray(s.coVisits) ? s.coVisits : []).forEach(n => {
+            const k = visitKey(n);
+            if (k) visitedKeys.add(k);
+        });
+    });
     const bag = (STATE.reviews && STATE.reviews[day]) || {};
     const want = plateKey(carKey);
     Object.keys(bag).forEach(key => {
@@ -1174,7 +1198,7 @@ function addMapTiles(map) {
         return;
     }
     L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-        attribution: '', subdomains: 'abc', maxZoom: 18, maxNativeZoom: 18,
+        attribution: '', subdomains: 'abc', maxZoom: 20, maxNativeZoom: 18,
         detectRetina: false, updateWhenIdle: true, updateWhenZooming: false
     }).addTo(map);
 }
@@ -1257,7 +1281,7 @@ function initMap() {
         doubleClickZoom: false,
         boxZoom: false,
         keyboard: false,
-        maxZoom: 18,
+        maxZoom: 20,
         minZoom: 3
     }).setView([41.3111, 69.2797], 12);
     addMapTiles(STATE.map);
@@ -1418,49 +1442,19 @@ function drawMapRouteLayers(latlngs, lanePts) {
 }
 
 function removeBoomerangTelemetry() {
-    if (!STATE.map) return;
     if (STATE.mapTelemetry) {
-        try { STATE.map.removeLayer(STATE.mapTelemetry); } catch (e) {}
+        try { STATE.mapTelemetry.destroy(); } catch (e) {}
         STATE.mapTelemetry = null;
     }
 }
 
-/** Boomerang uslubi: qizil nuqta + vaqt/tezlik yorliqlari (toggle bilan). */
+/** Vaqt/tezlik yorliqlari (toggle bilan): turishlar yig'iladi, yorliqlar ustma-ust tushmaydi — map-telemetry.js */
 function drawBoomerangTelemetry(track) {
     removeBoomerangTelemetry();
-    if (!STATE.map || !STATE.showTrackTelemetry) return;
+    if (!STATE.map || !STATE.showTrackTelemetry || typeof vmTrackTelemetry !== 'function') return;
     const pts = normalizeTrackPoints(track).filter(p => Array.isArray(p) && p.length >= 3 && p[2] > 1e8);
-    if (pts.length < 1) return;
-    const maxLab = 90;
-    const step = Math.max(1, Math.ceil(pts.length / maxLab));
-    const idxs = [];
-    for (let i = 0; i < pts.length; i += step) idxs.push(i);
-    if (idxs[idxs.length - 1] !== pts.length - 1) idxs.push(pts.length - 1);
-    const layers = [];
-    idxs.forEach((i, n) => {
-        const pt = pts[i];
-        const speed = pt[3] != null ? Number(pt[3]) : 0;
-        const html = '<b>' + fmtTrackTs(pt[2]) + '</b><br>' + Math.round(speed) + ' км/ч';
-        const m = L.circleMarker([pt[0], pt[1]], {
-            radius: 4.5,
-            color: '#ffffff',
-            weight: 1.5,
-            fillColor: '#e11d48',
-            fillOpacity: 1,
-            opacity: 1
-        });
-        m.bindTooltip(html, {
-            permanent: true,
-            direction: (n % 2 === 0) ? 'right' : 'left',
-            offset: (n % 2 === 0) ? [10, 0] : [-10, 0],
-            className: 'vm-boom-tip',
-            opacity: 0.96
-        });
-        layers.push(m);
-    });
-    if (layers.length) {
-        STATE.mapTelemetry = L.layerGroup(layers).addTo(STATE.map);
-    }
+    if (!pts.length) return;
+    STATE.mapTelemetry = vmTrackTelemetry(STATE.map, pts);
 }
 
 async function refreshTrackTelemetry() {
@@ -2157,7 +2151,9 @@ function renderCarPharmacyRoster(carKey) {
     el.innerHTML = `<div class="car-pharm-grid">
         ${records.map((ph, i) => {
             const id = String(ph.id || '');
-            const nm = uiTxt(ph.name);
+            const als = Array.isArray(ph.aliases) ? ph.aliases.filter(Boolean) : [];
+            const nm = uiTxt(ph.name)
+                + (als.length ? `<span class="al" title="GPS’dagi boshqa nomlari">≡ ${als.map(a => escAttr(uiTxt(a))).join(', ')}</span>` : '');
             const actions = (canEdit && !ph._ephemeral)
                 ? `<span class="car-pharm-actions">
                     <button type="button" class="car-pharm-btn" data-ph-edit="${escAttr(id)}" title="Tahrirlash">Tahrir</button>
@@ -2196,6 +2192,11 @@ function ensureCarPharmModal() {
           <span>Nomi</span>
           <input type="text" id="car-pharm-modal-name" maxlength="80" autocomplete="off" />
         </label>
+        <label class="car-pharm-field">
+          <span>GPS’dagi boshqa nomlari (vergul bilan)</span>
+          <input type="text" id="car-pharm-modal-aliases" maxlength="400" autocomplete="off" placeholder="masalan: Ташми-2, 1-гор" />
+        </label>
+        <p class="car-pharm-modal-hint">GPS geozona nomi boshqacha boʻlsa yoki dorixona boshqasi bilan bir joyda (yonma-yon) boʻlsa — oʻsha geozona nomini yozing. Shu joyda toʻxtash bu dorixonaga ham «borildi» hisoblanadi.</p>
         <p class="car-pharm-modal-hint" id="car-pharm-modal-hint"></p>
         <div class="car-pharm-modal-actions">
           <button type="button" class="btn btn-sm" id="car-pharm-modal-cancel">Bekor</button>
@@ -2225,6 +2226,8 @@ function openCarPharmModal(mode, rec) {
     const hint = document.getElementById('car-pharm-modal-hint');
     title.textContent = mode === 'edit' ? 'Dorixonani tahrirlash' : 'Dorixona qoʻshish';
     input.value = rec && rec.name ? rec.name : '';
+    const aliasEl = document.getElementById('car-pharm-modal-aliases');
+    if (aliasEl) aliasEl.value = (rec && Array.isArray(rec.aliases) ? rec.aliases : []).join(', ');
     hint.textContent = mode === 'add'
         ? 'Shu mashinaga biriktiriladi. Agar nom boshqa mashinada boʻlsa — avtomatik oʻtkaziladi.'
         : 'Nom «Shirin filial» kabi boʻlsa ham «Shirin» bilan bir joy hisoblanadi.';
@@ -2247,15 +2250,28 @@ async function submitCarPharmModal() {
         if (typeof showToast === 'function') showToast('Nom kiriting', 'warn');
         return;
     }
+    const aliasEl = document.getElementById('car-pharm-modal-aliases');
+    const nameKey = visitKey(name);
+    const seenAlias = new Set();
+    const aliases = String((aliasEl && aliasEl.value) || '')
+        .split(/[,;\n]+/)
+        .map(s => s.trim().slice(0, 60))
+        .filter(s => {
+            const k = visitKey(s);
+            if (!k || k === nameKey || seenAlias.has(k)) return false;
+            seenAlias.add(k);
+            return true;
+        })
+        .slice(0, 12);
     try {
         if (!window.VMOffice || typeof VMOffice.assignToCar !== 'function') {
             throw new Error('Ofis moduli yuklanmagan');
         }
         if (_carPharmModalMode === 'edit' && _carPharmModalId) {
-            await VMOffice.renamePharm(_carPharmModalId, name);
+            await VMOffice.renamePharm(_carPharmModalId, name, aliases);
             if (typeof showToast === 'function') showToast('Yangilandi', 'ok');
         } else {
-            await VMOffice.assignToCar(name, car);
+            await VMOffice.assignToCar(name, car, null, null, null, aliases.length ? aliases : undefined);
             if (typeof showToast === 'function') showToast('"' + name + '" biriktirildi', 'ok');
         }
         closeCarPharmModal();
@@ -2808,7 +2824,10 @@ function renderPharmacy(data) {
     }
 
     if (ownStops.length > 0) {
-        const uniqueOwn = new Set(ownStops.map(s => visitKey(s.phName || s.place || '')).filter(Boolean));
+        const stopPhNames = s => (Array.isArray(s.coVisits) && s.coVisits.length)
+            ? s.coVisits
+            : [s.phName || s.place || ''];
+        const uniqueOwn = new Set(ownStops.flatMap(s => stopPhNames(s).map(visitKey)).filter(Boolean));
         const uniqN = uniqueOwn.size || a.ownVisited || 0;
         const stopN = ownStops.length;
         html += `<div class="ph-block">
@@ -2816,7 +2835,7 @@ function renderPharmacy(data) {
             <div class="ph-list">
             ${ownStops.map(s => `
             <div class="ph-row">
-                <span class="nm">${uiTxt(s.phName || s.place)}</span>
+                <span class="nm">${stopPhNames(s).map(uiTxt).join(' + ')}</span>
                 <span class="tm">${s.inTime || ''}</span>
                 <span class="tm">${s.duration || ''}</span>
             </div>`).join('')}
@@ -4152,7 +4171,8 @@ async function downloadPdfReport() {
             y = pdfSectionTitle(doc, y, "2. Dorixona tahlili");
             const missed = a.missedList.length ? a.missedList : ["Yo'q — barcha o'z dorixonalariga borilgan yoki royxat yo'q"];
             const visited = stops.filter(t => t.matchType === 'own')
-                .map(t => (t.phName || t.place || '—') + (t.inTime ? '  (' + t.inTime + (t.duration ? ', ' + t.duration : '') + ')' : ''));
+                .map(t => ((Array.isArray(t.coVisits) && t.coVisits.length) ? t.coVisits.join(' + ') : (t.phName || t.place || '—'))
+                    + (t.inTime ? '  (' + t.inTime + (t.duration ? ', ' + t.duration : '') + ')' : ''));
             const probs = stops.filter(t => stopIsProblem(t, x.drv.car, dateVal))
                 .map(t => (t.place || '—') + (t.duration ? '  (' + t.duration + ')' : ''));
             const vis = visited.length ? visited : ["Yo'q"];

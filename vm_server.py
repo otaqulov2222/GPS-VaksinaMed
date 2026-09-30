@@ -1636,6 +1636,7 @@ class OfficeStore:
     def learn_and_reprocess(self, base_dir, date=None):
         import gps_sync
 
+        gps_sync.ensure_zones_catalog(self)
         learned = gps_sync.learn_geozones_from_reports(self, base_dir)
         if date and valid_date(date):
             days = 1 if gps_sync.reprocess_day(self, base_dir, date) else 0

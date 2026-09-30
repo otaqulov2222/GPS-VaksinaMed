@@ -81,6 +81,14 @@ def pharmacy_key(s):
     return k
 
 
+_DIGITS_RE = re.compile(r"\d+")
+
+
+def _name_fold(k):
+    """Ташкент/Tashkent ≡ Toshkent — faqat solishtirish uchun (kalit saqlanmaydi)."""
+    return k.replace("tash", "tosh") if k else k
+
+
 def _pharm_name_score(pn, en):
     """
     Joy nomi ↔ dorixona. Soxta moslashmasin:
@@ -91,12 +99,28 @@ def _pharm_name_score(pn, en):
         return 0.0
     if pn == en:
         return 100.0
+    pn, en = _name_fold(pn), _name_fold(en)
+    if pn == en:
+        return 98.0
+    pn_digits = _DIGITS_RE.findall(pn)
+    en_digits = _DIGITS_RE.findall(en)
     # Raqamlarni olib tashlab solishtirish (geozona -2 / SADAF)
     # DIQQAT: qorasuv2 ≡ qorasuv5 bo'lib ketmasin — faqat yetarli uzun kalit
-    pn2 = re.sub(r"\d+", "", pn)
-    en2 = re.sub(r"\d+", "", en)
+    pn2 = _DIGITS_RE.sub("", pn)
+    en2 = _DIGITS_RE.sub("", en)
     if pn2 and en2 and len(pn2) >= 10 and pn2 == en2:
         return 95.0
+    if pn_digits and pn_digits == en_digits and pn2 and en2:
+        # 1-гор ≡ Гор-1 (raqam o'rni boshqa)
+        if pn2 == en2 and len(pn2) >= 3:
+            return 90.0
+        # Ташми-1 ≡ Tosh-1: bir xil raqam, qisqartma prefiks (≤2 harf farq)
+        short, long_ = sorted((pn2, en2), key=len)
+        if len(short) >= 4 and long_.startswith(short) and len(long_) - len(short) <= 2:
+            return 75.0
+    # Yunusobod-1 ≠ ЮНУСОБОД 18: ikkalasida raqam bor va farqli — boshqa dorixona
+    if pn_digits and en_digits and pn_digits != en_digits:
+        return 0.0
     if pn in en or en in pn:
         shorter = min(len(pn), len(en))
         longer = max(len(pn), len(en))
@@ -1643,13 +1667,13 @@ def build_pharm_index(drivers, pharmacies):
             if not name or not car:
                 continue
             drv = next((d for d in drivers if d["car"] == car), None)
-            key = pharmacy_key(name)
-            index.append({
-                "norm": key or norm_ph(name),
-                "name": name,
-                "car": car,
-                "driver": (drv or {}).get("shortName") or car,
-            })
+            for key in _pharm_keys(ph):
+                index.append({
+                    "norm": key,
+                    "name": name,
+                    "car": car,
+                    "driver": (drv or {}).get("shortName") or car,
+                })
         return index
     for drv in drivers:
         for ph in (drv.get("pharmacies") or "").split(","):
@@ -1674,10 +1698,25 @@ def _own_pharmacy_by_key(current_car, pharmacies):
             continue
         if compact_car(p.get("car")) != want:
             continue
-        k = pharmacy_key(p.get("name")) or norm_ph(p.get("name"))
-        if k and k not in out:
-            out[k] = p
+        for k in _pharm_keys(p):
+            if k not in out:
+                out[k] = p
     return out
+
+
+def _pharm_keys(ph):
+    """Dorixona nomi + taxalluslari (aliases) kalitlari."""
+    keys = []
+    names = [ph.get("name")] + list(ph.get("aliases") or [])
+    for n in names:
+        k = pharmacy_key(n) or norm_ph(n)
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
+def _pharm_best_score(pk, ph):
+    return max((_pharm_name_score(pk, k) for k in _pharm_keys(ph)), default=0.0)
 
 
 def _place_key_usable(place):
@@ -1708,15 +1747,23 @@ def _finalize_match(match, place, current_car, pharmacies):
         return match
 
     pk = pharmacy_key(place) or norm_ph(place)
-    if not pk or pk not in own_by_key:
+    if not pk:
+        return match
+    own = own_by_key.get(pk)
+    if own is None and _place_key_usable(place):
+        best_sc = 0.0
+        for cand in own_by_key.values():
+            sc = _pharm_best_score(pk, cand)
+            if sc >= 55 and sc > best_sc:
+                best_sc, own = sc, cand
+    if own is None:
         return match
 
-    own = own_by_key[pk]
     if match.get("type") in (None, "none") or not match.get("phName"):
         return {"type": "own", "phName": own.get("name"), "owners": [current_car]}
 
     if match.get("type") == "other":
-        sc_own = _pharm_name_score(pk, pharmacy_key(own.get("name") or "") or "")
+        sc_own = _pharm_best_score(pk, own)
         sc_oth = _pharm_name_score(pk, pharmacy_key(match.get("phName") or "") or "")
         if sc_own >= sc_oth:
             return {"type": "own", "phName": own.get("name"), "owners": [current_car]}
@@ -1767,8 +1814,7 @@ def match_geo(current_car, lat, lng, pharmacies, place=""):
     if place_ok and pk:
         named = []
         for d, ph in candidates:
-            en = pharmacy_key(ph.get("name") or "") or norm_ph(ph.get("name") or "")
-            sc = _pharm_name_score(pk, en)
+            sc = _pharm_best_score(pk, ph)
             if sc >= 55:
                 named.append((sc, -d, ph))
         if named:
@@ -1826,12 +1872,141 @@ def match_pharmacy(place, current_car, lat, lng, pharm_index, pharmacies):
         pharmacies,
     )
 
+def zones_at(lat, lng, zones):
+    """To'xtash nuqtasini o'z ichiga olgan Wialon geozonalari nomlari (yaqinidan)."""
+    try:
+        y, x = float(lat or 0), float(lng or 0)
+    except (TypeError, ValueError):
+        return []
+    if not y or not x:
+        return []
+    hits = []
+    for z in zones or []:
+        if not isinstance(z, dict) or not z.get("name"):
+            continue
+        try:
+            d = haversine_m(y, x, float(z["lat"]), float(z["lng"]))
+            r = float(z.get("radiusM") or 100)
+        except (TypeError, ValueError, KeyError):
+            continue
+        if d <= r:
+            hits.append((d, str(z["name"])))
+    hits.sort(key=lambda t: t[0])
+    return [n for _, n in hits]
+
+
+def co_visited_pharmacies(stop, car_key, pharmacies, zones=None):
+    """
+    Bitta to'xtash qamrab olgan BARCHA o'z dorixonalari:
+    - joy / topilgan nom dorixona nomi yoki taxallusiga mos (Ташми-1 ≡ Tosh-1)
+    - to'xtash dorixona geozonasi ichida
+    - to'xtash Wialon geozonasi ichida (yonma-yon Ташми-1 + Ташми-2 → Tosh-1 + Tosh-2)
+    """
+    if not isinstance(stop, dict) or stop.get("isOffice"):
+        return []
+    want = compact_car(car_key)
+    own = [
+        p for p in pharmacies or []
+        if isinstance(p, dict) and p.get("name") and compact_car(p.get("car")) == want
+    ]
+    if not own:
+        return []
+    lat, lng = stop.get("lat"), stop.get("lng")
+    if not valid_uz_coord(lat, lng):
+        lat, lng = 0, 0
+    names = [n for n in (stop.get("phName"), stop.get("place")) if n and _place_key_usable(n)]
+    names.extend(zones_at(lat, lng, zones))
+    keys = []
+    for n in names:
+        k = pharmacy_key(n) or norm_ph(n)
+        if k and k not in keys:
+            keys.append(k)
+    out = []
+    for p in own:
+        hit = any(_pharm_best_score(k, p) >= 55 for k in keys)
+        if not hit and lat and p.get("lat") is not None and p.get("lng") is not None:
+            try:
+                d = haversine_m(float(lat), float(lng), float(p["lat"]), float(p["lng"]))
+                hit = d <= float(p.get("radiusM") or 120)
+            except (TypeError, ValueError):
+                hit = False
+        if hit and p.get("name") not in out:
+            out.append(p.get("name"))
+    return out
+
+
+def apply_co_visits(stops, car_key, pharmacies, zones=None):
+    """
+    Har to'xtashga coVisits (qamrab olingan o'z dorixonalari) yozadi.
+    O'z dorixonasi topilsa — to'xtash own, muammo emas.
+    """
+    for s in stops or []:
+        if not isinstance(s, dict):
+            continue
+        names = co_visited_pharmacies(s, car_key, pharmacies, zones)
+        if not names:
+            s.pop("coVisits", None)
+            continue
+        s["coVisits"] = names
+        if s.get("matchType") != "own":
+            s["matchType"] = "own"
+            s["phName"] = names[0]
+            s["owners"] = [car_key]
+            s["isProblem"] = False
+    return stops
+
+
+def office_zones(office):
+    """Saqlangan Wialon geozona katalogi (bo'sh bo'lishi mumkin)."""
+    try:
+        if office is not None and hasattr(office, "gps_zones_catalog"):
+            return list(office.gps_zones_catalog() or [])
+    except Exception:
+        pass
+    return []
+
+
+def ensure_zones_catalog(office, client=None, max_age_h=12):
+    """Katalog yo'q yoki eski bo'lsa — Wialondan yangilaydi. Xato bo'lsa jim."""
+    if office is None or not hasattr(office, "save_gps_zones_catalog"):
+        return False
+    try:
+        meta = office.gps_zones_catalog_meta() or {}
+        saved_at = str(meta.get("savedAt") or "")
+        if int(meta.get("count") or 0) > 0 and saved_at:
+            try:
+                age = datetime.now(timezone.utc) - datetime.fromisoformat(saved_at)
+                if age < timedelta(hours=max_age_h):
+                    return False
+            except ValueError:
+                pass
+        if client is None:
+            cfg = office.gps_config_internal() or {}
+            if not cfg.get("configured"):
+                return False
+            client = WialonClient(
+                host=cfg.get("host") or "http://bms1.gpsavto.uz",
+                user=cfg.get("user") or "",
+                password=cfg.get("password") or "",
+                token=cfg.get("token") or "",
+                timeout=30,
+            )
+            client.login()
+        zones = client.get_geofences() or []
+        if zones:
+            office.save_gps_zones_catalog(zones, "auto")
+            return True
+    except Exception as e:
+        print("[zones-catalog]", str(e)[:120])
+    return False
+
+
 def is_outside(place):
     p = norm_ph(place)
     return any(k in p for k in OUTSIDE_MARKERS)
 
 
-def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
+def enrich_stops(raw_stops, car_key, pharm_index, pharmacies, zones=None):
     built = []
     for s in raw_stops or []:
         place_raw = str(s.get("place") or "").strip()
@@ -1870,6 +2045,7 @@ def enrich_stops(raw_stops, car_key, pharm_index, pharmacies):
         if not stop["isOffice"] and not stop["isOutside"] and stop["matchType"] == "none" and dur_sec > 600:
             stop["isProblem"] = True
         built.append(stop)
+    apply_co_visits(built, car_key, pharmacies, zones)
     out = sort_stops_chronological(built)
     for i, stop in enumerate(out):
         stop["num"] = i + 1
@@ -1962,6 +2138,34 @@ def merge_geozone(ph, lat, lng, radius_m=120):
         ph["lng"] = round(lng_f, 6)
     if not ph.get("radiusM"):
         ph["radiusM"] = int(radius_m)
+
+
+def save_learned_geozones(office, learned):
+    """
+    O'rganilgan koordinatalarni ENG OXIRGI ro'yxat ustiga yozadi.
+    Sync davomida admin qilgan tahrir (nom, taxallus, qo'shish/o'chirish) yo'qolmasin.
+    """
+    geo = {}
+    for p in learned or []:
+        if isinstance(p, dict) and p.get("id") and p.get("lat") is not None and p.get("lng") is not None:
+            geo[p["id"]] = (p["lat"], p["lng"], p.get("radiusM"))
+    if not geo:
+        return 0
+    fresh = list(office.pharmacies() or [])
+    changed = 0
+    for p in fresh:
+        g = geo.get(p.get("id"))
+        if not g:
+            continue
+        lat, lng, radius = g
+        if p.get("lat") != lat or p.get("lng") != lng or (radius and p.get("radiusM") != radius):
+            p["lat"], p["lng"] = lat, lng
+            if radius:
+                p["radiusM"] = radius
+            changed += 1
+    if changed:
+        office.save_pharmacies(fresh)
+    return changed
 
 
 def learn_geozone(pharmacies, car, ph_name, lat, lng):
@@ -2100,11 +2304,11 @@ def apply_review_problem_flags(stops, car_key, reviews=None):
     return stops
 
 
-def reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=None):
+def reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=None, zones=None):
     if not isinstance(rec, dict):
         return rec
     raw = stops_as_raw(rec.get("stops") or [])
-    stops = enrich_stops(raw, car, pharm_index, pharmacies)
+    stops = enrich_stops(raw, car, pharm_index, pharmacies, zones=zones)
     apply_review_problem_flags(stops, car, reviews)
     stats = rec.get("stats") if isinstance(rec.get("stats"), dict) else {}
     analysis = analyze_data(stops, car, stats, drivers, pharmacies, reviews=reviews)
@@ -2134,12 +2338,13 @@ def reprocess_day(office, base_dir, date_str):
     pharmacies = office.pharmacies()
     pharm_index = build_pharm_index(drivers, pharmacies)
     reviews = office.reviews(date_str) or {}
+    zones = office_zones(office)
     done = 0
     for car_key, rec in cars.items():
         if not isinstance(rec, dict):
             continue
         car = rec.get("car") or car_key
-        reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=reviews)
+        reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=reviews, zones=zones)
         done += 1
     if done:
         office.save_report(date_str, cars, saved_by="reprocess")
@@ -2168,7 +2373,7 @@ def learn_geozones_from_reports(office, base_dir):
             learned += learn_geozones_from_stops(pharmacies, car, rec.get("stops") or [])
         learned += learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
     if learned:
-        office.save_pharmacies(pharmacies)
+        save_learned_geozones(office, pharmacies)
     return learned
 
 
@@ -2183,6 +2388,11 @@ def analyze_data(stops, car_key, stats, drivers, pharmacies, reviews=None):
         # own to'xtash YOKI biriktirilgan dorixona kaliti (noto'g'ri "other" ham)
         if s.get("matchType") == "own" or k in own_keys:
             visited.add(k)
+    for s in stops or []:
+        for n in s.get("coVisits") or []:
+            k = _visit_key(n)
+            if k:
+                visited.add(k)
     visited.update(_visited_from_reviews(reviews, car_key))
     missed = [ph for ph in own_pharms if _visit_key(ph) not in visited]
     own_visited = len(own_pharms) - len(missed) if own_pharms else len(visited)
@@ -2246,14 +2456,16 @@ def analyze_client_payload(office, base_dir, date_str, car, stops, stats=None, r
     pharmacies = list(office.pharmacies() or [])
     reviews = office.reviews(date_str) or {} if date_str else {}
     raw_stops = stops if isinstance(stops, list) else []
+    zones = office_zones(office)
     if reenrich:
         pharm_index = build_pharm_index(drivers, pharmacies)
-        out_stops = enrich_stops(stops_as_raw(raw_stops), car, pharm_index, pharmacies)
+        out_stops = enrich_stops(stops_as_raw(raw_stops), car, pharm_index, pharmacies, zones=zones)
     else:
         out_stops = []
         for s in raw_stops:
             if isinstance(s, dict):
                 out_stops.append(dict(s))
+        apply_co_visits(out_stops, car, pharmacies, zones)
     apply_review_problem_flags(out_stops, car, reviews)
     analysis = analyze_data(out_stops, car, stats if isinstance(stats, dict) else {}, drivers, pharmacies, reviews=reviews)
     return analysis, out_stops
@@ -2375,6 +2587,9 @@ def sync_today(
 
         _status(running=True, date=date_str, message="Mashinalar ro'yxati olinmoqda...")
         units = client.get_units()
+        if left() > 20:
+            ensure_zones_catalog(office, client)
+        zones = office_zones(office)
         drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
         pharmacies = list(office.pharmacies())
         pharm_index = build_pharm_index(drivers, pharmacies)
@@ -2502,11 +2717,11 @@ def sync_today(
         if budget is None and left() > 5:
             for row in unit_rows:
                 drv, raw_stops = row[0], row[1]
-                stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
+                stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies, zones=zones)
                 learn_geozones_from_stops(pharmacies, drv["car"], stops)
             learn_geozones_from_reviews(pharmacies, office.reviews(date_str) or {})
             if any(isinstance(p, dict) and p.get("lat") is not None for p in pharmacies):
-                office.save_pharmacies(pharmacies)
+                save_learned_geozones(office, pharmacies)
                 pharmacies = office.pharmacies()
                 pharm_index = build_pharm_index(drivers, pharmacies)
 
@@ -2515,7 +2730,7 @@ def sync_today(
         for row in unit_rows:
             drv, raw_stops, stats = row[0], row[1], row[2]
             points = row[3] if len(row) > 3 else []
-            stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies)
+            stops = enrich_stops(raw_stops, drv["car"], pharm_index, pharmacies, zones=zones)
             apply_review_problem_flags(stops, drv["car"], reviews)
             if not stats.get("stoyanok"):
                 stats["stoyanok"] = len(stops)

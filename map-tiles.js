@@ -9,26 +9,26 @@ const VM_TILE_SOURCES = [
         // OSM France HOT — shaharlarda yuqori zoom yaxshi, kalit yo‘q
         url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
         subdomains: 'abc',
-        maxZoom: 18,
+        maxZoom: 20,
         maxNativeZoom: 18
     },
     {
         url: 'https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png',
         subdomains: 'abc',
-        maxZoom: 18,
+        maxZoom: 20,
         maxNativeZoom: 18
     },
     {
         url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         subdomains: 'abc',
-        maxZoom: 18,
+        maxZoom: 20,
         maxNativeZoom: 19
     }
 ];
 
 const VM_TILE_OPTS = {
     attribution: '',
-    maxZoom: 18,
+    maxZoom: 20,
     maxNativeZoom: 18,
     minZoom: 3,
     crossOrigin: true,
@@ -68,7 +68,7 @@ function vmAddMapTiles(map) {
     }
 
     try {
-        if (map.setMaxZoom) map.setMaxZoom(18);
+        if (map.setMaxZoom) map.setMaxZoom(20);
     } catch (e) {}
 
     active = mount(0);
