@@ -2621,12 +2621,23 @@ class OfficeStore:
             if str(r.get("station") or "").strip():
                 s += 1
             return s
-        if row_score(b) > row_score(a):
+        # Yangi (b) teng yoki to'liqroq — yangi yutadi (km 4.13 → 77.69, qo'lda tuzatish).
+        if row_score(b) >= row_score(a):
             out = dict(a)
             out.update(b)
             return out
-        out = dict(b)
-        out.update(a)
+        # Yangi bo'shroq (dublikat/bo'sh paket) — eski saqlanadi, yangi to'ldirilgan maydonlar ustiga
+        out = dict(a)
+        for fk, fv in b.items():
+            if fk in ("mode", "kmSrc"):
+                continue
+            if (isinstance(fv, (int, float)) and fv > 0) or (isinstance(fv, str) and fv.strip()):
+                out[fk] = fv
+        try:
+            if float(b.get("km") or 0) > 0 and b.get("kmSrc"):
+                out["kmSrc"] = b["kmSrc"]
+        except (TypeError, ValueError):
+            pass
         return out
 
     def _merge_car_recs(self, a, b):

@@ -3272,6 +3272,7 @@ function fillGpsPlate(plate, refreshGps) {
     const row = ensureDay(getCar(plate), day);
     if (kmLocked(row)) return;
     if (n(row.km) && !(refreshGps && row.kmSrc === 'gps')) return;
+    if (row.kmSrc === 'gps' && Math.abs(n(row.km) - km) < 0.005) return;
     row.km = km;
     row.kmSrc = 'gps';
     nFill += 1;
@@ -3342,7 +3343,7 @@ async function autoChainMonth() {
   let gpsN = 0, balN = 0;
   fleet().forEach(f => {
     if (applyPrevBalanceSilent(f.car, recForPlate(prevCars, f.car), prevYm)) balN += 1;
-    gpsN += fillGpsPlate(f.car, false);
+    gpsN += fillGpsPlate(f.car, true);
     const car = getCar(f.car);
     if (n(car.gasStart) < 0) { car.gasStart = 0; balN += 1; }
     if (n(car.benzinStart) < 0) { car.benzinStart = 0; balN += 1; }
@@ -5826,11 +5827,17 @@ async function refreshGpsKmAuto() {
   const now = new Date();
   const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   if (STATE.month !== ym) return;
+  const ae = document.activeElement;
+  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
   try {
     const gps = await vmApi('/api/office/fuel/gps-km?month=' + encodeURIComponent(ym)).catch(() => ({ days: {} }));
     STATE.gpsKm = gps.days || {};
     let n = 0;
-    fleet().forEach(f => { n += fillGpsPlate(f.car, false); });
+    fleet().forEach(f => {
+      const k = fillGpsPlate(f.car, true);
+      if (k) syncOdoChainFromKm(getCar(f.car));
+      n += k;
+    });
     if (n) {
       if (window.VM_USER && window.VM_USER.role === 'viewer') {
         STATE.dirty = false;
