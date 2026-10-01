@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shell.css?v=31"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="attendance.css?v=77"/>
+<link rel="stylesheet" href="attendance.css?v=78"/>
 </head>
 <body class="app-body">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
@@ -159,12 +159,48 @@
   </div>
 </div>
 
+<div id="tabel-modal" class="hb-modal" hidden aria-hidden="true">
+  <div class="hb-modal-backdrop" id="tabel-backdrop"></div>
+  <div class="hb-modal-panel tabel-panel" role="dialog" aria-modal="true" aria-labelledby="tabel-title">
+    <div class="hb-modal-head">
+      <div>
+        <h3 id="tabel-title">Tabeldan to'ldirish</h3>
+        <p class="hb-modal-sub">Faqat tizimda yozuvi yo'q kunlar to'ldiriladi — mavjud yozuvlar o'zgarmaydi</p>
+      </div>
+      <button type="button" class="hb-modal-x" id="tabel-close" aria-label="Yopish">&times;</button>
+    </div>
+    <div class="hb-modal-body">
+      <div class="tabel-pick">
+        <label class="hb-modal-fld">
+          <span>Tabel fayli (Excel)</span>
+          <input type="file" id="tabel-file" accept=".xlsx,.xls">
+        </label>
+        <label class="hb-modal-fld">
+          <span>Varaq</span>
+          <select id="tabel-sheet" disabled><option value="">—</option></select>
+        </label>
+        <label class="hb-modal-fld">
+          <span>Oy</span>
+          <input type="month" id="tabel-month">
+        </label>
+      </div>
+      <p class="tabel-legend">8 → Kelgan 09:00–18:00 · вод/сам/бух → Kelgan + «Xizmat safari» · дам → Kelmagan (dam) · ув → Kelmagan (ishdan bo'shagan) · bo'sh katak → tegilmaydi</p>
+      <div id="tabel-preview" class="tabel-preview"><p class="att-hint">Excel faylni tanlang.</p></div>
+    </div>
+    <div class="hb-modal-foot">
+      <span class="tabel-total" id="tabel-total"></span>
+      <button type="button" class="att-btn att-btn-face" id="tabel-cancel">Bekor</button>
+      <button type="button" class="att-btn att-btn-in" id="tabel-apply" disabled>To'ldirish</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="auth.js?v=43"></script>
 <script src="uz-latin.js?v=5"></script>
-<script src="attendance.js?v=82"></script>
+<script src="attendance.js?v=83"></script>
 </body>
 </html>

@@ -2238,6 +2238,253 @@
     if (saveBtn) bindTap(saveBtn, () => saveHbEditModal());
   }
 
+  const TABEL_MONTHS = [
+    ['yanvar', 'январ'], ['fevral', 'феврал'], ['mart', 'март'], ['aprel', 'апрел'],
+    ['may', 'май'], ['iyun', 'июн'], ['iyul', 'июл'], ['avgust', 'август'],
+    ['sentyabr', 'sentabr', 'сентябр'], ['oktyabr', 'oktabr', 'октябр'], ['noyabr', 'ноябр'], ['dekabr', 'декабр']
+  ];
+  const TABEL_KIND_LABEL = {
+    present: 'Kelgan', trip: 'Safar', late: 'Kech', dam: 'Dam', fired: "Bo'shagan", absent: 'Kelmagan'
+  };
+  const tabel = { wb: null, rows: null, mapping: null, res: null, seq: 0 };
+
+  function escAttr(s) {
+    return esc(s).replace(/"/g, '&quot;');
+  }
+
+  function tabelMonthIndex(text) {
+    const t = String(text || '').toLowerCase();
+    for (let i = TABEL_MONTHS.length - 1; i >= 0; i -= 1) {
+      if (TABEL_MONTHS[i].some((k) => t.includes(k))) return i;
+    }
+    return -1;
+  }
+
+  function tabelSheetMonth(ws, sheetName) {
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }).slice(0, 8);
+    for (const row of aoa) {
+      for (const cell of row) {
+        const m = String(cell || '').match(/(20\d\d)\s*-?\s*yil\s+([^\s]+)/i);
+        if (m) {
+          const mi = tabelMonthIndex(m[2]);
+          if (mi >= 0) return m[1] + '-' + String(mi + 1).padStart(2, '0');
+        }
+      }
+    }
+    const mi = tabelMonthIndex(sheetName);
+    if (mi < 0) return '';
+    return monthInputValue('').slice(0, 4) + '-' + String(mi + 1).padStart(2, '0');
+  }
+
+  function parseTabelSheet(ws) {
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    let nameCol = -1;
+    let dayRow = -1;
+    const dayCols = {};
+    for (let r = 0; r < Math.min(aoa.length, 25) && dayRow < 0; r += 1) {
+      const row = aoa[r] || [];
+      for (let c = 0; c < row.length; c += 1) {
+        const cell = String(row[c] || '').trim();
+        if (nameCol < 0 && /^(f\.?\s*i\.?\s*o|ф\.?\s*и\.?\s*о)/i.test(cell)) nameCol = c;
+        if (Number(row[c]) === 1 && Number(row[c + 1]) === 2) {
+          let d = 1;
+          while (d <= 31 && Number(row[c + d - 1]) === d) {
+            dayCols[d] = c + d - 1;
+            d += 1;
+          }
+          if (d > 28) { dayRow = r; break; }
+        }
+      }
+    }
+    if (dayRow < 0) return [];
+    if (nameCol < 0) nameCol = 1;
+    const out = [];
+    for (let r = dayRow + 1; r < aoa.length; r += 1) {
+      const row = aoa[r] || [];
+      const name = String(row[nameCol] || '').replace(/\s+/g, ' ').trim();
+      if (!/[A-Za-zА-Яа-яЁёЎўҚқҒғҲҳ]{3,}/.test(name)) continue;
+      const days = {};
+      Object.keys(dayCols).forEach((d) => {
+        const v = row[dayCols[d]];
+        if (v !== '' && v != null && String(v).trim() !== '') days[d] = String(v).trim();
+      });
+      if (Object.keys(days).length) out.push({ name, days });
+    }
+    return out;
+  }
+
+  function tabelSelectSheet(name) {
+    const ws = tabel.wb && tabel.wb.Sheets[name];
+    const box = document.getElementById('tabel-preview');
+    tabel.rows = ws ? parseTabelSheet(ws) : [];
+    tabel.mapping = null;
+    tabel.res = null;
+    const m = ws ? tabelSheetMonth(ws, name) : '';
+    const monthEl = document.getElementById('tabel-month');
+    if (m && monthEl) monthEl.value = m;
+    if (!tabel.rows.length) {
+      if (box) box.innerHTML = '<p class="att-hint">Bu varaqda F.I.O. va 1–31 kunlar ustunlari topilmadi.</p>';
+      tabelSetApply(0);
+      return;
+    }
+    tabelPreview();
+  }
+
+  function tabelSetApply(n) {
+    const btn = document.getElementById('tabel-apply');
+    const total = document.getElementById('tabel-total');
+    if (btn) {
+      btn.disabled = !(n > 0);
+      btn.textContent = n > 0 ? `To‘ldirish (${n} kun)` : 'To‘ldirish';
+    }
+    if (total && !(n > 0)) total.textContent = '';
+  }
+
+  function renderTabelPreview(res) {
+    const users = res.users || [];
+    const body = (res.rows || []).map((r) => {
+      const cands = (r.candidates || []).filter((c) => c.score >= 0.6);
+      const candIds = new Set(cands.map((c) => c.id));
+      const opts = ['<option value="">— o‘tkazib yuborish —</option>']
+        .concat(cands.map((c) => `<option value="${escAttr(c.id)}" ${c.id === r.userId ? 'selected' : ''}>${esc(c.name)} · ${Math.round(c.score * 100)}%</option>`))
+        .concat(users.filter((u) => !candIds.has(u.id)).map((u) => `<option value="${escAttr(u.id)}" ${u.id === r.userId ? 'selected' : ''}>${esc(u.name)}${u.car ? ' · ' + esc(u.car) : ''}</option>`));
+      let flag = '';
+      if (!r.userId) flag = '<span class="tabel-chip warn">Topilmadi</span>';
+      else if (r.duplicate) flag = '<span class="tabel-chip err">Takroriy</span>';
+      else if (r.ambiguous) flag = '<span class="tabel-chip warn">Tekshiring</span>';
+      const kinds = Object.keys(r.kinds || {}).map((k) => `<span class="tabel-kind k-${escAttr(k)}">${esc(TABEL_KIND_LABEL[k] || k)} ${r.kinds[k]}</span>`).join('');
+      return `<tr class="${r.userId && !r.duplicate ? '' : 'off'}">
+        <td class="tabel-name">${esc(r.name)}${flag}</td>
+        <td><select data-tabel-idx="${r.idx}">${opts.join('')}</select></td>
+        <td class="num"><b>${r.userId ? r.fill : '—'}</b></td>
+        <td class="num">${r.userId ? r.exists : '—'}</td>
+        <td>${kinds || '<span class="att-hint">—</span>'}</td>
+      </tr>`;
+    }).join('');
+    const unk = Object.keys(res.unknownCodes || {});
+    return `<table class="tabel-table">
+        <thead><tr><th>Tabeldagi F.I.O.</th><th>Tizimdagi xodim</th><th class="num">To‘ldiriladi</th><th class="num">Tizimda bor</th><th>Tafsilot</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+      ${unk.length ? `<p class="tabel-warn">Noma’lum kodlar (o‘tkazib yuboriladi): ${unk.map((k) => esc(k) + ' ×' + res.unknownCodes[k]).join(', ')}</p>` : ''}
+      ${res.totals && res.totals.future ? `<p class="att-hint">Kelajak sanalar (${res.totals.future}) to‘ldirilmaydi.</p>` : ''}`;
+  }
+
+  async function tabelPreview() {
+    const box = document.getElementById('tabel-preview');
+    const monthEl = document.getElementById('tabel-month');
+    const month = monthEl ? monthEl.value : '';
+    if (!tabel.rows || !tabel.rows.length || !month) return;
+    const seq = ++tabel.seq;
+    tabelSetApply(0);
+    if (box && !tabel.res) box.innerHTML = '<p class="att-hint">Tekshirilmoqda…</p>';
+    try {
+      const res = await api('/api/attendance/tabel-import', {
+        method: 'POST',
+        body: JSON.stringify({ month, rows: tabel.rows, mapping: tabel.mapping, apply: false })
+      });
+      if (seq !== tabel.seq) return;
+      tabel.res = res;
+      tabel.mapping = {};
+      (res.rows || []).forEach((r) => { tabel.mapping[String(r.idx)] = r.userId || ''; });
+      if (box) box.innerHTML = renderTabelPreview(res);
+      const t = res.totals || {};
+      const total = document.getElementById('tabel-total');
+      tabelSetApply(t.fill || 0);
+      if (total) total.textContent = `${t.matched || 0}/${t.rows || 0} xodim · tizimda bor: ${t.exists || 0} kun`;
+    } catch (e) {
+      if (seq !== tabel.seq) return;
+      if (box) box.innerHTML = `<p class="tabel-warn">${esc(e.message || 'Tekshirib bo‘lmadi')}</p>`;
+    }
+  }
+
+  async function tabelApply() {
+    const monthEl = document.getElementById('tabel-month');
+    const btn = document.getElementById('tabel-apply');
+    const fill = (tabel.res && tabel.res.totals && tabel.res.totals.fill) || 0;
+    if (!fill || !monthEl) return;
+    if (!window.confirm(`${monthEl.value}: ${fill} ta bo‘sh kun tabel bo‘yicha to‘ldiriladi. Mavjud yozuvlar o‘zgarmaydi. Davom etasizmi?`)) return;
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api('/api/attendance/tabel-import', {
+        method: 'POST',
+        body: JSON.stringify({ month: monthEl.value, rows: tabel.rows, mapping: tabel.mapping, apply: true })
+      });
+      closeTabelModal();
+      msg(`Tabeldan ${(res.totals && res.totals.fill) || 0} kun to‘ldirildi`, 'ok');
+      await loadHisobot(true);
+    } catch (e) {
+      msg(e.message || 'To‘ldirish xato', 'err');
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function openTabelModal() {
+    const modal = document.getElementById('tabel-modal');
+    const monthEl = document.getElementById('tabel-month');
+    if (!modal) return;
+    if (monthEl && !monthEl.value) {
+      monthEl.value = monthInputValue(hisobotPeriod === 'month' ? (hisobotDate || reportMonth) : reportMonth);
+    }
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('hb-modal-open');
+  }
+
+  function closeTabelModal() {
+    const modal = document.getElementById('tabel-modal');
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('hb-modal-open');
+  }
+
+  function initTabelModal() {
+    const fileEl = document.getElementById('tabel-file');
+    const sheetEl = document.getElementById('tabel-sheet');
+    const monthEl = document.getElementById('tabel-month');
+    const box = document.getElementById('tabel-preview');
+    ['tabel-close', 'tabel-cancel', 'tabel-backdrop'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) bindTap(el, closeTabelModal);
+    });
+    const applyBtn = document.getElementById('tabel-apply');
+    if (applyBtn) bindTap(applyBtn, () => tabelApply());
+    if (fileEl) fileEl.addEventListener('change', async () => {
+      const f = fileEl.files && fileEl.files[0];
+      if (!f) return;
+      if (typeof XLSX === 'undefined') {
+        if (box) box.innerHTML = '<p class="tabel-warn">Excel kutubxonasi yuklanmadi — sahifani yangilang.</p>';
+        return;
+      }
+      try {
+        tabel.wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      } catch (e) {
+        if (box) box.innerHTML = '<p class="tabel-warn">Excel fayl o‘qilmadi.</p>';
+        return;
+      }
+      const names = tabel.wb.SheetNames || [];
+      const want = monthEl ? Number(String(monthEl.value).slice(5, 7)) - 1 : -1;
+      let pick = names.filter((n) => tabelMonthIndex(n) === want).pop()
+        || names.filter((n) => tabelMonthIndex(n) >= 0).pop()
+        || names[names.length - 1] || '';
+      if (sheetEl) {
+        sheetEl.innerHTML = names.map((n) => `<option value="${escAttr(n)}" ${n === pick ? 'selected' : ''}>${esc(n)}</option>`).join('');
+        sheetEl.disabled = !names.length;
+      }
+      tabelSelectSheet(pick);
+    });
+    if (sheetEl) sheetEl.addEventListener('change', () => tabelSelectSheet(sheetEl.value));
+    if (monthEl) monthEl.addEventListener('change', () => { tabel.res = null; tabelPreview(); });
+    if (box) box.addEventListener('change', (ev) => {
+      const sel = ev.target && ev.target.closest ? ev.target.closest('select[data-tabel-idx]') : null;
+      if (!sel) return;
+      if (!tabel.mapping) tabel.mapping = {};
+      tabel.mapping[sel.getAttribute('data-tabel-idx')] = sel.value || '';
+      tabelPreview();
+    });
+  }
+
   function shiftDateIso(iso, deltaDays) {
     try {
       const p = String(iso).slice(0, 10).split('-').map(Number);
@@ -2956,6 +3203,7 @@
                 <button type="button" class="att-btn att-btn-face" id="btn-report">Yangilash</button>
                 <button type="button" class="att-btn att-btn-in" id="btn-export-xlsx">Excel</button>
                 <button type="button" class="att-btn att-btn-out" id="btn-export-pdf">PDF</button>
+                <button type="button" class="att-btn att-btn-face" id="btn-tabel-import">Tabeldan to‘ldirish</button>
               </div>
             </div>
             <div id="att-report"><p class="att-hint">Yuklanmoqda…</p></div>
@@ -3148,6 +3396,8 @@
     const pdfBtn = document.getElementById('btn-export-pdf');
     if (xlsxBtn) bindTap(xlsxBtn, () => exportHisobotXlsx());
     if (pdfBtn) bindTap(pdfBtn, () => exportHisobotPdf());
+    const tabelBtn = document.getElementById('btn-tabel-import');
+    if (tabelBtn) bindTap(tabelBtn, () => openTabelModal());
     const px = document.getElementById('btn-person-xlsx');
     const pp = document.getElementById('btn-person-pdf');
     if (px) bindTap(px, () => exportPersonXlsx());
@@ -4988,6 +5238,7 @@
 
   async function boot() {
     initHbEditModal();
+    initTabelModal();
     try {
       const user = await vmMe();
       if (typeof vmApplyChrome === 'function') vmApplyChrome(user);

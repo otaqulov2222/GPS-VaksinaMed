@@ -6118,6 +6118,41 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json(result)
             return
 
+        if path == "/api/attendance/tabel-import":
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not ATTENDANCE:
+                self.send_json({"ok": False, "error": "Davomat moduli yo'q"}, 500)
+                return
+            users = [dict(u) for u in STORE.list_users(viewer_role=sess.get("role")) if isinstance(u, dict)]
+            try:
+                import gps_sync
+
+                drivers = gps_sync.overlay_fuel_driver_names(OFFICE, gps_sync.load_fleet_drivers(DIRECTORY))
+            except Exception:
+                drivers = []
+            names_by_car = {}
+            for d in drivers or []:
+                key = compact_plate(d.get("car"))
+                if key and d.get("fullName"):
+                    names_by_car.setdefault(key, []).append(str(d.get("fullName")))
+            for u in users:
+                u["aliases"] = names_by_car.get(compact_plate(u.get("car")), []) if u.get("car") else []
+            result, err = ATTENDANCE.tabel_import(
+                editor=sess,
+                month=str(body.get("month") or ""),
+                rows=body.get("rows") if isinstance(body.get("rows"), list) else [],
+                users=users,
+                mapping=body.get("mapping") if isinstance(body.get("mapping"), dict) else None,
+                apply=bool(body.get("apply")),
+            )
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json(result)
+            return
+
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def handle_gps_proxy(self, parsed):

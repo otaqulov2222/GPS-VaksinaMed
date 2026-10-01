@@ -146,6 +146,118 @@ def clean_descriptor(raw) -> tuple[list | None, str | None]:
 
 FACE_MATCH_MAX = 0.58
 
+_CYR_LAT = (
+    ("ў", "o'"), ("қ", "q"), ("ғ", "g'"), ("ҳ", "h"),
+    ("ш", "sh"), ("ч", "ch"), ("ң", "ng"),
+    ("ё", "yo"), ("ю", "yu"), ("я", "ya"), ("ц", "ts"), ("щ", "sh"),
+    ("ъ", ""), ("ь", ""),
+    ("а", "a"), ("б", "b"), ("в", "v"), ("г", "g"), ("д", "d"),
+    ("е", "e"), ("ж", "j"), ("з", "z"), ("и", "i"), ("й", "y"),
+    ("к", "k"), ("л", "l"), ("м", "m"), ("н", "n"), ("о", "o"),
+    ("п", "p"), ("р", "r"), ("с", "s"), ("т", "t"), ("у", "u"),
+    ("ф", "f"), ("х", "x"), ("ы", "i"), ("э", "e"),
+)
+
+TABEL_MATCH_MIN = 0.78
+
+TABEL_TRIPS = (
+    ("vod", "Vodiy"), ("sam", "Samarqand"), ("bux", "Buxoro"), ("sur", "Surxondaryo"),
+    ("far", "Farg'ona"), ("qar", "Qarshi"), ("kar", "Qarshi"), ("nav", "Navoiy"),
+    ("jiz", "Jizzax"), ("xor", "Xorazm"), ("and", "Andijon"), ("nam", "Namangan"),
+    ("sir", "Sirdaryo"), ("tosh", "Toshkent"), ("xs", "Xizmat safari"),
+)
+
+
+def _to_latin(s) -> str:
+    t = str(s or "").lower()
+    for a, b in _CYR_LAT:
+        t = t.replace(a, b)
+    for ch in ("ʼ", "`", "´", "ʻ", "ʹ", "ʿ", "‘", "’"):
+        t = t.replace(ch, "'")
+    return t
+
+
+def _name_tokens(s) -> list[str]:
+    t = re.sub(r"\([^)]*\)", " ", _to_latin(s))
+    t = re.sub(r"([og])'", r"\1", t)
+    t = t.replace("sh", "\x01").replace("ch", "\x02").replace("h", "x")
+    t = t.replace("\x01", "sh").replace("\x02", "ch").replace("q", "k")
+    t = re.sub(r"[^a-z\s]+", "", t)
+    return [w for w in t.split() if len(w) > 1]
+
+
+def _token_sim(a: str, b: str) -> float:
+    from difflib import SequenceMatcher
+
+    if not a or not b:
+        return 0.0
+    r = SequenceMatcher(None, a, b).ratio()
+    if min(len(a), len(b)) >= 3 and (a.startswith(b) or b.startswith(a)):
+        r = max(r, 0.95)
+    return r
+
+
+def _name_pair_score(tt: list[str], ct: list[str]) -> float:
+    if not tt or not ct:
+        return 0.0
+    s_sur, j = max((_token_sim(tt[0], c), i) for i, c in enumerate(ct))
+    if s_sur < 0.75:
+        return round(s_sur * 0.5, 3)
+    rest = [c for i, c in enumerate(ct) if i != j]
+    if len(tt) < 2 or not rest:
+        s_first = 0.5
+    else:
+        s_first = max(_token_sim(tt[1], c) for c in rest)
+    return round(0.6 * s_sur + 0.4 * s_first, 3)
+
+
+def tabel_candidates(name: str, users: list) -> list[dict]:
+    """Tabeldagi F.I.O. → tizim xodimlari (kirill/lotin, imlo farqlari bilan)."""
+    tt = _name_tokens(name)
+    if not tt:
+        return []
+    out = []
+    for u in users or []:
+        uid = str(u.get("id") or "")
+        if not uid:
+            continue
+        best = 0.0
+        for n in [u.get("name")] + list(u.get("aliases") or []):
+            ct = _name_tokens(n)
+            best = max(best, _name_pair_score(tt, ct), _name_pair_score(tt[::-1], ct))
+        if best >= 0.5:
+            out.append({"id": uid, "name": u.get("name") or u.get("username") or "", "score": best})
+    out.sort(key=lambda x: -x["score"])
+    return out
+
+
+def tabel_code_action(raw) -> dict | None:
+    """Tabel katagi → davomat holati. None = noma'lum kod."""
+    s = re.sub(r"[\s.]+", "", _to_latin(raw)).replace("/", "")
+    if not s:
+        return None
+    try:
+        hours = float(s.replace(",", "."))
+    except ValueError:
+        hours = None
+    if hours is not None:
+        if hours > 0:
+            return {"kind": "present", "holat": "present"}
+        return {"kind": "absent", "holat": "absent", "note": "0 soat"}
+    if s.startswith("dam"):
+        return {"kind": "dam", "holat": "absent", "note": "Dam olgan"}
+    if s.startswith("uv"):
+        return {"kind": "fired", "holat": "absent", "note": "Ishdan bo'shagan"}
+    if s.startswith("kech"):
+        return {"kind": "late", "holat": "late", "in": "09:30", "note": "Kechikkan"}
+    if s.startswith("kel") or s == "k":
+        return {"kind": "absent", "holat": "absent", "note": "Kelmagan"}
+    for prefix, label in TABEL_TRIPS:
+        if s.startswith(prefix):
+            note = label if label == "Xizmat safari" else f"Xizmat safari — {label}"
+            return {"kind": "trip", "holat": "present", "note": note}
+    return None
+
 
 class AttendanceStore:
     def __init__(self, persist):
@@ -1535,6 +1647,171 @@ class AttendanceStore:
             urec,
         )
         return {"ok": True, "date": date, "userId": uid, "record": urec, "row": row}, None
+
+    @staticmethod
+    def _has_day_record(urec) -> bool:
+        if not isinstance(urec, dict):
+            return False
+        return bool(urec.get("in") or urec.get("out") or urec.get("statusOverride"))
+
+    def tabel_import(
+        self,
+        *,
+        editor: dict,
+        month: str,
+        rows: list,
+        users: list,
+        mapping: dict | None = None,
+        apply: bool = False,
+    ) -> tuple[dict | None, str | None]:
+        """Qog‘oz tabel → davomat: faqat tizimda yozuvi YO‘Q kunlarni to‘ldiradi."""
+        month = str(month or "").strip()
+        dates = self._month_dates(month)
+        if not dates:
+            return None, "Oy noto'g'ri (YYYY-MM)"
+        if not isinstance(rows, list) or not rows:
+            return None, "Tabel bo'sh"
+        if len(rows) > 300:
+            return None, "Tabel juda katta"
+
+        roster = [
+            u for u in self.roster_users(users)
+            if str(u.get("id") or "") and not u.get("carRetired")
+        ]
+        by_id = {str(u.get("id")): u for u in roster}
+        mapping = mapping if isinstance(mapping, dict) else None
+        today = today_str()
+        settings = self.settings()
+        in_hhmm = str(settings.get("in_start") or "09:00")
+        out_hhmm = str(settings.get("out_start") or "18:00")
+
+        plan_rows = []
+        unknown_codes: dict[str, int] = {}
+        used_uids: dict[str, int] = {}
+        for idx, raw in enumerate(rows):
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name") or "").strip()[:120]
+            days = raw.get("days") if isinstance(raw.get("days"), dict) else {}
+            cands = tabel_candidates(name, roster)
+            if mapping is not None and str(idx) in mapping:
+                uid = str(mapping.get(str(idx)) or "")
+                uid = uid if uid in by_id else ""
+            else:
+                uid = cands[0]["id"] if cands and cands[0]["score"] >= TABEL_MATCH_MIN else ""
+            ambiguous = bool(
+                len(cands) > 1 and cands[0]["score"] - cands[1]["score"] < 0.04
+                and cands[1]["score"] >= TABEL_MATCH_MIN
+            )
+            entries = []
+            for d in dates:
+                code_raw = days.get(str(int(d[8:10])))
+                if code_raw is None or str(code_raw).strip() == "":
+                    continue
+                act = tabel_code_action(code_raw)
+                if not act:
+                    key = str(code_raw).strip()[:12]
+                    unknown_codes[key] = unknown_codes.get(key, 0) + 1
+                    continue
+                entries.append((d, str(code_raw).strip()[:12], act))
+            plan_rows.append({
+                "idx": idx,
+                "name": name,
+                "userId": uid,
+                "userName": (by_id.get(uid) or {}).get("name") or "",
+                "ambiguous": ambiguous,
+                "candidates": cands[:5],
+                "_entries": entries,
+            })
+            if uid:
+                used_uids[uid] = used_uids.get(uid, 0) + 1
+
+        day_cache: dict[str, dict] = {}
+
+        def _day(d):
+            if d not in day_cache:
+                got = self._load(self.day_key(d), {})
+                day_cache[d] = got if isinstance(got, dict) else {}
+            return day_cache[d]
+
+        with self.lock:
+            dirty: set[str] = set()
+            stamp = now_tz().isoformat(timespec="seconds")
+            who = str(editor.get("username") or editor.get("name") or "")[:60]
+            for pr in plan_rows:
+                uid = pr["userId"]
+                pr["duplicate"] = bool(uid and used_uids.get(uid, 0) > 1)
+                counts = {"fill": 0, "exists": 0, "future": 0}
+                kinds: dict[str, int] = {}
+                for d, code, act in pr.pop("_entries"):
+                    if d > today:
+                        counts["future"] += 1
+                        continue
+                    if not uid:
+                        continue
+                    day = _day(d)
+                    if self._has_day_record(day.get(uid)):
+                        counts["exists"] += 1
+                        continue
+                    counts["fill"] += 1
+                    kinds[act["kind"]] = kinds.get(act["kind"], 0) + 1
+                    if not apply or pr["duplicate"]:
+                        continue
+                    meta = by_id.get(uid) or {}
+                    urec = {
+                        "userId": uid,
+                        "username": str(meta.get("username") or "")[:60],
+                        "name": str(meta.get("name") or "")[:80],
+                        "role": str(meta.get("role") or "")[:20],
+                        "in": None,
+                        "out": None,
+                    }
+                    if act["holat"] == "absent":
+                        urec["statusOverride"] = "absent"
+                    else:
+                        in_at = act.get("in") or in_hhmm
+                        in_iso = self._iso_from_date_hhmm(d, in_at)
+                        out_iso = self._iso_from_date_hhmm(d, out_hhmm)
+                        late = act["holat"] == "late"
+                        urec["in"] = self._make_manual_punch(in_iso, settings, kind="in", force_late=late)
+                        if not late:
+                            urec["in"]["late"] = False
+                        urec["out"] = self._make_manual_punch(out_iso, settings, kind="out")
+                        for p in (urec["in"], urec["out"]):
+                            p["note"] = "Tabel"
+                    note = act.get("note") or ""
+                    urec["manualNote"] = (f"Tabel: {code}" + (f" — {note}" if note else ""))[:500]
+                    urec["source"] = "tabel"
+                    urec["editedAt"] = stamp
+                    urec["editedBy"] = who
+                    day[uid] = urec
+                    dirty.add(d)
+                pr.update(counts)
+                pr["kinds"] = kinds
+            if apply:
+                for d in sorted(dirty):
+                    self._save(self.day_key(d), day_cache[d])
+
+        totals = {
+            "rows": len(plan_rows),
+            "matched": sum(1 for p in plan_rows if p["userId"]),
+            "fill": sum(p["fill"] for p in plan_rows if p["userId"] and not p["duplicate"]),
+            "exists": sum(p["exists"] for p in plan_rows),
+            "future": sum(p["future"] for p in plan_rows),
+            "days": len(dirty) if apply else 0,
+        }
+        return {
+            "ok": True,
+            "month": month,
+            "applied": bool(apply),
+            "rows": plan_rows,
+            "totals": totals,
+            "unknownCodes": unknown_codes,
+            "users": [
+                {"id": str(u.get("id")), "name": u.get("name") or u.get("username") or "", "car": u.get("car") or ""}
+                for u in sorted(roster, key=lambda x: str(x.get("name") or ""))
+            ],
+        }, None
 
     @staticmethod
     def _dates_between(d0: str, d1: str) -> list[str]:
