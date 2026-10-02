@@ -1918,6 +1918,17 @@ class AttendanceStore:
             "showDateCol": show_date_col,
             "schedule": sched,
             "rows": rows,
+            "people": [
+                {
+                    "userId": str(u.get("id") or ""),
+                    "name": u.get("name") or u.get("username") or "",
+                    "username": u.get("username") or "",
+                    "role": u.get("role") or "",
+                    "lavozim": self._lavozim(u),
+                    "car": u.get("car") or "",
+                }
+                for u in users or [] if u.get("id")
+            ],
             "stats": stats,
             "settings": self.public_settings(),
         }

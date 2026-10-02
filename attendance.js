@@ -3961,6 +3961,402 @@
     return 'F8FAFC';
   }
 
+  const UZ_MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+  const UZ_WEEKDAYS = ['Yak', 'Dush', 'Sesh', 'Chor', 'Pay', 'Juma', 'Shan'];
+  const GROUP_KIND = {
+    present: { label: 'Kelgan', fill: 'DCFCE7', text: '166534' },
+    late: { label: 'Kechikdi', fill: 'FFEDD5', text: '9A3412' },
+    trip: { label: 'Xizmat safari', fill: 'DBEAFE', text: '1E40AF' },
+    absent: { label: 'Kelmagan', fill: 'FEE2E2', text: '991B1B' },
+    vacation: { label: "Ta'til", fill: 'E0E7FF', text: '3730A3' },
+    sunday: { label: 'Dam kuni', fill: 'F1F5F9', text: '64748B' },
+    none: { label: 'Belgilanmagan', fill: 'F8FAFC', text: '94A3B8' }
+  };
+  const GROUP_COLS = ['Sana', 'Kun', 'Holat', 'Kelish', 'Ketish', 'Ishlagan (soat)', 'Kech keldi', 'Erta ketdi', 'Izoh'];
+
+  function hexRgb(hex) {
+    return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  }
+
+  function fmtDateUz(iso) {
+    const p = String(iso || '').split('-');
+    return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : String(iso || '');
+  }
+
+  function fmtHoursTotal(sec) {
+    const s = Math.max(0, Math.round(sec || 0));
+    return Math.floor(s / 3600) + ':' + String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  }
+
+  function groupNote(note) {
+    const s = String(note || '').trim();
+    const m = s.match(/^Tabel:\s*[^—]*?(?:\s+—\s+(.*))?$/);
+    return m ? (m[1] || '').trim() : s;
+  }
+
+  function groupedTitle() {
+    const d = HISOBOT || {};
+    if (d.period === 'month') {
+      const ym = String(d.dateFrom || d.date || '').slice(0, 7).split('-');
+      const mi = Number(ym[1]) - 1;
+      if (ym.length === 2 && mi >= 0) return 'Oylik davomat — ' + UZ_MONTHS[mi] + ' ' + ym[0];
+    }
+    return hisobotExportMeta().title;
+  }
+
+  function buildGroupedAttendance() {
+    const d = HISOBOT || {};
+    const dates = (d.dates || []).slice().sort();
+    const statusFilter = (hisobotStatus || 'all') !== 'all';
+    const q = String(hisobotQ || '').trim();
+    const shownRows = filteredHisobotRows();
+    const byUser = {};
+    shownRows.forEach((r) => {
+      (byUser[r.userId] = byUser[r.userId] || {})[r.date] = r;
+    });
+    let people = Array.isArray(d.people) && d.people.length ? d.people.slice() : [];
+    if (!people.length) {
+      const seen = {};
+      shownRows.forEach((r) => {
+        if (!seen[r.userId]) {
+          seen[r.userId] = 1;
+          people.push({ userId: r.userId, name: r.name, username: r.username, role: r.role, lavozim: r.lavozim, car: r.car });
+        }
+      });
+    }
+    people = people.filter((p) => {
+      const role = String(p.role || '').toLowerCase();
+      if (role === 'admin_pro' || role === 'viewer') return false;
+      if (!q) return true;
+      const blob = [p.name, p.username, p.lavozim, p.car, roleLabel(p.role)].join(' ');
+      if (typeof uzSearchMatch === 'function') return uzSearchMatch(blob, q.toLowerCase());
+      return blob.toLowerCase().indexOf(q.toLowerCase()) >= 0;
+    });
+    if (statusFilter) people = people.filter((p) => byUser[p.userId]);
+    people.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'uz'));
+
+    return people.map((p) => {
+      const rowsByDate = byUser[p.userId] || {};
+      const sum = { work: 0, trip: 0, late: 0, absent: 0, vacation: 0, none: 0, earlyOut: 0, sec: 0 };
+      const days = [];
+      (statusFilter ? Object.keys(rowsByDate).sort() : dates).forEach((date) => {
+        const r = rowsByDate[date] || null;
+        const pp = date.split('-').map(Number);
+        const wd = new Date(pp[0], pp[1] - 1, pp[2]).getDay();
+        let kind;
+        if (!r) kind = wd === 0 ? 'sunday' : 'none';
+        else if (r.status === 'absent') kind = 'absent';
+        else if (r.status === 'vacation') kind = 'vacation';
+        else if (/safari/i.test(r.note || '')) kind = 'trip';
+        else if (r.status === 'late') kind = 'late';
+        else kind = 'present';
+        if (kind === 'present' || kind === 'late' || kind === 'trip') sum.work += 1;
+        if (kind === 'trip') sum.trip += 1;
+        if (r && (r.status === 'late' || (r.late_in_min || 0) > 0)) sum.late += 1;
+        if (kind === 'absent') sum.absent += 1;
+        if (kind === 'vacation') sum.vacation += 1;
+        if (kind === 'none') sum.none += 1;
+        if (r && (r.early_out_min || 0) > 0) sum.earlyOut += 1;
+        if (r && r.worked_sec) sum.sec += r.worked_sec;
+        let label = GROUP_KIND[kind].label;
+        if (r && r.remote && kind !== 'absent' && kind !== 'vacation') label += ' · masofa';
+        days.push({
+          kind,
+          cells: [
+            fmtDateUz(date),
+            UZ_WEEKDAYS[wd],
+            label,
+            (r && r.inAt) || '—',
+            (r && r.outAt) || '—',
+            r && r.worked_sec != null ? fmtHoursTotal(r.worked_sec) : '—',
+            (r && r.late_in_txt) || '—',
+            (r && r.early_out_txt) || '—',
+            r ? groupNote(r.note).replace(/^Xizmat safari\s*—\s*/i, kind === 'trip' ? '' : 'Xizmat safari — ') : ''
+          ]
+        });
+      });
+      const sumLine = [
+        'Ish kuni: ' + sum.work,
+        sum.trip ? 'Safar: ' + sum.trip : '',
+        'Kech keldi: ' + sum.late,
+        'Kelmagan: ' + sum.absent,
+        sum.vacation ? "Ta'til: " + sum.vacation : '',
+        sum.none ? 'Belgilanmagan: ' + sum.none : '',
+        'Jami ishlagan: ' + fmtHoursTotal(sum.sec)
+      ].filter(Boolean).join('   ·   ');
+      return { person: p, days, sum, sumLine };
+    });
+  }
+
+  function exportGroupedXlsx() {
+    const meta = hisobotExportMeta();
+    const groups = buildGroupedAttendance();
+    if (!groups.length) {
+      msg("Eksport uchun ma'lumot yo'q", 'err');
+      return;
+    }
+    const N = GROUP_COLS.length;
+    const thin = (rgb) => ({ style: 'thin', color: { rgb } });
+    const box = (rgb) => ({ top: thin(rgb), bottom: thin(rgb), left: thin(rgb), right: thin(rgb) });
+    const font = (sz, bold, rgb) => ({ name: 'Calibri', sz, bold: !!bold, color: { rgb: rgb || '0F172A' } });
+    const fill = (rgb) => ({ patternType: 'solid', fgColor: { rgb } });
+    const S = {
+      brand: { font: font(10, true, 'FFFFFF'), fill: fill('0B1F3A'), alignment: { vertical: 'center' }, border: box('0B1F3A') },
+      title: { font: font(16, true, '0B1F3A'), alignment: { vertical: 'center' } },
+      sub: { font: font(10, false, '475569'), alignment: { vertical: 'center' } },
+      person: { font: font(12, true, 'FFFFFF'), fill: fill('1A5FB4'), alignment: { vertical: 'center', indent: 1 }, border: box('1A5FB4') },
+      sum: { font: font(10, true, '1E3A5F'), fill: fill('EFF6FF'), alignment: { vertical: 'center', indent: 1 }, border: box('BFDBFE') },
+      head: { font: font(10, true, '1E3A5F'), fill: fill('DBEAFE'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: box('BFDBFE') },
+      blank: {}
+    };
+    const cell = (v, s) => xCell(v, s);
+    const fullRow = (text, style) => Array.from({ length: N }, (_, i) => cell(i === 0 ? text : '', style));
+
+    const aoa = [];
+    const merges = [];
+    const heights = {};
+    const mergeRow = (r) => merges.push({ s: { r, c: 0 }, e: { r, c: N - 1 } });
+
+    aoa.push(fullRow('VAKSINA MED  ·  DAVOMAT', S.brand)); mergeRow(0); heights[0] = 22;
+    aoa.push(fullRow(groupedTitle(), S.title)); mergeRow(1); heights[1] = 30;
+    aoa.push(fullRow(
+      'Davr: ' + fmtDateUz((HISOBOT.dates || [])[0]) + ' — ' + fmtDateUz((HISOBOT.dates || []).slice(-1)[0]) +
+      '   ·   Xodimlar: ' + groups.length + '   ·   Ish vaqti: ' + meta.schedule + '   ·   Yaratilgan: ' + fmtDateUz(meta.generated),
+      S.sub
+    )); mergeRow(2); heights[2] = 18;
+    aoa.push(fullRow('', S.blank));
+
+    groups.forEach((g, gi) => {
+      const p = g.person;
+      const r0 = aoa.length;
+      aoa.push(fullRow(
+        (gi + 1) + '.  ' + (p.name || p.username || 'Xodim') +
+        (p.lavozim || p.role ? '   ·   ' + (p.lavozim || roleLabel(p.role)) : '') +
+        (p.car ? '   ·   ' + p.car : ''),
+        S.person
+      ));
+      mergeRow(r0); heights[r0] = 24;
+      aoa.push(fullRow(g.sumLine, S.sum)); mergeRow(r0 + 1); heights[r0 + 1] = 20;
+      aoa.push(GROUP_COLS.map((h) => cell(h, S.head))); heights[r0 + 2] = 30;
+      g.days.forEach((day, di) => {
+        const k = GROUP_KIND[day.kind];
+        const muted = day.kind === 'sunday' || day.kind === 'none';
+        const bg = day.kind === 'sunday' ? 'F1F5F9' : (di % 2 ? 'F8FAFC' : 'FFFFFF');
+        const base = {
+          font: font(10, false, muted ? '94A3B8' : '0F172A'),
+          fill: fill(bg),
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: box('E2E8F0')
+        };
+        const line = day.cells.map((v, ci) => {
+          if (ci === 2) {
+            return cell(v, Object.assign({}, base, { font: font(10, true, k.text), fill: fill(day.kind === 'sunday' ? bg : k.fill) }));
+          }
+          if (ci === 8) {
+            return cell(v, Object.assign({}, base, { alignment: { horizontal: 'left', vertical: 'center', wrapText: true } }));
+          }
+          if (ci === 0) return cell(v, Object.assign({}, base, { font: font(10, true, muted ? '94A3B8' : '0F172A') }));
+          return cell(v, base);
+        });
+        aoa.push(line);
+      });
+      aoa.push(fullRow('', S.blank));
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = merges;
+    applyColWidths(ws, [12, 7, 16, 9, 9, 10, 12, 12, 38]);
+    applyRowHeights(ws, heights);
+
+    const sumHead = ['№', 'F.I.Sh.', 'Lavozim', 'Mashina', 'Ish kuni', 'Safar', 'Kech keldi', 'Erta ketdi', 'Kelmagan', "Ta'til", 'Belgilanmagan', 'Jami ishlagan'];
+    const M = sumHead.length;
+    const fullRowM = (text, style) => Array.from({ length: M }, (_, i) => cell(i === 0 ? text : '', style));
+    const sa = [
+      fullRowM('VAKSINA MED  ·  DAVOMAT', S.brand),
+      fullRowM(groupedTitle() + ' — umumiy', S.title),
+      fullRowM('', S.blank),
+      sumHead.map((h) => cell(h, S.head))
+    ];
+    const tot = { work: 0, trip: 0, late: 0, earlyOut: 0, absent: 0, vacation: 0, none: 0, sec: 0 };
+    groups.forEach((g, i) => {
+      const p = g.person;
+      const s = g.sum;
+      Object.keys(tot).forEach((k) => { tot[k] += s[k] || 0; });
+      const bg = i % 2 ? 'F8FAFC' : 'FFFFFF';
+      const c = { font: font(10, false), fill: fill(bg), alignment: { horizontal: 'center', vertical: 'center' }, border: box('E2E8F0') };
+      const left = Object.assign({}, c, { font: font(10, true), alignment: { horizontal: 'left', vertical: 'center' } });
+      sa.push([
+        cell(i + 1, c), cell(p.name || p.username || '', left), cell(p.lavozim || roleLabel(p.role), c), cell(p.car || '—', c),
+        cell(s.work, c), cell(s.trip, c), cell(s.late, c), cell(s.earlyOut, c), cell(s.absent, c), cell(s.vacation, c), cell(s.none, c),
+        cell(fmtHoursTotal(s.sec), c)
+      ]);
+    });
+    const tc = { font: font(10, true, '0B1F3A'), fill: fill('DBEAFE'), alignment: { horizontal: 'center', vertical: 'center' }, border: box('BFDBFE') };
+    sa.push([
+      cell('', tc), cell('Jami', Object.assign({}, tc, { alignment: { horizontal: 'left', vertical: 'center' } })), cell('', tc), cell('', tc),
+      cell(tot.work, tc), cell(tot.trip, tc), cell(tot.late, tc), cell(tot.earlyOut, tc), cell(tot.absent, tc), cell(tot.vacation, tc), cell(tot.none, tc),
+      cell(fmtHoursTotal(tot.sec), tc)
+    ]);
+    const ws2 = XLSX.utils.aoa_to_sheet(sa);
+    ws2['!merges'] = [0, 1].map((r) => ({ s: { r, c: 0 }, e: { r, c: M - 1 } }));
+    applyColWidths(ws2, [5, 28, 14, 13, 9, 8, 10, 10, 10, 8, 13, 13]);
+    applyRowHeights(ws2, { 0: 22, 1: 30, 3: 22 });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Xodimlar bo'yicha");
+    XLSX.utils.book_append_sheet(wb, ws2, 'Umumiy');
+    XLSX.writeFile(wb, 'davomat-' + String((HISOBOT.dateFrom || '') + '_' + (HISOBOT.dateTo || '')).replace(/[^\d_\-]+/g, '') + '.xlsx');
+    msg('Excel yuklandi', 'ok');
+  }
+
+  async function exportGroupedPdf(JsPDF) {
+    const groups = buildGroupedAttendance();
+    if (!groups.length) {
+      msg("Eksport uchun ma'lumot yo'q", 'err');
+      return;
+    }
+    msg('PDF tayyorlanmoqda…', 'info');
+    const fonts = await loadAttPdfFonts();
+    const meta = hisobotExportMeta();
+    const doc = new JsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    applyAttPdfFont(doc, fonts);
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 32;
+    const title = groupedTitle();
+    const dates = HISOBOT.dates || [];
+    const period = fmtDateUz(dates[0]) + ' — ' + fmtDateUz(dates[dates.length - 1]);
+    const tableBase = {
+      margin: { left: margin, right: margin, top: 70, bottom: 36 },
+      styles: { font: ATT_PDF_FONT, fontSize: 8.5, cellPadding: { top: 3.6, bottom: 3.6, left: 4, right: 4 }, lineColor: [226, 232, 240], lineWidth: 0.5, textColor: [15, 23, 42], valign: 'middle' },
+      headStyles: { font: ATT_PDF_FONT, fontStyle: 'bold', fillColor: [219, 234, 254], textColor: [30, 58, 95], halign: 'center', lineColor: [191, 219, 254] }
+    };
+
+    const band = () => {
+      doc.setFillColor(11, 31, 58);
+      doc.rect(0, 0, pageW, 46, 'F');
+      doc.setFillColor(26, 95, 180);
+      doc.rect(0, 46, pageW, 3, 'F');
+      doc.setTextColor(255, 255, 255);
+      attPdfF(doc, 'bold');
+      doc.setFontSize(12);
+      doc.text('VAKSINA MED  ·  DAVOMAT', margin, 28);
+      attPdfF(doc, 'normal');
+      doc.setFontSize(9);
+      doc.text(title + '   ·   ' + period, pageW - margin, 28, { align: 'right' });
+    };
+
+    band();
+    doc.setTextColor(11, 31, 58);
+    attPdfF(doc, 'bold');
+    doc.setFontSize(18);
+    doc.text(title, margin, 84);
+    attPdfF(doc, 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Davr: ' + period + '   ·   Xodimlar: ' + groups.length + '   ·   Ish vaqti: ' + meta.schedule, margin, 102);
+    const tot = { work: 0, trip: 0, late: 0, absent: 0, none: 0, sec: 0 };
+    const sumBody = groups.map((g, i) => {
+      const s = g.sum;
+      Object.keys(tot).forEach((k) => { tot[k] += s[k] || 0; });
+      return [String(i + 1), g.person.name || g.person.username || '', g.person.car || '—', s.work, s.trip, s.late, s.absent, s.none, fmtHoursTotal(s.sec)];
+    });
+    doc.autoTable(Object.assign({}, tableBase, {
+      startY: 116,
+      head: [['№', 'F.I.Sh.', 'Mashina', 'Ish kuni', 'Safar', 'Kech', 'Kelmagan', 'Belgisiz', 'Ishlagan']],
+      body: sumBody,
+      foot: [['', 'Jami', '', tot.work, tot.trip, tot.late, tot.absent, tot.none, fmtHoursTotal(tot.sec)]],
+      footStyles: { font: ATT_PDF_FONT, fontStyle: 'bold', fillColor: [219, 234, 254], textColor: [11, 31, 58], halign: 'center' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: { 0: { halign: 'center', cellWidth: 26 }, 1: { fontStyle: 'bold' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } },
+      didDrawPage: band
+    }));
+
+    groups.forEach((g, gi) => {
+      doc.addPage();
+      band();
+      const p = g.person;
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(191, 219, 254);
+      doc.roundedRect(margin, 62, pageW - margin * 2, 54, 6, 6, 'FD');
+      doc.setTextColor(11, 31, 58);
+      attPdfF(doc, 'bold');
+      doc.setFontSize(14);
+      doc.text((gi + 1) + '. ' + (p.name || p.username || 'Xodim'), margin + 12, 82);
+      attPdfF(doc, 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(71, 85, 105);
+      doc.text([p.lavozim || roleLabel(p.role), p.car].filter(Boolean).join('   ·   '), margin + 12, 98);
+      const chips = [
+        ['Ish kuni', g.sum.work, '166534', 'DCFCE7'],
+        ['Safar', g.sum.trip, '1E40AF', 'DBEAFE'],
+        ['Kech keldi', g.sum.late, '9A3412', 'FFEDD5'],
+        ['Kelmagan', g.sum.absent, '991B1B', 'FEE2E2'],
+        ['Ishlagan', fmtHoursTotal(g.sum.sec), '1E3A5F', 'FFFFFF']
+      ];
+      doc.setFontSize(8.5);
+      let x = pageW - margin - 12;
+      chips.slice().reverse().forEach(([label, val, txt, bg]) => {
+        const t = label + ': ' + val;
+        attPdfF(doc, 'bold');
+        const w = doc.getTextWidth(t) + 14;
+        x -= w;
+        const [br, bgc, bb] = hexRgb(bg);
+        doc.setFillColor(br, bgc, bb);
+        doc.roundedRect(x, 80, w, 17, 8, 8, 'F');
+        const [tr, tg, tb] = hexRgb(txt);
+        doc.setTextColor(tr, tg, tb);
+        doc.text(t, x + 7, 91.5);
+        x -= 6;
+      });
+      doc.autoTable(Object.assign({}, tableBase, {
+        startY: 128,
+        head: [GROUP_COLS],
+        body: g.days.map((dd) => dd.cells),
+        columnStyles: {
+          0: { halign: 'center', fontStyle: 'bold', cellWidth: 62 },
+          1: { halign: 'center', cellWidth: 34 },
+          2: { halign: 'center', fontStyle: 'bold', cellWidth: 74 },
+          3: { halign: 'center', cellWidth: 40 },
+          4: { halign: 'center', cellWidth: 40 },
+          5: { halign: 'center', cellWidth: 52 },
+          6: { halign: 'center', cellWidth: 50 },
+          7: { halign: 'center', cellWidth: 50 },
+          8: { halign: 'left' }
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const day = g.days[data.row.index];
+          if (!day) return;
+          const k = GROUP_KIND[day.kind];
+          const muted = day.kind === 'sunday' || day.kind === 'none';
+          if (day.kind === 'sunday') data.cell.styles.fillColor = [241, 245, 249];
+          else if (data.row.index % 2) data.cell.styles.fillColor = [248, 250, 252];
+          if (muted) data.cell.styles.textColor = [148, 163, 184];
+          if (data.column.index === 2) {
+            if (day.kind !== 'sunday') data.cell.styles.fillColor = hexRgb(k.fill);
+            data.cell.styles.textColor = hexRgb(k.text);
+          }
+        },
+        didDrawPage: band
+      }));
+    });
+
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i += 1) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin, pageH - 26, pageW - margin, pageH - 26);
+      attPdfF(doc, 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text('VAKSINA MED · ' + title + ' · Yaratilgan: ' + fmtDateUz(meta.generated), margin, pageH - 14);
+      doc.text('Sahifa ' + i + ' / ' + pages, pageW - margin, pageH - 14, { align: 'right' });
+    }
+    doc.save('davomat-' + String((HISOBOT.dateFrom || '') + '_' + (HISOBOT.dateTo || '')).replace(/[^\d_\-]+/g, '') + '.pdf');
+    msg('PDF yuklandi', 'ok');
+  }
+
   function exportHisobotXlsx() {
     if (typeof XLSX === 'undefined') {
       msg('Excel kutubxonasi yuklanmadi', 'err');
@@ -3970,6 +4366,7 @@
       msg('Avval hisobotni yuklang', 'err');
       return;
     }
+    if (HISOBOT.showDateCol) return exportGroupedXlsx();
     const meta = hisobotExportMeta();
     const rowsData = filteredHisobotRows();
     const st = meta.stats || {};
@@ -4117,6 +4514,7 @@
       msg('Avval hisobotni yuklang', 'err');
       return;
     }
+    if (HISOBOT.showDateCol) return exportGroupedPdf(JsPDF);
     msg('PDF tayyorlanmoqda…', 'info');
     const fonts = await loadAttPdfFonts();
     const meta = hisobotExportMeta();
