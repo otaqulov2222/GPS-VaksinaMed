@@ -185,6 +185,64 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 }
 .att-go:hover { background: var(--accent-2); }
 
+/* ── Yuk chiqishi nazorati ── */
+.dep-card {
+  margin-bottom: 14px; padding: 14px 16px;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  border-left: 4px solid var(--accent);
+}
+.dep-card.is-bad { border-left-color: var(--bad); }
+.dep-card.is-ok { border-left-color: var(--ok); }
+.dep-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.dep-kicker { font-size: 9.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.dep-title { margin-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; font-weight: 700; color: var(--ink); }
+.dep-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.dep-pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.dep-pill.t-bad { background: #fdecea; color: var(--bad); }
+.dep-pill.t-ok { background: #e8f5ee; color: var(--ok); }
+.dep-pill.t-warn { background: #fff4e5; color: var(--warn); }
+.dep-pill.t-mute { background: #eef3f9; color: var(--muted); }
+.dep-sub { margin-top: 3px; font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
+.dep-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+.dep-stat { min-width: 84px; padding: 7px 10px; border-radius: 12px; background: var(--soft); border: 1px solid var(--line); text-align: center; }
+.dep-stat i { display: block; font-style: normal; font-size: 8.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.dep-stat b { display: block; margin-top: 3px; font: 700 15px/1.1 var(--mono); color: var(--ink); }
+.dep-stat.is-bad b { color: var(--bad); }
+.dep-cal { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 5px; margin-top: 12px; }
+.dc {
+  display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 2px 4px;
+  border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer;
+  font: 700 12px/1.1 var(--mono); color: var(--ink); position: relative;
+}
+.dc small { font: 500 9.5px/1.1 var(--mono); color: var(--muted); }
+.dc:hover { border-color: var(--accent); }
+.dc.is-ok { background: #f1faf4; border-color: #cfe9d9; }
+.dc.is-ok small { color: var(--ok); }
+.dc.is-late { background: #fdecea; border-color: #f5c2c0; color: var(--bad); }
+.dc.is-late small { color: var(--bad); }
+.dc.is-none { background: var(--bad); border-color: var(--bad); color: #fff; }
+.dc.is-none small { color: #ffe1de; }
+.dc.is-warn { background: #fff4e5; border-color: #f1d29b; color: var(--warn); }
+.dc.is-exc { background: #f1f3f6; color: #6b7a8c; }
+.dc.is-exc small { text-decoration: line-through; }
+.dc.is-off, .dc.is-idle { background: #f7f9fc; color: #a3b3c6; }
+.dc.is-sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dc.has-note::after { content: ''; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.dep-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 10.5px; color: var(--muted); }
+.dep-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.dep-legend i { width: 10px; height: 10px; border-radius: 3px; border: 1px solid var(--line); }
+.dep-legend i.lg-note { width: 7px; height: 7px; border: 0; border-radius: 50%; background: var(--accent); }
+.dep-detail:empty { display: none; }
+.dep-note { margin-top: 10px; padding: 8px 11px; border-left: 3px solid var(--accent); background: var(--soft); border-radius: 0 10px 10px 0; font-size: 12.5px; white-space: pre-wrap; }
+.dep-note small { display: block; margin-top: 3px; font-size: 10.5px; color: var(--muted); }
+.dep-auto { margin-top: 10px; padding: 7px 11px; border-radius: 10px; background: #eef6ff; color: var(--accent); font-size: 12px; }
+.dep-edit { margin-top: 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.dep-edit textarea { grid-column: 1 / -1; width: 100%; min-height: 56px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 10px; font: 13px/1.4 var(--sans); }
+.dep-edit textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26,95,180,.12); }
+.dep-edit label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink); cursor: pointer; }
+.dep-edit button { height: 34px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 700; font-size: 12px; cursor: pointer; }
+.dep-edit button:disabled { opacity: .6; cursor: default; }
+
 /* ── Kartalar ── */
 .card {
   background: #fff; border: 1px solid var(--line);
@@ -491,6 +549,31 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
       <div class="att-t" id="att-out"><i>Ketdim</i><b>—</b></div>
     </div>
     <a class="att-go" href="/attendance">Davomat →</a>
+  </section>
+
+  <section class="dep-card" id="dep-card" hidden aria-live="polite">
+    <div class="dep-h">
+      <div>
+        <div class="dep-kicker" id="dep-kicker">Yuk chiqishi nazorati</div>
+        <div class="dep-title" id="dep-title">—</div>
+        <div class="dep-sub" id="dep-sub"></div>
+      </div>
+      <div class="dep-stats" id="dep-stats"></div>
+    </div>
+    <div class="dep-cal" id="dep-cal"></div>
+    <div class="dep-legend">
+      <span><i style="background:#f1faf4;border-color:#cfe9d9"></i>O'z vaqtida</span>
+      <span><i style="background:#fdecea;border-color:#f5c2c0"></i>Kech chiqqan</span>
+      <span><i style="background:#b42318;border-color:#b42318"></i>Umuman chiqmagan</span>
+      <span><i style="background:#f1f3f6"></i>Uzrli</span>
+      <span><i class="lg-note"></i>Izoh bor</span>
+    </div>
+    <div class="dep-detail" id="dep-detail"></div>
+    <form class="dep-edit" id="dep-edit" hidden>
+      <textarea id="dep-note" maxlength="300" placeholder="Admin izohi: sabab, ko'rsatma..."></textarea>
+      <label><input type="checkbox" id="dep-exc"> Uzrli — oylik hisobga kirmaydi</label>
+      <button type="submit" id="dep-save">Izohni saqlash</button>
+    </form>
   </section>
 
   <section class="card">
@@ -1174,6 +1257,129 @@ async function loadAttendance() {
   document.getElementById('att-sub').textContent = sub;
 }
 
+/* ════════════ Yuk chiqishi nazorati ════════════ */
+let DEP = null;
+
+function depLateTxt(min) {
+  const m = Math.max(0, Number(min) || 0);
+  if (!m) return '';
+  return m >= 60 ? `${Math.floor(m / 60)} soat ${String(m % 60).padStart(2, '0')} daq` : `${m} daq`;
+}
+
+function depTone(d) {
+  if (!d) return 'mute';
+  if (d.excused && ['late', 'waiting', 'no_trip', 'not_arrived', 'no_office'].includes(d.status)) return 'exc';
+  if (d.counted) return d.status === 'no_trip' ? 'none' : 'late';
+  if (d.status === 'ok') return 'ok';
+  if (d.status === 'not_arrived' || d.status === 'no_office') return 'warn';
+  if (d.status === 'off') return 'off';
+  return 'idle';
+}
+
+function depCellTxt(d) {
+  if (d.status === 'ok' || d.status === 'late') return d.departAt || '';
+  if (d.status === 'no_trip') return 'chiqmadi';
+  if (d.status === 'waiting') return 'kutish';
+  if (d.status === 'off') return 'dam';
+  if (d.status === 'not_arrived' || d.status === 'no_office') return 'kelmadi';
+  return '—';
+}
+
+function depSelectedCar() {
+  const carSel = document.getElementById('d-car');
+  return vmIsStaff(ME) && carSel && carSel.value ? carSel.value : (ME && ME.car) || '';
+}
+
+async function loadDeparture() {
+  const box = document.getElementById('dep-card');
+  const date = document.getElementById('d-date').value;
+  const car = depSelectedCar();
+  if (!date || !car) { box.hidden = true; return; }
+  let d;
+  try {
+    d = await vmApi(`/api/departures/month?month=${date.slice(0, 7)}&car=${encodeURIComponent(car)}`, { noRedirect: true });
+  } catch (e) { box.hidden = true; return; }
+  const p = Object.values(d.plates || {})[0];
+  if (!p) { box.hidden = true; DEP = null; return; }
+  DEP = { data: d, plate: p, date };
+  paintDeparture();
+}
+
+function paintDeparture() {
+  if (!DEP) return;
+  const { data, plate, date } = DEP;
+  const box = document.getElementById('dep-card');
+  const days = plate.days || [];
+  const day = days.find(x => x.date === date);
+  const s = plate.summary || {};
+  const tone = depTone(day);
+  box.hidden = false;
+  box.className = 'dep-card' + (tone === 'late' || tone === 'none' ? ' is-bad' : tone === 'ok' ? ' is-ok' : '');
+  document.getElementById('dep-kicker').textContent = `Yuk chiqishi nazorati · muddat ${data.rule.deadline} gacha ofis/sklad hududidan chiqish`;
+  const pillCls = { late: 't-bad', none: 't-bad', ok: 't-ok', warn: 't-warn' }[tone] || 't-mute';
+  const label = day ? (day.label + (day.excused ? ' · uzrli' : '')) : "Bu kun uchun ma'lumot yo'q";
+  const extra = day && day.status === 'late' ? ` <span class="dep-pill t-bad" style="font-weight:600">+${depLateTxt(day.lateMin)}</span>`
+    : (day && day.status === 'waiting' ? ` <span class="dep-pill t-bad" style="font-weight:600">${depLateTxt(day.lateMin)} o'tdi</span>` : '');
+  document.getElementById('dep-title').innerHTML = `<span class="dep-pill ${pillCls}">${esc(label)}</span>${extra}`;
+  const subParts = [];
+  if (day) {
+    if (day.arriveAt) subParts.push('Hududga kelgan ' + day.arriveAt);
+    else if (day.overnight) subParts.push('Tundan beri hududda');
+    if (day.departAt) subParts.push('Chiqqan ' + day.departAt);
+  }
+  document.getElementById('dep-sub').textContent = subParts.join(' · ');
+  const stat = (k, v, bad) => `<div class="dep-stat${bad ? ' is-bad' : ''}"><i>${k}</i><b>${esc(v)}</b></div>`;
+  document.getElementById('dep-stats').innerHTML =
+    stat('Bu oy kech', String(s.late || 0), (s.late || 0) > 0) +
+    stat('Jami kechikish', depLateTxt(s.lateMin) || '0', (s.lateMin || 0) > 0) +
+    stat('Chiqmagan kun', String(s.noTrip || 0), (s.noTrip || 0) > 0) +
+    stat("O'z vaqtida", String(s.ok || 0)) +
+    (s.excused ? stat('Uzrli', String(s.excused)) : '');
+  document.getElementById('dep-cal').innerHTML = days.map(x => {
+    const t = depTone(x);
+    const cls = 'dc is-' + t + (x.date === date ? ' is-sel' : '') + (x.note ? ' has-note' : '');
+    const tip = `${x.date} · ${x.label}${x.departAt ? ' · ' + x.departAt : ''}${x.note ? ' · Izoh: ' + x.note : ''}`;
+    return `<button type="button" class="${cls}" data-dep-day="${x.date}" title="${esc(tip)}">${x.date.slice(8)}<small>${esc(depCellTxt(x))}</small></button>`;
+  }).join('');
+  let det = '';
+  if (day && day.autoExcuse) det += `<div class="dep-auto">${esc(day.autoExcuse)} — avtomatik uzrli</div>`;
+  if (day && day.note) {
+    const by = [day.noteBy, day.noteAt ? String(day.noteAt).replace('T', ' ').slice(0, 16) : ''].filter(Boolean).join(' · ');
+    det += `<div class="dep-note">${esc(day.note)}${by ? `<small>Admin izohi · ${esc(by)}</small>` : ''}</div>`;
+  }
+  document.getElementById('dep-detail').innerHTML = det;
+  const form = document.getElementById('dep-edit');
+  form.hidden = !(data.canEdit && day);
+  if (!form.hidden && document.activeElement !== document.getElementById('dep-note')) {
+    document.getElementById('dep-note').value = (day && !day.noteAll && day.note) || '';
+    document.getElementById('dep-exc').checked = !!(day && day.excused && !day.autoExcuse && !day.noteAll);
+  }
+}
+
+async function saveDepartureNote(e) {
+  e.preventDefault();
+  if (!DEP) return;
+  const btn = document.getElementById('dep-save');
+  btn.disabled = true;
+  try {
+    await vmApi('/api/departures/note', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: DEP.date,
+        car: DEP.plate.plate,
+        note: document.getElementById('dep-note').value,
+        excused: document.getElementById('dep-exc').checked
+      })
+    });
+    document.getElementById('dep-note').blur();
+    await loadDeparture();
+  } catch (err) {
+    alert('Saqlanmadi: ' + (err.message || err));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ════════════ Yuklash / avto-yangilash ════════════ */
 async function loadDay(opts) {
   const o = opts || {};
@@ -1243,7 +1449,10 @@ function startDayAutoRefresh() {
   dayTimer = setInterval(() => {
     if (document.hidden) return;
     loadDay().catch(() => {});
-    if (isTodaySelected()) loadAttendance().catch(() => {});
+    if (isTodaySelected()) {
+      loadAttendance().catch(() => {});
+      loadDeparture().catch(() => {});
+    }
   }, 60 * 1000);
   gpsTimer = setInterval(() => {
     if (document.hidden || !isTodaySelected()) return;
@@ -1275,6 +1484,7 @@ function startDayAutoRefresh() {
   dt.value = q.get('date') || todayStr();
   dt.max = todayStr();
   dt.addEventListener('change', () => {
+    loadDeparture().catch(() => {});
     loadDay({ forcePaint: true })
       .then(() => { if (isTodaySelected()) return refreshGpsFromServer(); })
       .catch(err => alert(err.message));
@@ -1322,6 +1532,7 @@ function startDayAutoRefresh() {
       }
     }
     sel.addEventListener('change', () => {
+      loadDeparture().catch(() => {});
       loadDay({ forcePaint: true })
         .then(() => { if (isTodaySelected()) return refreshGpsFromServer(); })
         .catch(err => alert(err.message));
@@ -1332,7 +1543,16 @@ function startDayAutoRefresh() {
     listenFleetNameOverrides(() => loadDay({ forcePaint: true }).catch(() => {}));
   }
 
+  document.getElementById('dep-edit').addEventListener('submit', saveDepartureNote);
+  document.getElementById('dep-cal').addEventListener('click', e => {
+    const b = e.target.closest('[data-dep-day]');
+    if (!b || b.dataset.depDay === dt.value) return;
+    dt.value = b.dataset.depDay;
+    dt.dispatchEvent(new Event('change'));
+  });
+
   loadAttendance().catch(() => {});
+  loadDeparture().catch(() => {});
   await loadDay({ forcePaint: true });
   startDayAutoRefresh();
   if (isTodaySelected()) refreshGpsFromServer().catch(() => {});

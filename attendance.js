@@ -2727,6 +2727,37 @@
     const absent = st.absentDays || 0;
     const totalDays = present + late + absent || days.filter((d) => d.status !== 'future').length || 1;
     const rate = Math.round((present / Math.max(1, totalDays)) * 100);
+    const dep = p.departure || null;
+    const depDays = (dep && dep.days) || {};
+    const depBadRows = Object.values(depDays)
+      .filter((x) => DEP_BAD.includes(x.status))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const depSum = (dep && dep.summary) || {};
+    const depBlock = dep ? `
+      <div class="dash-table-wrap pdep" style="margin-top:14px">
+        <div class="dash-table-h">
+          <h3>Yuk chiqishi nazorati</h3>
+          <span>${esc(dep.plate || '')} · ofis/sklad hududidan muddatgacha chiqish</span>
+        </div>
+        <div class="pdep-chips">
+          <div class="pdep-chip${depSum.late ? ' is-bad' : ''}"><b>${depSum.late || 0}</b><span>Kech chiqqan</span></div>
+          <div class="pdep-chip${depSum.lateMin ? ' is-bad' : ''}"><b>${esc(depMinTxt(depSum.lateMin) || '0')}</b><span>Jami kechikish</span></div>
+          <div class="pdep-chip${depSum.noTrip ? ' is-bad' : ''}"><b>${depSum.noTrip || 0}</b><span>Umuman chiqmagan</span></div>
+          <div class="pdep-chip is-ok"><b>${depSum.ok || 0}</b><span>O'z vaqtida</span></div>
+          <div class="pdep-chip"><b>${depSum.excused || 0}</b><span>Uzrli</span></div>
+        </div>
+        ${depBadRows.length ? `<div class="scroll-x"><table class="att-table dash-table">
+          <thead><tr><th>Sana</th><th>Chiqqan</th><th>Kechikish</th><th>Holat</th><th>Izoh</th></tr></thead>
+          <tbody>${depBadRows.map((x) => `
+            <tr class="${x.excused ? 'pdep-exc' : ''}">
+              <td>${fmtDate(x.date)}</td>
+              <td class="mono">${esc(x.departAt || '—')}</td>
+              <td class="mono">${esc(depMinTxt(x.lateMin) || '—')}</td>
+              <td><span class="pdep-st ${x.excused ? 'exc' : 'bad'}">${esc(x.label)}${x.excused ? ' · uzrli' : ''}</span></td>
+              <td>${esc(x.note || x.autoExcuse || '')}</td>
+            </tr>`).join('')}</tbody>
+        </table></div>` : '<p class="pdep-none">Bu oy yuk chiqishida kechikish yo‘q.</p>'}
+      </div>` : '';
 
     return `
       <div class="hb-hero person-hero">
@@ -2757,10 +2788,15 @@
               <div class="t">${d.status === 'future' ? '—' : (d.inAt ? esc(d.inAt) + (d.late ? ' !' : '') : 'yo‘q')}</div>
               <div class="o">${d.outAt ? esc(d.outAt) : (d.inAt && d.status !== 'future' ? '…' : '')}</div>
               <div class="w">${d.worked_sec != null ? fmtDur(d.worked_sec) : ''}</div>
+              ${(() => {
+                const c = dep ? depCell(depDays[d.date]) : null;
+                return c && c.tone !== 'mute' ? `<div class="y y-${c.tone}" title="Yuk chiqishi">Yuk ${esc(c.txt.replace(/ \(\+.*/, ''))}</div>` : '';
+              })()}
             </div>`;
           }).join('')}
         </div>
       </div>
+      ${depBlock}
 
       <div class="dash-table-wrap" style="margin-top:14px">
         <div class="dash-table-h">
@@ -3994,6 +4030,41 @@
     return m ? (m[1] || '').trim() : s;
   }
 
+  const DEP_BAD = ['late', 'waiting', 'no_trip'];
+
+  function depMinTxt(min) {
+    const m = Math.max(0, Number(min) || 0);
+    if (!m) return '';
+    return m >= 60 ? Math.floor(m / 60) + ' soat ' + String(m % 60).padStart(2, '0') + ' daq' : m + ' daq';
+  }
+
+  /** Yuk chiqishi katakchasi: {txt, tone: bad|ok|exc|warn|mute}. */
+  function depCell(dd) {
+    if (!dd) return { txt: '—', tone: 'mute' };
+    const st = dd.status;
+    if (dd.excused && (DEP_BAD.includes(st) || st === 'not_arrived' || st === 'no_office')) {
+      return { txt: (dd.departAt && st === 'late' ? dd.departAt + ' · ' : '') + 'uzrli', tone: 'exc' };
+    }
+    if (st === 'late') {
+      const m = Math.max(0, Number(dd.lateMin) || 0);
+      const short = m >= 60 ? Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') : String(m);
+      return { txt: dd.departAt + ' (+' + short + ')', tone: 'bad' };
+    }
+    if (st === 'no_trip') return { txt: 'Chiqmagan', tone: 'bad' };
+    if (st === 'waiting') return { txt: 'Hali chiqmagan', tone: 'bad' };
+    if (st === 'ok') return { txt: dd.departAt || 'OK', tone: 'ok' };
+    if (st === 'not_arrived' || st === 'no_office') return { txt: 'Ofisga kelmagan', tone: 'warn' };
+    return { txt: '—', tone: 'mute' };
+  }
+
+  const DEP_TONE = {
+    bad: { fill: 'FEE2E2', text: 'B42318' },
+    ok: { fill: 'ECFDF3', text: '166534' },
+    exc: { fill: 'F1F5F9', text: '64748B' },
+    warn: { fill: 'FFF4E5', text: '9A5B00' },
+    mute: { fill: '', text: '94A3B8' }
+  };
+
   function groupedTitle() {
     const d = HISOBOT || {};
     if (d.period === 'month') {
@@ -4035,9 +4106,16 @@
     if (statusFilter) people = people.filter((p) => byUser[p.userId]);
     people.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'uz'));
 
+    const deps = d.departures || {};
     return people.map((p) => {
       const rowsByDate = byUser[p.userId] || {};
-      const sum = { work: 0, trip: 0, late: 0, absent: 0, vacation: 0, none: 0, earlyOut: 0, sec: 0 };
+      const dep = deps[p.userId] || null;
+      const sum = { work: 0, trip: 0, late: 0, absent: 0, vacation: 0, none: 0, earlyOut: 0, sec: 0, depLate: 0, depMin: 0, depNoTrip: 0 };
+      if (dep && dep.summary) {
+        sum.depLate = dep.summary.late || 0;
+        sum.depMin = dep.summary.lateMin || 0;
+        sum.depNoTrip = dep.summary.noTrip || 0;
+      }
       const days = [];
       (statusFilter ? Object.keys(rowsByDate).sort() : dates).forEach((date) => {
         const r = rowsByDate[date] || null;
@@ -4060,8 +4138,14 @@
         if (r && r.worked_sec) sum.sec += r.worked_sec;
         let label = GROUP_KIND[kind].label;
         if (r && r.remote && kind !== 'absent' && kind !== 'vacation') label += ' · masofa';
+        const depDay = dep ? (dep.days || {})[date] : null;
+        let note = r ? groupNote(r.note).replace(/^Xizmat safari\s*—\s*/i, kind === 'trip' ? '' : 'Xizmat safari — ') : '';
+        if (depDay && (depDay.note || depDay.autoExcuse)) {
+          note = [note, 'Yuk: ' + (depDay.note || depDay.autoExcuse)].filter(Boolean).join(' · ');
+        }
         days.push({
           kind,
+          dep: dep ? depCell(depDay) : null,
           cells: [
             fmtDateUz(date),
             UZ_WEEKDAYS[wd],
@@ -4071,7 +4155,7 @@
             r && r.worked_sec != null ? fmtHoursTotal(r.worked_sec) : '—',
             (r && r.late_in_txt) || '—',
             (r && r.early_out_txt) || '—',
-            r ? groupNote(r.note).replace(/^Xizmat safari\s*—\s*/i, kind === 'trip' ? '' : 'Xizmat safari — ') : ''
+            note
           ]
         });
       });
@@ -4082,9 +4166,10 @@
         'Kelmagan: ' + sum.absent,
         sum.vacation ? "Ta'til: " + sum.vacation : '',
         sum.none ? 'Belgilanmagan: ' + sum.none : '',
-        'Jami ishlagan: ' + fmtHoursTotal(sum.sec)
+        'Jami ishlagan: ' + fmtHoursTotal(sum.sec),
+        dep ? 'Yuk kech chiqdi: ' + sum.depLate + (sum.depMin ? ' (' + depMinTxt(sum.depMin) + ')' : '') + (sum.depNoTrip ? ', chiqmagan: ' + sum.depNoTrip : '') : ''
       ].filter(Boolean).join('   ·   ');
-      return { person: p, days, sum, sumLine };
+      return { person: p, days, sum, sumLine, hasDep: !!dep };
     });
   }
 
@@ -4095,7 +4180,8 @@
       msg("Eksport uchun ma'lumot yo'q", 'err');
       return;
     }
-    const N = GROUP_COLS.length;
+    const anyDep = groups.some((g) => g.hasDep);
+    const N = GROUP_COLS.length + (anyDep ? 1 : 0);
     const thin = (rgb) => ({ style: 'thin', color: { rgb } });
     const box = (rgb) => ({ top: thin(rgb), bottom: thin(rgb), left: thin(rgb), right: thin(rgb) });
     const font = (sz, bold, rgb) => ({ name: 'Calibri', sz, bold: !!bold, color: { rgb: rgb || '0F172A' } });
@@ -4137,7 +4223,10 @@
       ));
       mergeRow(r0); heights[r0] = 24;
       aoa.push(fullRow(g.sumLine, S.sum)); mergeRow(r0 + 1); heights[r0 + 1] = 20;
-      aoa.push(GROUP_COLS.map((h) => cell(h, S.head))); heights[r0 + 2] = 30;
+      const head = GROUP_COLS.map((h) => cell(h, S.head));
+      if (g.hasDep) head.push(cell('Yuk chiqishi', S.head));
+      else if (anyDep) head.push(cell('', S.blank));
+      aoa.push(head); heights[r0 + 2] = 30;
       g.days.forEach((day, di) => {
         const k = GROUP_KIND[day.kind];
         const muted = day.kind === 'sunday' || day.kind === 'none';
@@ -4158,6 +4247,13 @@
           if (ci === 0) return cell(v, Object.assign({}, base, { font: font(10, true, muted ? '94A3B8' : '0F172A') }));
           return cell(v, base);
         });
+        if (day.dep) {
+          const t = DEP_TONE[day.dep.tone] || DEP_TONE.mute;
+          line.push(cell(day.dep.txt, Object.assign({}, base, {
+            font: font(10, day.dep.tone === 'bad', t.text),
+            fill: fill(t.fill || bg)
+          })));
+        }
         aoa.push(line);
       });
       aoa.push(fullRow('', S.blank));
@@ -4165,10 +4261,11 @@
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = merges;
-    applyColWidths(ws, [12, 7, 16, 9, 9, 10, 12, 12, 38]);
+    applyColWidths(ws, [12, 7, 16, 9, 9, 10, 12, 12, 38].concat(anyDep ? [18] : []));
     applyRowHeights(ws, heights);
 
     const sumHead = ['№', 'F.I.Sh.', 'Lavozim', 'Mashina', 'Ish kuni', 'Safar', 'Kech keldi', 'Erta ketdi', 'Kelmagan', "Ta'til", 'Belgilanmagan', 'Jami ishlagan'];
+    if (anyDep) sumHead.push('Yuk kech', 'Yuk kechikish');
     const M = sumHead.length;
     const fullRowM = (text, style) => Array.from({ length: M }, (_, i) => cell(i === 0 ? text : '', style));
     const sa = [
@@ -4177,7 +4274,7 @@
       fullRowM('', S.blank),
       sumHead.map((h) => cell(h, S.head))
     ];
-    const tot = { work: 0, trip: 0, late: 0, earlyOut: 0, absent: 0, vacation: 0, none: 0, sec: 0 };
+    const tot = { work: 0, trip: 0, late: 0, earlyOut: 0, absent: 0, vacation: 0, none: 0, sec: 0, depLate: 0, depMin: 0 };
     groups.forEach((g, i) => {
       const p = g.person;
       const s = g.sum;
@@ -4185,21 +4282,29 @@
       const bg = i % 2 ? 'F8FAFC' : 'FFFFFF';
       const c = { font: font(10, false), fill: fill(bg), alignment: { horizontal: 'center', vertical: 'center' }, border: box('E2E8F0') };
       const left = Object.assign({}, c, { font: font(10, true), alignment: { horizontal: 'left', vertical: 'center' } });
-      sa.push([
+      const row = [
         cell(i + 1, c), cell(p.name || p.username || '', left), cell(p.lavozim || roleLabel(p.role), c), cell(p.car || '—', c),
         cell(s.work, c), cell(s.trip, c), cell(s.late, c), cell(s.earlyOut, c), cell(s.absent, c), cell(s.vacation, c), cell(s.none, c),
         cell(fmtHoursTotal(s.sec), c)
-      ]);
+      ];
+      if (anyDep) {
+        const bad = g.hasDep && s.depLate > 0;
+        const dc = Object.assign({}, c, bad ? { font: font(10, true, 'B42318'), fill: fill('FEE2E2') } : {});
+        row.push(cell(g.hasDep ? s.depLate : '—', dc), cell(g.hasDep ? (depMinTxt(s.depMin) || '0') : '—', dc));
+      }
+      sa.push(row);
     });
     const tc = { font: font(10, true, '0B1F3A'), fill: fill('DBEAFE'), alignment: { horizontal: 'center', vertical: 'center' }, border: box('BFDBFE') };
-    sa.push([
+    const totRow = [
       cell('', tc), cell('Jami', Object.assign({}, tc, { alignment: { horizontal: 'left', vertical: 'center' } })), cell('', tc), cell('', tc),
       cell(tot.work, tc), cell(tot.trip, tc), cell(tot.late, tc), cell(tot.earlyOut, tc), cell(tot.absent, tc), cell(tot.vacation, tc), cell(tot.none, tc),
       cell(fmtHoursTotal(tot.sec), tc)
-    ]);
+    ];
+    if (anyDep) totRow.push(cell(tot.depLate, tc), cell(depMinTxt(tot.depMin) || '0', tc));
+    sa.push(totRow);
     const ws2 = XLSX.utils.aoa_to_sheet(sa);
     ws2['!merges'] = [0, 1].map((r) => ({ s: { r, c: 0 }, e: { r, c: M - 1 } }));
-    applyColWidths(ws2, [5, 28, 14, 13, 9, 8, 10, 10, 10, 8, 13, 13]);
+    applyColWidths(ws2, [5, 28, 14, 13, 9, 8, 10, 10, 10, 8, 13, 13].concat(anyDep ? [10, 14] : []));
     applyRowHeights(ws2, { 0: 22, 1: 30, 3: 22 });
 
     const wb = XLSX.utils.book_new();
@@ -4255,20 +4360,36 @@
     doc.setFontSize(9.5);
     doc.setTextColor(71, 85, 105);
     doc.text('Davr: ' + period + '   ·   Xodimlar: ' + groups.length + '   ·   Ish vaqti: ' + meta.schedule, margin, 102);
-    const tot = { work: 0, trip: 0, late: 0, absent: 0, none: 0, sec: 0 };
+    const anyDep = groups.some((g) => g.hasDep);
+    const tot = { work: 0, trip: 0, late: 0, absent: 0, none: 0, sec: 0, depLate: 0 };
     const sumBody = groups.map((g, i) => {
       const s = g.sum;
       Object.keys(tot).forEach((k) => { tot[k] += s[k] || 0; });
-      return [String(i + 1), g.person.name || g.person.username || '', g.person.car || '—', s.work, s.trip, s.late, s.absent, s.none, fmtHoursTotal(s.sec)];
+      const row = [String(i + 1), g.person.name || g.person.username || '', g.person.car || '—', s.work, s.trip, s.late, s.absent, s.none, fmtHoursTotal(s.sec)];
+      if (anyDep) row.push(g.hasDep ? String(s.depLate) : '—');
+      return row;
     });
+    const sumHeadPdf = ['№', 'F.I.Sh.', 'Mashina', 'Ish kuni', 'Safar', 'Kech', 'Kelmagan', 'Belgisiz', 'Ishlagan'];
+    const sumFoot = ['', 'Jami', '', tot.work, tot.trip, tot.late, tot.absent, tot.none, fmtHoursTotal(tot.sec)];
+    if (anyDep) { sumHeadPdf.push('Yuk kech'); sumFoot.push(tot.depLate); }
+    const sumCols = { 0: { halign: 'center', cellWidth: 26 }, 1: { fontStyle: 'bold' } };
+    for (let ci = 2; ci < sumHeadPdf.length; ci += 1) sumCols[ci] = { halign: 'center' };
     doc.autoTable(Object.assign({}, tableBase, {
       startY: 116,
-      head: [['№', 'F.I.Sh.', 'Mashina', 'Ish kuni', 'Safar', 'Kech', 'Kelmagan', 'Belgisiz', 'Ishlagan']],
+      head: [sumHeadPdf],
       body: sumBody,
-      foot: [['', 'Jami', '', tot.work, tot.trip, tot.late, tot.absent, tot.none, fmtHoursTotal(tot.sec)]],
+      foot: [sumFoot],
       footStyles: { font: ATT_PDF_FONT, fontStyle: 'bold', fillColor: [219, 234, 254], textColor: [11, 31, 58], halign: 'center' },
       alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: { 0: { halign: 'center', cellWidth: 26 }, 1: { fontStyle: 'bold' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } },
+      columnStyles: sumCols,
+      didParseCell: (data) => {
+        if (!anyDep || data.section !== 'body' || data.column.index !== 9) return;
+        const g = groups[data.row.index];
+        if (g && g.hasDep && g.sum.depLate > 0) {
+          data.cell.styles.textColor = [180, 35, 24];
+          data.cell.styles.fontStyle = 'bold';
+        }
+      },
       didDrawPage: band
     }));
 
@@ -4301,7 +4422,15 @@
         ['Kelmagan', g.sum.absent, '991B1B', 'FEE2E2'],
         ['Ishlagan', fmtHoursTotal(g.sum.sec), '1E3A5F', 'FFFFFF']
       ];
-      doc.setFontSize(8.5);
+      if (g.hasDep) chips.push(['Yuk kech', g.sum.depLate + (g.sum.depMin ? ' · ' + depMinTxt(g.sum.depMin) : ''), 'FFFFFF', g.sum.depLate ? 'B42318' : '166534']);
+      attPdfF(doc, 'bold');
+      let chipSz = 8.5;
+      const chipsW = () => chips.reduce((s, [l, v]) => s + doc.getTextWidth(l + ': ' + v) + 20, 0);
+      doc.setFontSize(chipSz);
+      while (chipSz > 6.5 && chipsW() > cardW - 24) {
+        chipSz -= 0.5;
+        doc.setFontSize(chipSz);
+      }
       let x = margin + 12;
       chips.forEach(([label, val, txt, bg]) => {
         const t = label + ': ' + val;
@@ -4320,21 +4449,20 @@
         doc.text(t, x + 7, 117.5);
         x += w + 6;
       });
+      const head = g.hasDep ? GROUP_COLS.slice(0, 8).concat(['Yuk chiqishi', GROUP_COLS[8]]) : GROUP_COLS;
+      const body = g.days.map((dd) => (g.hasDep ? dd.cells.slice(0, 8).concat([dd.dep ? dd.dep.txt : '—', dd.cells[8]]) : dd.cells));
+      const colW = g.hasDep ? [52, 28, 74, 36, 36, 48, 42, 42, 62] : [62, 34, 74, 40, 40, 52, 50, 50];
+      const columnStyles = {};
+      colW.forEach((w, ci) => { columnStyles[ci] = { halign: 'center', cellWidth: w }; });
+      columnStyles[0].fontStyle = 'bold';
+      columnStyles[2].fontStyle = 'bold';
+      columnStyles[colW.length] = { halign: 'left' };
+      const depCol = g.hasDep ? 8 : -1;
       doc.autoTable(Object.assign({}, tableBase, {
         startY: 146,
-        head: [GROUP_COLS],
-        body: g.days.map((dd) => dd.cells),
-        columnStyles: {
-          0: { halign: 'center', fontStyle: 'bold', cellWidth: 62 },
-          1: { halign: 'center', cellWidth: 34 },
-          2: { halign: 'center', fontStyle: 'bold', cellWidth: 74 },
-          3: { halign: 'center', cellWidth: 40 },
-          4: { halign: 'center', cellWidth: 40 },
-          5: { halign: 'center', cellWidth: 52 },
-          6: { halign: 'center', cellWidth: 50 },
-          7: { halign: 'center', cellWidth: 50 },
-          8: { halign: 'left' }
-        },
+        head: [head],
+        body,
+        columnStyles,
         didParseCell: (data) => {
           if (data.section !== 'body') return;
           const day = g.days[data.row.index];
@@ -4347,6 +4475,12 @@
           if (data.column.index === 2) {
             if (day.kind !== 'sunday') data.cell.styles.fillColor = hexRgb(k.fill);
             data.cell.styles.textColor = hexRgb(k.text);
+          }
+          if (data.column.index === depCol && day.dep) {
+            const t = DEP_TONE[day.dep.tone] || DEP_TONE.mute;
+            if (t.fill) data.cell.styles.fillColor = hexRgb(t.fill);
+            data.cell.styles.textColor = hexRgb(t.text);
+            if (day.dep.tone === 'bad') data.cell.styles.fontStyle = 'bold';
           }
         },
         didDrawPage: band

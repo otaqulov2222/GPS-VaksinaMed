@@ -1002,6 +1002,66 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .rk-mid { color: #0b1f3a; font-weight: 700; font-family: var(--mono); }
 
 .rk-bad { color: var(--bad); font-weight: 700; font-family: var(--mono); }
+/* Yuk chiqishi nazorati */
+.dep-badge { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; padding: 2px 8px 2px 7px; border-radius: 999px; border: 1px solid transparent; font: 600 11px/1.5 var(--sans); letter-spacing: .01em; cursor: pointer; vertical-align: 1px; white-space: nowrap; }
+.dep-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.dep-badge:hover { filter: brightness(.96); box-shadow: 0 1px 4px rgba(11,31,58,.14); }
+.dep-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dep-late { background: #fdecec; color: #b42318; border-color: #f5c2c0; }
+.dep-wait { background: #b42318; color: #fff; border-color: #b42318; animation: depPulse 1.6s ease-in-out infinite; }
+.dep-warn { background: #fff4e0; color: #9a5b00; border-color: #f1d29b; }
+.dep-ok { background: #eaf6ee; color: #1f7a3d; border-color: #bfe3cb; font-weight: 500; }
+.dep-pend { background: #eef2f7; color: #4a5f78; border-color: #d3dce7; font-weight: 500; }
+.dep-excused { background: #f1f3f6; color: #6b7a8c; border-color: #d8dee6; font-weight: 500; }
+.dep-excused::before { background: #9aa8b8; }
+.dep-ico { width: 11px; height: 11px; flex: none; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 2h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6l-3.5 3V12H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z'/%3E%3C/svg%3E") center/contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 2h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6l-3.5 3V12H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z'/%3E%3C/svg%3E") center/contain no-repeat; }
+@keyframes depPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(180,35,24,.45); } 50% { box-shadow: 0 0 0 5px rgba(180,35,24,0); } }
+@media (prefers-reduced-motion: reduce) { .dep-wait { animation: none; } }
+.dep-modal { position: fixed; inset: 0; z-index: 4000; background: rgba(11,31,58,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.dep-modal[hidden] { display: none; }
+.dep-modal-card { width: min(480px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: #fff; border-radius: 10px; box-shadow: 0 18px 50px rgba(11,31,58,.3); }
+.dep-m-head { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #f5f8fc, #fff); border-radius: 10px 10px 0 0; }
+.dep-m-kicker { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.dep-m-head h3 { margin: 2px 0 0; font: 700 18px/1.25 var(--mono); color: var(--ink); }
+.dep-m-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.dep-m-x { border: 0; background: transparent; font-size: 24px; line-height: 1; color: var(--muted); cursor: pointer; padding: 0 4px; align-self: flex-start; }
+.dep-m-x:hover { color: var(--ink); }
+.dep-m-body, .dep-m-month, .dep-m-form { padding: 12px 18px; }
+.dep-m-month:empty { display: none; }
+.dep-m-month { border-top: 1px dashed var(--line); }
+.dep-state { display: inline-block; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 13px; }
+.dep-state-bad { background: #fdecec; color: #b42318; }
+.dep-state-ok { background: #eaf6ee; color: #1f7a3d; }
+.dep-state-excused, .dep-state-neutral { background: #eef2f7; color: #4a5f78; }
+.dep-kvs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 12px; }
+.dep-kv { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fafcfe; }
+.dep-kv span { font-size: 11px; color: var(--muted); }
+.dep-kv b { font: 600 14px/1.3 var(--mono); color: var(--ink); }
+.dep-auto { margin-top: 10px; padding: 7px 10px; border-radius: 6px; background: #eef6ff; color: #1a5fb4; font-size: 12px; }
+.dep-note { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--accent); background: #f5f8fc; border-radius: 0 6px 6px 0; font-size: 13px; color: var(--ink); white-space: pre-wrap; }
+.dep-note small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.dep-m-muted { color: var(--muted); font-size: 12px; }
+.dep-m-sum { font-size: 12.5px; color: var(--ink); }
+.dep-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.dep-chip { font: 500 11px/1.6 var(--mono); padding: 1px 7px; border-radius: 5px; border: 1px solid; }
+.dep-chip b { font-weight: 700; }
+.dep-chip.is-late { background: #fdecec; color: #b42318; border-color: #f5c2c0; }
+.dep-chip.is-none { background: #b42318; color: #fff; border-color: #b42318; }
+.dep-chip.is-exc { background: #f1f3f6; color: #6b7a8c; border-color: #d8dee6; text-decoration: line-through; }
+.dep-chip.is-cur { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dep-m-form { border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.dep-m-form[hidden] { display: none; }
+.dep-m-lbl { font-size: 12px; font-weight: 600; color: var(--ink); }
+.dep-m-form textarea { width: 100%; resize: vertical; min-height: 64px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 6px; font: 13px/1.4 var(--sans); }
+.dep-m-form textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26,95,180,.12); }
+.dep-m-chk { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.dep-m-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.dep-m-rule { border-top: 1px solid var(--line); padding: 10px 18px 14px; }
+.dep-m-rule[hidden] { display: none; }
+.dep-m-rule summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); }
+.dep-m-rule-body { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.dep-m-inp { height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; font: 13px var(--mono); }
+.dep-m-inp:focus { outline: none; border-color: var(--accent); }
 
 
 
@@ -2873,7 +2933,7 @@ input, select, textarea { max-width: 100%; }
 
 <script src="app-m96.js?v=m150"></script>
 
-<script src="office.js?v=28"></script>
+<script src="office.js?v=30"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

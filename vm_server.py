@@ -263,6 +263,71 @@ def attendance_roster(users):
     return users
 
 
+def car_users(plate, users=None):
+    """Mashinaga biriktirilgan faol haydovchi(lar)."""
+    import departure
+
+    key = compact_plate(plate)
+    num = departure.plate_number(plate)
+    if not key:
+        return []
+    users = users if users is not None else (STORE.list_users() if STORE else [])
+    exact = [u for u in users if u.get("active", True) and u.get("car") and compact_plate(u.get("car")) == key]
+    if exact:
+        return exact
+    return [
+        u for u in users
+        if u.get("active", True) and u.get("car") and departure.plate_number(u.get("car")) == num
+    ]
+
+
+DEPART_ABSENT_REASON = {"absent": "Haydovchi davomatda: kelmagan", "vacation": "Haydovchi davomatda: ta'tilda"}
+
+
+def departure_excuse(date, plate):
+    if not ATTENDANCE:
+        return None
+    for u in car_users(plate):
+        urec = ATTENDANCE.user_day(date, str(u.get("id"))) or {}
+        reason = DEPART_ABSENT_REASON.get(str(urec.get("statusOverride") or "").strip().lower())
+        if reason:
+            return reason
+    return None
+
+
+def departures_for_users(users, dates):
+    """{userId: {date: holat}} — yuk chiqishi kuzatiladigan mashina haydovchilari uchun."""
+    if not DEPARTURES or not users or not dates:
+        return {}
+    rule = DEPARTURES.rule()
+    if not rule.get("enabled"):
+        return {}
+    import departure
+
+    tracked = [u for u in users if u.get("car") and departure.is_tracked(u.get("car"), rule)]
+    if not tracked:
+        return {}
+    months = sorted({d[:7] for d in dates})
+    by_plate = {}
+    for m in months:
+        for p in (DEPARTURES.month(m).get("plates") or {}).values():
+            slot = by_plate.setdefault(p.get("num"), {})
+            for d in p.get("days") or []:
+                slot[d.get("date")] = d
+    want = set(dates)
+    out = {}
+    for u in tracked:
+        days = by_plate.get(departure.plate_number(u.get("car"))) or {}
+        picked = {d: v for d, v in days.items() if d in want}
+        if picked:
+            out[str(u.get("id"))] = {
+                "plate": u.get("car"),
+                "days": picked,
+                "summary": departure.summarize(list(picked.values())),
+            }
+    return out
+
+
 def normalize_due_ymd(v):
     s = str(v or "").strip()
     if not s:
@@ -1930,6 +1995,8 @@ class OfficeStore:
         }
         with self.lock:
             self._save("office:report:" + date, payload)
+        if DEPARTURES:
+            DEPARTURES.invalidate(date)
         return payload, None
 
     def migrate_stop_clock(self):
@@ -3421,6 +3488,7 @@ class OfficeStore:
 STORE = None
 OFFICE = None
 ATTENDANCE = None
+DEPARTURES = None
 
 
 class _HeaderMap:
@@ -4544,10 +4612,9 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             date_to = (qs.get("to") or [""])[0]
             users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
             users = attendance_roster(users)
-            self.send_json({
-                "ok": True,
-                **ATTENDANCE.hisobot(period, users, date=date, date_from=date_from, date_to=date_to),
-            })
+            res = ATTENDANCE.hisobot(period, users, date=date, date_from=date_from, date_to=date_to)
+            res["departures"] = departures_for_users(users, res.get("dates") or [])
+            self.send_json({"ok": True, **res})
             return
 
         if path == "/api/attendance/person":
@@ -4573,7 +4640,11 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not meta:
                 self.send_json({"ok": False, "error": "Foydalanuvchi topilmadi"}, 404)
                 return
-            self.send_json({"ok": True, **ATTENDANCE.person_month(str(uid), month, meta)})
+            res = ATTENDANCE.person_month(str(uid), month, meta)
+            today = DEPARTURES.now().strftime("%Y-%m-%d") if DEPARTURES else ""
+            dep = departures_for_users([meta], [d.get("date") for d in res.get("days") or [] if d.get("date") <= today])
+            res["departure"] = dep.get(str(uid))
+            self.send_json({"ok": True, **res})
             return
 
         if path == "/api/attendance/settings":
@@ -4944,6 +5015,39 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                     "gps": gps,
                 }
             )
+            return
+
+        if path in ("/api/departures", "/api/departures/month"):
+            sess = self.require_user()
+            if not sess:
+                return
+            if not DEPARTURES:
+                self.send_json({"ok": False, "error": "Yuk chiqishi moduli yo'q"}, 500)
+                return
+            car_q = (qs.get("car") or [None])[0] or ""
+            if is_driver(sess):
+                car_q = sess.get("car") or ""
+                if not compact_plate(car_q):
+                    self.send_json({"ok": False, "error": "Mashina biriktirilmagan"}, 400)
+                    return
+            elif not can_ops_read(sess):
+                self.send_json({"ok": False, "error": "Ruxsat yo'q"}, 403)
+                return
+            today = DEPARTURES.now().strftime("%Y-%m-%d")
+            if path == "/api/departures":
+                day = date if valid_date(date) else today
+                res = DEPARTURES.day(day)
+                if car_q:
+                    import departure
+
+                    num = departure.plate_number(car_q)
+                    res["cars"] = {k: v for k, v in res["cars"].items() if v.get("num") == num}
+            else:
+                mon = month if month and MONTH_RE.match(str(month)) else today[:7]
+                res = DEPARTURES.month(mon, car_q or None)
+            res["canEdit"] = is_staff(sess)
+            res["today"] = today
+            self.send_json({"ok": True, **res})
             return
 
         if path == "/api/driver/day":
@@ -6118,6 +6222,27 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json(result)
             return
 
+        if path in ("/api/departures/note", "/api/departures/rule"):
+            sess = self.require_staff()
+            if not sess:
+                return
+            if not DEPARTURES:
+                self.send_json({"ok": False, "error": "Yuk chiqishi moduli yo'q"}, 500)
+                return
+            by = sess.get("name") or sess.get("username") or ""
+            if path == "/api/departures/rule":
+                rule = DEPARTURES.save_rule(body, by=by)
+                self.send_json({"ok": True, "rule": rule})
+                return
+            date_v = str(body.get("date") or "")
+            car_v = str(body.get("car") or "")
+            entry, err = DEPARTURES.set_note(date_v, car_v, body.get("note"), bool(body.get("excused")), by=by)
+            if err:
+                self.send_json({"ok": False, "error": err}, 400)
+                return
+            self.send_json({"ok": True, "entry": entry, "day": DEPARTURES.day(date_v)})
+            return
+
         if path == "/api/attendance/tabel-import":
             sess = self.require_staff()
             if not sess:
@@ -6362,7 +6487,7 @@ _app_init_lock = threading.Lock()
 
 def init_app(base_dir=None):
     """STORE/OFFICE yuklash — lokal server va Vercel serverless uchun."""
-    global STORE, OFFICE, ATTENDANCE, _app_initialized
+    global STORE, OFFICE, ATTENDANCE, DEPARTURES, _app_initialized
     base_dir = base_dir or DIRECTORY
     with _app_init_lock:
         if _app_initialized:
@@ -6392,6 +6517,13 @@ def init_app(base_dir=None):
         except Exception as e:
             print("[attendance-init]", e)
             ATTENDANCE = None
+        try:
+            import departure
+
+            DEPARTURES = departure.DepartureService(persist, OFFICE.get_report, TZ_TASHKENT, departure_excuse)
+        except Exception as e:
+            print("[departure-init]", e)
+            DEPARTURES = None
         try:
             mig = OFFICE.migrate_stop_clock()
             if mig:

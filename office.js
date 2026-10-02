@@ -30,6 +30,55 @@ function vmStopKey(dateVal, car, st) {
     return [dateVal, car, t, lat, lng, p].join('|');
 }
 
+function depPlateNum(p) {
+    const d = String(p || '').replace(/\D/g, '');
+    return d.length > 3 ? d.slice(2) : d;
+}
+
+function depLateTxt(min) {
+    const m = Math.max(0, Number(min) || 0);
+    if (!m) return '';
+    return m >= 60 ? `+${Math.floor(m / 60)} soat ${String(m % 60).padStart(2, '0')} daq` : `+${m} daq`;
+}
+
+const DEP_WEEKDAYS = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'];
+
+function depDateUz(dateVal) {
+    const d = new Date(dateVal + 'T00:00:00');
+    if (isNaN(d)) return dateVal || '';
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} · ${DEP_WEEKDAYS[d.getDay()]}`;
+}
+
+function depDetailHtml(dep) {
+    const tone = dep.excused ? 'excused' : (dep.counted ? 'bad' : (dep.status === 'ok' ? 'ok' : 'neutral'));
+    const row = (k, v) => v ? `<div class="dep-kv"><span>${k}</span><b>${vmEsc(v)}</b></div>` : '';
+    let html = `<div class="dep-state dep-state-${tone}">${vmEsc(dep.label || dep.status)}${dep.excused ? ' · uzrli' : ''}</div>`;
+    html += '<div class="dep-kvs">';
+    html += row('Chiqish muddati', dep.deadline);
+    html += row('Hududga kelgan', dep.arriveAt || (dep.overnight ? 'tundan beri hududda' : ''));
+    html += row('Hududdan chiqqan', dep.departAt || (dep.status === 'waiting' ? 'hali chiqmagan' : ''));
+    html += row('Kechikish', depLateTxt(dep.lateMin).replace('+', ''));
+    html += '</div>';
+    if (dep.autoExcuse) html += `<div class="dep-auto">${vmEsc(dep.autoExcuse)} — avtomatik uzrli</div>`;
+    if (dep.note) {
+        const by = [dep.noteBy, dep.noteAt ? String(dep.noteAt).replace('T', ' ').slice(0, 16) : ''].filter(Boolean).join(' · ');
+        html += `<div class="dep-note"><div>${vmEsc(dep.note)}</div>${by ? `<small>${vmEsc(by)}${dep.noteAll ? ' · barcha mashinalar' : ''}</small>` : ''}</div>`;
+    }
+    return html;
+}
+
+function depMonthHtml(p, curDate) {
+    const s = p.summary || {};
+    const bad = (p.days || []).filter(d => d.counted || (d.excused && ['late', 'waiting', 'no_trip'].includes(d.status)));
+    const chips = bad.map(d => {
+        const day = String(d.date).slice(8);
+        const cls = d.excused ? 'is-exc' : (d.status === 'no_trip' ? 'is-none' : 'is-late');
+        const t = d.status === 'late' ? `${d.departAt}` : (d.status === 'no_trip' ? 'chiqmadi' : 'kutilmoqda');
+        return `<span class="dep-chip ${cls}${d.date === curDate ? ' is-cur' : ''}" title="${vmEsc(d.label + (d.note ? ' · ' + d.note : ''))}"><b>${day}</b> ${vmEsc(t)}</span>`;
+    }).join('');
+    return `<div class="dep-m-sum"><b>Bu oy:</b> ${s.late || 0} marta kech${s.lateMin ? ` · jami ${depLateTxt(s.lateMin).replace('+', '')}` : ''}${s.noTrip ? ` · ${s.noTrip} kun umuman chiqmagan` : ''}${s.excused ? ` · ${s.excused} uzrli` : ''} · ${s.ok || 0} kun o'z vaqtida</div>${chips ? `<div class="dep-chips">${chips}</div>` : ''}`;
+}
+
 const VMOffice = {
     telegram: { enabled: false, hasToken: false, chatId: '' },
     reportDates: [],
@@ -98,12 +147,230 @@ const VMOffice = {
             const el = document.getElementById('fleet-board-body');
             if (el) {
                 el.addEventListener('click', e => {
+                    const dep = e.target.closest('[data-dep]');
+                    if (dep) {
+                        e.stopPropagation();
+                        this.openDepModal(dep.getAttribute('data-dep'));
+                        return;
+                    }
                     const tr = e.target.closest('tr[data-car]');
                     if (tr && typeof selectDriver === 'function') selectDriver(tr.getAttribute('data-car'));
                 });
             }
+            setInterval(() => {
+                const dep = this.depCache[STATE.currentDate];
+                if (dep && dep.data && STATE.currentDate === dep.data.today && !document.hidden) {
+                    this.ensureDepartures(STATE.currentDate, true);
+                }
+            }, 60000);
         }
         if (STATE.currentDate) await this.loadReportIfNeeded(STATE.currentDate);
+    },
+
+    depCache: {},
+    _depLoading: {},
+
+    async ensureDepartures(dateVal, force) {
+        if (!dateVal || this._depLoading[dateVal]) return;
+        const hit = this.depCache[dateVal];
+        const isToday = hit && hit.data && hit.data.today === dateVal;
+        const ttl = isToday ? 60000 : 300000;
+        if (hit && !force && Date.now() - hit.at < ttl) return;
+        this._depLoading[dateVal] = true;
+        try {
+            const d = await vmApi('/api/departures?date=' + encodeURIComponent(dateVal), { noRedirect: true });
+            this.depCache[dateVal] = { at: Date.now(), data: d };
+        } catch (e) {
+            this.depCache[dateVal] = { at: Date.now(), data: null };
+        } finally {
+            this._depLoading[dateVal] = false;
+        }
+        if (STATE.currentDate === dateVal) this.renderFleetBoard();
+    },
+
+    depOf(dateVal, car) {
+        const hit = this.depCache[dateVal];
+        const cars = hit && hit.data && hit.data.cars;
+        if (!cars) return null;
+        const key = plateCompact(car);
+        if (cars[key]) return cars[key];
+        const num = depPlateNum(car);
+        return Object.values(cars).find(c => c.num === num) || null;
+    },
+
+    depBadge(dep) {
+        if (!dep) return '';
+        const st = dep.status;
+        const late = depLateTxt(dep.lateMin);
+        const noteIco = dep.note ? '<i class="dep-ico" aria-hidden="true"></i>' : '';
+        let cls = '', txt = '';
+        if (dep.excused && dep.counted === false && ['late', 'waiting', 'no_trip', 'not_arrived', 'no_office'].includes(st)) {
+            cls = 'dep-excused';
+            txt = 'Uzrli · ' + (st === 'late' ? 'yuk ' + (dep.departAt || '') : dep.label);
+        } else if (st === 'late') {
+            cls = 'dep-late'; txt = `Yuk kech ${dep.departAt || ''} ${late}`;
+        } else if (st === 'waiting') {
+            cls = 'dep-wait'; txt = `Yuk chiqmagan · ${late}`;
+        } else if (st === 'no_trip') {
+            cls = 'dep-late'; txt = 'Yuk chiqmadi · kun bo\'yi hududda';
+        } else if (st === 'not_arrived') {
+            cls = 'dep-warn'; txt = 'Ofisga kelmagan';
+        } else if (st === 'no_office') {
+            cls = 'dep-warn'; txt = 'Ofisga kirmagan';
+        } else if (st === 'ok') {
+            cls = 'dep-ok'; txt = `Yuk ${dep.departAt || ''}`;
+        } else if (st === 'pending') {
+            cls = 'dep-pend'; txt = `Yuk ${dep.deadline} gacha`;
+        } else {
+            return '';
+        }
+        const tip = `${dep.label}${dep.departAt ? ' · chiqdi ' + dep.departAt : ''} · muddat ${dep.deadline}${dep.note ? ' · Izoh: ' + dep.note : ''}`;
+        return `<button type="button" class="dep-badge ${cls}" data-dep="${vmEsc(dep.plate)}" title="${vmEsc(tip)}">${vmEsc(txt.trim())}${noteIco}</button>`;
+    },
+
+    depSummaryTxt(dateVal) {
+        const hit = this.depCache[dateVal];
+        const cars = hit && hit.data && hit.data.cars ? Object.values(hit.data.cars) : [];
+        if (!cars.length) return '';
+        const late = cars.filter(c => c.counted).length;
+        const wait = cars.filter(c => c.counted && c.status === 'waiting').length;
+        if (!late) return ' · yuk chiqishi: hammasi o\'z vaqtida';
+        return ` · yuk kech: ${late}${wait ? ' (hali chiqmagan: ' + wait + ')' : ''}`;
+    },
+
+    depModalEl() {
+        let m = document.getElementById('dep-modal');
+        if (m) return m;
+        m = document.createElement('div');
+        m.id = 'dep-modal';
+        m.className = 'dep-modal';
+        m.hidden = true;
+        m.innerHTML = `<div class="dep-modal-card" role="dialog" aria-modal="true" aria-labelledby="dep-m-title">
+            <div class="dep-m-head">
+              <div><div class="dep-m-kicker">Yuk chiqishi nazorati</div><h3 id="dep-m-title"></h3><div class="dep-m-sub" id="dep-m-sub"></div></div>
+              <button type="button" class="dep-m-x" data-dep-close aria-label="Yopish">&times;</button>
+            </div>
+            <div class="dep-m-body" id="dep-m-body"></div>
+            <div class="dep-m-month" id="dep-m-month"></div>
+            <form class="dep-m-form" id="dep-m-form">
+              <label class="dep-m-lbl" for="dep-m-note">Admin izohi</label>
+              <textarea id="dep-m-note" rows="3" maxlength="300" placeholder="Masalan: sklad navbati, mashina ta'mirda, buyurtma kech tayyorlandi..."></textarea>
+              <label class="dep-m-chk"><input type="checkbox" id="dep-m-exc"> Uzrli — oylik hisobga kechikish sifatida kirmaydi</label>
+              <label class="dep-m-chk"><input type="checkbox" id="dep-m-all"> Shu kun barcha mashinalar uchun (bayram, umumiy sabab)</label>
+              <div class="dep-m-actions">
+                <button type="button" class="btn" data-dep-close>Bekor</button>
+                <button type="submit" class="btn btn-primary" id="dep-m-save">Saqlash</button>
+              </div>
+            </form>
+            <details class="dep-m-rule" id="dep-m-rule">
+              <summary>Qoida sozlamalari</summary>
+              <div class="dep-m-rule-body">
+                <label class="dep-m-chk"><input type="checkbox" id="dep-r-on"> Nazorat yoqilgan</label>
+                <label class="dep-m-lbl" for="dep-r-dl">Chiqish muddati</label>
+                <input type="time" id="dep-r-dl" class="dep-m-inp">
+                <label class="dep-m-lbl" for="dep-r-since">Nazorat boshlanish sanasi</label>
+                <input type="date" id="dep-r-since" class="dep-m-inp">
+                <label class="dep-m-lbl" for="dep-r-pl">Mashina raqamlari (vergul bilan)</label>
+                <input type="text" id="dep-r-pl" class="dep-m-inp" placeholder="255, 043, 302">
+                <div class="dep-m-actions"><button type="button" class="btn" id="dep-r-save">Qoidani saqlash</button></div>
+              </div>
+            </details>
+          </div>`;
+        document.body.appendChild(m);
+        m.addEventListener('click', e => {
+            if (e.target === m || e.target.closest('[data-dep-close]')) m.hidden = true;
+        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && !m.hidden) m.hidden = true; });
+        m.querySelector('#dep-m-form').addEventListener('submit', e => { e.preventDefault(); this.saveDepNote(); });
+        m.querySelector('#dep-r-save').addEventListener('click', () => this.saveDepRule());
+        return m;
+    },
+
+    async saveDepRule() {
+        const m = this.depModalEl();
+        const btn = m.querySelector('#dep-r-save');
+        btn.disabled = true;
+        try {
+            const d = await vmApi('/api/departures/rule', {
+                method: 'POST',
+                body: JSON.stringify({
+                    enabled: m.querySelector('#dep-r-on').checked,
+                    deadline: m.querySelector('#dep-r-dl').value,
+                    since: m.querySelector('#dep-r-since').value,
+                    plates: m.querySelector('#dep-r-pl').value
+                })
+            });
+            this.depCache = {};
+            m.hidden = true;
+            this.renderFleetBoard();
+            if (typeof showToast === 'function') showToast(`Qoida saqlandi: ${d.rule.deadline} · ${d.rule.plates.length} ta mashina`, 'success');
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Saqlanmadi: ' + (e.message || e), 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    },
+
+    async openDepModal(plate) {
+        const dateVal = STATE.currentDate;
+        const dep = this.depOf(dateVal, plate);
+        if (!dep) return;
+        const hit = this.depCache[dateVal].data || {};
+        const m = this.depModalEl();
+        const drv = typeof resolveDriver === 'function' ? resolveDriver(dep.plate, null) : null;
+        this._depEditing = { date: dateVal, plate: dep.plate };
+        m.querySelector('#dep-m-title').textContent = dep.plate;
+        m.querySelector('#dep-m-sub').textContent = `${drv && drv.fullName && drv.fullName !== dep.plate ? drv.fullName + ' · ' : ''}${depDateUz(dateVal)}`;
+        m.querySelector('#dep-m-body').innerHTML = depDetailHtml(dep);
+        const form = m.querySelector('#dep-m-form');
+        form.hidden = !hit.canEdit;
+        m.querySelector('#dep-m-note').value = dep.note || '';
+        m.querySelector('#dep-m-exc').checked = !!(dep.excused && !dep.autoExcuse);
+        m.querySelector('#dep-m-all').checked = !!dep.noteAll;
+        const rule = hit.rule || {};
+        m.querySelector('#dep-m-rule').hidden = !hit.canEdit;
+        m.querySelector('#dep-r-on').checked = rule.enabled !== false;
+        m.querySelector('#dep-r-dl').value = rule.deadline || '09:30';
+        m.querySelector('#dep-r-since').value = rule.since || '';
+        m.querySelector('#dep-r-pl').value = (rule.plates || []).join(', ');
+        const monthEl = m.querySelector('#dep-m-month');
+        monthEl.innerHTML = '<div class="dep-m-muted">Oylik tarix yuklanmoqda…</div>';
+        m.hidden = false;
+        try {
+            const d = await vmApi(`/api/departures/month?month=${dateVal.slice(0, 7)}&car=${encodeURIComponent(dep.plate)}`);
+            const p = Object.values(d.plates || {})[0];
+            monthEl.innerHTML = p ? depMonthHtml(p, dateVal) : '';
+        } catch (e) {
+            monthEl.innerHTML = '';
+        }
+    },
+
+    async saveDepNote() {
+        const ed = this._depEditing;
+        if (!ed) return;
+        const m = this.depModalEl();
+        const btn = m.querySelector('#dep-m-save');
+        const all = m.querySelector('#dep-m-all').checked;
+        btn.disabled = true;
+        try {
+            const d = await vmApi('/api/departures/note', {
+                method: 'POST',
+                body: JSON.stringify({
+                    date: ed.date,
+                    car: all ? '*' : ed.plate,
+                    note: m.querySelector('#dep-m-note').value,
+                    excused: m.querySelector('#dep-m-exc').checked
+                })
+            });
+            if (d && d.day) this.depCache[ed.date] = { at: Date.now(), data: Object.assign({}, this.depCache[ed.date] && this.depCache[ed.date].data, d.day) };
+            m.hidden = true;
+            this.renderFleetBoard();
+            if (typeof showToast === 'function') showToast('Izoh saqlandi', 'success');
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Saqlanmadi: ' + (e.message || e), 'error');
+        } finally {
+            btn.disabled = false;
+        }
     },
 
     async saveReport(dateVal, opts) {
@@ -614,9 +881,10 @@ const VMOffice = {
         const probs = rows.reduce((s, r) => s + (r.problem || 0), 0);
         if (meta) {
             meta.textContent = loaded
-                ? `${loaded} mashina · o'rtacha ${avgN.toFixed(1)} ball · ${probs} muammo`
+                ? `${loaded} mashina · o'rtacha ${avgN.toFixed(1)} ball · ${probs} muammo${this.depSummaryTxt(dateVal)}`
                 : 'Bu kunda ma\'lumot yo\'q';
         }
+        this.ensureDepartures(dateVal);
         if (!rows.length) {
             el.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:22px;color:#8aa0b8;">Haydovchilar ro'yxati topilmadi.</td></tr>`;
             return;
@@ -632,7 +900,7 @@ const VMOffice = {
             const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(r.drv.car, 'fb-photo') : '';
             return `<tr class="rank-row${active}${empty ? ' is-empty' : ''}" data-car="${vmEsc(r.drv.car)}">
                 <td class="font-mono text-muted">${i + 1}</td>
-                <td><strong>${vmEsc(r.drv.shortName)}</strong></td>
+                <td><strong>${vmEsc(r.drv.shortName)}</strong>${this.depBadge(this.depOf(dateVal, r.drv.car))}</td>
                 <td class="fb-car-cell"><div class="fb-car">
                     <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
                     <span class="fb-car-txt"><b class="font-mono">${vmEsc(r.drv.car)}</b><em>${vmEsc(minfo ? minfo.t : '—')}</em></span>
