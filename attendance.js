@@ -4278,15 +4278,22 @@
       const p = g.person;
       doc.setFillColor(239, 246, 255);
       doc.setDrawColor(191, 219, 254);
-      doc.roundedRect(margin, 62, pageW - margin * 2, 54, 6, 6, 'FD');
+      const cardW = pageW - margin * 2;
+      doc.roundedRect(margin, 62, cardW, 72, 6, 6, 'FD');
       doc.setTextColor(11, 31, 58);
       attPdfF(doc, 'bold');
-      doc.setFontSize(14);
-      doc.text((gi + 1) + '. ' + (p.name || p.username || 'Xodim'), margin + 12, 82);
+      const nameTxt = (gi + 1) + '. ' + (p.name || p.username || 'Xodim');
+      let nameSz = 14;
+      doc.setFontSize(nameSz);
+      while (nameSz > 9 && doc.getTextWidth(nameTxt) > cardW - 24) {
+        nameSz -= 0.5;
+        doc.setFontSize(nameSz);
+      }
+      doc.text(nameTxt, margin + 12, 82);
       attPdfF(doc, 'normal');
       doc.setFontSize(9);
       doc.setTextColor(71, 85, 105);
-      doc.text([p.lavozim || roleLabel(p.role), p.car].filter(Boolean).join('   ·   '), margin + 12, 98);
+      doc.text([p.lavozim || roleLabel(p.role), p.car].filter(Boolean).join('   ·   '), margin + 12, 97);
       const chips = [
         ['Ish kuni', g.sum.work, '166534', 'DCFCE7'],
         ['Safar', g.sum.trip, '1E40AF', 'DBEAFE'],
@@ -4295,22 +4302,26 @@
         ['Ishlagan', fmtHoursTotal(g.sum.sec), '1E3A5F', 'FFFFFF']
       ];
       doc.setFontSize(8.5);
-      let x = pageW - margin - 12;
-      chips.slice().reverse().forEach(([label, val, txt, bg]) => {
+      let x = margin + 12;
+      chips.forEach(([label, val, txt, bg]) => {
         const t = label + ': ' + val;
         attPdfF(doc, 'bold');
         const w = doc.getTextWidth(t) + 14;
-        x -= w;
         const [br, bgc, bb] = hexRgb(bg);
         doc.setFillColor(br, bgc, bb);
-        doc.roundedRect(x, 80, w, 17, 8, 8, 'F');
+        if (bg === 'FFFFFF') {
+          doc.setDrawColor(191, 219, 254);
+          doc.roundedRect(x, 106, w, 17, 8, 8, 'FD');
+        } else {
+          doc.roundedRect(x, 106, w, 17, 8, 8, 'F');
+        }
         const [tr, tg, tb] = hexRgb(txt);
         doc.setTextColor(tr, tg, tb);
-        doc.text(t, x + 7, 91.5);
-        x -= 6;
+        doc.text(t, x + 7, 117.5);
+        x += w + 6;
       });
       doc.autoTable(Object.assign({}, tableBase, {
-        startY: 128,
+        startY: 146,
         head: [GROUP_COLS],
         body: g.days.map((dd) => dd.cells),
         columnStyles: {
