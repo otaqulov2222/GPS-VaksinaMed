@@ -12,7 +12,7 @@ DEFAULT_RULE = {
     "enabled": True,
     "deadline": "09:30",
     "since": "2026-10-01",
-    "plates": ["255", "043", "302", "205", "309", "269", "592", "382", "949"],
+    "plates": ["255", "043", "302", "205", "309", "269", "592", "382", "949", "931"],
 }
 
 # Hudud ichidagi qisqa harakat (ofis ↔ sklad, darvoza oldida to'xtash) bitta blok hisoblanadi.

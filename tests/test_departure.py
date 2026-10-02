@@ -45,6 +45,7 @@ class RuleTest(unittest.TestCase):
         self.assertEqual(r["plates"], ["255", "043", "949"])
         self.assertEqual(clean_rule({"deadline": "10:15"})["deadline"], "10:15")
         self.assertTrue(departure.is_tracked("01 382 NMA", RULE))
+        self.assertTrue(departure.is_tracked("01 931 PJA", RULE))
         self.assertFalse(departure.is_tracked("01 331 MLA", RULE))
 
 
