@@ -106,7 +106,7 @@ BLOCKED_NAMES = {
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ATT_EXEMPT_MSG = "Siz davomat ro'yxatiga kiritilmagansiz — Keldim/Ketdim belgilash shart emas"
 ATT_EXEMPT_STAFF_MSG = "Bu xodim davomatdan ozod qilingan (Admin panel → Foydalanuvchilar)"
-MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
+MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 PLACE_STOP_LIMIT = 4000
 
 # Toza URL: /fuel → fuel.html (brauzerda .html ko‘rinmasin)
