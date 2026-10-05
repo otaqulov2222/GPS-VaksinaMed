@@ -12,8 +12,11 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware.gzip import GZipMiddleware
 
 app = FastAPI()
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 
 
 def _client_ip(request: Request) -> str:
@@ -145,10 +148,27 @@ def _vercel_gps_sync_backup() -> dict:
     """
     t0 = time.time()
     try:
-        import gps_sync
         import vm_server
 
         vm_server.init_app()
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "elapsed": round(time.time() - t0, 2)}
+    # Fon worker yoki qo'lda sync ishlayotgan bo'lsa — parallel yozib bir-birini o'chirmasin
+    if not vm_server._gps_sync_lock.acquire(blocking=False):
+        return {"ok": True, "skipped": True, "busy": True, "elapsed": 0}
+    try:
+        return _vercel_gps_sync_locked(vm_server, t0)
+    finally:
+        try:
+            vm_server._gps_sync_lock.release()
+        except RuntimeError:
+            pass
+
+
+def _vercel_gps_sync_locked(vm_server, t0) -> dict:
+    try:
+        import gps_sync
+
         office = vm_server.OFFICE
         directory = vm_server.DIRECTORY
         if office is None:
@@ -371,8 +391,8 @@ async def handle(request: Request, full_path: str = ""):
             )
         if request.method == "HEAD":
             return Response(status_code=202, media_type="application/json")
-        dispatch = _github_dispatch_gps_sync()
-        sync = _vercel_gps_sync_backup()
+        dispatch = await run_in_threadpool(_github_dispatch_gps_sync)
+        sync = await run_in_threadpool(_vercel_gps_sync_backup)
         payload = {
             "ok": bool(sync.get("ok") or dispatch.get("dispatched")),
             "accepted": True,
@@ -446,7 +466,8 @@ async def handle(request: Request, full_path: str = ""):
     dispatch_path = path
     if request.url.query:
         dispatch_path += "?" + str(request.url.query)
-    status, out_headers, out_body = dispatch_http(
+    status, out_headers, out_body = await run_in_threadpool(
+        dispatch_http,
         request.method,
         dispatch_path,
         dict(request.headers),

@@ -3194,8 +3194,8 @@ class OfficeStore:
             }
         return last
 
-    def overlay_driver_name(self, drv, plate):
-        vehicles = (self.fuel_meta() or {}).get("vehicles") or {}
+    def overlay_driver_name(self, drv, plate, meta=None):
+        vehicles = ((meta if meta is not None else self.fuel_meta()) or {}).get("vehicles") or {}
         if not isinstance(vehicles, dict):
             return drv if isinstance(drv, dict) else {}
         rec = None
@@ -4912,11 +4912,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             reviews = OFFICE.reviews(date)
             if isinstance(report, dict) and isinstance(report.get("cars"), dict):
                 cars = report.get("cars") or {}
+                fuel_meta = OFFICE.fuel_meta()
                 for plate, rec in list(cars.items()):
                     if not isinstance(rec, dict):
                         continue
                     drv = rec.get("driver") if isinstance(rec.get("driver"), dict) else {}
-                    rec["driver"] = OFFICE.overlay_driver_name(drv, rec.get("car") or plate)
+                    rec["driver"] = OFFICE.overlay_driver_name(drv, rec.get("car") or plate, fuel_meta)
             self.send_json({"ok": True, "report": report, "reviews": reviews})
             return
 
@@ -6349,6 +6350,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
 
 
 GPS_SYNC_INTERVAL = int(os.environ.get("GPS_SYNC_INTERVAL", "300"))
+GEOZONE_BOOTSTRAP_DELAY_SEC = int(os.environ.get("GEOZONE_BOOTSTRAP_DELAY_SEC", "90"))
 _gps_worker_started = False
 _gps_sync_lock = threading.Lock()
 _gps_sync_lock_until = 0.0
@@ -6454,13 +6456,7 @@ def start_gps_worker(office, base_dir):
         import gps_sync
 
         d = gps_sync.today_tashkent()
-        # Har 5 daqiqada avvalo km — Boomerangdan orqada qolmasin
-        try:
-            gps_sync.refresh_day_trip_km(
-                office, base_dir, d, time_budget_sec=90, saved_by="auto-km"
-            )
-        except Exception as e:
-            print("[gps-sync auto-km]", e)
+        # Km navbat ichida (_gps_queue_runner) _gps_sync_lock ostida yangilanadi
         enqueue_gps_sync(office, base_dir, d, "auto")
         yday = gps_sync.yesterday_tashkent()
         rec = office.get_report(yday)
@@ -6541,8 +6537,11 @@ def init_app(base_dir=None):
             start_gps_worker(OFFICE, base_dir)
 
             def bootstrap_geozones():
+                # Restartdan keyingi birinchi sahifa yuklanishi bilan CPU talashmasin
+                time.sleep(GEOZONE_BOOTSTRAP_DELAY_SEC)
                 try:
-                    OFFICE.learn_and_reprocess(base_dir)
+                    with _gps_sync_lock:
+                        OFFICE.learn_and_reprocess(base_dir)
                 except Exception as e:
                     print("[geozone-bootstrap]", e)
 
