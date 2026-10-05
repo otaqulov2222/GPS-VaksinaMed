@@ -56,6 +56,16 @@
 #phm-map { height: 480px; border-radius: 10px; border: 1px solid var(--line, #c5d4e6); background: #dce6f0; overflow: hidden; z-index: 0; }
 @media (max-width: 760px) { #phm-map { height: 360px; } }
 #phm-map.phm-adding, #phm-map.phm-adding .leaflet-interactive { cursor: crosshair; }
+#phm-map { transition: box-shadow .15s; }
+#phm-map.phm-active { box-shadow: 0 0 0 2px #22c55e; }
+.phm-lock {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 500;
+  background: rgba(11, 31, 58, .72); color: #fff; padding: 6px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; pointer-events: none; white-space: nowrap;
+  transition: opacity .2s, background .2s, transform .2s;
+}
+.phm-lock.flash { background: #b7791f; transform: translateX(-50%) scale(1.08); }
+#phm-map.phm-active ~ .phm-lock { opacity: 0; }
 .phm-hint {
   position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 500;
   background: #0b1f3a; color: #fff; padding: 8px 14px; border-radius: 999px;

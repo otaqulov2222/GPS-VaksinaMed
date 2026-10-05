@@ -35,6 +35,8 @@
     let refreshTimer = 0;
     let queryTimer = 0;
     let geoSeq = 0;
+    let mapActive = false;
+    let lockTimer = 0;
 
     const $ = (id) => document.getElementById(id);
     const canEdit = () => !(window.VM_USER && window.VM_USER.role === 'viewer');
@@ -63,7 +65,14 @@
         if (map) return true;
         const el = $('phm-map');
         if (!el || typeof L === 'undefined') return false;
-        map = L.map(el, { zoomControl: true, attributionControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+        // Sahifa aylantirilganda xarita "ushlab" qolmasin — bir marta bosilgach faollashadi
+        map = L.map(el, {
+            zoomControl: true,
+            attributionControl: false,
+            scrollWheelZoom: false,
+            dragging: !L.Browser.mobile
+        }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+        bindActivation(el);
         L.tileLayer(TILE_URL, { subdomains: 'abc', maxZoom: 20, maxNativeZoom: 18 }).addTo(map);
         zoneLayer = L.layerGroup().addTo(map);
         draftLayer = L.layerGroup().addTo(map);
@@ -79,6 +88,41 @@
         }
         bindUi();
         return true;
+    }
+
+    function setActive(on) {
+        if (!map || mapActive === on) return;
+        mapActive = on;
+        if (on) {
+            map.scrollWheelZoom.enable();
+            map.dragging.enable();
+        } else {
+            map.scrollWheelZoom.disable();
+            if (L.Browser.mobile) map.dragging.disable();
+        }
+        map.getContainer().classList.toggle('phm-active', on);
+    }
+
+    function flashLock() {
+        const lock = $('phm-lock');
+        if (!lock || mapActive) return;
+        lock.classList.add('flash');
+        clearTimeout(lockTimer);
+        lockTimer = setTimeout(() => lock.classList.remove('flash'), 1400);
+    }
+
+    function bindActivation(el) {
+        const lock = $('phm-lock');
+        if (lock && L.Browser.mobile) lock.textContent = 'Xaritani surish uchun avval bir marta bosing';
+        el.addEventListener(L.Browser.mobile ? 'click' : 'mousedown', () => setActive(true));
+        el.addEventListener('wheel', flashLock, { passive: true });
+        el.addEventListener('touchmove', flashLock, { passive: true });
+        if (!L.Browser.mobile) el.addEventListener('mouseleave', () => setActive(false));
+        const outside = (e) => {
+            if (!el.contains(e.target)) setActive(false);
+        };
+        document.addEventListener('mousedown', outside);
+        document.addEventListener('touchstart', outside, { passive: true });
     }
 
     function bindUi() {
