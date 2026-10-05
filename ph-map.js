@@ -264,13 +264,13 @@
             if (members.length < 2) return;
             const main = members.find((m) => m.src === 'gps')
                 || members.slice().sort((a, b) => b.radiusM - a.radiusM)[0];
-            members.sort((a, b) => (a === main ? -1 : b === main ? 1 : String(a.name).localeCompare(String(b.name))));
-            const def = new Map(members.map((m, i) => [m, i]));
-            const slot = (m) => {
-                const s = slotOf(m);
-                return s == null ? 100 + def.get(m) : s;
-            };
-            members.sort((a, b) => slot(a) - slot(b));
+            // Qo'lda tartib (◀ ▶) hammasida bo'lsa — o'sha; aks holda haqiqiy joyi bo'yicha g'arbdan sharqqa
+            const slots = members.map(slotOf);
+            if (slots.every((s) => s != null)) {
+                members.sort((a, b) => slotOf(a) - slotOf(b));
+            } else {
+                members.sort((a, b) => (a.lng - b.lng) || String(a.name).localeCompare(String(b.name)));
+            }
             const g = { id: 'grp:' + main.id, main, members, lat: main.lat, lng: main.lng };
             groupsById.set(g.id, g);
             members.forEach((m) => groupOf.set(m.id, g));
@@ -418,6 +418,11 @@
             ));
             const onClick = (e) => {
                 L.DomEvent.stopPropagation(e);
+                // «Yangi filial» rejimida aylana ustiga ham joy qo'yish mumkin (bir binoda bir nechta filial)
+                if (addMode) {
+                    startDraft(e.latlng.lat, e.latlng.lng);
+                    return;
+                }
                 openItem(it);
             };
             circle.on('click', onClick);
@@ -447,18 +452,15 @@
             const dim = !hit;
             const open = (focus) => (e) => {
                 L.DomEvent.stopPropagation(e);
+                if (addMode) {
+                    startDraft(e.latlng.lat, e.latlng.lng);
+                    return;
+                }
                 openGroup(g, focus);
             };
-            // Umumiy hudud — GPS shu radiusda to'xtashni sanaydi
-            const outer = L.circle([g.lat, g.lng], Object.assign(
-                { radius: g.main.radiusM, bubblingMouseEvents: false },
-                styleOf(g.main, st, false, dim),
-                { dashArray: null, weight: 2.5, fillOpacity: dim ? 0.05 : 0.12 }
-            ));
-            outer.on('click', open(null));
-            zoneLayer.addLayer(outer);
             const showInnerLabels = zoom >= GROUP_LABELS_ZOOM && hit && view.contains([g.lat, g.lng]);
-            groupLayout(g).forEach((p, i) => {
+            const layout = groupLayout(g);
+            layout.forEach((p, i) => {
                 const msel = PH_SEL.has(p.m.name);
                 const mdim = dim || (!!q && !matchesQuery(p.m, q));
                 const c = L.circle([p.lat, p.lng], Object.assign(
@@ -479,7 +481,7 @@
                 if (showInnerLabels) labels++;
                 inner.push(c);
             });
-            // Son belgisi — umumiy aylana tepasida; uzoq zoomda nomlar shu yerda
+            // Son belgisi — filiallar tepasida; uzoq zoomda nomlar shu yerda
             const n = g.members.length + groupLinked(g).length;
             const icon = L.divIcon({
                 className: 'phm-grp-ic',
@@ -487,7 +489,8 @@
                 iconSize: [24, 24],
                 iconAnchor: [12, 12]
             });
-            const mk = L.marker([g.lat + g.main.radiusM / 111320, g.lng], { icon, keyboard: false, bubblingMouseEvents: false });
+            const topLat = Math.max(...layout.map((p) => p.lat + p.r / 111320));
+            const mk = L.marker([topLat + 4 / 111320, g.lng], { icon, keyboard: false, bubblingMouseEvents: false });
             mk.on('click', open(null));
             if (!showInnerLabels) {
                 const strong = st === 'mine' || sel || (q && hit);
@@ -836,8 +839,8 @@
         const want = phCarKey(targetCar());
         const linked = groupLinked(g);
         let h = `<div class="phm-pop phm-grp-pop" data-grp="${esc(g.id)}"><b>Bitta hududda ${g.members.length + linked.length} ta filial</b>`
-            + '<div class="m">Mashina katta aylana ichida toʻxtasa — roʻyxatdagi oʻz filiallarining <b class="i">barchasiga</b> tashrif hisoblanadi. '
-            + 'Ichidagi kichik aylanalar — filiallar xaritada chapdan oʻngga shu tartibda.</div>'
+            + '<div class="m">Mashina shu hududda toʻxtasa — roʻyxatdagi oʻz filiallarining <b class="i">barchasiga</b> tashrif hisoblanadi. '
+            + 'Xaritada chapdan oʻngga shu tartibda.</div>'
             + '<div class="m" data-addr></div><div class="phm-grp-list">';
         g.members.forEach((m, i) => {
             const cars = m.owners.length
@@ -875,7 +878,8 @@
                 + '</select>'
                 + `<label>yoki yangi filial nomi${targetCar() ? (' → ' + esc(shortCar(targetCar()))) : ''}</label>`
                 + '<input data-f="grp-name" placeholder="Masalan: Farm Lyuks">'
-                + '<div class="acts"><button class="btn btn-sm btn-gold" type="button" data-act="grp-save">Saqlash</button></div>'
+                + '<div class="acts"><button class="btn btn-sm btn-gold" type="button" data-act="grp-save">Saqlash</button>'
+                + '<button class="btn btn-sm" type="button" data-act="grp-pick">Xaritada joyini belgilash</button></div>'
                 + '<div class="m">Filial shu hudud koordinatasi va radiusini oladi va qolganlari bilan «yonma-yon» bogʻlanadi.</div>'
                 + '</div>';
         }
@@ -915,6 +919,13 @@
             const f = root.querySelector('.phm-grp-form');
             if (f) f.hidden = !f.hidden;
             if (map._popup) map._popup.update();
+            return;
+        }
+        if (act === 'grp-pick') {
+            map.closePopup();
+            map.flyTo([g.lat, g.lng], Math.max(map.getZoom(), 18), { duration: 0.5 });
+            startAdd();
+            setHint('Filial joyiga bosing (mavjud aylanalar orasiga yoki ustiga ham) — Esc bekor');
             return;
         }
         if (act !== 'grp-put' && act !== 'grp-save') return;
