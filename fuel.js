@@ -67,6 +67,10 @@ function n(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   let s = String(v ?? '').trim().replace(/\s/g, '').replace(/\u00a0/g, '');
   if (!s) return 0;
+  if (/^[-−–]/.test(s)) {
+    const abs = n(s.replace(/^[-−–]+/, ''));
+    return abs ? -abs : 0;
+  }
   // Yozish jarayoni: "7," / "7." — hali tugallanmagan o'nlik
   if (/^\d+[.,]$/.test(s)) s = s.slice(0, -1);
   // ",5" / ".5"
@@ -144,6 +148,11 @@ function rememberDispFrac(bag, key, raw) {
   if (f == null) return;
   if (!bag._dispFrac || typeof bag._dispFrac !== 'object') bag._dispFrac = {};
   bag._dispFrac[key] = f;
+}
+/** Dastur yozgan qiymat — eski qo'lda yozilgan aniqlik uni yaxlitlab yubormasin (16,732 → «17») */
+function forgetDispFrac(bag, keys) {
+  if (!bag || !bag._dispFrac || typeof bag._dispFrac !== 'object') return;
+  keys.forEach(k => { delete bag._dispFrac[k]; });
 }
 /** Faqat foydalanuvchi yozgan aniqlik — default bilan 7,6 ni 7,60 qilmaymiz */
 function dispFracOf(bag, key) {
@@ -749,8 +758,8 @@ function syncAllCarsDayPrices() {
 function calcCar(car) {
   const dim = daysInMonth(STATE.month);
   let odoPrev = n(car.odoStart);
-  let gasR = clampBal(car.gasStart);
-  let benR = clampBal(car.benzinStart);
+  let gasR = n(car.gasStart);
+  let benR = n(car.benzinStart);
   const rows = [];
   for (let d = 1; d <= dim; d++) {
     const src = dayRow(car, d);
@@ -772,8 +781,8 @@ function calcCar(car) {
       gasUsed = split.gasKm * gasNorm / 100;
       benUsed = split.liqKm * benNorm / 100;
     }
-    gasR = clampBal(cleanFloat(gasR + src.gasIn - gasUsed));
-    benR = clampBal(cleanFloat(benR + src.benzinIn - benUsed));
+    gasR = cleanFloat(gasR + src.gasIn - gasUsed);
+    benR = cleanFloat(benR + src.benzinIn - benUsed);
     rows.push({
       d, km, gasKm: split.gasKm, liqKm: split.liqKm,
       odo: src.odo, mode: src.mode, station: src.station,
@@ -2127,12 +2136,6 @@ function remainClass(v) {
   return '';
 }
 
-/** Qoldiq hech qachon minus bo‘lmasin (bakda manfiy yoqilg‘i bo‘lmaydi). */
-function clampBal(v) {
-  const x = n(v);
-  return x < 0 ? 0 : x;
-}
-
 function dailyJamiHtml(rows) {
   const t = totals(rows);
   const last = rows[rows.length - 1] || {};
@@ -3289,42 +3292,74 @@ function prevMonthEndBalance(prevRec, prevYm) {
   STATE.month = hold;
   const last = rows[rows.length - 1];
   let lastOdo = n(prevRec.odoStart);
-  rows.forEach(r => { if (r.odo > 0) lastOdo = r.odo; });
+  rows.forEach(r => {
+    if (r.odo > 0) lastOdo = r.odo;
+    else if (r.km > 0 && lastOdo > 0) lastOdo = cleanFloat(lastOdo + r.km);
+  });
   return {
-    gas: clampBal(last ? last.gasR : n(prevRec.gasStart)),
-    benzin: clampBal(last ? last.benR : n(prevRec.benzinStart)),
+    gas: cleanFloat(last ? last.gasR : n(prevRec.gasStart)),
+    benzin: cleanFloat(last ? last.benR : n(prevRec.benzinStart)),
     odo: lastOdo > 0 ? lastOdo : 0
   };
 }
 
-function needsStartCarry(car, field) {
-  if (!car) return false;
+function balNear(a, b) {
+  return Math.abs(n(a) - n(b)) < 0.00005;
+}
+
+function prevYmOf(ym) {
+  const [y, m] = String(ym || '').split('-').map(Number);
+  if (!y || !m) return '';
+  const prev = new Date(y, m - 2, 1);
+  return prev.getFullYear() + '-' + String(prev.getMonth() + 1).padStart(2, '0');
+}
+
+/** balSrc: {from, gas, benzin, odo} — son = o'tgan oydan avto olingan qiymat, null = qo'lda/Exceldan (bosilmaydi) */
+function lockStartFields(car, fields) {
+  const from = prevYmOf(STATE.month);
+  if (!car || !from) return;
+  const src = car.balSrc && car.balSrc.from === from ? car.balSrc : { from };
+  fields.filter(Boolean).forEach(k => { src[k] = null; });
+  car.balSrc = src;
+}
+
+/** Oy boshi qiymati avto-o'tkazishga ochiqmi: bo'sh (0) yoki avvalgi avto-o'tkazishdan beri o'zgarmagan */
+function startIsCarryable(car, field, srcField, prevYm) {
+  const src = car.balSrc && car.balSrc.from === prevYm ? car.balSrc : null;
+  if (src && src[srcField] === null) return false;
+  if (src && src[srcField] != null) return balNear(car[field], src[srcField]);
   if (car._balManual) return false;
-  return !(n(car[field]) > 0.0001);
+  return balNear(car[field], 0);
 }
 
 /**
- * Oldingi oy oxiridagi qoldiq/spidometr → yangi oy boshi.
- * Nol qoldiqni oldingi oydan to‘ldiradi (server yozuvi bo‘lsa ham).
- * Manfiy qoldiq hech qachon o‘tkazilmaydi.
+ * Oldingi oy oxiridagi qoldiq/spidometr → yangi oy boshi (minus qoldiq ham — Excel kabi).
+ * Qo'lda yoki Exceldan yozilgan oy boshi bosilmaydi; avto-o'tkazilgani esa
+ * o'tgan oy keyin o'zgarsa (qayta import) yangilanadi.
  */
 function applyPrevBalanceSilent(plate, prevRec, prevYm) {
   if (!prevRec) return false;
   const car = getCar(plate);
   const bal = prevMonthEndBalance(prevRec, prevYm);
+  const src = car.balSrc && car.balSrc.from === prevYm ? car.balSrc : null;
+  const next = Object.assign({}, src || {}, { from: prevYm });
   let changed = false;
-  if (needsStartCarry(car, 'gasStart') && bal.gas > 0.0001) {
-    car.gasStart = bal.gas;
-    car._balFromPrev = prevYm;
-    changed = true;
+  if (startIsCarryable(car, 'gasStart', 'gas', prevYm)) {
+    if (!balNear(car.gasStart, bal.gas)) { car.gasStart = bal.gas; forgetDispFrac(car, ['gasStart']); changed = true; }
+    next.gas = bal.gas;
   }
-  if (needsStartCarry(car, 'benzinStart') && bal.benzin > 0.0001) {
-    car.benzinStart = bal.benzin;
-    car._balFromPrev = prevYm;
-    changed = true;
+  if (startIsCarryable(car, 'benzinStart', 'benzin', prevYm)) {
+    if (!balNear(car.benzinStart, bal.benzin)) { car.benzinStart = bal.benzin; forgetDispFrac(car, ['benzinStart']); changed = true; }
+    next.benzin = bal.benzin;
   }
-  if (!(n(car.odoStart) > 0) && bal.odo > 0) {
-    car.odoStart = bal.odo;
+  const odoFree = src && src.odo === null ? false
+    : (src && src.odo != null ? balNear(car.odoStart, src.odo) : !(n(car.odoStart) > 0));
+  if (odoFree && bal.odo > 0) {
+    if (!balNear(car.odoStart, bal.odo)) { car.odoStart = bal.odo; forgetDispFrac(car, ['odoStart']); changed = true; }
+    next.odo = bal.odo;
+  }
+  if (JSON.stringify(next) !== JSON.stringify(car.balSrc || null) && (src || next.gas != null || next.benzin != null || next.odo != null)) {
+    car.balSrc = next;
     changed = true;
   }
   return changed;
@@ -3345,10 +3380,10 @@ async function autoChainMonth() {
     if (applyPrevBalanceSilent(f.car, recForPlate(prevCars, f.car), prevYm)) balN += 1;
     gpsN += fillGpsPlate(f.car, true);
     const car = getCar(f.car);
-    if (n(car.gasStart) < 0) { car.gasStart = 0; balN += 1; }
-    if (n(car.benzinStart) < 0) { car.benzinStart = 0; balN += 1; }
     syncOdoChainFromKm(car);
   });
+  STATE.prevMonth = { ym: prevYm, cars: prevCars };
+  renderCarryWarn();
   const st = document.getElementById('save-st');
   const gpsDays = Object.keys(STATE.gpsKm || {}).filter(dt => dt.startsWith(STATE.month + '-')).length;
   if (gpsN || balN) {
@@ -3358,6 +3393,69 @@ async function autoChainMonth() {
   } else if (st && !gpsDays) {
     st.textContent = 'GPS hisobot yo\'q — Dashboard da kun ochilsa km o\'zi tushadi';
   }
+}
+
+/** Oy boshi qoldig'i o'tgan oy oxiriga teng bo'lmagan mashinalar */
+function carryDiffs() {
+  const pm = STATE.prevMonth;
+  if (!pm || !pm.ym || pm.ym !== prevYmOf(STATE.month)) return [];
+  const out = [];
+  fleet().forEach(f => {
+    const rec = recForPlate(pm.cars || {}, f.car);
+    if (!rec) return;
+    const bal = prevMonthEndBalance(rec, pm.ym);
+    const car = getCar(f.car);
+    const gasBad = Math.abs(n(car.gasStart) - bal.gas) > 0.0005;
+    const benBad = Math.abs(n(car.benzinStart) - bal.benzin) > 0.0005;
+    if (gasBad || benBad) out.push({ plate: f.car, bal, gas: n(car.gasStart), benzin: n(car.benzinStart), gasBad, benBad });
+  });
+  return out;
+}
+
+function renderCarryWarn() {
+  const box = document.getElementById('carry-warn');
+  if (!box) return;
+  const diffs = carryDiffs();
+  if (!diffs.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const pm = monthLow(STATE.prevMonth.ym) + ' ' + STATE.prevMonth.ym.slice(0, 4);
+  const items = diffs.map(x => {
+    const bits = [];
+    if (x.gasBad) bits.push('gaz ' + fmtNum(x.gas) + ' → ' + fmtNum(x.bal.gas));
+    if (x.benBad) bits.push('benzin ' + fmtNum(x.benzin) + ' → ' + fmtNum(x.bal.benzin));
+    return '<li><b>' + esc(plateDisp(x.plate)) + '</b>: ' + esc(bits.join(', ')) + '</li>';
+  }).join('');
+  box.innerHTML =
+    '⚠ <b>' + diffs.length + ' mashinada oy boshi qoldig\'i ' + esc(pm) + ' oxiriga teng emas</b> ' +
+    '(hozirgi → o\'tgan oy oxiri). Exceldan yoki qo\'lda yozilgan bo\'lsa — to\'g\'ri bo\'lishi mumkin, tekshiring.' +
+    '<details style="margin-top:4px"><summary style="cursor:pointer">Ro\'yxat</summary><ul style="margin:4px 0 0 18px;padding:0">' + items + '</ul></details>' +
+    '<button class="btn btn-ink btn-sm" type="button" id="btn-carry-all" style="margin-top:6px">Hammasini o\'tgan oy oxiridan olish</button>';
+  box.style.display = '';
+  document.getElementById('btn-carry-all').onclick = () => applyCarryAll().catch(err => toast(err.message || 'Saqlanmadi'));
+}
+
+async function applyCarryAll() {
+  const diffs = carryDiffs();
+  if (!diffs.length) { renderCarryWarn(); return; }
+  const ok = await showConfirmModal(
+    diffs.length + ' mashinaning oy boshi gaz/benzin qoldig\'i o\'tgan oy oxiridagi qiymatga almashtiriladi:\n\n' +
+    diffs.map(x => plateDisp(x.plate) + ': gaz ' + fmtNum(x.gas) + ' → ' + fmtNum(x.bal.gas) + ', benzin ' + fmtNum(x.benzin) + ' → ' + fmtNum(x.bal.benzin)).join('\n')
+  );
+  if (!ok) return;
+  const from = STATE.prevMonth.ym;
+  diffs.forEach(x => {
+    const car = getCar(x.plate);
+    car.gasStart = x.bal.gas;
+    car.benzinStart = x.bal.benzin;
+    forgetDispFrac(car, ['gasStart', 'benzinStart']);
+    car._balManual = false;
+    car.balSrc = Object.assign({}, car.balSrc && car.balSrc.from === from ? car.balSrc : {}, { from, gas: x.bal.gas, benzin: x.bal.benzin });
+  });
+  markDirty();
+  writeParams();
+  await renderAll();
+  await saveMonth();
+  renderCarryWarn();
+  toast(diffs.length + ' mashinada oy boshi qoldig\'i yangilandi');
 }
 
 function fillFromOdo() {
@@ -3403,8 +3501,9 @@ async function fillPrevBalance() {
   car.gasStart = bal.gas;
   car.benzinStart = bal.benzin;
   if (bal.odo > 0) car.odoStart = bal.odo;
+  forgetDispFrac(car, ['gasStart', 'benzinStart', 'odoStart', 'gasNorm', 'benzinNorm', 'gasPrice', 'benzinPrice']);
   car._balManual = false;
-  car._balFromPrev = ym;
+  car.balSrc = { from: ym, gas: bal.gas, benzin: bal.benzin, odo: bal.odo > 0 ? bal.odo : n(car.odoStart) };
   if (n(rec.gasNorm)) car.gasNorm = n(rec.gasNorm);
   if (n(rec.benzinNorm)) car.benzinNorm = n(rec.benzinNorm);
   if (n(rec.gasPrice)) car.gasPrice = n(rec.gasPrice);
@@ -4018,12 +4117,11 @@ function sanitizeFuelQty(qty, kind, km, norm, used) {
   return v;
 }
 
+/** Oy boshi qoldig'i — minus ham saqlanadi (Excel kabi); faqat ~1000x xato tuzatiladi */
 function sanitizeStartBal(v, kind) {
   let x = n(v);
-  if (x < 0) x = 0;
-  if (kind === 'gaz' && x > 2000) x = x / 1000;
-  if ((kind === 'benzin' || kind === 'dizel') && x > 5000) x = x / 1000;
-  if (x < 0) x = 0;
+  const lim = kind === 'gaz' ? 2000 : 5000;
+  if (Math.abs(x) > lim) x = x / 1000;
   return x;
 }
 
@@ -4931,6 +5029,8 @@ function applyExcelImport(parsed, plate, replaceDays) {
     car._replaceDays = true;
   }
   const p = parsed.params || {};
+  forgetDispFrac(car, ['gasNorm', 'benzinNorm', 'gasStart', 'benzinStart', 'gasPrice', 'benzinPrice', 'odoStart']
+    .filter(k => p[k] != null && p[k] !== ''));
   if (p.gasNorm != null && p.gasNorm !== '') car.gasNorm = n(p.gasNorm);
   if (p.benzinNorm != null && p.benzinNorm !== '') car.benzinNorm = n(p.benzinNorm);
   if (p.gasStart != null && p.gasStart !== '') car.gasStart = n(p.gasStart);
@@ -4938,6 +5038,11 @@ function applyExcelImport(parsed, plate, replaceDays) {
   if (p.gasPrice != null && p.gasPrice !== '') car.gasPrice = n(p.gasPrice);
   if (p.benzinPrice != null && p.benzinPrice !== '') car.benzinPrice = n(p.benzinPrice);
   if (p.odoStart != null && p.odoStart !== '') car.odoStart = n(p.odoStart);
+  lockStartFields(car, [
+    p.gasStart != null && p.gasStart !== '' && 'gas',
+    p.benzinStart != null && p.benzinStart !== '' && 'benzin',
+    p.odoStart != null && p.odoStart !== '' && 'odo'
+  ]);
   if (replaceDays || p.normChanges) {
     car.changes = (car.changes || []).filter(ch => !/^Excel/.test(String(ch.note || '')));
     (p.normChanges || []).forEach(ch => car.changes.push(Object.assign({}, ch)));
@@ -5207,6 +5312,7 @@ async function runExcelImportPack(pack) {
   await renderAll();
   await saveMeta();
   await saveMonth();
+  renderCarryWarn();
   let msg = '✓ Fayl yuklandi — ' + filled + ' mashina to\'ldirildi.';
   const monthly = pack.cars.some(c => c.parsed.meta && c.parsed.meta.sheetType === 'monthly');
   if (monthly) {
@@ -5880,14 +5986,14 @@ function bind() {
         syncDayPricesFromCar(car);
         if (!isParamInputFocused()) renderDailyTable();
       } else if (key === 'odoStart') {
+        lockStartFields(car, ['odo']);
         syncOdoChainFromKm(car, { force: true });
         if (!isParamInputFocused()) renderDailyTable();
       } else if (key === 'gasNorm' || key === 'benzinNorm' || key === 'mixPct' || key === 'mixLiqPct') {
         schedulePaintCalc(true);
       } else if (key === 'gasStart' || key === 'benzinStart') {
         car._balManual = true;
-        if (key === 'gasStart') car.gasStart = clampBal(car.gasStart);
-        if (key === 'benzinStart') car.benzinStart = clampBal(car.benzinStart);
+        lockStartFields(car, [key === 'gasStart' ? 'gas' : 'benzin']);
         schedulePaintCalc(true);
       } else {
         schedulePaintCalc();
@@ -5901,12 +6007,8 @@ function bind() {
       rememberDispFrac(getCar(STATE.car), key, raw);
       readParamsIntoCar();
       const car = getCar(STATE.car);
-      if (key === 'gasStart') {
-        car.gasStart = clampBal(car.gasStart);
-        el.value = vinDisp(car.gasStart, dispFracOf(car, key));
-      } else if (key === 'benzinStart') {
-        car.benzinStart = clampBal(car.benzinStart);
-        el.value = vinDisp(car.benzinStart, dispFracOf(car, key));
+      if (key === 'gasStart' || key === 'benzinStart') {
+        el.value = vinDisp(car[key], dispFracOf(car, key));
       } else if (key === 'mixPct') {
         car.mixPct = clampMixPct(car.mixPct);
         el.value = vinDisp(car.mixPct, dispFracOf(car, key));

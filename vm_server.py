@@ -2695,6 +2695,22 @@ class OfficeStore:
                 return key
         return plate
 
+    @staticmethod
+    def _clean_bal_src(src):
+        """Oy boshi manbasi: {from: 'YYYY-MM', gas|benzin|odo: son (avto) yoki None (qo'lda/Excel)}."""
+        if not isinstance(src, dict):
+            return None
+        frm = str(src.get("from") or "")
+        if not MONTH_RE.match(frm):
+            return None
+        out = {"from": frm}
+        for k in ("gas", "benzin", "odo"):
+            if k not in src:
+                continue
+            v = src.get(k)
+            out[k] = None if v is None else as_num(v)
+        return out
+
     def _car_score(self, rec):
         """Qaysi yozuv 'to'liqroq' — bo'sh/nol dublikat yaxshisini bosmasin."""
         if not isinstance(rec, dict):
@@ -2948,6 +2964,9 @@ class OfficeStore:
                 "driverChanges": final_dch,
                 "days": merged_days,
             }
+            bal_src = self._clean_bal_src(rec.get("balSrc")) if "balSrc" in rec else self._clean_bal_src(old.get("balSrc"))
+            if bal_src:
+                incoming["balSrc"] = bal_src
             # Bo'sh/nol paket (masalan 269 dublikat) eski to'liq yozuvni o'chirmasin
             if (
                 not replace_days
@@ -2972,7 +2991,7 @@ class OfficeStore:
                         ov = float(old.get(fld) or 0)
                     except (TypeError, ValueError):
                         continue
-                    if nv == 0 and ov > 0:
+                    if nv == 0 and ov != 0:
                         incoming[fld] = ov
             cars[plate] = incoming
         cars = self._dedupe_cars(cars)
@@ -3171,8 +3190,8 @@ class OfficeStore:
         if not isinstance(rec, dict):
             return None
         days = rec.get("days") if isinstance(rec.get("days"), dict) else {}
-        gas_r = max(0.0, as_num(rec.get("gasStart")))
-        ben_r = max(0.0, as_num(rec.get("benzinStart")))
+        gas_r = as_num(rec.get("gasStart"))
+        ben_r = as_num(rec.get("benzinStart"))
         odo_prev = as_num(rec.get("odoStart"))
         gas_norm0 = as_num(rec.get("gasNorm"), 12)
         ben_norm0 = as_num(rec.get("benzinNorm"), 4)
@@ -3214,6 +3233,8 @@ class OfficeStore:
                     gas_km = float(src.get("gasKm"))
                 except (TypeError, ValueError):
                     gas_km = None
+            if gas_km == 0 and mode == "gaz":
+                gas_km = None
             liq_km = 0.0
             if km > 0:
                 if gas_km is not None:
@@ -3236,8 +3257,8 @@ class OfficeStore:
                     ben_used = liq_km * ben_norm / 100.0
             gas_in = as_num(src.get("gasIn"))
             ben_in = as_num(src.get("benzinIn"))
-            gas_r = max(0.0, gas_r + gas_in - gas_used)
-            ben_r = max(0.0, ben_r + ben_in - ben_used)
+            gas_r = gas_r + gas_in - gas_used
+            ben_r = ben_r + ben_in - ben_used
             last = {
                 "km": km,
                 "gasKm": gas_km if gas_km is not None else 0.0,

@@ -1142,8 +1142,8 @@ function paintFuel(day) {
     fb.innerHTML = "<div class=\"empty\">Bu kun uchun yoqilg'i yozuvi yo'q</div>";
     return;
   }
-  const gasR = Math.max(0, Number(fuel.gasR || 0));
-  const benR = Math.max(0, Number(fuel.benR || 0));
+  const gasR = Number(fuel.gasR || 0);
+  const benR = Number(fuel.benR || 0);
   fb.innerHTML = `
     <div class="fuel-grid">
       <div class="fuel-cell"><span class="lab">Rejim</span><span class="val">${esc(modeLabel(fuel.mode))}</span></div>
