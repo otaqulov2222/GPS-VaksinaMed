@@ -107,6 +107,7 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ATT_EXEMPT_MSG = "Siz davomat ro'yxatiga kiritilmagansiz — Keldim/Ketdim belgilash shart emas"
 ATT_EXEMPT_STAFF_MSG = "Bu xodim davomatdan ozod qilingan (Admin panel → Foydalanuvchilar)"
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
+PLACE_STOP_LIMIT = 4000
 
 # Toza URL: /fuel → fuel.html (brauzerda .html ko‘rinmasin)
 PAGE_FILE = {
@@ -1976,9 +1977,9 @@ class OfficeStore:
                 str(x.get("name") or "").lower(),
             )
         )
-        # Geozonalarni cheklamaslik; to'xtash-faqat joylar uchun 400 ta lim
+        # Kam kelingan joy ham qidiruvda topilsin — lim faqat payload himoyasi
         geo = [x for x in out if x.get("fromGeofence")]
-        stop_only = [x for x in out if not x.get("fromGeofence")][:400]
+        stop_only = [x for x in out if not x.get("fromGeofence")][:PLACE_STOP_LIMIT]
         return geo + stop_only
 
     def save_report(self, date, cars, saved_by=""):
@@ -4858,6 +4859,54 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         "warn": str(e)[:120],
                     }
                 )
+            return
+
+        if path == "/api/office/geocode/search":
+            sess = self.require_ops_read()
+            if not sess:
+                return
+            q = str((qs.get("q") or [""])[0] or "").strip()[:120]
+            if len(q) < 2:
+                self.send_json({"ok": False, "error": "Kamida 2 harf yozing", "results": []}, 400)
+                return
+            params = urllib.parse.urlencode(
+                {
+                    "format": "jsonv2",
+                    "q": q,
+                    "countrycodes": "uz",
+                    "accept-language": "uz,ru,en",
+                    "limit": "8",
+                }
+            )
+            req = urllib.request.Request(
+                "https://nominatim.openstreetmap.org/search?" + params,
+                headers={
+                    "User-Agent": "VaksinaMed-GPS/1.0 (admin pharmacy assign)",
+                    "Accept": "application/json",
+                },
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    rows = json.loads(resp.read().decode("utf-8", errors="replace") or "[]")
+            except Exception as e:
+                self.send_json({"ok": False, "error": "Manzil xizmati javob bermadi: " + str(e)[:80], "results": []}, 502)
+                return
+            results = []
+            for r in rows if isinstance(rows, list) else []:
+                try:
+                    rlat, rlng = float(r.get("lat")), float(r.get("lon"))
+                except (TypeError, ValueError):
+                    continue
+                display = str(r.get("display_name") or "")
+                results.append(
+                    {
+                        "name": str(r.get("name") or display.split(",")[0] or q).strip()[:120],
+                        "detail": display[:240],
+                        "lat": round(rlat, 7),
+                        "lng": round(rlng, 7),
+                    }
+                )
+            self.send_json({"ok": True, "q": q, "results": results})
             return
 
         if path == "/api/office/gps/status":

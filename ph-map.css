@@ -1,0 +1,76 @@
+/* Admin → Dorixona biriktirish: xaritada tanlash */
+.phm-box { margin-bottom: 14px; }
+.phm-box .panel-box-title { flex-wrap: wrap; align-items: center; }
+.phm-sub { font-weight: 600; font-size: 12px; color: var(--muted, #5a7190); letter-spacing: 0; text-transform: none; }
+.phm-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.phm-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted, #5a7190); cursor: pointer; }
+.phm-chk input { width: 15px; height: 15px; }
+#phm-add.on { background: #fff; color: #9a3412; border-color: #f0b38a; }
+
+.phm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 4px 0 10px; font-size: 12px; color: var(--ink, #0b1f3a); }
+.phm-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.phm-legend-tip { margin-left: auto; color: var(--muted, #5a7190); font-size: 11px; }
+.phm-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 2px solid; }
+.phm-dot.mine { background: rgba(34, 163, 86, .55); border-color: #14532d; }
+.phm-dot.free { background: rgba(63, 174, 95, .25); border-color: #2f8f4e; }
+.phm-dot.other { background: rgba(143, 163, 187, .4); border-color: #4b6584; }
+.phm-dot.sel { background: rgba(240, 193, 75, .6); border-color: #b7791f; }
+.phm-dot.vm { background: transparent; border: 2px dashed #2f8f4e; }
+
+.phm-alert[hidden], .phm-find[hidden], .phm-hint[hidden] { display: none !important; }
+.phm-alert summary { cursor: pointer; }
+.phm-alert .phm-nc-list { margin-top: 6px; max-height: 150px; overflow: auto; }
+.phm-alert { margin: 0 0 10px; padding: 9px 12px; border: 1px solid #f3c98b; background: #fff8eb; border-radius: 10px; font-size: 12px; line-height: 1.6; color: #7a4a06; }
+.phm-nc { display: inline-flex; align-items: center; gap: 6px; margin: 2px 10px 2px 0; font-weight: 600; }
+
+.phm-find { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--line, #c5d4e6); background: #fff; border-radius: 10px; font-size: 13px; }
+.phm-find > span { margin-right: auto; }
+.phm-geo { flex-basis: 100%; display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+.phm-geo-item { text-align: left; border: 1px solid var(--line, #c5d4e6); background: #f8fafc; border-radius: 8px; padding: 7px 10px; cursor: pointer; font: inherit; }
+.phm-geo-item:hover { background: #eef6ff; border-color: #8fb3dc; }
+.phm-geo-item b { display: block; font-size: 13px; }
+.phm-geo-item small { display: block; font-size: 11px; color: var(--muted, #5a7190); margin-top: 2px; }
+
+.phm-wrap { position: relative; }
+#phm-map { height: 480px; border-radius: 10px; border: 1px solid var(--line, #c5d4e6); background: #dce6f0; overflow: hidden; z-index: 0; }
+@media (max-width: 760px) { #phm-map { height: 360px; } }
+#phm-map.phm-adding, #phm-map.phm-adding .leaflet-interactive { cursor: crosshair; }
+.phm-hint {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 500;
+  background: #0b1f3a; color: #fff; padding: 8px 14px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; box-shadow: 0 8px 20px rgba(11, 31, 58, .3); pointer-events: none;
+  max-width: calc(100% - 40px); text-align: center;
+}
+
+.leaflet-tooltip.phm-tip {
+  background: rgba(255, 255, 255, .92); border: 0; box-shadow: 0 1px 3px rgba(11, 31, 58, .25);
+  padding: 1px 6px; border-radius: 4px; font: 700 11px/1.3 'IBM Plex Sans', system-ui, sans-serif; color: #0f3d22;
+}
+.leaflet-tooltip.phm-tip::before { display: none; }
+.leaflet-tooltip.phm-tip-mine { background: #1b6b35; color: #fff; }
+.leaflet-tooltip.phm-tip-sel { background: #f0c14b; color: #3b2a00; }
+.leaflet-tooltip.phm-tip-other { color: #34495e; }
+.leaflet-tooltip.phm-tip-office { color: #123a6b; }
+.leaflet-tooltip.phm-tip-stop { color: #5a6573; font-weight: 600; }
+
+.phm-popup .leaflet-popup-content { margin: 12px 14px; font: 13px/1.45 'IBM Plex Sans', system-ui, sans-serif; color: #0b1f3a; }
+.phm-pop b, .phm-draft > b { display: block; font-size: 14px; margin-bottom: 2px; }
+.phm-pop .m, .phm-draft .m { font-size: 11px; color: #5a7190; margin-top: 3px; }
+.phm-pop ul { margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.phm-pop li::before { content: '● '; color: #8fa3bb; }
+.phm-pop li.own { font-weight: 700; }
+.phm-pop li.own::before { color: #22a356; }
+.phm-pop li.own::after { content: ' · shu mashina'; font-weight: 600; color: #5a7190; }
+.phm-pop .acts, .phm-draft .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.phm-danger { color: #b42318 !important; border-color: #f1b5ae !important; }
+.phm-draft label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #5a7190; margin: 8px 0 3px; text-transform: uppercase; }
+.phm-draft input { width: 100%; box-sizing: border-box; height: 34px; padding: 0 9px; border: 1px solid #a8bdd4; border-radius: 6px; font: 600 13px 'IBM Plex Sans', system-ui, sans-serif; }
+.phm-draft input[readonly] { background: #f1f5f9; }
+.phm-note { font-size: 11px; color: #9a3412; margin-top: 3px; }
+.phm-note:empty { display: none; }
+.phm-near { margin-top: 8px; padding: 7px 9px; background: #fff8eb; border: 1px solid #f3c98b; border-radius: 6px; font-size: 12px; color: #7a4a06; }
+
+.ph-own-badge { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: #eef2f7; color: #4b6584; font: 600 11px/1.6 'IBM Plex Sans', system-ui, sans-serif; vertical-align: 1px; }
+.ph-own-badge.mine { background: #e3f4e8; color: #14532d; }
+
+body.role-viewer .phm-edit { display: none !important; }
