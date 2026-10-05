@@ -55,6 +55,9 @@
     const numberCols = o.numberCols || [];
     const moneyCols = o.moneyCols || [];
     const centerCols = o.centerCols || [];
+    const colFormats = o.colFormats || {};
+    const totalRows = o.totalRows || [];
+    const totalFill = { patternType: 'solid', fgColor: { rgb: 'DCE3EC' } };
     const range = XLSX.utils.decode_range(ws['!ref']);
     const border = thinBorder('94A3B8');
     const headerStyle = {
@@ -95,12 +98,16 @@
           s.alignment.horizontal = 'right';
           if (typeof cell.v === 'number' && Number.isFinite(cell.v)) {
             cell.t = 'n';
-            cell.z = moneyCols.indexOf(C) >= 0 ? '#,##0.00' : '0.00';
+            cell.z = colFormats[C] || (moneyCols.indexOf(C) >= 0 ? '#,##0.00' : '0.00');
           }
         } else if (centerCols.indexOf(C) >= 0 || C === 0) {
           s.alignment.horizontal = 'center';
         } else {
           s.alignment.horizontal = 'left';
+        }
+        if (totalRows.indexOf(R) >= 0) {
+          s.font.bold = true;
+          s.fill = totalFill;
         }
         cell.s = s;
       }

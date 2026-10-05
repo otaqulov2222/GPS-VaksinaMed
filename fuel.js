@@ -3825,38 +3825,75 @@ function exportExcel() {
   if (typeof excelSheetFromAoa !== 'function') { toast('Excel stil moduli yuklanmadi'); return; }
   const wb = XLSX.utils.book_new();
   const monthLabel = (typeof monthLow === 'function' ? monthLow(STATE.month) : STATE.month) + ' ' + String(STATE.month || '').slice(0, 4);
+  const r2 = v => Math.round(n(v) * 100) / 100;
+  const r3 = v => Math.round(n(v) * 1000) / 1000;
+  const nz = (v, rd) => (n(v) ? rd(v) : '');
+  const { rows: sumRows, sum } = monthReportData();
+
   const monthRows = [
-    ['Yoqilg\'i oylik hisobot — ' + monthLabel],
-    ['№', 'Mashina', 'Haydovchi', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Gaz m3', 'Gaz summa', 'Benzin l', 'Benzin summa', 'Qoshimcha', 'Jami', 'Gaz qoldiq', 'Benzin qoldiq']
+    ['Oylik jamlanma — ' + monthLabel],
+    ['№', 'Mashina', 'Haydovchi', 'Probeg (km)', 'Gaz km', 'Dizel/Benzin km', 'Olingan gaz (m³)', 'Gaz summa', 'Olingan benzin (l)', 'Benzin summa', "Qo'shimcha", 'Umumiy xarajat', 'Gaz qoldiq', 'Benzin qoldiq']
   ];
-  reportFleet().forEach((f, i) => {
-    const t = totals(calcCar(getCar(f.car)));
-    monthRows.push([i + 1, f.car, f.name, t.km, t.gasKm, t.liqKm, t.gasIn, t.gasSum, t.benzinIn, t.benzinSum, t.extra, t.cost, t.gasR, t.benR]);
+  sumRows.forEach(r => {
+    monthRows.push([r.n, plateDisp(r.plate), r.name, r2(r.km), r2(r.gasKm), r2(r.liqKm), r3(r.gasIn), r2(r.gasSum), r3(r.benzinIn), r2(r.benzinSum), r2(r.extra), r2(r.cost), r3(r.gasR), r3(r.benR)]);
   });
-  XLSX.utils.book_append_sheet(wb, excelSheetFromAoa(monthRows, {
+  monthRows.push(['JAMI (barcha)', '', '', r2(sum.km), r2(sum.gasKm), r2(sum.liqKm), r3(sum.gasIn), r2(sum.gasSum), r3(sum.benzinIn), r2(sum.benzinSum), r2(sum.extra), r2(sum.cost), '', '']);
+  const monthWs = excelSheetFromAoa(monthRows, {
     titleRow: 0,
     headerRow: 1,
     centerCols: [0, 1],
     numberCols: [3, 4, 5, 6, 8, 12, 13],
     moneyCols: [7, 9, 10, 11],
-    minWidths: [5, 12, 24, 9, 9, 14, 9, 11, 9, 12, 10, 11, 11, 12]
-  }), 'Oylik');
-
-  const daily = [
-    ['Kunlik — ' + (STATE.car || '') + ' — ' + monthLabel],
-    ['Kun', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Spidometr', 'Rejim', 'Zapravka', 'Gaz m3', 'Gaz summa', 'Benzin l', 'Benzin summa', 'Sarf gaz', 'Sarf benzin', 'Gaz qoldiq', 'Benzin qoldiq', 'Qoshimcha', 'Izoh']
-  ];
-  calcCar(getCar(STATE.car)).forEach(r => {
-    daily.push([r.d, r.km, r.gasKm, r.liqKm, r.odo, r.mode, r.station, r.gasIn, r.gasSum, r.benzinIn, r.benzinSum, r.gasUsed, r.benUsed, r.gasR, r.benR, r.extra, r.note]);
+    colFormats: { 6: '0.000', 8: '0.000', 12: '0.000', 13: '0.000' },
+    totalRows: [monthRows.length - 1],
+    minWidths: [5, 12, 24, 11, 9, 14, 13, 13, 14, 13, 11, 14, 11, 12]
   });
-  XLSX.utils.book_append_sheet(wb, excelSheetFromAoa(daily, {
-    titleRow: 0,
-    headerRow: 1,
-    centerCols: [0, 5],
-    numberCols: [1, 2, 3, 4, 7, 9, 11, 12, 13, 14],
-    moneyCols: [8, 10, 15],
-    minWidths: [6, 9, 9, 14, 11, 10, 14, 9, 11, 10, 12, 10, 11, 11, 12, 11, 16]
-  }), 'Kunlik');
+  monthWs['!merges'] = (monthWs['!merges'] || []).concat([{ s: { r: monthRows.length - 1, c: 0 }, e: { r: monthRows.length - 1, c: 2 } }]);
+  XLSX.utils.book_append_sheet(wb, monthWs, 'Oylik jamlanma');
+
+  const usedNames = new Set(['Oylik jamlanma', 'Zapravka']);
+  sumRows.forEach(sr => {
+    const car = getCar(sr.plate);
+    const info = reportFleet().find(f => f.car === sr.plate) || { name: sr.name, car: sr.plate };
+    const dayRows = calcCar(car);
+    const aoa = [
+      ['Kunma-kun — ' + plateDisp(sr.plate) + ' — ' + (info.name || sr.name || '') + ' — ' + monthLabel],
+      ['Kun', 'Haydovchi', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Spidometr', 'Nimada', 'Zapravka', 'Gaz (m³)', 'Gaz summa', 'Benzin (l)', 'Benzin summa', "Qo'shimcha", 'Xarajat izohi', 'Sarf gaz', 'Sarf benzin', 'Gaz qoldiq', 'Benzin qoldiq', 'Izoh']
+    ];
+    dayRows.forEach(r => {
+      aoa.push([
+        r.d,
+        driverOnDay(info, car, r.d),
+        nz(r.km, r2), nz(r.gasKm, r2), nz(r.liqKm, r2),
+        nz(r.odo, r2),
+        modeLabel(r.mode) || '',
+        r.station || '',
+        nz(r.gasIn, r3), r.gasIn ? r2(r.gasSum) : '',
+        nz(r.benzinIn, r3), r.benzinIn ? r2(r.benzinSum) : '',
+        nz(r.extra, r2), r.extraWhy || '',
+        nz(r.gasUsed, r3), nz(r.benUsed, r3),
+        r3(r.gasR), r3(r.benR),
+        r.note || ''
+      ]);
+    });
+    aoa.push(['JAMI', '', r2(sr.km), r2(sr.gasKm), r2(sr.liqKm), '', '', '', r3(sr.gasIn), r2(sr.gasSum), r3(sr.benzinIn), r2(sr.benzinSum), r2(sr.extra), '', r3(sr.gasUsed), r3(sr.benUsed), r3(sr.gasR), r3(sr.benR), '']);
+    const ws = excelSheetFromAoa(aoa, {
+      titleRow: 0,
+      headerRow: 1,
+      centerCols: [0, 6],
+      numberCols: [2, 3, 4, 5, 8, 10, 14, 15, 16, 17],
+      moneyCols: [9, 11, 12],
+      colFormats: { 8: '0.000', 10: '0.000', 14: '0.000', 15: '0.000', 16: '0.000', 17: '0.000' },
+      totalRows: [aoa.length - 1],
+      minWidths: [6, 22, 9, 9, 14, 11, 10, 14, 10, 12, 10, 12, 11, 14, 10, 11, 11, 12, 16]
+    });
+    ws['!merges'] = (ws['!merges'] || []).concat([{ s: { r: aoa.length - 1, c: 0 }, e: { r: aoa.length - 1, c: 1 } }]);
+    let name = String(sr.plate).replace(/^\d{2}\s+/, '').replace(/[\\\/?*\[\]:]/g, ' ').trim().slice(0, 31) || ('Mashina ' + sr.n);
+    const base = name;
+    for (let k = 2; usedNames.has(name); k++) name = (base.slice(0, 27) + ' (' + k + ')');
+    usedNames.add(name);
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  });
 
   const fills = [
     ['Zapravka reestri — ' + monthLabel],
