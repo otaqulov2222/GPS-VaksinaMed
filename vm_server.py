@@ -1982,6 +1982,57 @@ class OfficeStore:
         stop_only = [x for x in out if not x.get("fromGeofence")][:PLACE_STOP_LIMIT]
         return geo + stop_only
 
+    def place_stops(self, name, limit_days=60, limit=40):
+        """Bitta GPS joy nomi bo'yicha alohida to'xtashlar (qachon, qaysi mashina, qancha turgan)."""
+        try:
+            import gps_sync as _gs
+            norm = _gs.norm_ph
+        except Exception:
+            norm = lambda s: str(s or "").strip().lower()
+        want = norm(name)
+        if not want:
+            return {"total": 0, "durSec": 0, "cars": {}, "stops": []}
+        rows = []
+        cars = {}
+        dur_total = 0
+        for date in self.report_dates()[: max(1, min(int(limit_days or 60), 120))]:
+            rep = self.get_report(date)
+            day_cars = (rep or {}).get("cars") if isinstance(rep, dict) else None
+            if not isinstance(day_cars, dict):
+                continue
+            for plate, rec in day_cars.items():
+                stops = rec.get("stops") if isinstance(rec, dict) and isinstance(rec.get("stops"), list) else []
+                for st in stops:
+                    if not isinstance(st, dict):
+                        continue
+                    if norm(st.get("phName") or st.get("place") or "") != want:
+                        continue
+                    try:
+                        dur = int(st.get("durSec") or 0)
+                    except (TypeError, ValueError):
+                        dur = 0
+                    car = str(plate or "")[:24]
+                    cars[car] = cars.get(car, 0) + 1
+                    dur_total += max(0, dur)
+                    try:
+                        lat = round(float(st.get("lat")), 6)
+                        lng = round(float(st.get("lng")), 6)
+                    except (TypeError, ValueError):
+                        lat = lng = None
+                    rows.append(
+                        {
+                            "date": date,
+                            "car": car,
+                            "in": str(st.get("inTime") or "")[:8],
+                            "out": str(st.get("outTime") or "")[:8],
+                            "durSec": dur,
+                            "lat": lat,
+                            "lng": lng,
+                        }
+                    )
+        rows.sort(key=lambda r: (r["date"], r["in"]), reverse=True)
+        return {"total": len(rows), "durSec": dur_total, "cars": cars, "stops": rows[: max(1, int(limit or 40))]}
+
     def save_report(self, date, cars, saved_by=""):
         if not valid_date(date):
             return None, "Sana noto'g'ri"
@@ -4859,6 +4910,17 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                         "warn": str(e)[:120],
                     }
                 )
+            return
+
+        if path == "/api/office/place-stops":
+            sess = self.require_ops_read()
+            if not sess:
+                return
+            name = str((qs.get("name") or [""])[0] or "").strip()[:120]
+            if not name:
+                self.send_json({"ok": False, "error": "name kerak"}, 400)
+                return
+            self.send_json(dict({"ok": True, "name": name}, **OFFICE.place_stops(name)))
             return
 
         if path == "/api/office/geocode/search":

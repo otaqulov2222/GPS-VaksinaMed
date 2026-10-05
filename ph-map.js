@@ -13,14 +13,19 @@
     const OFFICE_RE = /(офис|склад|ofis|sklad)/i;
     const STOP_RADIUS_M = 60;
     const MAX_LABELS = 90;
-    const ALL_LABELS_ZOOM = 15;
+    const ALL_LABELS_ZOOM = 14;
     const NEAR_EXTRA_M = 80;
+    const HOME_KM = 70;
+    const CITY_KM = 12;
 
     let map = null;
     let zoneLayer = null;
     let draftLayer = null;
+    let evidenceLayer = null;
     let items = [];
     let byId = new Map();
+    let idx = { geo: new Map(), stop: new Map(), geoList: [] };
+    const addrCache = new Map();
     let showStops = false;
     let addMode = false;
     let placingId = '';
@@ -62,11 +67,13 @@
         L.tileLayer(TILE_URL, { subdomains: 'abc', maxZoom: 20, maxNativeZoom: 18 }).addTo(map);
         zoneLayer = L.layerGroup().addTo(map);
         draftLayer = L.layerGroup().addTo(map);
+        evidenceLayer = L.layerGroup().addTo(map);
         map.on('click', (e) => {
             if (addMode) startDraft(e.latlng.lat, e.latlng.lng);
         });
         map.on('popupopen', (e) => bindPopup(e.popup.getElement()));
-        map.on('zoomend', () => schedule());
+        map.on('popupclose', () => evidenceLayer.clearLayers());
+        map.on('moveend', () => schedule());
         if (typeof ResizeObserver !== 'undefined') {
             new ResizeObserver(() => map && map.invalidateSize()).observe(el);
         }
@@ -90,10 +97,20 @@
             if (f) f.value = r;
         });
         const nc = $('phm-nocoord');
-        if (nc) nc.addEventListener('click', (e) => {
-            const b = e.target.closest('[data-place]');
-            if (b) startAdd({ pid: b.getAttribute('data-place') });
-        });
+        if (nc) {
+            nc.addEventListener('click', (e) => {
+                const show = e.target.closest('[data-show]');
+                if (show) {
+                    showPharm(show.getAttribute('data-show'));
+                    return;
+                }
+                const b = e.target.closest('[data-place]');
+                if (b) placePharm(b.getAttribute('data-place'));
+            });
+            nc.addEventListener('toggle', (e) => {
+                if (e.target.tagName === 'DETAILS') nc.dataset.open = e.target.open ? '1' : '0';
+            }, true);
+        }
         const find = $('phm-find');
         if (find) find.addEventListener('click', onFindClick);
         document.addEventListener('keydown', (e) => {
@@ -107,11 +124,22 @@
         const drawn = new Set();
         const ownersByKey = new Map();
         const q = query();
+        idx = { geo: new Map(), stop: new Map(), geoList: [] };
         (PHARMS || []).forEach((p) => {
             const k = phNameKey(p.name);
             if (!k) return;
             if (!ownersByKey.has(k)) ownersByKey.set(k, []);
             ownersByKey.get(k).push(p);
+        });
+        (GPS_PLACES || []).forEach((pl) => {
+            if (pl.lat == null || pl.lng == null) return;
+            const k = phNameKey(pl.name);
+            if (pl.fromGeofence) {
+                idx.geo.set(k, pl);
+                idx.geoList.push(pl);
+            } else {
+                idx.stop.set(k, pl);
+            }
         });
         (GPS_PLACES || []).forEach((pl) => {
             if (pl.lat == null || pl.lng == null) return;
@@ -128,6 +156,7 @@
                 radiusM: pl.fromGeofence ? (Number(pl.radiusM) || 100) : STOP_RADIUS_M,
                 src: pl.fromGeofence ? 'gps' : 'stop',
                 count: Number(pl.count) || 0,
+                topCar: pl.topCar || '',
                 owners
             });
         });
@@ -150,6 +179,30 @@
         return out;
     }
 
+    /** Filial koordinatasi qanchalik ishonchli: exact / manual / approx / none */
+    function locInfo(p) {
+        if (!p || p.lat == null || p.lng == null) {
+            return { k: 'none', t: 'Koordinatasiz', d: 'Xaritada yoʻq — GPS bu filialga kelganini sanamaydi' };
+        }
+        const key = phNameKey(p.name);
+        if (idx.geo.has(key)) return { k: 'exact', t: 'Aniq', d: 'Boomerangda chizilgan geozona' };
+        const lat = Number(p.lat);
+        const lng = Number(p.lng);
+        let near = null;
+        idx.geoList.forEach((g) => {
+            const m = distM(lat, lng, Number(g.lat), Number(g.lng));
+            if (m <= (Number(g.radiusM) || 100) && (!near || m < near.m)) near = { g, m };
+        });
+        if (near) return { k: 'exact', t: 'Aniq', d: 'Boomerang «' + uiTxt(near.g.name) + '» geozonasi ichida' };
+        const stop = idx.stop.get(key);
+        if (stop && distM(lat, lng, Number(stop.lat), Number(stop.lng)) <= 40) {
+            return { k: 'approx', t: 'Taxminiy', d: 'Koordinata GPS toʻxtashlar oʻrtachasidan (koʻcha nomi) olingan — joyini tekshiring' };
+        }
+        return { k: 'manual', t: 'Belgilangan', d: 'Xaritada qoʻlda belgilangan (Boomerangda yoʻq)' };
+    }
+
+    const isPlainStop = (it) => it.src === 'stop' && !it.owners.length;
+
     function stateOf(it) {
         const want = phCarKey(targetCar());
         if (want && it.owners.some((o) => phCarKey(o.car) === want)) return 'mine';
@@ -158,20 +211,36 @@
         return it.src === 'stop' ? 'stop' : 'free';
     }
 
+    // Barcha dorixona filiallari yashil; farq — to'qligi (shu mashina / bo'sh / boshqa mashina)
     const STYLE = {
-        mine: { color: '#14532d', weight: 2.5, fillColor: '#22a356', fillOpacity: 0.5 },
-        free: { color: '#2f8f4e', weight: 1.2, fillColor: '#3fae5f', fillOpacity: 0.22 },
-        other: { color: '#4b6584', weight: 1.2, fillColor: '#8fa3bb', fillOpacity: 0.32 },
-        office: { color: '#1a5fb4', weight: 1.2, fillColor: '#1a5fb4', fillOpacity: 0.16 },
+        mine: { color: '#0f5132', weight: 3, fillColor: '#16a34a', fillOpacity: 0.45 },
+        free: { color: '#15803d', weight: 2, fillColor: '#22c55e', fillOpacity: 0.32 },
+        other: { color: '#3f8f5a', weight: 2, fillColor: '#86d39c', fillOpacity: 0.3 },
+        office: { color: '#1a5fb4', weight: 1.5, fillColor: '#1a5fb4', fillOpacity: 0.16 },
         stop: { color: '#7b8794', weight: 1, fillColor: '#b9c6d6', fillOpacity: 0.4 }
     };
+    const DOT_R = { mine: 7, free: 5.5, other: 5.5, office: 5, stop: 3.5 };
 
     function styleOf(it, st, sel, dim) {
         const s = Object.assign({ opacity: 1 }, STYLE[st]);
-        if (it.src === 'vm') s.dashArray = '5 4';
+        if (it.src === 'vm') s.dashArray = '6 4';
+        if (st === 'stop') s.dashArray = '2 5';
         if (sel) Object.assign(s, { color: '#b7791f', weight: 3, fillColor: '#f0c14b', fillOpacity: 0.55 });
-        if (dim) Object.assign(s, { opacity: 0.25, fillOpacity: 0.06 });
+        if (dim) Object.assign(s, { opacity: 0.45, fillOpacity: 0.12 });
         return s;
+    }
+
+    /** Markaz nuqtasi — uzoq zoomda ham filial ko'rinib tursin */
+    function dotStyleOf(st, base, dim) {
+        return {
+            radius: DOT_R[st] || 5,
+            color: '#fff',
+            weight: st === 'stop' ? 1 : 1.5,
+            fillColor: base.color,
+            fillOpacity: dim ? 0.45 : 0.95,
+            opacity: dim ? 0.5 : 1,
+            bubblingMouseEvents: false
+        };
     }
 
     function matchesQuery(it, q) {
@@ -189,6 +258,7 @@
         const view = map.getBounds().pad(0.2);
         const matched = [];
         let labels = 0;
+        const dots = [];
         // Muhimlari oxirida chiziladi — ustda turadi
         const order = { stop: 0, free: 1, office: 1, other: 2, mine: 3 };
         items.forEach((it) => { it.state = stateOf(it); });
@@ -197,29 +267,36 @@
             const sel = PH_SEL.has(it.name);
             const hit = matchesQuery(it, q);
             if (q && hit) matched.push(it);
+            const dim = !!q && !hit;
+            const style = styleOf(it, it.state, sel, dim);
             const circle = L.circle([it.lat, it.lng], Object.assign(
                 { radius: it.radiusM, bubblingMouseEvents: false },
-                styleOf(it, it.state, sel, q && !hit)
+                style
             ));
-            circle.on('click', (e) => {
+            const dot = L.circleMarker([it.lat, it.lng], dotStyleOf(it.state, style, dim));
+            const onClick = (e) => {
                 L.DomEvent.stopPropagation(e);
                 openItem(it);
-            });
+            };
+            circle.on('click', onClick);
+            dot.on('click', onClick);
             const strong = it.state === 'mine' || sel || (q && hit);
             const near = zoom >= ALL_LABELS_ZOOM && !(q && !hit) && view.contains([it.lat, it.lng]);
             const permanent = (strong || near) && labels < MAX_LABELS;
             if (permanent) labels++;
-            circle.bindTooltip(esc(uiTxt(it.name)), {
+            dot.bindTooltip(esc(uiTxt(it.name)) + (isPlainStop(it) ? ' · toʻxtash' : ''), {
                 permanent,
                 direction: 'top',
-                offset: [0, -2],
+                offset: [0, -6],
                 opacity: 1,
                 className: 'phm-tip phm-tip-' + (sel ? 'sel' : it.state)
             });
             it.circle = circle;
             zoneLayer.addLayer(circle);
+            dots.push(dot);
             byId.set(it.id, it);
         });
+        dots.forEach((d) => zoneLayer.addLayer(d));
         renderSub();
         renderNoCoord();
         if (!fittedOnce && items.length) {
@@ -250,27 +327,89 @@
             + (car ? (' · ' + carLabel(car) + ': ' + mine + ' ta') : '');
     }
 
+    /** Har bir filial joylashuvi: aniq / belgilangan / taxminiy / koordinatasiz */
     function renderNoCoord() {
         const box = $('phm-nocoord');
         if (!box) return;
-        const list = (PHARMS || []).filter((p) => p.lat == null || p.lng == null);
-        if (!list.length) {
+        const all = (PHARMS || []).map((p) => ({ p, info: locInfo(p) }));
+        if (!all.length) {
             box.hidden = true;
             box.innerHTML = '';
             box.dataset.sig = '';
             return;
         }
-        const html = list.map((p) => `<span class="phm-nc">${esc(uiTxt(p.name))} · ${esc(carLabel(p.car))}`
-            + (canEdit() ? ` <button class="btn btn-sm phm-edit" type="button" data-place="${esc(p.id)}">Xaritada joylash</button>` : '')
-            + '</span>').join('');
-        const sig = list.map((p) => p.id).join('|') + (canEdit() ? '' : '#ro');
+        const want = phCarKey(targetCar());
+        const cnt = { exact: 0, manual: 0, approx: 0, none: 0 };
+        all.forEach((r) => { cnt[r.info.k]++; });
+        const rank = { none: 0, approx: 1, manual: 2, exact: 3 };
+        const rows = all
+            .filter((r) => r.info.k === 'none' || r.info.k === 'approx' || (want && phCarKey(r.p.car) === want))
+            .sort((a, b) => {
+                const am = want && phCarKey(a.p.car) === want ? 0 : 1;
+                const bm = want && phCarKey(b.p.car) === want ? 0 : 1;
+                return (am - bm) || (rank[a.info.k] - rank[b.info.k]) || String(a.p.name).localeCompare(String(b.p.name));
+            });
+        const sig = rows.map((r) => r.p.id + ':' + r.info.k).join('|') + '#' + want + (canEdit() ? '' : '#ro')
+            + '#' + cnt.exact + cnt.manual;
         if (box.dataset.sig === sig) return;
-        const wasOpen = !!box.querySelector('details[open]');
         box.dataset.sig = sig;
         box.hidden = false;
-        box.innerHTML = `<details${wasOpen || list.length <= 3 ? ' open' : ''}><summary><b>Koordinatasiz filiallar (${list.length})</b>`
-            + ' — xaritada koʻrinmaydi, GPS ularga kelganini sanamaydi</summary>'
-            + `<div class="phm-nc-list">${html}</div></details>`;
+        const problems = cnt.none + cnt.approx;
+        const carProblems = rows.some((r) => want && phCarKey(r.p.car) === want && (r.info.k === 'none' || r.info.k === 'approx'));
+        box.classList.toggle('ok', !problems);
+        const html = rows.map(({ p, info }) => {
+            const hasCoord = info.k !== 'none';
+            const acts = (hasCoord ? `<button class="btn btn-sm" type="button" data-show="${esc(p.id)}">Xaritada</button>` : '')
+                + (canEdit() && info.k !== 'exact'
+                    ? ` <button class="btn btn-sm phm-edit${hasCoord ? '' : ' btn-gold'}" type="button" data-place="${esc(p.id)}">${hasCoord ? 'Joyini tuzatish' : 'Xaritada joylash'}</button>`
+                    : '');
+            return `<div class="phm-loc-row">
+  <span class="phm-acc phm-acc-${info.k}">${info.t}</span>
+  <span class="phm-loc-name"><b>${esc(uiTxt(p.name))}</b> · ${esc(carLabel(p.car))}<small>${esc(info.d)}</small></span>
+  <span class="phm-loc-acts">${acts}</span>
+</div>`;
+        }).join('');
+        const open = box.dataset.open ? box.dataset.open === '1' : carProblems;
+        box.innerHTML = `<details${open ? ' open' : ''}><summary><b>Filiallar joylashuvi</b> — `
+            + `<span class="phm-acc phm-acc-exact">${cnt.exact} aniq</span> `
+            + (cnt.manual ? `<span class="phm-acc phm-acc-manual">${cnt.manual} belgilangan</span> ` : '')
+            + (cnt.approx ? `<span class="phm-acc phm-acc-approx">${cnt.approx} taxminiy</span> ` : '')
+            + (cnt.none ? `<span class="phm-acc phm-acc-none">${cnt.none} koordinatasiz</span>` : '')
+            + '</summary>'
+            + '<div class="m phm-loc-help">Aniq — Boomerang geozonasi. Belgilangan — xaritada qoʻlda qoʻyilgan. '
+            + 'Taxminiy — koʻcha nomidagi GPS toʻxtashdan olingan, haqiqiy dorixona joyi boshqa boʻlishi mumkin. '
+            + 'Koordinatasiz — GPS bu filialga kelganini sanamaydi.'
+            + (want ? '' : ' Roʻyxatda muammolilar; mashina tanlasangiz — uning barcha filiallari.') + '</div>'
+            + `<div class="phm-nc-list">${html || '<span class="muted">Muammoli filial yoʻq.</span>'}</div></details>`;
+    }
+
+    function itemForPharm(p) {
+        const key = phNameKey(p.name);
+        return items.find((it) => it.pid === p.id || (it.src !== 'stop' && phNameKey(it.name) === key))
+            || items.find((it) => it.owners.some((o) => o.id === p.id));
+    }
+
+    function showPharm(pid) {
+        const p = (PHARMS || []).find((x) => x.id === pid);
+        if (!p || !init()) return;
+        const it = itemForPharm(p);
+        const lat = it ? it.lat : Number(p.lat);
+        const lng = it ? it.lng : Number(p.lng);
+        if (!isFinite(lat) || !isFinite(lng)) return;
+        const box = $('phm-box');
+        if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        map.flyTo([lat, lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+        if (it) setTimeout(() => openItem(it), 650);
+    }
+
+    function placePharm(pid) {
+        const p = (PHARMS || []).find((x) => x.id === pid);
+        if (!p) return;
+        startAdd({ pid });
+        if (p.lat != null && p.lng != null) {
+            map.flyTo([Number(p.lat), Number(p.lng)], Math.max(map.getZoom(), 17), { duration: 0.5 });
+            startDraft(Number(p.lat), Number(p.lng));
+        }
     }
 
     function fitTo(list, maxZoom) {
@@ -286,8 +425,15 @@
     function fitCar(animate) {
         if (!init()) return;
         const mine = items.filter((it) => stateOf(it) === 'mine');
-        const list = mine.length ? mine : items.filter((it) => it.src === 'gps' && !OFFICE_RE.test(it.name));
-        if (!list.length) return;
+        let list = mine.length ? mine : items.filter((it) => it.src === 'gps' && !OFFICE_RE.test(it.name));
+        // Viloyatlardagi bir-ikki geozona xaritani butun Markaziy Osiyoga cho'zib yubormasin
+        const homeM = (mine.length ? HOME_KM : CITY_KM) * 1000;
+        const local = list.filter((it) => distM(it.lat, it.lng, DEFAULT_CENTER[0], DEFAULT_CENTER[1]) <= homeM);
+        if (local.length) list = local;
+        if (!list.length) {
+            map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+            return;
+        }
         if (animate === false) {
             const b = L.latLngBounds(list.map((it) => [it.lat, it.lng]));
             map.fitBounds(b.pad(0.1), { maxZoom: 14 });
@@ -309,9 +455,18 @@
         box.hidden = false;
         const geoBtn = `<button class="btn btn-sm" type="button" data-geo-search>Manzil boʻyicha qidirish</button>`;
         const addBtn = canEdit() ? `<button class="btn btn-sm btn-gold phm-edit" type="button" data-phm-new>＋ Yangi filial sifatida qoʻshish</button>` : '';
-        if (matched.length) {
-            box.innerHTML = `<span>«${esc(q)}»: xaritada <b>${matched.length}</b> ta joy</span>${geoBtn}`;
-            fitTo(matched, 16);
+        const pharms = matched.filter((it) => !isPlainStop(it));
+        const stops = matched.filter(isPlainStop);
+        if (pharms.length) {
+            box.innerHTML = `<span>«${esc(q)}»: xaritada <b>${pharms.length}</b> ta filial`
+                + (stops.length ? ` (+ ${stops.length} ta GPS toʻxtash — dorixona emas)` : '') + `</span>${geoBtn}`;
+            fitTo(pharms, 16);
+        } else if (stops.length) {
+            box.innerHTML = `<span class="phm-find-warn">«${esc(q)}» nomli <b>dorixona yoʻq</b> — Boomerangda ham, tizimda ham. `
+                + `Faqat ${stops.length} ta GPS toʻxtash joyi bor: bu <b>koʻcha nomi</b>, dorixona emas. `
+                + 'Filial joyini bilsangiz — manzil qidiring yoki «Yangi filial» bilan xaritaga qoʻying.</span>'
+                + geoBtn + addBtn;
+            fitTo(stops, 16);
         } else {
             box.innerHTML = `<span>«${esc(q)}» Boomerang geozonalarida ham, tizimda ham yoʻq.</span>${geoBtn}${addBtn}`;
         }
@@ -378,14 +533,36 @@
 
     /* ── Mavjud aylana: popup + amallar ── */
 
+    function stopPopupHtml(it) {
+        let h = `<div class="phm-pop" data-item="${esc(it.id)}"><b>${esc(uiTxt(it.name))}</b>`
+            + '<div class="phm-warn"><b>Bu dorixona emas.</b> GPS toʻxtash joyi — nomi koʻcha/manzildan olingan. '
+            + 'Mashina shu atrofda toʻxtagan, xolos.</div>'
+            + '<div class="phm-ev" data-ev>Toʻxtashlar yuklanmoqda…</div>'
+            + '<div class="m" data-addr></div>';
+        if (canEdit()) {
+            h += '<div class="acts">'
+                + '<button class="btn btn-sm btn-gold" type="button" data-act="create-here">＋ Shu yerda filial yaratish</button>'
+                + '</div><div class="m">Filial aynan shu yerda ekaniga ishonchingiz boʻlsa yarating, belgini binoga sudrab qoʻying.</div>';
+        }
+        return h + '</div>';
+    }
+
     function itemPopupHtml(it) {
+        if (isPlainStop(it)) return stopPopupHtml(it);
         const car = targetCar();
         const want = phCarKey(car);
         const src = it.src === 'gps'
             ? 'Boomerang geozonasi'
-            : (it.src === 'vm' ? 'Tizimdagi filial (Boomerangda yoʻq)' : ('GPS toʻxtash joyi · ' + it.count + ' marta'));
+            : (it.src === 'vm' ? 'Tizimdagi filial (Boomerangda yoʻq)' : 'Faqat GPS toʻxtash nuqtasi');
+        const ph = it.pid ? (PHARMS || []).find((p) => p.id === it.pid) : null;
+        const info = it.src === 'gps'
+            ? { k: 'exact', t: 'Aniq', d: 'Boomerangda chizilgan geozona' }
+            : (it.src === 'vm' ? locInfo(ph || it)
+                : { k: 'approx', t: 'Taxminiy', d: 'Filialning oʻz koordinatasi yoʻq — GPS toʻxtash nuqtasi koʻrsatilmoqda' });
         let h = `<div class="phm-pop" data-item="${esc(it.id)}"><b>${esc(uiTxt(it.name))}</b>`
-            + `<div class="m">${src} · radius ${it.radiusM} m</div>`;
+            + `<div class="m">${src} · radius ${it.radiusM} m</div>`
+            + `<div class="phm-acc-line"><span class="phm-acc phm-acc-${info.k}">${info.t}</span> ${esc(info.d)}</div>`
+            + '<div class="m" data-addr></div>';
         if (it.owners.length) {
             h += '<ul>' + it.owners.map((o) =>
                 `<li class="${want && phCarKey(o.car) === want ? 'own' : ''}">${esc(carLabel(o.car))}</li>`
@@ -406,6 +583,9 @@
             if (it.state !== 'mine') {
                 h += `<button class="btn btn-sm" type="button" data-act="sel">${PH_SEL.has(it.name) ? 'Belgidan olish' : 'Belgilash'}</button>`;
             }
+            if (it.src !== 'gps' && (it.pid || it.owners.length)) {
+                h += `<button class="btn btn-sm" type="button" data-act="move">${it.src === 'vm' ? 'Joyini tuzatish' : 'Joyini belgilash'}</button>`;
+            }
             h += '</div>';
         }
         return h + '</div>';
@@ -416,10 +596,88 @@
             // Yangi filial rejimida mavjud aylana bosilsa — shu yerda allaqachon filial bor
             setHint('Bu yerda allaqachon «' + uiTxt(it.name) + '» bor. Boshqa joyga bosing yoki shu aylanani tanlang.');
         }
-        L.popup({ maxWidth: 300, className: 'phm-popup' })
+        // DOM tugun: popup.update() keyin yuklangan manzil/dalilni o'chirib yubormasin
+        const el = document.createElement('div');
+        el.innerHTML = itemPopupHtml(it);
+        const popup = L.popup({ maxWidth: 320, className: 'phm-popup' })
             .setLatLng([it.lat, it.lng])
-            .setContent(itemPopupHtml(it))
+            .setContent(el)
             .openOn(map);
+        fillAddress(el.querySelector('[data-addr]'), it.lat, it.lng, popup);
+        if (isPlainStop(it)) loadEvidence(it, el.querySelector('[data-ev]'), popup);
+    }
+
+    function shortAddr(detail) {
+        return String(detail || '').split(',').map((s) => s.trim())
+            .filter((s) => s && !/^\d{5,6}$/.test(s) && !/(o.?zbekiston|узбекистан)/i.test(s))
+            .slice(0, 5).join(', ');
+    }
+
+    function reverseAddr(lat, lng) {
+        const key = Number(lat).toFixed(5) + ',' + Number(lng).toFixed(5);
+        if (!addrCache.has(key)) {
+            const pr = vmApi('/api/office/geocode/reverse?lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng))
+                .then((r) => shortAddr(r.detail) || String(r.name || ''))
+                .catch(() => { addrCache.delete(key); return ''; });
+            addrCache.set(key, pr);
+        }
+        return addrCache.get(key);
+    }
+
+    async function fillAddress(el, lat, lng, popup) {
+        if (!el) return;
+        el.textContent = 'Manzil aniqlanmoqda…';
+        const a = await reverseAddr(lat, lng);
+        if (!map.hasLayer(popup)) return;
+        el.textContent = a ? ('Manzil: ' + a) : '';
+        popup.update();
+    }
+
+    function fmtDur(sec) {
+        const s = Math.max(0, Number(sec) || 0);
+        if (s < 60) return s + ' s';
+        if (s < 3600) return Math.round(s / 60) + ' min';
+        return Math.floor(s / 3600) + ' soat ' + Math.round((s % 3600) / 60) + ' min';
+    }
+
+    /** To'xtash joyi dalili: qachon, qaysi mashina, qancha turgan — xaritada nuqtalar */
+    async function loadEvidence(it, el, popup) {
+        if (!el) return;
+        let d;
+        try {
+            d = await vmApi('/api/office/place-stops?name=' + encodeURIComponent(it.name));
+        } catch (err) {
+            el.textContent = err.message || 'Toʻxtashlar yuklanmadi';
+            return;
+        }
+        if (!map.hasLayer(popup)) return;
+        const stops = Array.isArray(d.stops) ? d.stops : [];
+        if (!d.total) {
+            el.textContent = 'Soʻnggi 60 kun hisobotlarida toʻxtash topilmadi.';
+            popup.update();
+            return;
+        }
+        const avg = d.durSec / d.total;
+        const longest = stops.reduce((m, s) => Math.max(m, Number(s.durSec) || 0), 0);
+        const cars = Object.entries(d.cars || {}).sort((a, b) => b[1] - a[1])
+            .slice(0, 3).map(([c, n]) => esc(carLabel(c)) + (n > 1 ? (' ×' + n) : '')).join(', ');
+        const verdict = (d.total >= 3 && avg >= 300)
+            ? '<div class="phm-ev-v ok">Mashina bu yerda muntazam va uzoq turgan — filial shu atrofda boʻlishi mumkin.</div>'
+            : '<div class="phm-ev-v">Qisqa / kam toʻxtash — dorixona tashrifiga oʻxshamaydi (yoʻl-yoʻlakay toʻxtash).</div>';
+        el.innerHTML = `<div><b>${d.total}</b> marta · jami ${fmtDur(d.durSec)} · eng uzogʻi ${fmtDur(longest)}</div>`
+            + `<div class="m">Mashinalar: ${cars || '—'}</div>`
+            + '<ul class="phm-ev-list">' + stops.slice(0, 5).map((s) =>
+                `<li>${esc(String(s.date).slice(5).split('-').reverse().join('.'))} ${esc(String(s.in).slice(0, 5))} · ${fmtDur(s.durSec)} · ${esc(carLabel(s.car))}</li>`
+            ).join('') + (d.total > 5 ? `<li class="more">… yana ${d.total - 5} ta</li>` : '') + '</ul>'
+            + verdict;
+        evidenceLayer.clearLayers();
+        stops.forEach((s) => {
+            if (s.lat == null || s.lng == null) return;
+            L.circleMarker([s.lat, s.lng], {
+                radius: 5, color: '#9a3412', weight: 1.5, fillColor: '#f97316', fillOpacity: 0.85, interactive: false
+            }).addTo(evidenceLayer);
+        });
+        popup.update();
     }
 
     function bindPopup(root) {
@@ -452,6 +710,22 @@
                 setPhSelected(it.name, !PH_SEL.has(it.name));
                 map.closePopup();
                 render();
+                return;
+            }
+            if (act === 'create-here') {
+                map.closePopup();
+                startAdd();
+                startDraft(it.lat, it.lng);
+                return;
+            }
+            if (act === 'move') {
+                const want = phCarKey(car);
+                const owner = (it.pid && PHARMS.find((p) => p.id === it.pid))
+                    || it.owners.find((o) => want && phCarKey(o.car) === want) || it.owners[0];
+                map.closePopup();
+                if (!owner) return;
+                startAdd({ pid: owner.id });
+                startDraft(it.lat, it.lng);
                 return;
             }
             btn.disabled = true;
@@ -618,7 +892,8 @@
         if (nearEl) {
             let best = null;
             items.forEach((it) => {
-                if (placingId && it.pid === placingId) return;
+                if (isPlainStop(it)) return;
+                if (placingId && (it.pid === placingId || it.owners.some((o) => o.id === placingId))) return;
                 const m = distM(d.lat, d.lng, it.lat, it.lng);
                 if (m <= it.radiusM + NEAR_EXTRA_M && (!best || m < best.m)) best = { it, m };
             });
@@ -671,9 +946,13 @@
             if (placingId) {
                 const ph = PHARMS.find((p) => p.id === placingId);
                 if (!ph) throw new Error('Filial topilmadi — sahifani yangilang');
-                ph.lat = lat;
-                ph.lng = lng;
-                ph.radiusM = radius;
+                const key = phNameKey(ph.name);
+                PHARMS.forEach((p) => {
+                    if (p.id !== ph.id && phNameKey(p.name) !== key) return;
+                    p.lat = lat;
+                    p.lng = lng;
+                    p.radiusM = radius;
+                });
                 await savePharms();
                 phNotify('"' + uiTxt(ph.name) + '" joyi saqlandi · ' + carLabel(ph.car));
             } else {
