@@ -95,6 +95,44 @@
 .phm-pop .acts, .phm-draft .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .phm-danger { color: #b42318 !important; border-color: #f1b5ae !important; }
 .phm-acc-line { margin-top: 6px; font-size: 12px; color: #34495e; }
+
+/* Bir hududdagi bir nechta filial */
+.phm-grp-ic { background: none; border: 0; }
+.phm-grp {
+  display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; box-sizing: border-box;
+  border-radius: 50%; border: 2px solid #fff; color: #fff; font: 800 12px/1 'IBM Plex Sans', system-ui, sans-serif;
+  box-shadow: 0 1px 4px rgba(11, 31, 58, .4); cursor: pointer;
+}
+.phm-grp-mine { background: #0f5132; }
+.phm-grp-free { background: #15803d; }
+.phm-grp-other { background: #3f8f5a; }
+.phm-grp-sel { background: #b7791f; }
+.phm-grp.dim { opacity: .5; }
+.phm-legend .phm-grp { width: 18px; height: 18px; font-size: 10px; font-style: normal; border-width: 1.5px; cursor: default; }
+.phm-pop b.i { display: inline; font-size: inherit; margin: 0; }
+.phm-grp-list { margin-top: 8px; display: grid; gap: 6px; max-height: 260px; overflow: auto; }
+.phm-grp-row { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid #d7e3ef; border-radius: 8px; background: #f8fafc; }
+.phm-grp-row.focus { border-color: #22c55e; background: #effaf2; }
+.phm-grp-row .nm { flex: 1; min-width: 0; }
+.phm-grp-row .nm b { display: inline; font-size: 13px; margin: 0; }
+.phm-grp-row .nm i { font-style: normal; font-size: 11px; color: #5a7190; }
+.phm-grp-row .nm small { display: block; font-size: 11px; color: #5a7190; }
+.phm-grp-row .nm small .own { color: #14532d; font-weight: 700; }
+.phm-grp-row .nm small .none { color: #9a3412; }
+.phm-pop .phm-grp-row .acts { margin-top: 0; flex-shrink: 0; align-items: center; }
+.phm-grp-n {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: #15803d; color: #fff;
+  font: 800 11px/20px 'IBM Plex Sans', system-ui, sans-serif; text-align: center;
+}
+.phm-ord { display: inline-flex; gap: 2px; }
+.phm-ord .btn { min-width: 26px; padding: 0 6px; }
+.phm-grp-form[hidden] { display: none !important; }
+.phm-grp-form { margin-top: 8px; padding: 8px; border: 1px dashed #a8bdd4; border-radius: 8px; }
+.phm-grp-form label { display: block; font-size: 11px; font-weight: 700; color: #5a7190; margin: 6px 0 3px; }
+.phm-grp-form select, .phm-grp-form input {
+  width: 100%; box-sizing: border-box; height: 32px; padding: 0 8px; border: 1px solid #a8bdd4; border-radius: 6px;
+  font: 600 12px 'IBM Plex Sans', system-ui, sans-serif; background: #fff;
+}
 .phm-warn { margin-top: 6px; padding: 7px 9px; background: #fff1d6; border: 1px solid #f3c98b; border-radius: 6px; font-size: 12px; color: #7a4a06; }
 .phm-warn b { display: inline; font-size: 12px; margin: 0; }
 .phm-ev { margin-top: 8px; font-size: 12px; }

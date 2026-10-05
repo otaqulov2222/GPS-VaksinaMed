@@ -17,6 +17,9 @@
     const NEAR_EXTRA_M = 80;
     const HOME_KM = 70;
     const CITY_KM = 12;
+    const SAME_PLACE_M = 25;
+    const GROUP_M = 70;
+    const GROUP_LABELS_ZOOM = 16;
 
     let map = null;
     let zoneLayer = null;
@@ -25,6 +28,8 @@
     let items = [];
     let byId = new Map();
     let idx = { geo: new Map(), stop: new Map(), geoList: [] };
+    let groupOf = new Map();
+    let groupsById = new Map();
     const addrCache = new Map();
     let showStops = false;
     let addMode = false;
@@ -208,6 +213,14 @@
             if (drawn.has(p.id) || p.lat == null || p.lng == null) return;
             const owners = ownersByKey.get(phNameKey(p.name)) || [p];
             owners.forEach((o) => drawn.add(o.id));
+            // Nomi boshqacha yozilgan, lekin aynan geozona markazidagi filial (1-гор ≡ Гор-1) — bitta filial
+            const same = out.find((it) => it.src === 'gps' && !it.owners.length
+                && distM(it.lat, it.lng, Number(p.lat), Number(p.lng)) <= SAME_PLACE_M);
+            if (same) {
+                same.owners = owners;
+                same.alias = p.name;
+                return;
+            }
             out.push({
                 id: 'p:' + p.id,
                 pid: p.id,
@@ -221,6 +234,88 @@
             });
         });
         return out;
+    }
+
+    /** Bir hududdagi (markazlar ≤ GROUP_M) filiallar — bitta bino / kompleks */
+    function buildGroups(list) {
+        groupOf = new Map();
+        groupsById = new Map();
+        const pts = list.filter((it) => !isPlainStop(it) && !OFFICE_RE.test(it.name));
+        const parent = new Map(pts.map((it) => [it.id, it.id]));
+        const root = (id) => {
+            while (parent.get(id) !== id) id = parent.get(id);
+            return id;
+        };
+        for (let i = 0; i < pts.length; i++) {
+            for (let j = i + 1; j < pts.length; j++) {
+                const a = pts[i];
+                const b = pts[j];
+                if (Math.abs(a.lat - b.lat) > 0.002) continue;
+                if (distM(a.lat, a.lng, b.lat, b.lng) <= GROUP_M) parent.set(root(a.id), root(b.id));
+            }
+        }
+        const byRoot = new Map();
+        pts.forEach((it) => {
+            const r = root(it.id);
+            if (!byRoot.has(r)) byRoot.set(r, []);
+            byRoot.get(r).push(it);
+        });
+        byRoot.forEach((members) => {
+            if (members.length < 2) return;
+            const main = members.find((m) => m.src === 'gps')
+                || members.slice().sort((a, b) => b.radiusM - a.radiusM)[0];
+            members.sort((a, b) => (a === main ? -1 : b === main ? 1 : String(a.name).localeCompare(String(b.name))));
+            const def = new Map(members.map((m, i) => [m, i]));
+            const slot = (m) => {
+                const s = slotOf(m);
+                return s == null ? 100 + def.get(m) : s;
+            };
+            members.sort((a, b) => slot(a) - slot(b));
+            const g = { id: 'grp:' + main.id, main, members, lat: main.lat, lng: main.lng };
+            groupsById.set(g.id, g);
+            members.forEach((m) => groupOf.set(m.id, g));
+        });
+    }
+
+    /** Xarita elementiga tegishli PHARMS yozuvlari */
+    function recsOf(m) {
+        const out = [];
+        if (m.pid) {
+            const p = (PHARMS || []).find((x) => x.id === m.pid);
+            if (p) out.push(p);
+        }
+        m.owners.forEach((o) => { if (o && !out.includes(o)) out.push(o); });
+        return out;
+    }
+
+    function slotOf(m) {
+        const s = recsOf(m).map((r) => r.slot).find((v) => v != null && v !== '');
+        return s == null ? null : Number(s);
+    }
+
+    /** Umumiy aylana ichida a'zolar chapdan o'ngga (ko'p bo'lsa — qatorlab) */
+    function groupLayout(g) {
+        const n = g.members.length;
+        const R = Math.max(40, Number(g.main.radiusM) || 100);
+        const cols = n <= 4 ? n : Math.ceil(Math.sqrt(n));
+        const rows = Math.ceil(n / cols);
+        const cell = (R * 1.5) / Math.max(cols, rows);
+        const r = Math.min(cell * 0.42, R * 0.45);
+        const mPerLng = 111320 * Math.cos((g.lat * Math.PI) / 180);
+        return g.members.map((m, i) => {
+            const c = i % cols;
+            const row = Math.floor(i / cols);
+            const x = (c - (cols - 1) / 2) * cell;
+            const y = ((rows - 1) / 2 - row) * cell;
+            return { m, lat: g.lat + y / 111320, lng: g.lng + x / mPerLng, r };
+        });
+    }
+
+    function groupState(g) {
+        const s = g.members.map((m) => m.state);
+        if (s.includes('mine')) return 'mine';
+        if (s.includes('other')) return 'other';
+        return 'free';
     }
 
     /** Filial koordinatasi qanchalik ishonchli: exact / manual / approx / none */
@@ -307,22 +402,27 @@
         const order = { stop: 0, free: 1, office: 1, other: 2, mine: 3 };
         items.forEach((it) => { it.state = stateOf(it); });
         items.sort((a, b) => (order[a.state] - order[b.state]) || (b.radiusM - a.radiusM));
+        buildGroups(items);
         items.forEach((it) => {
             const sel = PH_SEL.has(it.name);
             const hit = matchesQuery(it, q);
             if (q && hit) matched.push(it);
+            byId.set(it.id, it);
+            // Guruh a'zolari pastda: umumiy aylana ichida kichik aylanalar
+            if (groupOf.has(it.id)) return;
             const dim = !!q && !hit;
             const style = styleOf(it, it.state, sel, dim);
             const circle = L.circle([it.lat, it.lng], Object.assign(
                 { radius: it.radiusM, bubblingMouseEvents: false },
                 style
             ));
-            const dot = L.circleMarker([it.lat, it.lng], dotStyleOf(it.state, style, dim));
             const onClick = (e) => {
                 L.DomEvent.stopPropagation(e);
                 openItem(it);
             };
             circle.on('click', onClick);
+            zoneLayer.addLayer(circle);
+            const dot = L.circleMarker([it.lat, it.lng], dotStyleOf(it.state, style, dim));
             dot.on('click', onClick);
             const strong = it.state === 'mine' || sel || (q && hit);
             const near = zoom >= ALL_LABELS_ZOOM && !(q && !hit) && view.contains([it.lat, it.lng]);
@@ -335,12 +435,76 @@
                 opacity: 1,
                 className: 'phm-tip phm-tip-' + (sel ? 'sel' : it.state)
             });
-            it.circle = circle;
-            zoneLayer.addLayer(circle);
             dots.push(dot);
-            byId.set(it.id, it);
         });
         dots.forEach((d) => zoneLayer.addLayer(d));
+        const mpp = 156543.03 * Math.cos((map.getCenter().lat * Math.PI) / 180) / Math.pow(2, zoom);
+        const inner = [];
+        groupsById.forEach((g) => {
+            const st = groupState(g);
+            const hit = !q || g.members.some((m) => matchesQuery(m, q));
+            const sel = g.members.some((m) => PH_SEL.has(m.name));
+            const dim = !hit;
+            const open = (focus) => (e) => {
+                L.DomEvent.stopPropagation(e);
+                openGroup(g, focus);
+            };
+            // Umumiy hudud — GPS shu radiusda to'xtashni sanaydi
+            const outer = L.circle([g.lat, g.lng], Object.assign(
+                { radius: g.main.radiusM, bubblingMouseEvents: false },
+                styleOf(g.main, st, false, dim),
+                { dashArray: null, weight: 2.5, fillOpacity: dim ? 0.05 : 0.12 }
+            ));
+            outer.on('click', open(null));
+            zoneLayer.addLayer(outer);
+            const showInnerLabels = zoom >= GROUP_LABELS_ZOOM && hit && view.contains([g.lat, g.lng]);
+            groupLayout(g).forEach((p, i) => {
+                const msel = PH_SEL.has(p.m.name);
+                const mdim = dim || (!!q && !matchesQuery(p.m, q));
+                const c = L.circle([p.lat, p.lng], Object.assign(
+                    { radius: p.r, bubblingMouseEvents: false },
+                    styleOf(p.m, p.m.state, msel, mdim),
+                    { dashArray: null, fillOpacity: mdim ? 0.15 : 0.6 }
+                ));
+                c.on('click', open(p.m));
+                const rpx = p.r / mpp;
+                const top = i % 2 === 0;
+                c.bindTooltip(esc(uiTxt(p.m.name)), {
+                    permanent: showInnerLabels && labels < MAX_LABELS,
+                    direction: top ? 'top' : 'bottom',
+                    offset: [0, top ? -(rpx + 2) : (rpx + 2)],
+                    opacity: 1,
+                    className: 'phm-tip phm-tip-' + (msel ? 'sel' : p.m.state)
+                });
+                if (showInnerLabels) labels++;
+                inner.push(c);
+            });
+            // Son belgisi — umumiy aylana tepasida; uzoq zoomda nomlar shu yerda
+            const n = g.members.length + groupLinked(g).length;
+            const icon = L.divIcon({
+                className: 'phm-grp-ic',
+                html: `<span class="phm-grp phm-grp-${sel ? 'sel' : st}${hit ? '' : ' dim'}">${n}</span>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+            const mk = L.marker([g.lat + g.main.radiusM / 111320, g.lng], { icon, keyboard: false, bubblingMouseEvents: false });
+            mk.on('click', open(null));
+            if (!showInnerLabels) {
+                const strong = st === 'mine' || sel || (q && hit);
+                const near = zoom >= ALL_LABELS_ZOOM && hit && view.contains([g.lat, g.lng]);
+                const permanent = (strong || near) && labels < MAX_LABELS;
+                if (permanent) labels++;
+                mk.bindTooltip(g.members.map((m) => esc(uiTxt(m.name))).join(' · '), {
+                    permanent,
+                    direction: 'top',
+                    offset: [0, -12],
+                    opacity: 1,
+                    className: 'phm-tip phm-tip-' + (sel ? 'sel' : st)
+                });
+            }
+            inner.push(mk);
+        });
+        inner.forEach((l) => zoneLayer.addLayer(l));
         renderSub();
         renderNoCoord();
         if (!fittedOnce && items.length) {
@@ -433,7 +597,8 @@
             || items.find((it) => it.owners.some((o) => o.id === p.id));
     }
 
-    function showPharm(pid) {
+    function showPharm(pid, opts) {
+        const o = opts || {};
         const p = (PHARMS || []).find((x) => x.id === pid);
         if (!p || !init()) return;
         const it = itemForPharm(p);
@@ -442,8 +607,10 @@
         if (!isFinite(lat) || !isFinite(lng)) return;
         const box = $('phm-box');
         if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        map.flyTo([lat, lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
-        if (it) setTimeout(() => openItem(it), 650);
+        const g = it && groupOf.get(it.id);
+        const c = g ? [g.lat, g.lng] : [lat, lng];
+        map.flyTo(c, o.zoom || Math.max(map.getZoom(), 16), { duration: 0.6 });
+        if (it && o.popup !== false) setTimeout(() => openItem(it), 650);
     }
 
     function placePharm(pid) {
@@ -605,6 +772,7 @@
                 : { k: 'approx', t: 'Taxminiy', d: 'Filialning oʻz koordinatasi yoʻq — GPS toʻxtash nuqtasi koʻrsatilmoqda' });
         let h = `<div class="phm-pop" data-item="${esc(it.id)}"><b>${esc(uiTxt(it.name))}</b>`
             + `<div class="m">${src} · radius ${it.radiusM} m</div>`
+            + aliasNote(it)
             + `<div class="phm-acc-line"><span class="phm-acc phm-acc-${info.k}">${info.t}</span> ${esc(info.d)}</div>`
             + '<div class="m" data-addr></div>';
         if (it.owners.length) {
@@ -614,28 +782,182 @@
         } else {
             h += '<div class="m none">Hech bir mashinaga biriktirilmagan</div>';
         }
+        if (canEdit()) h += `<div class="acts">${actsHtml(it, false)}</div>`;
+        return h + '</div>';
+    }
+
+    function aliasNote(it) {
+        return it.alias && phNameKey(it.alias) !== phNameKey(it.name)
+            ? `<div class="m">Tizimda «${esc(uiTxt(it.alias))}» nomi bilan — bitta filial</div>`
+            : '';
+    }
+
+    function actsHtml(it, compact) {
+        const car = targetCar();
+        if (!car) return '<div class="m">Avval yuqorida mashinani tanlang</div>';
+        let h = '';
+        if (it.state === 'mine') {
+            h += `<button class="btn btn-sm phm-danger" type="button" data-act="unassign">${compact ? 'Olib tashlash' : (esc(shortCar(car)) + ' dan olib tashlash')}</button>`;
+        } else {
+            const label = it.owners.length ? (compact ? 'Oʻtkazish' : 'Shu mashinaga oʻtkazish') : '＋ Biriktirish';
+            h += `<button class="btn btn-sm btn-gold" type="button" data-act="assign">${label}${compact ? '' : (' → ' + esc(shortCar(car)))}</button>`;
+        }
+        if (it.state !== 'mine' && !compact) {
+            h += `<button class="btn btn-sm" type="button" data-act="sel">${PH_SEL.has(it.name) ? 'Belgidan olish' : 'Belgilash'}</button>`;
+        }
+        if (it.src !== 'gps' && (it.pid || it.owners.length)) {
+            h += `<button class="btn btn-sm" type="button" data-act="move">${it.src === 'vm' ? 'Joyini tuzatish' : 'Joyini belgilash'}</button>`;
+        }
+        return h;
+    }
+
+    /** Guruhdagi filiallarning PHARMS yozuvlari id lari */
+    function groupPharmIds(g) {
+        const ids = new Set();
+        g.members.forEach((m) => {
+            if (m.pid) ids.add(m.pid);
+            m.owners.forEach((o) => o.id && ids.add(o.id));
+        });
+        return ids;
+    }
+
+    /** Koordinatasiz, lekin guruh filiallari bilan «yonma-yon» bog'langanlar */
+    function groupLinked(g) {
+        const ids = groupPharmIds(g);
+        const linkedIds = new Set();
+        (PHARMS || []).forEach((p) => {
+            if (ids.has(p.id)) (p.nearby || []).forEach((i) => linkedIds.add(i));
+        });
+        return (PHARMS || []).filter((p) => (p.lat == null || p.lng == null)
+            && (linkedIds.has(p.id) || (p.nearby || []).some((i) => ids.has(i))));
+    }
+
+    function groupPopupHtml(g, focus) {
+        const want = phCarKey(targetCar());
+        const linked = groupLinked(g);
+        let h = `<div class="phm-pop phm-grp-pop" data-grp="${esc(g.id)}"><b>Bitta hududda ${g.members.length + linked.length} ta filial</b>`
+            + '<div class="m">Mashina katta aylana ichida toʻxtasa — roʻyxatdagi oʻz filiallarining <b class="i">barchasiga</b> tashrif hisoblanadi. '
+            + 'Ichidagi kichik aylanalar — filiallar xaritada chapdan oʻngga shu tartibda.</div>'
+            + '<div class="m" data-addr></div><div class="phm-grp-list">';
+        g.members.forEach((m, i) => {
+            const cars = m.owners.length
+                ? m.owners.map((o) => `<span class="${want && phCarKey(o.car) === want ? 'own' : ''}">${esc(carLabel(o.car))}</span>`).join(', ')
+                : '<span class="none">biriktirilmagan</span>';
+            const alias = m.alias && phNameKey(m.alias) !== phNameKey(m.name) ? ` <i>(tizimda: ${esc(uiTxt(m.alias))})</i>` : '';
+            const canOrder = canEdit() && recsOf(m).length && g.members.length > 1;
+            const ord = canOrder
+                ? `<span class="phm-ord"><button class="btn btn-sm" type="button" data-act="grp-left" title="Chapga"${i === 0 ? ' disabled' : ''}>◀</button>`
+                    + `<button class="btn btn-sm" type="button" data-act="grp-right" title="Oʻngga"${i === g.members.length - 1 ? ' disabled' : ''}>▶</button></span>`
+                : '';
+            h += `<div class="phm-grp-row${focus && focus.id === m.id ? ' focus' : ''}" data-item="${esc(m.id)}">`
+                + `<span class="phm-grp-n">${i + 1}</span>`
+                + `<div class="nm"><b>${esc(uiTxt(m.name))}</b>${alias}<small>${m.src === 'gps' ? 'Boomerang' : 'Tizimda'} · ${cars}</small></div>`
+                + (canEdit() ? `<div class="acts">${ord}${actsHtml(m, true)}</div>` : '') + '</div>';
+        });
+        linked.forEach((p) => {
+            h += `<div class="phm-grp-row"><div class="nm"><b>${esc(uiTxt(p.name))}</b><small>Koordinatasiz · ${esc(carLabel(p.car))} — GPS sanamaydi</small></div>`
+                + (canEdit() ? `<div class="acts"><button class="btn btn-sm btn-gold" type="button" data-act="grp-put" data-pid="${esc(p.id)}">Shu yerga joylash</button></div>` : '')
+                + '</div>';
+        });
+        h += '</div>';
         if (canEdit()) {
-            h += '<div class="acts">';
-            if (!car) {
-                h += '<div class="m">Avval yuqorida mashinani tanlang</div>';
-            } else if (it.state === 'mine') {
-                h += `<button class="btn btn-sm phm-danger" type="button" data-act="unassign">${esc(shortCar(car))} dan olib tashlash</button>`;
-            } else {
-                const label = it.owners.length ? 'Shu mashinaga oʻtkazish' : '＋ Biriktirish';
-                h += `<button class="btn btn-sm btn-gold" type="button" data-act="assign">${label} → ${esc(shortCar(car))}</button>`;
-            }
-            if (it.state !== 'mine') {
-                h += `<button class="btn btn-sm" type="button" data-act="sel">${PH_SEL.has(it.name) ? 'Belgidan olish' : 'Belgilash'}</button>`;
-            }
-            if (it.src !== 'gps' && (it.pid || it.owners.length)) {
-                h += `<button class="btn btn-sm" type="button" data-act="move">${it.src === 'vm' ? 'Joyini tuzatish' : 'Joyini belgilash'}</button>`;
-            }
-            h += '</div>';
+            const ids = groupPharmIds(g);
+            const linkedIds = new Set(linked.map((p) => p.id));
+            const pool = (PHARMS || [])
+                .filter((p) => (p.lat == null || p.lng == null) && !ids.has(p.id) && !linkedIds.has(p.id))
+                .sort((a, b) => ((want && phCarKey(a.car) === want ? 0 : 1) - (want && phCarKey(b.car) === want ? 0 : 1))
+                    || String(a.name).localeCompare(String(b.name)));
+            h += '<div class="acts"><button class="btn btn-sm btn-gold" type="button" data-act="grp-add">＋ Shu hududga filial qoʻshish</button></div>'
+                + '<div class="phm-grp-form" hidden>'
+                + '<label>Koordinatasiz filialdan tanlang</label>'
+                + '<select data-f="grp-pid"><option value="">— tanlang —</option>'
+                + pool.map((p) => `<option value="${esc(p.id)}">${esc(uiTxt(p.name))} · ${esc(carLabel(p.car))}</option>`).join('')
+                + '</select>'
+                + `<label>yoki yangi filial nomi${targetCar() ? (' → ' + esc(shortCar(targetCar()))) : ''}</label>`
+                + '<input data-f="grp-name" placeholder="Masalan: Farm Lyuks">'
+                + '<div class="acts"><button class="btn btn-sm btn-gold" type="button" data-act="grp-save">Saqlash</button></div>'
+                + '<div class="m">Filial shu hudud koordinatasi va radiusini oladi va qolganlari bilan «yonma-yon» bogʻlanadi.</div>'
+                + '</div>';
         }
         return h + '</div>';
     }
 
+    function openGroup(g, focus) {
+        if (addMode && !draft) {
+            setHint('Bu hududda allaqachon ' + g.members.length + ' ta filial bor — «Shu hududga filial qoʻshish»dan foydalaning.');
+        }
+        const el = document.createElement('div');
+        el.innerHTML = groupPopupHtml(g, focus);
+        const popup = L.popup({ maxWidth: 380, minWidth: 290, className: 'phm-popup' })
+            .setLatLng([g.lat, g.lng])
+            .setContent(el)
+            .openOn(map);
+        fillAddress(el.querySelector('[data-addr]'), g.lat, g.lng, popup);
+    }
+
+    /** Ikki tomonlama «yonma-yon» bog'lash (office.js applyNearby bilan bir xil) */
+    function linkNearby(row, ids) {
+        const want = new Set((row.nearby || []).filter((i) => i !== row.id));
+        ids.forEach((i) => { if (i !== row.id) want.add(i); });
+        row.nearby = Array.from(want).slice(0, 12);
+        (PHARMS || []).forEach((p) => {
+            if (p.id === row.id || !ids.has(p.id)) return;
+            const cur = Array.isArray(p.nearby) ? p.nearby.filter((i) => i !== row.id) : [];
+            cur.push(row.id);
+            p.nearby = cur.slice(0, 12);
+        });
+    }
+
+    async function runGroupAction(act, btn, root) {
+        const g = groupsById.get(root.getAttribute('data-grp'));
+        if (!g) return;
+        if (act === 'grp-add') {
+            const f = root.querySelector('.phm-grp-form');
+            if (f) f.hidden = !f.hidden;
+            if (map._popup) map._popup.update();
+            return;
+        }
+        if (act !== 'grp-put' && act !== 'grp-save') return;
+        const pid = act === 'grp-put' ? btn.getAttribute('data-pid') : (root.querySelector('[data-f="grp-pid"]') || {}).value;
+        const newName = act === 'grp-save' ? String((root.querySelector('[data-f="grp-name"]') || {}).value || '').trim() : '';
+        const ids = groupPharmIds(g);
+        const lat = Number(Number(g.main.lat).toFixed(6));
+        const lng = Number(Number(g.main.lng).toFixed(6));
+        const radiusM = clampRadius(g.main.radiusM, 120);
+        btn.disabled = true;
+        try {
+            let row = null;
+            if (pid) {
+                row = PHARMS.find((p) => p.id === pid);
+                if (!row) throw new Error('Filial topilmadi — sahifani yangilang');
+                row.lat = lat;
+                row.lng = lng;
+                row.radiusM = radiusM;
+            } else if (newName) {
+                const car = targetCar();
+                if (!car) throw new Error('Avval yuqorida mashinani tanlang');
+                await assignPharmacy(newName, car, lat, lng, { radiusM, skipSave: true, noHighlight: true });
+                const key = phNameKey(newName);
+                row = PHARMS.find((p) => phNameKey(p.name) === key);
+            } else {
+                throw new Error('Filialni tanlang yoki yangi nom yozing');
+            }
+            if (row) linkNearby(row, ids);
+            await savePharms();
+            map.closePopup();
+            phNotify('«' + uiTxt(row ? row.name : newName) + '» shu hududga qoʻshildi (' + uiTxt(g.main.name) + ')');
+        } catch (err) {
+            btn.disabled = false;
+            phNotify(err.message || String(err), false);
+        }
+    }
+
     function openItem(it) {
+        const g = groupOf.get(it.id);
+        if (g) {
+            openGroup(g, it);
+            return;
+        }
         if (addMode && !draft) {
             // Yangi filial rejimida mavjud aylana bosilsa — shu yerda allaqachon filial bor
             setHint('Bu yerda allaqachon «' + uiTxt(it.name) + '» bor. Boshqa joyga bosing yoki shu aylanani tanlang.');
@@ -737,6 +1059,11 @@
                 if (it) runAction(btn.getAttribute('data-act'), it, btn);
                 return;
             }
+            const grp = btn.closest('[data-grp]');
+            if (grp) {
+                runGroupAction(btn.getAttribute('data-act'), btn, grp);
+                return;
+            }
             if (btn.closest('.phm-draft')) runDraftAction(btn.getAttribute('data-act'), btn);
         });
         root.addEventListener('input', (e) => {
@@ -772,12 +1099,32 @@
                 startDraft(it.lat, it.lng);
                 return;
             }
+            if (act === 'grp-left' || act === 'grp-right') {
+                const g = groupOf.get(it.id);
+                if (!g) return;
+                const arr = g.members.slice();
+                const i = arr.indexOf(it);
+                const j = act === 'grp-left' ? i - 1 : i + 1;
+                if (i < 0 || j < 0 || j >= arr.length) return;
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+                arr.forEach((m, k) => recsOf(m).forEach((r) => { r.slot = k; }));
+                btn.disabled = true;
+                await savePharms();
+                setTimeout(() => {
+                    render();
+                    const ng = [...groupsById.values()].find((x) => x.members.some((m) => m.id === it.id));
+                    if (ng) openGroup(ng, ng.members.find((m) => m.id === it.id));
+                }, 120);
+                return;
+            }
             btn.disabled = true;
             if (act === 'assign') {
                 if (!car) throw new Error('Avval mashinani tanlang');
                 const moved = it.owners.length ? (' (' + it.owners.map((o) => o.car).join(', ') + ' dan)') : '';
-                await assignPharmacy(it.name, car, it.lat, it.lng, { radiusM: it.radiusM, noHighlight: true });
-                phNotify('"' + uiTxt(it.name) + '" → ' + carLabel(car) + moved);
+                // Tizimdagi nom boshqacha bo'lsa (1-гор ≡ Гор-1) — o'sha yozuv ko'chadi, dublikat yaratilmaydi
+                const name = it.owners.length ? it.owners[0].name : it.name;
+                await assignPharmacy(name, car, it.lat, it.lng, { radiusM: it.radiusM, noHighlight: true });
+                phNotify('"' + uiTxt(name) + '" → ' + carLabel(car) + moved);
             } else if (act === 'unassign') {
                 if (!confirm('«' + uiTxt(it.name) + '» ni ' + carLabel(car) + ' dan olib tashlaysizmi?')) {
                     btn.disabled = false;
@@ -785,7 +1132,8 @@
                 }
                 const key = phNameKey(it.name);
                 const want = phCarKey(car);
-                PHARMS = PHARMS.filter((p) => !(phNameKey(p.name) === key && phCarKey(p.car) === want));
+                const ownerIds = new Set(it.owners.map((o) => o.id));
+                PHARMS = PHARMS.filter((p) => !((ownerIds.has(p.id) || phNameKey(p.name) === key) && phCarKey(p.car) === want));
                 await savePharms();
                 show('msg-ph', '«' + uiTxt(it.name) + '» ' + carLabel(car) + ' dan olib tashlandi.', true);
             }
@@ -1017,6 +1365,7 @@
     window.phMap = {
         refresh: schedule,
         fitCar: () => { schedule(); setTimeout(() => fitCar(true), 80); },
-        startAdd
+        startAdd,
+        show: showPharm
     };
 })();

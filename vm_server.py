@@ -1402,6 +1402,13 @@ def clean_pharmacy(p):
         n = str(n or "").strip()[:40]
         if n and n != rid and n not in nearby:
             nearby.append(n)
+    # Bir hududdagi filiallar xaritada shu tartibda (chapdan o'ngga) chiziladi
+    try:
+        slot = int(p.get("slot")) if p.get("slot") not in (None, "") else None
+    except (TypeError, ValueError):
+        slot = None
+    if slot is not None:
+        slot = max(0, min(slot, 50))
     return {
         "id": rid,
         "car": car,
@@ -1411,6 +1418,7 @@ def clean_pharmacy(p):
         "radiusM": radius,
         "aliases": aliases,
         "nearby": nearby[:12],
+        "slot": slot,
     }
 
 
