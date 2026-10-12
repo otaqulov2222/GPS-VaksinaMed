@@ -773,8 +773,9 @@ function calcCar(car) {
     if (!km && src.odo > 0 && odoPrev > 0 && src.odo >= odoPrev) {
       km = src.odo - odoPrev;
     }
+    const odoBeg = odoPrev > 0 ? cleanFloat(odoPrev) : 0;
     if (src.odo > 0) odoPrev = src.odo;
-    else if (km > 0) odoPrev = odoPrev + km;
+    else if (km > 0 && odoPrev > 0) odoPrev = odoPrev + km;
     const split = splitDayKm(src, km, mix);
     let gasUsed = 0, benUsed = 0;
     if (km > 0) {
@@ -785,7 +786,7 @@ function calcCar(car) {
     benR = cleanFloat(benR + src.benzinIn - benUsed);
     rows.push({
       d, km, gasKm: split.gasKm, liqKm: split.liqKm,
-      odo: src.odo, mode: src.mode, station: src.station,
+      odo: src.odo, odoBeg, mode: src.mode, station: src.station,
       mixPct: clampMixPct(mix),
       gasIn: src.gasIn, gasPrice, gasSum: cleanFloat(src.gasIn * gasPrice),
       benzinIn: src.benzinIn, benzinPrice: benPrice, benzinSum: cleanFloat(src.benzinIn * benPrice),
@@ -1271,6 +1272,7 @@ function flushFormToState() {
     const d = el.getAttribute('data-d');
     const f = el.getAttribute('data-f');
     if (!d || !f || !STATE.car) return;
+    if (f === 'odoBeg') return;
     const row = ensureDay(getCar(STATE.car), d);
     if (f === 'mode' || f === 'station' || f === 'extraWhy' || f === 'note') {
       row[f] = el.value;
@@ -2219,7 +2221,7 @@ function renderDailyTable() {
       <td><input data-d="${r.d}" data-f="km" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.km, dispFracOf(src, 'km'))}" title="Jami km"></td>
       <td><input data-d="${r.d}" data-f="gasKm" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(gasKmVal, dispFracOf(src, 'gasKm'))}" title="Shu kunda gazda yurgan km"></td>
       <td><span class="out" data-liq-km="${r.d}">${r.liqKm ? fmtNum(r.liqKm) : ''}</span></td>
-      <td><input data-d="${r.d}" data-f="odo" type="text" inputmode="decimal" autocomplete="off" value="${vinDisp(src.odo, dispFracOf(src, 'odo'))}"></td>
+      <td><input data-d="${r.d}" data-f="odoBeg" type="text" inputmode="decimal" autocomplete="off" value="${r.odoBeg ? vinDisp(r.odoBeg) : ''}" title="Kun boshidagi spidometr"></td>
       <td>${modeSelect(r.d, src.mode)}</td>
       <td><span class="out" data-mix-gaz>${r.mode === 'aralash' ? fmtNum(r.mixPct) : ''}</span></td>
       <td class="col-mix-liq"><span class="out" data-mix-liq>${(carNeedsMixLiqPct(car) && r.mode === 'aralash' && mixLiqPctValue(car) !== '') ? fmtNum(mixLiqPctValue(car)) : (carNeedsMixLiqPct(car) && r.mode === 'aralash' ? fmtNum(cleanFloat(100 - r.mixPct)) : '')}</span></td>
@@ -2241,6 +2243,66 @@ function renderDailyTable() {
   }).join('') + dailyJamiHtml(rows);
   // MUHIM: yangi <td> chizilgandan KEYIN yashirish — aks holda thead/tbody ustunlari suriladi
   applyFuelTypeUi(car.fuelType || 'mixed');
+  renderNegWarn(rows);
+}
+
+/** Kun boshi spidometri yozilsa: 1-kun → oy boshi, boshqa kun → oldingi kun oxiri (km bo'sh bo'lsa hisoblanadi) */
+function onOdoBegInput(el, day) {
+  const car = getCar(STATE.car);
+  const v = n(el.value);
+  if (day <= 1) {
+    car.odoStart = v;
+    forgetDispFrac(car, ['odoStart']);
+    lockStartFields(car, ['odo']);
+    const p = document.getElementById('p-odoStart');
+    if (p) p.value = v ? vinDisp(v) : '';
+    syncOdoChainFromKm(car, { force: true });
+  } else {
+    const pd = day - 1;
+    const row = ensureDay(car, pd);
+    row.odo = v;
+    row.odoSrc = 'user';
+    const beg = n((calcCar(car)[pd - 1] || {}).odoBeg);
+    if (v > 0 && beg > 0 && v >= beg && !n(row.km)) {
+      row.km = cleanFloat(v - beg);
+      row.kmSrc = 'odo';
+      if (dayRow(car, pd).mode === 'gaz') row.gasKm = row.km;
+      const kmInp = document.querySelector('#daily-body input[data-d="' + pd + '"][data-f="km"]');
+      if (kmInp) kmInp.value = vinDisp(row.km);
+      const gInp = document.querySelector('#daily-body input[data-d="' + pd + '"][data-f="gasKm"]');
+      if (gInp && row.gasKm != null) gInp.value = vinDisp(row.gasKm);
+    }
+  }
+  schedulePaintCalc(true);
+  markDirty();
+}
+
+function paintOdoBeg(rows) {
+  const active = document.activeElement;
+  document.querySelectorAll('#daily-body input[data-f="odoBeg"]').forEach(inp => {
+    if (inp === active) return;
+    const r = rows[n(inp.getAttribute('data-d')) - 1];
+    if (r) inp.value = r.odoBeg ? vinDisp(r.odoBeg) : '';
+  });
+}
+
+/** Qoldiq minusga tushgan kunlar — zapravka yetishmaydi yoki oy boshi noto'g'ri */
+function renderNegWarn(rows) {
+  const box = document.getElementById('neg-warn');
+  if (!box) return;
+  const firstNeg = k => rows.find(r => n(r[k]) < -0.0001);
+  const g = firstNeg('gasR');
+  const b = firstNeg('benR');
+  if (!g && !b) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const car = getCar(STATE.car);
+  const liq = (car.fuelType === 'dizel' || car.fuelType === 'dizel_gaz') ? 'dizel' : 'benzin';
+  const bits = [];
+  if (g) bits.push('gaz ' + g.d + '-kundan (' + fmtNum(g.gasR) + ' m³)');
+  if (b) bits.push(liq + ' ' + b.d + '-kundan (' + fmtNum(b.benR) + ' l)');
+  box.innerHTML = '⚠ <b>Qoldiq minusga tushgan: ' + esc(bits.join(', ')) + '.</b> ' +
+    'Sarf mavjud yoqilg\'idan ko\'p — shu kungacha zapravka kiritilmagan yoki oy boshi qoldig\'i noto\'g\'ri. ' +
+    'Zapravkalarni kiriting yoki oy boshini tekshiring.';
+  box.style.display = '';
 }
 
 let _paintCalcTimer = null;
@@ -2295,7 +2357,9 @@ function paintCalc() {
       spans[6].className = 'out ' + remainClass(r.benR);
     }
   });
+  paintOdoBeg(rows);
   paintDailyJami(rows);
+  renderNegWarn(rows);
 }
 
 function fleetTotals() {
@@ -3407,7 +3471,10 @@ function carryDiffs() {
     const car = getCar(f.car);
     const gasBad = Math.abs(n(car.gasStart) - bal.gas) > 0.0005;
     const benBad = Math.abs(n(car.benzinStart) - bal.benzin) > 0.0005;
-    if (gasBad || benBad) out.push({ plate: f.car, bal, gas: n(car.gasStart), benzin: n(car.benzinStart), gasBad, benBad });
+    const odoBad = bal.odo > 0 && Math.abs(n(car.odoStart) - bal.odo) > 0.005;
+    if (gasBad || benBad || odoBad) {
+      out.push({ plate: f.car, bal, gas: n(car.gasStart), benzin: n(car.benzinStart), odo: n(car.odoStart), gasBad, benBad, odoBad });
+    }
   });
   return out;
 }
@@ -3422,10 +3489,11 @@ function renderCarryWarn() {
     const bits = [];
     if (x.gasBad) bits.push('gaz ' + fmtNum(x.gas) + ' → ' + fmtNum(x.bal.gas));
     if (x.benBad) bits.push('benzin ' + fmtNum(x.benzin) + ' → ' + fmtNum(x.bal.benzin));
+    if (x.odoBad) bits.push('spidometr ' + fmtNum(x.odo) + ' → ' + fmtNum(x.bal.odo));
     return '<li><b>' + esc(plateDisp(x.plate)) + '</b>: ' + esc(bits.join(', ')) + '</li>';
   }).join('');
   box.innerHTML =
-    '⚠ <b>' + diffs.length + ' mashinada oy boshi qoldig\'i ' + esc(pm) + ' oxiriga teng emas</b> ' +
+    '⚠ <b>' + diffs.length + ' mashinada oy boshi (qoldiq / spidometr) ' + esc(pm) + ' oxiriga teng emas</b> ' +
     '(hozirgi → o\'tgan oy oxiri). Exceldan yoki qo\'lda yozilgan bo\'lsa — to\'g\'ri bo\'lishi mumkin, tekshiring.' +
     '<details style="margin-top:4px"><summary style="cursor:pointer">Ro\'yxat</summary><ul style="margin:4px 0 0 18px;padding:0">' + items + '</ul></details>' +
     '<button class="btn btn-ink btn-sm" type="button" id="btn-carry-all" style="margin-top:6px">Hammasini o\'tgan oy oxiridan olish</button>';
@@ -3437,8 +3505,9 @@ async function applyCarryAll() {
   const diffs = carryDiffs();
   if (!diffs.length) { renderCarryWarn(); return; }
   const ok = await showConfirmModal(
-    diffs.length + ' mashinaning oy boshi gaz/benzin qoldig\'i o\'tgan oy oxiridagi qiymatga almashtiriladi:\n\n' +
-    diffs.map(x => plateDisp(x.plate) + ': gaz ' + fmtNum(x.gas) + ' → ' + fmtNum(x.bal.gas) + ', benzin ' + fmtNum(x.benzin) + ' → ' + fmtNum(x.bal.benzin)).join('\n')
+    diffs.length + ' mashinaning oy boshi gaz/benzin qoldig\'i va spidometri o\'tgan oy oxiridagi qiymatga almashtiriladi:\n\n' +
+    diffs.map(x => plateDisp(x.plate) + ': gaz ' + fmtNum(x.gas) + ' → ' + fmtNum(x.bal.gas) + ', benzin ' + fmtNum(x.benzin) + ' → ' + fmtNum(x.bal.benzin) +
+      (x.odoBad ? ', spidometr ' + fmtNum(x.odo) + ' → ' + fmtNum(x.bal.odo) : '')).join('\n')
   );
   if (!ok) return;
   const from = STATE.prevMonth.ym;
@@ -3446,9 +3515,15 @@ async function applyCarryAll() {
     const car = getCar(x.plate);
     car.gasStart = x.bal.gas;
     car.benzinStart = x.bal.benzin;
-    forgetDispFrac(car, ['gasStart', 'benzinStart']);
+    const src = { from, gas: x.bal.gas, benzin: x.bal.benzin };
+    if (x.bal.odo > 0) {
+      car.odoStart = x.bal.odo;
+      src.odo = x.bal.odo;
+    }
+    forgetDispFrac(car, ['gasStart', 'benzinStart', 'odoStart']);
     car._balManual = false;
-    car.balSrc = Object.assign({}, car.balSrc && car.balSrc.from === from ? car.balSrc : {}, { from, gas: x.bal.gas, benzin: x.bal.benzin });
+    car.balSrc = Object.assign({}, car.balSrc && car.balSrc.from === from ? car.balSrc : {}, src);
+    if (x.odoBad) syncOdoChainFromKm(car, { force: true });
   });
   markDirty();
   writeParams();
@@ -3957,14 +4032,14 @@ function exportExcel() {
     const dayRows = calcCar(car);
     const aoa = [
       ['Kunma-kun — ' + plateDisp(sr.plate) + ' — ' + (info.name || sr.name || '') + ' — ' + monthLabel],
-      ['Kun', 'Haydovchi', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Spidometr', 'Nimada', 'Zapravka', 'Gaz (m³)', 'Gaz summa', 'Benzin (l)', 'Benzin summa', "Qo'shimcha", 'Xarajat izohi', 'Sarf gaz', 'Sarf benzin', 'Gaz qoldiq', 'Benzin qoldiq', 'Izoh']
+      ['Kun', 'Haydovchi', 'Km', 'Gaz km', 'Dizel/Benzin km', 'Spidometr (kun boshi)', 'Nimada', 'Zapravka', 'Gaz (m³)', 'Gaz summa', 'Benzin (l)', 'Benzin summa', "Qo'shimcha", 'Xarajat izohi', 'Sarf gaz', 'Sarf benzin', 'Gaz qoldiq', 'Benzin qoldiq', 'Izoh']
     ];
     dayRows.forEach(r => {
       aoa.push([
         r.d,
         driverOnDay(info, car, r.d),
         nz(r.km, r2), nz(r.gasKm, r2), nz(r.liqKm, r2),
-        nz(r.odo, r2),
+        nz(r.odoBeg, r2),
         modeLabel(r.mode) || '',
         r.station || '',
         nz(r.gasIn, r3), r.gasIn ? r2(r.gasSum) : '',
@@ -6042,6 +6117,10 @@ function bind() {
     if (!d || !f) return;
     if (f !== 'mode' && f !== 'station' && f !== 'extraWhy' && f !== 'note' && isTypingDecimal(el.value)) {
       markTypingPause();
+      return;
+    }
+    if (f === 'odoBeg') {
+      onOdoBegInput(el, n(d));
       return;
     }
     const car = getCar(STATE.car);

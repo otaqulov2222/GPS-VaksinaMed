@@ -911,6 +911,7 @@ table.dtable td.col-sum .out {
 table.dtable input.w-note { font-family: var(--sans); font-weight: 500; }
 
 .neg { color: var(--bad); font-weight: 700; }
+table.dtable .out.neg { color: #b91c1c; background: #fde8e8; font-weight: 700; }
 .pos { color: var(--ok); font-weight: 600; }
 .row-gaz td { background: #eef4fb !important; }
 .row-ben td { background: #f5f8fc !important; }
@@ -2447,6 +2448,7 @@ table.dtable td.day {
         </div>
 
         <p class="note" id="fuel-type-hint" style="margin-top:8px;display:none;"></p>
+        <div class="note" id="neg-warn" style="margin-top:8px;display:none;padding:8px 10px;border:1px solid #f5b5b5;background:#fdecec;border-radius:8px;line-height:1.5;color:#7f1d1d;"></div>
         <div class="note" id="carry-warn" style="margin-top:8px;display:none;padding:8px 10px;border:1px solid #f0c36d;background:#fff8e6;border-radius:8px;line-height:1.5;"></div>
 
         <div class="daily-toolbar">
@@ -2493,7 +2495,7 @@ table.dtable td.day {
 
             <th id="th-liq-km">Dizel/Benzin km</th>
 
-            <th>Spidometr (km)</th>
+            <th title="Kun boshidagi spidometr: 1-kun = Spidometr oy boshi">Spidometr (kun boshi)</th>
 
             <th>Nimada yurdi</th>
 
@@ -2763,7 +2765,7 @@ table.dtable td.day {
 <script src="auth.js?v=43"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="ph-delete-btn.js?v=3"></script>
-<script src="fuel.js?v=102"></script>
+<script src="fuel.js?v=103"></script>
 <script src="journal.js?v=14"></script>
 </body>
 </html>
