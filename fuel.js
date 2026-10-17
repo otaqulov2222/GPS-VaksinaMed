@@ -2985,6 +2985,197 @@ function docLeftLabel(left) {
   return left + ' kun';
 }
 
+function docsStatusGroup(left) {
+  if (left == null) return '';
+  if (left < 0) return 'Muddati o\'tgan';
+  if (left <= 15) return '15 kun ichida';
+  if (left <= 30) return '30 kun ichida';
+  if (left <= 45) return '45 kun ichida';
+  return 'Amalda';
+}
+
+function docsStatusRgb(left) {
+  if (left == null) return '64748B';
+  if (left < 0) return 'B91C1C';
+  if (left <= 15) return 'C2410C';
+  if (left <= 30) return 'B45309';
+  if (left <= 45) return 'A16207';
+  return '15803D';
+}
+
+/** Jadvaldagi hujjat muddatlari — ekrandagi sana va qolgan kun. */
+function docsExportRows() {
+  return fleet().map((f, i) => {
+    const rec = docsRecForPlate(f.car);
+    const docs = DOC_KEYS.map(dk => {
+      const due = normalizeDueYmd(rec[dk.k] && rec[dk.k].due);
+      const left = daysLeft(due);
+      return {
+        title: dk.t,
+        dueDisp: due ? dueDisp(due) : '',
+        left,
+        label: docLeftLabel(left),
+        group: docsStatusGroup(left)
+      };
+    });
+    return { n: i + 1, plate: plateDisp(f.car), name: f.name || '', docs };
+  });
+}
+
+function docsAlertRows() {
+  const rows = [];
+  fleet().forEach(f => {
+    const rec = docsRecForPlate(f.car);
+    DOC_KEYS.forEach(dk => {
+      const due = normalizeDueYmd(rec[dk.k] && rec[dk.k].due);
+      const left = daysLeft(due);
+      if (left == null || left > 45) return;
+      rows.push({
+        group: docsStatusGroup(left),
+        plate: plateDisp(f.car),
+        name: f.name || '',
+        title: dk.t,
+        dueDisp: dueDisp(due),
+        left,
+        label: docLeftLabel(left)
+      });
+    });
+  });
+  rows.sort((a, b) => a.left - b.left);
+  return rows;
+}
+
+function exportDocsExcel() {
+  if (typeof XLSX === 'undefined') { toast('Excel kutubxonasi yuklanmadi'); return; }
+  if (typeof excelSheetFromAoa !== 'function') { toast('Excel stil moduli yuklanmadi'); return; }
+  const today = dueDisp(todayYmd());
+  const cars = docsExportRows();
+  const head = ['№', 'Mashina', 'Haydovchi'];
+  DOC_KEYS.forEach(dk => {
+    head.push(dk.t + ' (sana)');
+    head.push(dk.t + ' (holat)');
+  });
+  const aoa = [['Hujjat muddatlari — ' + today], head];
+  cars.forEach(c => {
+    const row = [c.n, c.plate, c.name];
+    c.docs.forEach(d => {
+      row.push(d.dueDisp);
+      row.push(d.label);
+    });
+    aoa.push(row);
+  });
+  const ws = excelSheetFromAoa(aoa, {
+    titleRow: 0,
+    headerRow: 1,
+    centerCols: [0, 1, 3, 5, 7, 9],
+    minWidths: [5, 16, 28, 16, 22, 16, 22, 16, 22, 18, 22]
+  });
+  cars.forEach((c, i) => {
+    c.docs.forEach((d, di) => {
+      const addr = XLSX.utils.encode_cell({ r: 2 + i, c: 4 + di * 2 });
+      const cell = ws[addr];
+      if (!cell || !cell.s) return;
+      cell.s.font = Object.assign({}, cell.s.font, {
+        color: { rgb: docsStatusRgb(d.left) },
+        bold: d.left != null && d.left <= 45
+      });
+    });
+  });
+  const alerts = [['Yaqin va o\'tgan muddatlar — ' + today], ['Guruh', 'Mashina', 'Haydovchi', 'Hujjat', 'Tugash sanasi', 'Holat']];
+  docsAlertRows().forEach(a => alerts.push([a.group, a.plate, a.name, a.title, a.dueDisp, a.label]));
+  if (alerts.length === 2) alerts.push(['45 kun ichida ogohlantirish yo\'q', '', '', '', '', '']);
+  const wsA = excelSheetFromAoa(alerts, {
+    titleRow: 0,
+    headerRow: 1,
+    centerCols: [1, 4],
+    minWidths: [18, 16, 28, 20, 16, 24]
+  });
+  docsAlertRows().forEach((a, i) => {
+    [0, 5].forEach(col => {
+      const cell = wsA[XLSX.utils.encode_cell({ r: 2 + i, c: col })];
+      if (!cell || !cell.s) return;
+      cell.s.font = Object.assign({}, cell.s.font, { color: { rgb: docsStatusRgb(a.left) }, bold: true });
+    });
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Hujjat muddatlari');
+  XLSX.utils.book_append_sheet(wb, wsA, 'Ogohlantirish');
+  XLSX.writeFile(wb, 'hujjat-muddatlari-' + todayYmd() + '.xlsx');
+  toast('Hujjat muddatlari Excel yuklab olindi');
+}
+
+async function downloadDocsPdf() {
+  const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  if (!JsPDF) throw new Error('PDF moduli yuklanmadi. Sahifani yangilang (Ctrl+F5).');
+  toast('PDF tayyorlanmoqda...');
+  const fonts = await loadFuelPdfFonts();
+  const firm = (STATE.meta && STATE.meta.firm) || {};
+  const firmName = firm.name || 'VAKSINA HEALTHCARE MChJ';
+  const today = dueDisp(todayYmd());
+  const cars = docsExportRows();
+  const alerts = docsAlertRows();
+  const doc = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  applyFuelPdfFont(doc, fonts);
+  const w = 297;
+  const h = 210;
+  fuelPdfHeader(doc, w, today, 'HUJJAT MUDDATLARI');
+  fuelPdfF(doc, 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(18, 21, 28);
+  doc.text('Hujjat muddatlari hisoboti', 12, 34);
+  fuelPdfF(doc, 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(42, 48, 58);
+  doc.text(firmName + '  ·  hisobot kuni ' + today, 12, 41);
+  const startY = fuelPdfKpis(doc, 46, [
+    ['MASHINA', String(cars.length)],
+    ['MUDDATI O\'TGAN', String(alerts.filter(a => a.left < 0).length)],
+    ['15 KUN ICHIDA', String(alerts.filter(a => a.left >= 0 && a.left <= 15).length)],
+    ['30 KUN ICHIDA', String(alerts.filter(a => a.left > 15 && a.left <= 30).length)],
+    ['45 KUN ICHIDA', String(alerts.filter(a => a.left > 30 && a.left <= 45).length)]
+  ], w);
+  const head = [['№', 'Mashina', 'Haydovchi'].concat(DOC_KEYS.reduce((acc, dk) => acc.concat([dk.t, 'Holat']), []))];
+  const body = cars.map(c => {
+    const row = [c.n, c.plate, c.name];
+    c.docs.forEach(d => { row.push(d.dueDisp || '—'); row.push(d.label); });
+    return row;
+  });
+  fuelPdfTable(doc, w, {
+    pageLabel: today,
+    startY,
+    head,
+    body,
+    styles: { fontSize: 7, cellPadding: 1.4 },
+    headStyles: { fontSize: 6.5 },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 26 },
+      2: { cellWidth: 38 },
+      3: { halign: 'center' }, 4: { halign: 'left' },
+      5: { halign: 'center' }, 6: { halign: 'left' },
+      7: { halign: 'center' }, 8: { halign: 'left' },
+      9: { halign: 'center' }, 10: { halign: 'left' }
+    },
+    didParseCell: (data) => {
+      if (data.section !== 'body') return;
+      const car = cars[data.row.index];
+      if (!car || data.column.index < 3) return;
+      const di = Math.floor((data.column.index - 3) / 2);
+      const item = car.docs[di];
+      if (!item || item.left == null || item.left > 45) return;
+      const rgb = docsStatusRgb(item.left);
+      const r = parseInt(rgb.slice(0, 2), 16);
+      const g = parseInt(rgb.slice(2, 4), 16);
+      const b = parseInt(rgb.slice(4, 6), 16);
+      data.cell.styles.textColor = [r, g, b];
+      data.cell.styles.fontStyle = 'bold';
+    }
+  });
+  fuelPdfFooter(doc, w, h, 'Hujjat muddatlari · ' + today);
+  doc.save('hujjat-muddatlari-' + todayYmd() + '.pdf');
+  toast('Hujjat muddatlari PDF yuklab olindi');
+}
+
 function docCell(car, key, rec) {
   const d = rec[key] || { due: '', months: 12 };
   const due = normalizeDueYmd(d.due);
@@ -3016,7 +3207,12 @@ function renderDocs() {
       : ('<b>' + a.left + ' kun qoldi</b>')) +
     ` <span class="muted">(${esc(dueDisp(a.due))})</span></div>`;
   document.getElementById('panel-docs').innerHTML = `
-    <div class="card"><div class="card-h"><h3>Hujjat muddatlari hisoboti — ${esc(dueDisp(today))}</h3></div>
+    <div class="card"><div class="card-h"><h3>Hujjat muddatlari hisoboti — ${esc(dueDisp(today))}</h3>
+      <div class="row-btns no-print">
+        <button class="btn btn-ink btn-sm" type="button" id="btn-excel-docs">Excel yuklab olish</button>
+        <button class="btn btn-gold btn-sm" type="button" id="btn-pdf-docs">PDF yuklab olish</button>
+      </div>
+    </div>
       <div class="card-b">
         <div class="hint">
           <b>Sana = muddat tugash kuni.</b> Kalendardan tanlang — aynan shu sana saqlanadi, tizim oy qo‘shmaydi.
@@ -3099,6 +3295,10 @@ function renderDocs() {
       renderDocs();
     };
   });
+  const xlDocs = document.getElementById('btn-excel-docs');
+  if (xlDocs) xlDocs.onclick = exportDocsExcel;
+  const pdfDocs = document.getElementById('btn-pdf-docs');
+  if (pdfDocs) pdfDocs.onclick = () => downloadDocsPdf().catch(err => toast(err.message || 'PDF yuklanmadi'));
 }
 
 function renderCars() {
@@ -3995,6 +4195,7 @@ function addDriverChange() {
 }
 
 function exportExcel() {
+  if (STATE.tab === 'docs') return exportDocsExcel();
   if (typeof XLSX === 'undefined') { toast('Excel kutubxonasi yuklanmadi'); return; }
   if (typeof excelSheetFromAoa !== 'function') { toast('Excel stil moduli yuklanmadi'); return; }
   const wb = XLSX.utils.book_new();
@@ -5486,7 +5687,7 @@ function fuelPdfF(doc, style) {
   doc.setFont(FUEL_PDF_FONT, style || 'normal');
 }
 
-function fuelPdfHeader(doc, w, line2) {
+function fuelPdfHeader(doc, w, line2, kicker) {
   doc.setFillColor(12, 16, 22);
   doc.rect(0, 0, w, 24, 'F');
   doc.setFillColor(201, 162, 39);
@@ -5498,7 +5699,7 @@ function fuelPdfHeader(doc, w, line2) {
   fuelPdfF(doc, 'normal');
   doc.setFontSize(8);
   doc.setTextColor(201, 162, 39);
-  doc.text('YOQILG\'I HISOBOTI', 12, 16);
+  doc.text(kicker || 'YOQILG\'I HISOBOTI', 12, 16);
   if (line2) {
     doc.setTextColor(180, 186, 194);
     doc.text(String(line2), w - 12, 16, { align: 'right' });
