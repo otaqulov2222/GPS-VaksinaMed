@@ -2387,6 +2387,61 @@ class OfficeStore:
             data["docs"] = {}
         return data
 
+    def cheks_store(self):
+        """Sandbox zapravka cheklari — fuel month/days ga yozilmaydi."""
+        data = self._load("office:fuel-cheks-sandbox", {})
+        if not isinstance(data, dict):
+            data = {}
+        items = data.get("items")
+        if not isinstance(items, list):
+            items = []
+        return {"items": items}
+
+    def cheks_list(self):
+        items = [x for x in (self.cheks_store().get("items") or []) if isinstance(x, dict)]
+        items.sort(key=lambda r: str(r.get("paidAt") or r.get("createdAt") or ""), reverse=True)
+        return items
+
+    def cheks_add(self, plate, rec, username=""):
+        import cheks as chekmod
+
+        plate = str(plate or "").strip()[:32]
+        key = compact_plate(plate)
+        if not key:
+            return None, "Mashina tanlanmagan"
+        built = chekmod.build_chek_record(rec.get("qr") if isinstance(rec, dict) else rec, rec if isinstance(rec, dict) else None)
+        if not built.get("ok"):
+            return None, built.get("error") or "QR o'qilmadi"
+        row = built["rec"]
+        items = self.cheks_list()
+        sig = str(row.get("fiscalSign") or "")
+        qr = str(row.get("qr") or "")
+        for old in items:
+            same = (sig and old.get("fiscalSign") == sig) or (qr and old.get("qr") == qr)
+            if same:
+                return None, "Bu chek allaqachon saqlangan" + (
+                    " (" + str(old.get("plate") or "") + ")" if old.get("plate") else ""
+                )
+        row["id"] = "chk_" + secrets.token_hex(8)
+        row["plate"] = plate
+        row["plateKey"] = key
+        row["createdAt"] = iso_now()
+        row["createdBy"] = str(username or "")[:40]
+        items.insert(0, row)
+        self._save("office:fuel-cheks-sandbox", {"items": items[:4000]})
+        return row, ""
+
+    def cheks_delete(self, rec_id):
+        rid = str(rec_id or "").strip()
+        if not rid:
+            return False
+        items = self.cheks_list()
+        nxt = [x for x in items if str(x.get("id") or "") != rid]
+        if len(nxt) == len(items):
+            return False
+        self._save("office:fuel-cheks-sandbox", {"items": nxt})
+        return True
+
     def save_fuel_meta(self, body):
         cur = self.fuel_meta()
         if isinstance(body.get("vehicles"), dict):
@@ -5071,6 +5126,13 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "meta": OFFICE.fuel_meta()})
             return
 
+        if path == "/api/office/cheks":
+            sess = self.require_ops_read()
+            if not sess:
+                return
+            self.send_json({"ok": True, "sandbox": True, "items": OFFICE.cheks_list()})
+            return
+
         if path == "/api/office/fuel/docs-alerts":
             sess = self.require_user()
             if not sess:
@@ -5899,6 +5961,36 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             meta = OFFICE.save_fuel_meta(body)
             self.send_json({"ok": True, "meta": meta})
+            return
+
+        if path == "/api/office/cheks/scan":
+            sess = self.require_user()
+            if not sess:
+                return
+            if self.deny_driver_write(sess):
+                return
+            row, err = OFFICE.cheks_add(
+                body.get("plate") or body.get("car") or "",
+                body,
+                sess.get("username") or "",
+            )
+            if err:
+                self.send_json({"ok": False, "error": err, "sandbox": True}, 400)
+                return
+            self.send_json({"ok": True, "sandbox": True, "item": row, "items": OFFICE.cheks_list()})
+            return
+
+        if path == "/api/office/cheks/delete":
+            sess = self.require_user()
+            if not sess:
+                return
+            if self.deny_driver_write(sess):
+                return
+            ok = OFFICE.cheks_delete(body.get("id"))
+            if not ok:
+                self.send_json({"ok": False, "error": "Chek topilmadi", "sandbox": True}, 404)
+                return
+            self.send_json({"ok": True, "sandbox": True, "items": OFFICE.cheks_list()})
             return
 
         if path == "/api/office/fuel/month":

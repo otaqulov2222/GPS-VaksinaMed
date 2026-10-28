@@ -1815,6 +1815,48 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 
 
 
+.chek-hint {
+  margin: 0 16px 10px; padding: 10px 12px; border-radius: 10px;
+  background: #fff8e8; color: #7a4e00; font-size: 12px; line-height: 1.45;
+  border: 1px solid #f0d9a0;
+}
+.chek-fleet { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 14px; }
+.chek-card {
+  border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden;
+}
+.chek-card.is-open { border-color: #c5d4e6; box-shadow: 0 6px 16px rgba(11,31,58,.06); }
+.chek-card-h {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer;
+}
+.chek-n { font: 600 11px var(--mono); color: var(--faint); width: 18px; }
+.chek-who { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.chek-who b { font-size: 13px; color: var(--ink); }
+.chek-who em { font-size: 11px; color: var(--muted); font-style: normal; }
+.chek-sum { text-align: right; margin-left: auto; }
+.chek-sum strong { display: block; font: 700 13px/1.2 var(--mono); color: var(--ink); }
+.chek-sum small { color: var(--muted); font-size: 10px; }
+.chek-scan-btn { flex: 0 0 auto; }
+.chek-card-b { border-top: 1px solid var(--line); padding: 10px 12px 12px; background: #f7fafc; }
+.chek-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 12px; }
+.chek-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.chek-item {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px;
+}
+.chek-item-h { display: flex; align-items: center; gap: 8px; }
+.chek-amt { font: 700 14px var(--mono); color: var(--ink); }
+.chek-when { margin-left: auto; font-size: 11px; color: var(--muted); }
+.chek-del { width: 36px; min-width: 36px; padding: 0; }
+.chek-mer { margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.chek-meta { margin-top: 2px; font-size: 11px; color: var(--muted); }
+.chek-goods { margin: 6px 0 0; padding-left: 16px; font-size: 11px; color: var(--ink-2); }
+.chek-warn { margin-top: 6px; font-size: 11px; color: #9a3412; }
+#chek-scan-cam { width: 100%; min-height: 220px; background: #0b1f3a; border-radius: 12px; overflow: hidden; }
+#chek-scan-file-sink { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (max-width: 800px) {
+  .chek-card-h { flex-wrap: wrap; }
+  .chek-scan-btn { width: 100%; justify-content: center; }
+}
+
 .modal-bg {
 
   position: fixed; inset: 0; z-index: 800;
@@ -2742,6 +2784,15 @@ input, select, textarea { max-width: 100%; }
 
     </div>
 
+    <div class="card" id="chek-board">
+      <div class="sec-head">
+        <h3>Chek</h3>
+        <span class="cnt" id="chek-board-meta">Sinov bo‘limi · hisobotga ta’sir qilmaydi</span>
+      </div>
+      <div class="chek-hint">Har mashina uchun zapravka chekidagi QR ni skanerlang. Ma’lumot shu yerda chekdek saqlanadi. Hozircha yoqilg‘i, GPS va ballga ulanmagan.</div>
+      <div id="chek-fleet" class="chek-fleet"></div>
+    </div>
+
   </main>
 
 </div>
@@ -2751,6 +2802,26 @@ input, select, textarea { max-width: 100%; }
 </div><!-- /.app-shell -->
 
 
+
+<div class="modal-bg" id="chek-scan-modal" aria-hidden="true">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="chek-scan-title">Chek QR</h3>
+      <button type="button" class="modal-close" id="chek-scan-close" aria-label="Yopish">×</button>
+    </div>
+    <div class="form-row">
+      <div id="chek-scan-cam"></div>
+      <div id="chek-scan-file-sink"></div>
+      <label class="btn btn-outline btn-sm" for="chek-scan-file" style="margin-top:10px;display:inline-flex;justify-content:center;">Rasmdan o‘qish</label>
+      <input type="file" id="chek-scan-file" accept="image/*" capture="environment" hidden>
+      <label style="display:block;margin-top:12px;">Yoki QR havolasini yozing</label>
+      <input type="text" id="chek-qr-text" placeholder="https://ofd.soliq.uz/check?...">
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-gold" id="chek-scan-paste">Havoladan saqlash</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-bg" id="modal-gps">
 
@@ -2934,6 +3005,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=30"></script>
+<script src="cheks.js?v=1"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */
