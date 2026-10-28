@@ -77,8 +77,11 @@ const VMCheks = {
   },
 
   inMonth(r, ym) {
-    const d = String(r.paidAt || r.createdAt || '').replace(' ', 'T');
-    return d.slice(0, 7) === ym;
+    const raw = String((r && (r.paidAt || r.createdAt)) || '');
+    const iso = raw.replace(' ', 'T');
+    if (iso.slice(0, 7) === ym) return true;
+    const m = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+    return !!(m && (m[3] + '-' + m[2]) === ym);
   },
 
   stats(list, ym) {
@@ -231,7 +234,7 @@ const VMCheks = {
       if (!fromPoll) this.items = [];
     }
     this.render();
-    if (!fromPoll) this.kickPending();
+    if (!fromPoll) this.kickPending(true);
   },
 
   pingLive(row) {
@@ -342,19 +345,21 @@ const VMCheks = {
     const kind = this.ofdKind(r);
     const id = this.esc(r.id);
     const neu = this.highlightId && String(this.highlightId) === String(r.id);
-    return `<li class="chek-mini-wrap">
-      <button type="button" class="chek-mini${neu ? ' is-new' : ''}" data-id="${id}">
+    const mer = r.merchant || r.kkmName || '';
+    const amt = this.money(r.amount);
+    return `<li class="chek-mini-wrap${neu ? ' is-new' : ''}${kind === 'ok' ? ' is-ok' : ' is-wait'}">
+      <button type="button" class="chek-mini" data-id="${id}">
         <div class="chek-mini-h">
-          <b>${this.esc(this.moneyOrWait(r.amount))}</b>
+          <b>${this.esc(amt || 'OFD dan olinmoqda')}</b>
           <small>${this.esc(this.when(r))}</small>
         </div>
-        <em>${this.esc(r.merchant || r.kkmName || 'Zapravka cheki')}</em>
-        <span>Chek № ${this.esc(r.receiptNo || '—')} · ${this.esc(r.terminalId || '')}</span>
+        ${mer ? `<em>${this.esc(mer)}</em>` : ''}
+        <span>Chek № ${this.esc(r.receiptNo || '—')}${r.terminalId ? ' · ' + this.esc(r.terminalId) : ''}</span>
         <i class="chek-pill ${kind}">${this.esc(this.ofdLabel(r))}</i>
       </button>
       <div class="chek-mini-acts">
-        <button type="button" class="btn btn-outline chek-act chek-act-edit" data-id="${id}">Tahrirlash</button>
-        <button type="button" class="btn btn-outline chek-act chek-act-del" data-id="${id}">O‘chirish</button>
+        <button type="button" class="chek-act chek-act-edit" data-id="${id}">Tahrirlash</button>
+        <button type="button" class="chek-act chek-act-del" data-id="${id}">O‘chirish</button>
       </div>
     </li>`;
   },
@@ -503,7 +508,9 @@ const VMCheks = {
         const plate = card.getAttribute('data-plate');
         if (plate) {
           this.openPlate = plate;
+          this._renderSig = '';
           this.render();
+          this.kickPending(plate);
         }
       }
     });
@@ -572,16 +579,32 @@ const VMCheks = {
     });
   },
 
-  kickPending() {
+  kickPending(forcePlate) {
     if (this._kickBusy) return;
     const now = Date.now();
-    if (this._kickAt && now - this._kickAt < 2500) return;
-    const need = this.items.filter((x) => {
-      if (!x || !x.id || String(x.id).indexOf('tmp') === 0 || x.ofdOk) return false;
+    const forceAll = forcePlate === true;
+    const plate = forceAll ? '' : forcePlate;
+    if (!forcePlate && this._kickAt && now - this._kickAt < 2500) return;
+    const openKey = this.plateKey(plate || this.openPlate);
+    const pending = this.items.filter((x) => x && x.id && String(x.id).indexOf('tmp') !== 0 && !x.ofdOk);
+    pending.sort((a, b) => {
+      const ap = openKey && this.plateKey(a.plate) === openKey ? 0 : 1;
+      const bp = openKey && this.plateKey(b.plate) === openKey ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      const ar = Date.parse(String(a.ofdRefreshedAt || '').replace(' ', 'T')) || 0;
+      const br = Date.parse(String(b.ofdRefreshedAt || '').replace(' ', 'T')) || 0;
+      return ar - br;
+    });
+    const need = pending.filter((x) => {
+      if (forceAll) return true;
       if (this.paperItem && String(this.paperItem.id) === String(x.id)) return true;
-      const t = Date.parse(String(x.createdAt || '').replace(' ', 'T'));
-      if (!Number.isFinite(t)) return true;
-      return (now - t) < 20 * 60 * 1000;
+      if (plate && this.plateKey(x.plate) === openKey) return true;
+      const refreshed = Date.parse(String(x.ofdRefreshedAt || '').replace(' ', 'T'));
+      const created = Date.parse(String(x.createdAt || x.paidAt || '').replace(' ', 'T'));
+      const age = Number.isFinite(created) ? now - created : 0;
+      const gap = age > 86400000 ? 60000 : (age > 3600000 ? 15000 : 5000);
+      if (Number.isFinite(refreshed) && now - refreshed < gap) return false;
+      return true;
     }).slice(0, 2);
     if (!need.length) return;
     this._kickAt = now;

@@ -1866,7 +1866,7 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .chek-sum small { color: var(--muted); font-size: 10px; }
 .chek-go { color: var(--muted); font-size: 18px; padding-left: 4px; }
 .chek-empty { padding: 22px 16px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.5; }
-#chek-car-view { padding: 0 12px 20px; }
+#chek-car-view { padding: 0 12px 24px; max-width: 560px; }
 .chek-back {
   border: 0; background: transparent; color: var(--accent); font: 600 13px inherit;
   padding: 4px 0 10px; cursor: pointer;
@@ -1883,34 +1883,40 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .chek-stat b { display: block; margin-top: 4px; font: 700 18px/1.15 var(--mono); }
 .chek-add-btn { width: 100%; height: 52px; font-size: 15px; margin-bottom: 12px; letter-spacing: .04em; }
 .chek-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.chek-mini-wrap { display: flex; flex-direction: column; gap: 0; }
-.chek-mini {
-  display: block; width: 100%; text-align: left; cursor: pointer;
-  background: #fffdf6; border: 1px dashed #c9b896; border-radius: 8px 8px 0 0;
-  padding: 12px 14px; font: inherit; color: inherit;
+.chek-mini-wrap {
+  display: flex; flex-direction: column; gap: 0;
+  background: #fffdf6; border: 1px dashed #c9b896; border-radius: 10px;
   box-shadow: 0 4px 10px rgba(80, 60, 20, .06);
-  -webkit-appearance: none; appearance: none; position: relative;
+  overflow: hidden;
 }
-.chek-mini.is-new {
+.chek-mini-wrap.is-ok { border-color: #b7d7c4; background: #f7fbf8; }
+.chek-mini-wrap.is-new {
   border-color: #1a7a4c;
   box-shadow: 0 0 0 2px rgba(15, 122, 62, .22);
   animation: chekMiniIn .4s ease;
+}
+.chek-mini {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: transparent; border: 0; border-radius: 0;
+  padding: 12px 14px 6px; font: inherit; color: inherit;
+  box-shadow: none;
+  -webkit-appearance: none; appearance: none; position: relative;
 }
 @keyframes chekMiniIn {
   from { transform: translateY(-10px); opacity: .35; }
   to { transform: none; opacity: 1; }
 }
 .chek-mini-acts {
-  display: flex; justify-content: flex-end; gap: 12px;
-  padding: 2px 10px 8px; background: #fffdf6; border: 1px dashed #c9b896; border-top: 0;
-  border-radius: 0 0 8px 8px;
+  display: flex; justify-content: flex-start; gap: 16px;
+  padding: 2px 14px 10px; background: transparent; border: 0;
 }
 .chek-act {
-  height: auto; margin: 0; padding: 4px 2px; font-size: 12px; font-weight: 700;
+  height: auto; margin: 0; padding: 4px 0; font-size: 12px; font-weight: 700;
   background: none; border: 0; box-shadow: none; min-height: 0; width: auto;
+  cursor: pointer; font-family: inherit;
 }
 .chek-act-edit { color: #355a8a; }
-.chek-act-del { color: #9a1f1f; border-color: transparent; }
+.chek-act-del { color: #9a1f1f; }
 #chek-paper-modal .chek-paper-foot {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
 }
@@ -3243,7 +3249,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=30"></script>
-<script src="cheks.js?v=11"></script>
+<script src="cheks.js?v=12"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */
