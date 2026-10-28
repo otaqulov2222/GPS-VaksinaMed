@@ -333,6 +333,58 @@ function vmEnsurePanelNav() {
     });
 }
 
+function vmEnsureChekNav() {
+    const path = (location.pathname || '').replace(/\\/g, '/');
+    const onChek = /\/chek\/?$/.test(path);
+    const staff = vmIsStaff(window.VM_USER);
+    const drv = vmIsDriver(window.VM_USER);
+
+    document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {
+        let link = nav.querySelector('a[href="/chek"], a[href="/chek.html"], #nav-chek');
+        if (drv || (!staff && window.VM_USER)) {
+            if (link) link.remove();
+            return;
+        }
+        if (!staff && !window.VM_USER) {
+            if (link) {
+                link.classList.add('staff-only');
+                link.setAttribute('hidden', 'hidden');
+            }
+            return;
+        }
+        if (!link) {
+            link = document.createElement('a');
+            link.href = '/chek';
+            link.className = 'nav-link staff-only';
+            link.id = 'nav-chek';
+            link.textContent = 'Chek';
+            const panel = nav.querySelector('#btn-admin-panel, a[href="/admin"], a[href="/admin.html"], a[href="admin.html"]');
+            if (panel) panel.insertAdjacentElement('afterend', link);
+            else nav.appendChild(link);
+        } else {
+            link.textContent = 'Chek';
+            link.href = '/chek';
+            link.id = link.id || 'nav-chek';
+            link.classList.add('staff-only');
+        }
+        link.removeAttribute('hidden');
+        link.style.display = '';
+        link.style.visibility = 'visible';
+        link.classList.toggle('on', onChek);
+        if (onChek) {
+            link.setAttribute('aria-current', 'page');
+            nav.querySelectorAll('a.nav-link.on').forEach((a) => {
+                if (a !== link) {
+                    a.classList.remove('on');
+                    a.removeAttribute('aria-current');
+                }
+            });
+        } else {
+            link.removeAttribute('aria-current');
+        }
+    });
+}
+
 function vmApplyChrome(user) {
     if (!user) return;
     vmApplyRoleNav(user);
@@ -340,6 +392,7 @@ function vmApplyChrome(user) {
     vmEnsureLiveNav();
     vmEnsureDavomatNav();
     vmEnsurePanelNav();
+    vmEnsureChekNav();
     const name = document.getElementById('tb-user-name');
     const role = document.getElementById('tb-user-role');
     const panel = document.getElementById('btn-admin-panel');

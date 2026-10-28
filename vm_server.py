@@ -113,6 +113,7 @@ PLACE_STOP_LIMIT = 4000
 PAGE_FILE = {
     "/fuel": "fuel.html",
     "/live": "live.html",
+    "/chek": "index.html",
     "/attendance": "attendance.html",
     "/davomat": "attendance.html",
     "/admin": "admin.html",
@@ -3999,6 +4000,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         with open(fpath, "r", encoding="utf-8", errors="replace") as f:
             html = f.read()
 
+        req_path = urllib.parse.urlparse(self.path).path.rstrip("/") or "/"
+        if req_path == "/chek":
+            html = html.replace('class="app-body"', 'class="app-body page-chek"', 1)
+            html = html.replace('class="nav-link on" href="/"', 'class="nav-link" href="/"', 1)
+            html = html.replace('class="nav-link on" href="/" aria-current="page"', 'class="nav-link" href="/"', 1)
+
         # Live menyu — HTML keshidan mustaqil majburiy inject
         if 'href="/live"' not in html and 'href="/live.html"' not in html and "href='/live.html'" not in html:
             for fuel_pat in (
@@ -4387,7 +4394,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             return self.serve_page_file("login.html")
 
-        if path in ("/", "/fuel", "/live"):
+        if path in ("/", "/fuel", "/live", "/chek"):
             if not sess:
                 self.redirect("/login")
                 return
@@ -4539,7 +4546,17 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 "else if(d)d.insertAdjacentElement('beforebegin',a);else nav.appendChild(a);}"
                 "a.href='/live';a.textContent='Live';a.classList.add('staff-only');"
                 "a.removeAttribute('hidden');a.style.display='';a.style.visibility='visible';"
-                "a.classList.toggle('on',/(^|\\/)live(\\.html)?$/.test(location.pathname||''));});"
+                "a.classList.toggle('on',/(^|\\/)live(\\.html)?$/.test(location.pathname||''));"
+                "var c=nav.querySelector('a[href=\"/chek\"],#nav-chek');"
+                "if(drv||(u&&!staff)){if(c)c.remove();}"
+                "else if(u){if(!c){c=document.createElement('a');c.href='/chek';c.id='nav-chek';"
+                "c.className='nav-link staff-only';c.textContent='Chek';"
+                "var p=nav.querySelector('#btn-admin-panel,a[href=\"/admin\"]');"
+                "if(p)p.insertAdjacentElement('afterend',c);else nav.appendChild(c);}"
+                "c.href='/chek';c.textContent='Chek';c.classList.add('staff-only');"
+                "c.removeAttribute('hidden');c.style.display='';c.style.visibility='visible';"
+                "c.classList.toggle('on',/(^|\\/)chek\\/?$/.test(location.pathname||''));}"
+                "});"
                 "}catch(e){}}go();"
                 "document.addEventListener('DOMContentLoaded',go);setInterval(go,30000);})();"
             )

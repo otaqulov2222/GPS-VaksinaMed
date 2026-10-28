@@ -1,5 +1,11 @@
 'use strict';
 /* Zapravka cheklari — sandbox. Yoqilg'i/GPS hisobiga yozilmaydi. */
+if (/\/chek\/?$/.test(location.pathname || '')) {
+  document.documentElement.classList.add('page-chek');
+  const mark = () => document.body && document.body.classList.add('page-chek');
+  if (document.body) mark();
+  else document.addEventListener('DOMContentLoaded', mark);
+}
 
 const VMCheks = {
   items: [],

@@ -1852,6 +1852,15 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .chek-warn { margin-top: 6px; font-size: 11px; color: #9a3412; }
 #chek-scan-cam { width: 100%; min-height: 220px; background: #0b1f3a; border-radius: 12px; overflow: hidden; }
 #chek-scan-file-sink { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+#chek-top-title { display: none; min-width: 0; }
+body:not(.page-chek) #chek-board { display: none !important; }
+body.page-chek .driver-strip-wrap,
+body.page-chek .page-wrap > .sidebar,
+body.page-chek .tb-actions { display: none !important; }
+body.page-chek main > :not(#chek-board) { display: none !important; }
+body.page-chek .page-wrap { grid-template-columns: 1fr; }
+body.page-chek #chek-board { display: block; }
+body.page-chek #chek-top-title { display: block; }
 @media (max-width: 800px) {
   .chek-card-h { flex-wrap: wrap; }
   .chek-scan-btn { width: 100%; justify-content: center; }
@@ -2312,6 +2321,7 @@ input, select, textarea { max-width: 100%; }
       <a class="nav-link" href="/live">Live</a>
       <a class="nav-link" href="/attendance" id="nav-davomat">Davomat</a>
       <a class="nav-link staff-only" href="/admin" id="btn-admin-panel" hidden>Panel</a>
+      <a class="nav-link staff-only" href="/chek" id="nav-chek" hidden>Chek</a>
 
     </nav>
 
@@ -2367,6 +2377,11 @@ input, select, textarea { max-width: 100%; }
 
         <input type="file" id="file-input" multiple accept=".xlsx,.xls" style="display:none">
 
+      </div>
+
+      <div class="tb-page" id="chek-top-title">
+        <div class="tb-title">Chek</div>
+        <div class="tb-sub">Zapravka cheklari · hisobotga ta’sir qilmaydi</div>
       </div>
 
     </header>
@@ -2993,7 +3008,7 @@ input, select, textarea { max-width: 100%; }
 <script src="fleet-data.js?v=15"></script>
 
 <script src="/api/live-nav.js?v=m106"></script>
-<script src="auth.js?v=43"></script>
+<script src="auth.js?v=44"></script>
 
 <script src="map-tiles.js?v=4"></script>
 <script src="map-route.js?v=8"></script>
@@ -3003,7 +3018,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=30"></script>
-<script src="cheks.js?v=1"></script>
+<script src="cheks.js?v=2"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */
