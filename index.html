@@ -1836,8 +1836,10 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   border: 1px solid #f0d9a0;
 }
 .chek-totals {
-  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
-  padding: 0 12px 12px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+  padding: 12px 16px 12px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .chek-fleet[hidden], #chek-car-view[hidden], #chek-totals[hidden] {
   display: none !important;
@@ -1956,7 +1958,22 @@ body.page-chek .page-wrap > .sidebar,
 body.page-chek .tb-actions { display: none !important; }
 body.page-chek main > :not(#chek-board) { display: none !important; }
 body.page-chek .page-wrap { grid-template-columns: 1fr; }
-body.page-chek #chek-board { display: block; }
+body.page-chek #chek-board {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+body.page-chek #chek-board > .sec-head { display: none !important; }
+body.page-chek #chek-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  padding: 16px 16px 10px;
+  box-sizing: border-box;
+}
+body.page-chek #chek-fleet,
+body.page-chek #chek-car-view { width: 100%; }
 body.page-chek #chek-top-title { display: block; }
 html.page-chek .app-main .topbar .tb-actions,
 body.page-chek .app-main .topbar .tb-actions,
