@@ -83,6 +83,21 @@ class CheksParseTest(unittest.TestCase):
         self.assertEqual(built["rec"]["receiptNo"], "62194")
         self.assertLess(dt, 0.2)
 
+    def test_merge_keeps_new_scan(self):
+        stale = [{"id": "a", "ofdOk": True, "amount": 85000, "merchant": "EKOGAZ"}]
+        latest = [
+            {"id": "b", "ofdOk": False, "amount": None, "merchant": ""},
+            {"id": "a", "ofdOk": False, "amount": None, "merchant": ""},
+        ]
+        m = cheks.merge_chek_items(stale, latest)
+        ids = [x["id"] for x in m]
+        self.assertIn("a", ids)
+        self.assertIn("b", ids)
+        a = next(x for x in m if x["id"] == "a")
+        self.assertTrue(a["ofdOk"])
+        self.assertEqual(a["amount"], 85000)
+        self.assertEqual(a["merchant"], "EKOGAZ")
+
     def test_public_row_maps_old_error(self):
         row = cheks.public_chek_row({
             "ofdOk": False,

@@ -2410,57 +2410,13 @@ class OfficeStore:
         import cheks as chekmod
         return chekmod.public_chek_row(row) if row else row
 
-    def cheks_add(self, plate, rec, username=""):
+    def _cheks_put(self, items):
+        self._save("office:fuel-cheks-sandbox", {"items": (items or [])[:4000]})
+
+    def _apply_ofd_fields(self, row, ofd):
         import cheks as chekmod
 
-        plate = str(plate or "").strip()[:32]
-        key = compact_plate(plate)
-        if not key:
-            return None, "Mashina tanlanmagan"
-        built = chekmod.build_chek_record(
-            rec.get("qr") if isinstance(rec, dict) else rec,
-            rec if isinstance(rec, dict) else None,
-            fetch_ofd=False,
-        )
-        if not built.get("ok"):
-            return None, built.get("error") or "QR o'qilmadi"
-        row = built["rec"]
-        items = self.cheks_list()
-        sig = str(row.get("fiscalSign") or "")
-        qr = str(row.get("qr") or "")
-        for old in items:
-            same = (sig and old.get("fiscalSign") == sig) or (qr and old.get("qr") == qr)
-            if same:
-                return old, "duplicate"
-        row["id"] = "chk_" + secrets.token_hex(8)
-        row["plate"] = plate
-        row["plateKey"] = key
-        row["createdAt"] = iso_now()
-        row["createdBy"] = str(username or "")[:40]
-        items.insert(0, row)
-        self._save("office:fuel-cheks-sandbox", {"items": items[:4000]})
-        return row, ""
-
-    def cheks_delete(self, rec_id):
-        rid = str(rec_id or "").strip()
-        if not rid:
-            return False
-        items = self.cheks_list()
-        nxt = [x for x in items if str(x.get("id") or "") != rid]
-        if len(nxt) == len(items):
-            return False
-        self._save("office:fuel-cheks-sandbox", {"items": nxt})
-        return True
-
-    def cheks_refresh(self, rec_id):
-        import cheks as chekmod
-
-        rid = str(rec_id or "").strip()
-        items = self.cheks_list()
-        row = next((x for x in items if str(x.get("id") or "") == rid), None)
-        if not row:
-            return None, "Chek topilmadi"
-        ofd = chekmod.fetch_ofd_details(row.get("qr") or "")
+        ofd = ofd if isinstance(ofd, dict) else {}
         if ofd.get("merchant"):
             row["merchant"] = ofd.get("merchant")
         if ofd.get("inn"):
@@ -2483,37 +2439,115 @@ class OfficeStore:
             row["cardType"] = ofd.get("cardType")
         if ofd.get("vatTotal") not in (None, ""):
             row["vatTotal"] = ofd.get("vatTotal")
-        row["ofdOk"] = bool(ofd.get("ofdOk"))
-        row["ofdPending"] = bool(ofd.get("ofdPending"))
+        if ofd.get("ofdOk"):
+            row["ofdOk"] = True
+            row["ofdPending"] = False
+        elif not row.get("ofdOk"):
+            row["ofdOk"] = False
+            row["ofdPending"] = bool(ofd.get("ofdPending"))
         row["ofdNote"] = chekmod.public_ofd_note(
-            row["ofdOk"], row["ofdPending"], ofd.get("ofdNote") or "", row.get("amount")
+            bool(row.get("ofdOk")),
+            bool(row.get("ofdPending")),
+            ofd.get("ofdNote") or "",
+            row.get("amount"),
         )
-        row["ofdRefreshedAt"] = iso_now()
-        self._save("office:fuel-cheks-sandbox", {"items": items[:4000]})
-        return row, ""
+        return row
+
+    def cheks_add(self, plate, rec, username=""):
+        import cheks as chekmod
+
+        plate = str(plate or "").strip()[:32]
+        key = compact_plate(plate)
+        if not key:
+            return None, "Mashina tanlanmagan"
+        built = chekmod.build_chek_record(
+            rec.get("qr") if isinstance(rec, dict) else rec,
+            rec if isinstance(rec, dict) else None,
+            fetch_ofd=False,
+        )
+        if not built.get("ok"):
+            return None, built.get("error") or "QR o'qilmadi"
+        row = built["rec"]
+        with self.lock:
+            items = self.cheks_list()
+            sig = str(row.get("fiscalSign") or "")
+            qr = str(row.get("qr") or "")
+            term = str(row.get("terminalId") or "")
+            rno = str(row.get("receiptNo") or "")
+            for old in items:
+                same = (
+                    (sig and old.get("fiscalSign") == sig)
+                    or (qr and old.get("qr") == qr)
+                    or (term and rno and old.get("terminalId") == term and old.get("receiptNo") == rno)
+                )
+                if same:
+                    return old, "duplicate"
+            row["id"] = "chk_" + secrets.token_hex(8)
+            row["plate"] = plate
+            row["plateKey"] = key
+            row["createdAt"] = iso_now()
+            row["createdBy"] = str(username or "")[:40]
+            items = chekmod.merge_chek_items(items, [row])
+            self._cheks_put(items)
+            return row, ""
+
+    def cheks_delete(self, rec_id):
+        rid = str(rec_id or "").strip()
+        if not rid:
+            return False
+        with self.lock:
+            items = self.cheks_list()
+            nxt = [x for x in items if str(x.get("id") or "") != rid]
+            if len(nxt) == len(items):
+                return False
+            self._cheks_put(nxt)
+            return True
+
+    def cheks_refresh(self, rec_id):
+        import cheks as chekmod
+
+        rid = str(rec_id or "").strip()
+        with self.lock:
+            known = self.cheks_list()
+            row0 = next((x for x in known if str(x.get("id") or "") == rid), None)
+            if not row0:
+                return None, "Chek topilmadi"
+            qr = row0.get("qr") or ""
+        ofd = chekmod.fetch_ofd_details(qr)
+        with self.lock:
+            latest = self.cheks_list()
+            items = chekmod.merge_chek_items(known, latest)
+            row = next((x for x in items if str(x.get("id") or "") == rid), None)
+            if not row:
+                return None, "Chek topilmadi"
+            self._apply_ofd_fields(row, ofd)
+            row["ofdRefreshedAt"] = iso_now()
+            self._cheks_put(items)
+            return row, ""
 
     def cheks_update(self, rec_id, patch, username=""):
         import cheks as chekmod
 
         rid = str(rec_id or "").strip()
-        items = self.cheks_list()
-        row = next((x for x in items if str(x.get("id") or "") == rid), None)
-        if not row:
-            return None, "Chek topilmadi"
         patch = patch if isinstance(patch, dict) else {}
-        if patch.get("amount") not in (None, ""):
-            amt = chekmod._to_som(patch.get("amount"))
-            if not amt or amt <= 0:
-                return None, "Summa noto'g'ri"
-            row["amount"] = amt
-            row["manual"] = True
-        if patch.get("merchant"):
-            row["merchant"] = str(patch.get("merchant"))[:180]
-            row["manual"] = True
-        row["updatedAt"] = iso_now()
-        row["updatedBy"] = str(username or "")[:40]
-        self._save("office:fuel-cheks-sandbox", {"items": items[:4000]})
-        return row, ""
+        with self.lock:
+            items = self.cheks_list()
+            row = next((x for x in items if str(x.get("id") or "") == rid), None)
+            if not row:
+                return None, "Chek topilmadi"
+            if patch.get("amount") not in (None, ""):
+                amt = chekmod._to_som(patch.get("amount"))
+                if not amt or amt <= 0:
+                    return None, "Summa noto'g'ri"
+                row["amount"] = amt
+                row["manual"] = True
+            if patch.get("merchant"):
+                row["merchant"] = str(patch.get("merchant"))[:180]
+                row["manual"] = True
+            row["updatedAt"] = iso_now()
+            row["updatedBy"] = str(username or "")[:40]
+            self._cheks_put(items)
+            return row, ""
 
     def save_fuel_meta(self, body):
         cur = self.fuel_meta()

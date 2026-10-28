@@ -17,6 +17,7 @@ const VMCheks = {
   paperFromScan: false,
   paperDup: false,
   highlightId: '',
+  deletedIds: null,
   nativeStream: null,
   nativeLoop: null,
   nativeVideo: null,
@@ -151,48 +152,81 @@ const VMCheks = {
     };
   },
 
+  preferRow(old, neu) {
+    if (!old) return neu;
+    if (!neu) return old;
+    const out = Object.assign({}, old, neu);
+    const keys = ['amount', 'merchant', 'inn', 'items', 'address', 'cardType', 'payMethod', 'kkmName', 'vatTotal', 'cardTotal', 'cashTotal', 'qr', 'terminalId', 'receiptNo', 'plate'];
+    keys.forEach((k) => {
+      const nv = neu[k];
+      const ov = old[k];
+      const empty = nv == null || nv === '' || (Array.isArray(nv) && !nv.length);
+      const filled = ov != null && ov !== '' && !(Array.isArray(ov) && !ov.length);
+      if (empty && filled) out[k] = ov;
+    });
+    if (old.ofdOk && !neu.ofdOk) {
+      out.ofdOk = true;
+      out.ofdPending = false;
+      if (old.ofdNote) out.ofdNote = old.ofdNote;
+    }
+    return out;
+  },
+
+  applyItems(next) {
+    if (!Array.isArray(next)) return false;
+    if (!this.seenIds) this.seenIds = new Set();
+    if (!this.deletedIds) this.deletedIds = new Set();
+    const byId = new Map();
+    (this.items || []).forEach((x) => {
+      if (x && x.id && !this.deletedIds.has(String(x.id))) byId.set(String(x.id), x);
+    });
+    next.forEach((x) => {
+      if (!x || !x.id) return;
+      const id = String(x.id);
+      if (this.deletedIds.has(id)) return;
+      byId.set(id, this.preferRow(byId.get(id), x));
+      this.seenIds.add(id);
+    });
+    const merged = Array.from(byId.values()).sort((a, b) => {
+      const ta = String(a.paidAt || a.createdAt || '');
+      const tb = String(b.paidAt || b.createdAt || '');
+      return tb.localeCompare(ta);
+    });
+    const sig = merged.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join('|');
+    const prev = (this.items || []).map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join('|');
+    this.items = merged;
+    if (this.paperItem) {
+      const freshPaper = merged.find((x) => String(x.id) === String(this.paperItem.id));
+      if (freshPaper && (freshPaper.ofdOk !== this.paperItem.ofdOk || freshPaper.amount !== this.paperItem.amount || freshPaper.merchant !== this.paperItem.merchant)) {
+        this.paperItem = freshPaper;
+        this.openPaper(freshPaper, this.paperFromScan, this.paperDup);
+      }
+    }
+    return sig !== prev;
+  },
+
   async load(fromPoll) {
     try {
       const d = await vmApi('/api/office/cheks');
       const next = Array.isArray(d.items) ? d.items : [];
       const first = this.seenIds == null;
-      if (first) {
-        this.seenIds = new Set(next.map(x => String(x.id || '')).filter(Boolean));
-      } else if (fromPoll && !this._busy && !this.scanning) {
-        const fresh = next.filter(x => x.id && !this.seenIds.has(String(x.id)));
-        if (fresh.length) {
-          const row = fresh[0];
-          this.items = next;
-          fresh.forEach(x => this.seenIds.add(String(x.id)));
-          this.openPlate = row.plate || this.openPlate;
-          this.pingLive(row);
-          this.render();
-          this.flash();
-          this.beep();
-          this.openPaper(row, true, false);
-          return;
-        }
+      if (first) this.seenIds = new Set();
+      const fresh = (!first && fromPoll && !this._busy && !this.scanning)
+        ? next.filter((x) => x.id && !this.seenIds.has(String(x.id)))
+        : [];
+      const changed = this.applyItems(next);
+      if (fresh.length) {
+        const row = this.items.find((x) => String(x.id) === String(fresh[0].id)) || fresh[0];
+        this.openPlate = row.plate || this.openPlate;
+        this.pingLive(row);
+        this.render();
+        this.flash();
+        this.beep();
+        this.openPaper(row, true, false);
+        return;
       }
-      if (fromPoll) {
-        const same = next.length === this.items.length && next.every((x, i) => {
-          const o = this.items[i];
-          return o && x.id === o.id && x.amount === o.amount && x.ofdOk === o.ofdOk && x.merchant === o.merchant;
-        });
-        this.items = next;
-        next.forEach(x => { if (x.id) this.seenIds.add(String(x.id)); });
-        if (this.paperItem) {
-          const freshPaper = next.find(x => String(x.id) === String(this.paperItem.id));
-          if (freshPaper && (freshPaper.ofdOk !== this.paperItem.ofdOk || freshPaper.amount !== this.paperItem.amount || freshPaper.merchant !== this.paperItem.merchant)) {
-            this.paperItem = freshPaper;
-            this.openPaper(freshPaper, this.paperFromScan, this.paperDup);
-          }
-        }
-        this.kickPending();
-        if (same) return;
-      } else {
-        this.items = next;
-        next.forEach(x => { if (x.id) this.seenIds.add(String(x.id)); });
-      }
+      if (fromPoll) this.kickPending();
+      if (fromPoll && !changed && !first) return;
     } catch (e) {
       if (!fromPoll) this.items = [];
     }
@@ -213,14 +247,13 @@ const VMCheks = {
     const view = document.getElementById('chek-car-view');
     const totals = document.getElementById('chek-totals');
     const meta = document.getElementById('chek-board-meta');
-    const live = document.getElementById('chek-live-text');
     if (!fleet || !view) return;
     const rows = this.drivers();
     const ym = this.ymNow();
     const all = this.stats(this.items, ym);
-    if (live && !this.lastPing) {
-      live.textContent = 'MONITOR YONIQ — telefon QR ni o‘qisa, chek shu ekranda ochiladi';
-    }
+    const sig = [this.openPlate, this.highlightId, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
+    if (sig === this._renderSig) return;
+    this._renderSig = sig;
     if (meta) {
       meta.textContent = all.count
         ? (all.monthCount + ' chek shu oy · ' + (this.money(all.monthSum) || '0 so‘m'))
@@ -543,7 +576,13 @@ const VMCheks = {
     if (this._kickBusy) return;
     const now = Date.now();
     if (this._kickAt && now - this._kickAt < 2500) return;
-    const need = this.items.filter(x => x && x.id && String(x.id).indexOf('tmp') !== 0 && !x.ofdOk).slice(0, 2);
+    const need = this.items.filter((x) => {
+      if (!x || !x.id || String(x.id).indexOf('tmp') === 0 || x.ofdOk) return false;
+      if (this.paperItem && String(this.paperItem.id) === String(x.id)) return true;
+      const t = Date.parse(String(x.createdAt || '').replace(' ', 'T'));
+      if (!Number.isFinite(t)) return true;
+      return (now - t) < 20 * 60 * 1000;
+    }).slice(0, 2);
     if (!need.length) return;
     this._kickAt = now;
     this._kickBusy = true;
@@ -556,11 +595,8 @@ const VMCheks = {
               body: JSON.stringify({ id: row.id }),
               timeoutMs: 28000
             });
-            if (Array.isArray(d.items)) this.items = d.items;
-            if (this.paperItem && d.item && String(d.item.id) === String(this.paperItem.id)) {
-              this.paperItem = d.item;
-              this.openPaper(d.item, this.paperFromScan, this.paperDup);
-            }
+            if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));
+            else if (Array.isArray(d.items)) this.applyItems(d.items);
           } catch (e) {}
         }
         this.render();
@@ -816,6 +852,11 @@ const VMCheks = {
     }
   },
 
+  paperSig(r) {
+    if (!r) return '';
+    return [r.id, r.ofdOk, r.amount, r.merchant, r.inn, (r.items || []).length, r.ofdNote, this.paperFromScan, this.paperDup].join('|');
+  },
+
   openPaper(row, fromScan, dup) {
     this.paperItem = row;
     this.paperFromScan = !!fromScan;
@@ -824,11 +865,13 @@ const VMCheks = {
     const modal = document.getElementById('chek-paper-modal');
     const title = document.getElementById('chek-paper-title');
     const again = document.getElementById('chek-paper-again');
-    const del = document.getElementById('chek-paper-del');
-    if (box) box.innerHTML = this.paperHtml(row);
+    const sig = this.paperSig(row);
+    if (box && sig !== this._paperSig) {
+      box.innerHTML = this.paperHtml(row);
+      this._paperSig = sig;
+    }
     if (title) title.textContent = fromScan ? (dup ? 'Chek avval saqlangan' : 'Yangi fiskal chek') : 'Fiskal chek';
-    if (again) again.style.display = fromScan ? '' : 'none';
-    if (del) del.style.display = '';
+    if (again) again.style.display = '';
     if (modal) {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
@@ -837,14 +880,24 @@ const VMCheks = {
   },
 
   watchPendingPaper() {
+    if (!this.paperItem || this.paperItem.ofdOk) {
+      if (this.pendingTimer) {
+        clearTimeout(this.pendingTimer);
+        this.pendingTimer = null;
+      }
+      this._watchId = '';
+      return;
+    }
+    const id = String(this.paperItem.id || '');
+    if (this.pendingTimer && this._watchId === id) return;
     if (this.pendingTimer) {
       clearTimeout(this.pendingTimer);
       this.pendingTimer = null;
     }
-    if (!this.paperItem || this.paperItem.ofdOk) return;
+    this._watchId = id;
     this._ofdTries = 0;
     const tick = () => {
-      if (!this.paperItem || this.paperItem.ofdOk) {
+      if (!this.paperItem || this.paperItem.ofdOk || String(this.paperItem.id) !== id) {
         this.pendingTimer = null;
         return;
       }
@@ -870,6 +923,8 @@ const VMCheks = {
     this.paperItem = null;
     this.paperFromScan = false;
     this.paperDup = false;
+    this._paperSig = '';
+    this._watchId = '';
     if (closed && closed.plate) this.openPlate = closed.plate;
     if (closed && closed.id && String(closed.id).indexOf('tmp') !== 0) {
       this.highlightId = closed.id;
@@ -899,8 +954,8 @@ const VMCheks = {
         body: JSON.stringify({ plate: this.openPlate, qr: raw }),
         timeoutMs: 12000
       });
-      this.items = Array.isArray(d.items) ? d.items : this.items;
-      if (d.item && d.item.id) this.seenIds && this.seenIds.add(String(d.item.id));
+      if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));
+      else if (Array.isArray(d.items)) this.applyItems(d.items);
       this.render();
       if (d.item) {
         const keep = this.paperItem && (
@@ -943,7 +998,8 @@ const VMCheks = {
         body: JSON.stringify({ id }),
         timeoutMs: 28000
       });
-      this.items = Array.isArray(d.items) ? d.items : this.items;
+      if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));
+      else if (Array.isArray(d.items)) this.applyItems(d.items);
       if (d.item) {
         const stillOpen = this.paperItem && String(this.paperItem.id) === key;
         if (stillOpen) {
@@ -982,7 +1038,8 @@ const VMCheks = {
         method: 'POST',
         body: JSON.stringify(body)
       });
-      this.items = Array.isArray(d.items) ? d.items : this.items;
+      if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));
+      else if (Array.isArray(d.items)) this.applyItems(d.items);
       if (d.item) {
         this.paperItem = d.item;
         this.openPaper(d.item, this.paperFromScan, this.paperDup);
@@ -998,11 +1055,15 @@ const VMCheks = {
     if (!id || String(id).indexOf('tmp') === 0) return;
     if (!confirm('Shu chek o‘chirilsinmi? (faqat shu bo‘lim, hisobotga tegmaydi)')) return;
     try {
+      if (!this.deletedIds) this.deletedIds = new Set();
+      this.deletedIds.add(String(id));
       const d = await vmApi('/api/office/cheks/delete', {
         method: 'POST',
         body: JSON.stringify({ id })
       });
-      this.items = Array.isArray(d.items) ? d.items : this.items;
+      this.items = (this.items || []).filter((x) => String(x.id) !== String(id));
+      if (Array.isArray(d.items)) this.applyItems(d.items);
+      this.items = (this.items || []).filter((x) => !this.deletedIds.has(String(x.id)));
       this.closePaper();
       this.render();
       this.toast('Chek o‘chirildi');

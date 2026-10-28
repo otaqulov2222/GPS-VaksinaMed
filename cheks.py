@@ -393,6 +393,54 @@ def public_chek_row(row):
     return out
 
 
+def _chek_filled(v):
+    if v is None or v == "":
+        return False
+    if isinstance(v, list) and not v:
+        return False
+    return True
+
+
+def prefer_chek_row(old, new):
+    """Ikki versiyani birlashtiradi — bo'sh maydon to'liqni o'chirmaydi."""
+    if not isinstance(old, dict):
+        return dict(new) if isinstance(new, dict) else {}
+    if not isinstance(new, dict):
+        return dict(old)
+    out = dict(old)
+    out.update(new)
+    rich = (
+        "amount", "merchant", "inn", "items", "address", "cardType",
+        "payMethod", "kkmName", "vatTotal", "cardTotal", "cashTotal",
+        "fiscalSign", "qr", "terminalId", "receiptNo", "plate",
+    )
+    for k in rich:
+        if (not _chek_filled(new.get(k))) and _chek_filled(old.get(k)):
+            out[k] = old.get(k)
+    if old.get("ofdOk") and not new.get("ofdOk"):
+        out["ofdOk"] = True
+        out["ofdPending"] = False
+        if old.get("ofdNote"):
+            out["ofdNote"] = old.get("ofdNote")
+    return out
+
+
+def merge_chek_items(*groups):
+    """Cheklarni id bo'yicha qo'shadi — eski snapshot yangi skanni o'chirmaydi."""
+    by_id = {}
+    for group in groups:
+        for row in group or []:
+            if not isinstance(row, dict):
+                continue
+            rid = str(row.get("id") or "")
+            if not rid:
+                continue
+            by_id[rid] = prefer_chek_row(by_id.get(rid), row)
+    items = list(by_id.values())
+    items.sort(key=lambda r: str(r.get("paidAt") or r.get("createdAt") or ""), reverse=True)
+    return items
+
+
 def fetch_ofd_api(parsed, timeout=16):
     term = str((parsed or {}).get("terminalId") or "")
     payno = str((parsed or {}).get("receiptNo") or "")

@@ -1901,12 +1901,20 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   to { transform: none; opacity: 1; }
 }
 .chek-mini-acts {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  padding: 8px 10px 10px; background: #fffdf6; border: 1px dashed #c9b896; border-top: 0;
+  display: flex; justify-content: flex-end; gap: 12px;
+  padding: 2px 10px 8px; background: #fffdf6; border: 1px dashed #c9b896; border-top: 0;
   border-radius: 0 0 8px 8px;
 }
-.chek-act { height: 38px; margin: 0; font-size: 13px; }
-.chek-act-del { color: #9a1f1f; border-color: #e8b4b4; }
+.chek-act {
+  height: auto; margin: 0; padding: 4px 2px; font-size: 12px; font-weight: 700;
+  background: none; border: 0; box-shadow: none; min-height: 0; width: auto;
+}
+.chek-act-edit { color: #355a8a; }
+.chek-act-del { color: #9a1f1f; border-color: transparent; }
+#chek-paper-modal .chek-paper-foot {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+#chek-paper-modal .chek-paper-foot .btn { min-width: 0; }
 .chek-mini-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .chek-mini-h b { font: 700 16px var(--mono); }
 .chek-mini-h small { color: var(--muted); font-size: 11px; }
@@ -2780,8 +2788,6 @@ input, select, textarea { max-width: 100%; }
         <h3>Chek</h3>
         <span class="cnt" id="chek-board-meta">Hisobotga yozilmaydi</span>
       </div>
-      <div class="chek-live" id="chek-live"><i></i><span id="chek-live-text">MONITOR YONIQ — telefon QR ni o‘qisa, chek shu ekranda ochiladi</span></div>
-      <div class="chek-hint">Mashinani bosing. Telefonda QR skaner — kamerani chekdagi QR ga tuting, rasm olish shart emas. Qog‘oz chek (UZCARD + SOTUV CHEKI) o‘zi yasaladi va kompyuterda ham tushadi.</div>
       <div id="chek-totals" class="chek-totals"></div>
       <div id="chek-fleet" class="chek-fleet"></div>
       <div id="chek-car-view" hidden></div>
@@ -3048,9 +3054,7 @@ input, select, textarea { max-width: 100%; }
     <div class="chek-paper-wrap">
       <div class="chek-paper" id="chek-paper"></div>
     </div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-outline" id="chek-paper-del">O‘chirish</button>
-      <button type="button" class="btn btn-outline" id="chek-paper-refresh">OFD qayta</button>
+    <div class="modal-footer chek-paper-foot">
       <button type="button" class="btn btn-gold" id="chek-paper-again">Yana skanerlash</button>
       <button type="button" class="btn btn-light" id="chek-paper-done">Yopish</button>
     </div>
@@ -3239,7 +3243,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=30"></script>
-<script src="cheks.js?v=10"></script>
+<script src="cheks.js?v=11"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */
