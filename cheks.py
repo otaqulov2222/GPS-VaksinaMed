@@ -93,14 +93,25 @@ def parse_qr_payload(raw):
         "terminalId": t[:40],
         "receiptNo": r[:40],
         "fiscalSign": sig[:40],
-        "stamp": c[:20],
+        "stamp": ofd_payment_date(c),
         "paidAt": paid,
         "host": host,
     }
 
 
-def parse_ofd_stamp(c):
+def ofd_payment_date(c):
     s = re.sub(r"\D", "", str(c or ""))
+    if len(s) >= 14:
+        return s[:14]
+    if len(s) == 12:
+        return s + "00"
+    if len(s) == 8:
+        return s + "000000"
+    return s
+
+
+def parse_ofd_stamp(c):
+    s = ofd_payment_date(c)
     if len(s) >= 14:
         try:
             dt = datetime.strptime(s[:14], "%Y%m%d%H%M%S")
@@ -277,7 +288,9 @@ def parse_ofd_payment(data):
     out["merchant"] = str(extra.get("companyName") or blob.get("kkmName") or "").strip()[:180]
     out["address"] = str(extra.get("address") or "").strip()[:220]
     out["kkmName"] = str(blob.get("kkmName") or "").strip()[:120]
-    out["cardType"] = str(extra.get("cardType") or extra.get("card") or "").strip()[:40]
+    raw_card = str(extra.get("cardType") or extra.get("card") or "").strip()
+    card_map = {"1": "UZCARD", "2": "HUMO", "3": "VISA", "4": "Mastercard"}
+    out["cardType"] = card_map.get(raw_card, raw_card[:40])
     vat = _ofd_som(blob.get("vatTotal"))
     out["vatTotal"] = vat
     tin = str(blob.get("tin") or extra.get("tin") or "").strip()
@@ -353,8 +366,8 @@ def public_ofd_note(ofd_ok=False, ofd_pending=False, note="", amount=None):
     low = raw.lower()
     if ofd_pending or "shakllan" in low:
         return "Soliq OFD da chek hali shakllanmoqda (48 soatgacha). Qog‘oz saqlandi."
-    if re.search(r"urlerror|sslerror|timeout|timed out|connection|handshake|urlopen|eof", raw, re.I):
-        return "Soliq OFD vaqtincha javob bermadi. Chek saqlandi — avtomatik qayta urinamiz."
+    if re.search(r"urlerror|sslerror|timeout|timed out|connection|handshake|urlopen|eof|javob bermadi", raw, re.I):
+        return "OFD dan to‘liq chek olinmoqda. Bir necha soniyada o‘zi tushadi."
     cleaned = re.sub(r"\s*\([A-Za-z_]*Error\)\s*", " ", raw).strip()
     cleaned = re.sub(r"\bOFD ochilmadi\b", "OFD vaqtincha javob bermadi", cleaned, flags=re.I)
     if cleaned:
@@ -380,7 +393,7 @@ def public_chek_row(row):
     return out
 
 
-def fetch_ofd_api(parsed, timeout=8):
+def fetch_ofd_api(parsed, timeout=16):
     term = str((parsed or {}).get("terminalId") or "")
     payno = str((parsed or {}).get("receiptNo") or "")
     stamp = str((parsed or {}).get("stamp") or "")
@@ -456,7 +469,7 @@ def fetch_ofd_api(parsed, timeout=8):
                 continue
             break
         except Exception:
-            last_note = "Soliq OFD vaqtincha javob bermadi."
+            last_note = "OFD dan to‘liq chek olinmoqda."
             if attempts:
                 time.sleep(0.45)
                 continue
@@ -465,7 +478,7 @@ def fetch_ofd_api(parsed, timeout=8):
     return empty
 
 
-def fetch_ofd_details(qr_url, timeout=8, parsed=None):
+def fetch_ofd_details(qr_url, timeout=16, parsed=None):
     url = str(qr_url or "").strip()
     if parsed is None and url:
         parsed = parse_qr_payload(url)

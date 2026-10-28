@@ -47,6 +47,23 @@ class CheksParseTest(unittest.TestCase):
         self.assertEqual(d["payMethod"], "Bank kartasi")
         self.assertEqual(d["items"][0]["name"], "AI-80")
 
+    def test_card_type_code(self):
+        d = cheks.parse_ofd_payment({
+            "data": {
+                "cashTotal": 0, "cardTotal": 86000, "tin": "305515145",
+                "extraInfo": {"companyName": "HUBLOT GAS", "paymentType": 2, "cardType": "1"},
+                "paymentDetails": [{"name": "Gaz metan", "amount": 15.088, "price": 86000}],
+            }
+        })
+        self.assertEqual(d["cardType"], "UZCARD")
+        self.assertEqual(d["amount"], 86000)
+
+    def test_stamp_pad(self):
+        self.assertEqual(cheks.ofd_payment_date("202610131311"), "20261013131100")
+        p = cheks.parse_qr_payload("https://ofd.soliq.uz/check?t=YZ1&r=1&c=202610131311&s=123")
+        self.assertEqual(p["stamp"], "20261013131100")
+        self.assertEqual(p["paidAt"], "2026-10-13 13:11:00")
+
     def test_public_note_hides_urlerror(self):
         n = cheks.public_ofd_note(False, False, "OFD ochilmadi (URLError)", None)
         self.assertNotIn("URLError", n)

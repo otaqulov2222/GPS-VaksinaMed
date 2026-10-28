@@ -1883,13 +1883,30 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .chek-stat b { display: block; margin-top: 4px; font: 700 18px/1.15 var(--mono); }
 .chek-add-btn { width: 100%; height: 52px; font-size: 15px; margin-bottom: 12px; letter-spacing: .04em; }
 .chek-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.chek-mini-wrap { display: flex; flex-direction: column; gap: 0; }
 .chek-mini {
   display: block; width: 100%; text-align: left; cursor: pointer;
-  background: #fffdf6; border: 1px dashed #c9b896; border-radius: 8px;
+  background: #fffdf6; border: 1px dashed #c9b896; border-radius: 8px 8px 0 0;
   padding: 12px 14px; font: inherit; color: inherit;
   box-shadow: 0 4px 10px rgba(80, 60, 20, .06);
   -webkit-appearance: none; appearance: none; position: relative;
 }
+.chek-mini.is-new {
+  border-color: #1a7a4c;
+  box-shadow: 0 0 0 2px rgba(15, 122, 62, .22);
+  animation: chekMiniIn .4s ease;
+}
+@keyframes chekMiniIn {
+  from { transform: translateY(-10px); opacity: .35; }
+  to { transform: none; opacity: 1; }
+}
+.chek-mini-acts {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  padding: 8px 10px 10px; background: #fffdf6; border: 1px dashed #c9b896; border-top: 0;
+  border-radius: 0 0 8px 8px;
+}
+.chek-act { height: 38px; margin: 0; font-size: 13px; }
+.chek-act-del { color: #9a1f1f; border-color: #e8b4b4; }
 .chek-mini-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .chek-mini-h b { font: 700 16px var(--mono); }
 .chek-mini-h small { color: var(--muted); font-size: 11px; }
@@ -2029,6 +2046,7 @@ body.page-chek .vm-docs-badge {
   opacity: .85;
 }
 .chek-p-manual { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #b7c0cc; }
+.chek-p-manual summary { cursor: pointer; font-size: 12px; font-weight: 700; color: #5c6573; padding: 4px 0; }
 .chek-p-manual p { font-size: 11px; color: #5c6573; margin: 0 0 8px; line-height: 1.4; }
 .chek-p-manual label { display:block; font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin: 8px 0 4px; }
 .chek-p-manual input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); font: 13px var(--mono); }
@@ -3221,7 +3239,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=30"></script>
-<script src="cheks.js?v=7"></script>
+<script src="cheks.js?v=10"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

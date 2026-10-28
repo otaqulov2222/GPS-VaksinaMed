@@ -16,6 +16,7 @@ const VMCheks = {
   paperItem: null,
   paperFromScan: false,
   paperDup: false,
+  highlightId: '',
   nativeStream: null,
   nativeLoop: null,
   nativeVideo: null,
@@ -306,20 +307,28 @@ const VMCheks = {
 
   miniHtml(r) {
     const kind = this.ofdKind(r);
-    return `<li><button type="button" class="chek-mini" data-id="${this.esc(r.id)}">
-      <div class="chek-mini-h">
-        <b>${this.esc(this.moneyOrWait(r.amount))}</b>
-        <small>${this.esc(this.when(r))}</small>
+    const id = this.esc(r.id);
+    const neu = this.highlightId && String(this.highlightId) === String(r.id);
+    return `<li class="chek-mini-wrap">
+      <button type="button" class="chek-mini${neu ? ' is-new' : ''}" data-id="${id}">
+        <div class="chek-mini-h">
+          <b>${this.esc(this.moneyOrWait(r.amount))}</b>
+          <small>${this.esc(this.when(r))}</small>
+        </div>
+        <em>${this.esc(r.merchant || r.kkmName || 'Zapravka cheki')}</em>
+        <span>Chek № ${this.esc(r.receiptNo || '—')} · ${this.esc(r.terminalId || '')}</span>
+        <i class="chek-pill ${kind}">${this.esc(this.ofdLabel(r))}</i>
+      </button>
+      <div class="chek-mini-acts">
+        <button type="button" class="btn btn-outline chek-act chek-act-edit" data-id="${id}">Tahrirlash</button>
+        <button type="button" class="btn btn-outline chek-act chek-act-del" data-id="${id}">O‘chirish</button>
       </div>
-      <em>${this.esc(r.merchant || r.kkmName || 'Zapravka cheki')}</em>
-      <span>Chek № ${this.esc(r.receiptNo || '—')} · ${this.esc(r.terminalId || '')}</span>
-      <i class="chek-pill ${kind}">${this.esc(this.ofdLabel(r))}</i>
-    </button></li>`;
+    </li>`;
   },
 
   paperHtml(r) {
     const d = this.driverOf(r.plate);
-    const merchant = r.merchant || r.kkmName || 'SOTUV CHEKI';
+    const merchant = r.merchant || r.kkmName || '';
     const items = (r.items || []).filter(it => it && it.name).slice(0, 16).map(it => {
       const qty = it.qty != null && it.qty !== '' ? Number(it.qty) : NaN;
       const sum = it.sum != null && it.sum !== '' ? Number(it.sum) : NaN;
@@ -343,19 +352,21 @@ const VMCheks = {
     const kind = this.ofdKind(r);
     const warn = kind === 'ok'
       ? ''
-      : `<div class="chek-p-warn">${this.esc(r.ofdNote || 'Soliq OFD da chek hali shakllanmoqda. Qog‘oz saqlandi.')}</div>`;
+      : `<div class="chek-p-warn">${this.esc(r.ofdNote || 'OFD dan to‘liq chek olinmoqda — o‘zi tushadi, qo‘lda yozish shart emas.')}</div>`;
     const saved = this.paperFromScan
       ? `<div class="chek-p-ok">${this.paperDup ? 'Bu chek avval saqlangan' : 'Yangi chek · monitorga tushdi'}</div>`
       : '';
-    const needAmt = r.amount == null || r.amount === '';
-    const manual = needAmt ? `<div class="chek-p-manual">
-      <p>Soliq hali JAMI ni bermadi. Chekdagi summani yozing — OFD tayyor bo‘lganda o‘zi yangilanadi.</p>
+    const amtVal = r.amount != null && r.amount !== '' && Number.isFinite(Number(r.amount))
+      ? String(Math.round(Number(r.amount))) : '';
+    const manual = r.ofdOk ? '' : `<details class="chek-p-manual">
+      <summary>OFD kechiksa — qo‘lda yozish</summary>
+      <p>Odatda shart emas. OFD tasdiqlasa stansiya, mahsulot va JAMI o‘zi tushadi.</p>
       <label>Summa (so‘m)</label>
-      <input type="number" id="chek-manual-amt" min="1" step="1" inputmode="numeric" placeholder="masalan 72000">
+      <input type="number" id="chek-manual-amt" min="1" step="1" inputmode="numeric" placeholder="masalan 72000" value="${this.esc(amtVal)}">
       <label>Stansiya nomi</label>
       <input type="text" id="chek-manual-mer" placeholder="Zapravka nomi" value="${this.esc(r.merchant || '')}">
-      <button type="button" class="btn btn-gold chek-scan-alt" id="chek-manual-save">Summani saqlash</button>
-    </div>` : '';
+      <button type="button" class="btn btn-gold chek-scan-alt" id="chek-manual-save">Saqlash</button>
+    </details>`;
     const qr = r.qr
       ? `<div class="chek-p-qrbox">
           <img alt="OFD QR" width="168" height="168" src="https://api.qrserver.com/v1/create-qr-code/?size=168x168&amp;margin=2&amp;data=${encodeURIComponent(r.qr)}">
@@ -364,16 +375,15 @@ const VMCheks = {
     const confirmed = r.ofdOk || (r.amount != null && r.amount !== '');
     return `
       <div class="chek-uz">
-        <div class="chek-uz-brand">${this.esc(r.cardType || 'UZCARD')}</div>
-        <div class="chek-uz-mer">${this.esc(merchant)}</div>
+        <div class="chek-uz-brand">${this.esc(r.cardType || r.payMethod || 'UZCARD')}</div>
+        ${merchant ? `<div class="chek-uz-mer">${this.esc(merchant)}</div>` : ''}
         ${r.address ? `<div class="chek-p-sub">${this.esc(r.address)}</div>` : ''}
         <div class="chek-p-row"><span>Sanasi</span><b>${this.esc(this.when(r))}</b></div>
         <div class="chek-uz-pay">To‘lov qilish</div>
         <div class="chek-uz-sum">${this.esc(this.som(r.amount))} UZS</div>
-        <div class="chek-uz-ok">${confirmed ? 'Tasdiqlangan' : 'Qabul qilindi'}</div>
+        <div class="chek-uz-ok">${confirmed ? 'Tasdiqlangan' : 'OFD kutilmoqda'}</div>
       </div>
-      <div class="chek-p-title">${this.esc(merchant)}</div>
-      ${r.address ? `<div class="chek-p-sub">${this.esc(r.address)}</div>` : ''}
+      ${merchant ? `<div class="chek-p-title">${this.esc(merchant)}</div>` : ''}
       <div class="chek-p-flag">SOTUV CHEKI</div>
       <hr class="chek-p-line">
       ${items || '<div class="chek-p-sub">Mahsulot qatori OFD dan kutilmoqda</div>'}
@@ -433,6 +443,21 @@ const VMCheks = {
         this.openScan(this.openPlate);
         return;
       }
+      const delBtn = e.target.closest('.chek-act-del');
+      if (delBtn) {
+        e.preventDefault();
+        const id = delBtn.getAttribute('data-id');
+        if (id) this.remove(id);
+        return;
+      }
+      const editBtn = e.target.closest('.chek-act-edit');
+      if (editBtn) {
+        e.preventDefault();
+        const id = editBtn.getAttribute('data-id');
+        const row = this.items.find(x => String(x.id) === String(id));
+        if (row) this.openPaper(row, false, false);
+        return;
+      }
       const mini = e.target.closest('.chek-mini');
       if (mini) {
         const id = mini.getAttribute('data-id');
@@ -473,10 +498,17 @@ const VMCheks = {
     if (pDone) pDone.onclick = () => this.closePaper();
     const pAgain = document.getElementById('chek-paper-again');
     if (pAgain) pAgain.onclick = () => {
-      const plate = this.openPlate;
+      const plate = this.openPlate || (this.paperItem && this.paperItem.plate);
       this.closePaper();
       this.openScan(plate);
     };
+    const paperModal = document.getElementById('chek-paper-modal');
+    if (paperModal && !paperModal._vmBgClose) {
+      paperModal._vmBgClose = true;
+      paperModal.addEventListener('click', (e) => {
+        if (e.target === paperModal) this.closePaper();
+      });
+    }
     const pDel = document.getElementById('chek-paper-del');
     if (pDel) pDel.onclick = () => {
       const id = this.paperItem && this.paperItem.id;
@@ -796,7 +828,7 @@ const VMCheks = {
     if (box) box.innerHTML = this.paperHtml(row);
     if (title) title.textContent = fromScan ? (dup ? 'Chek avval saqlangan' : 'Yangi fiskal chek') : 'Fiskal chek';
     if (again) again.style.display = fromScan ? '' : 'none';
-    if (del) del.style.display = fromScan ? 'none' : '';
+    if (del) del.style.display = '';
     if (modal) {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
@@ -806,26 +838,30 @@ const VMCheks = {
 
   watchPendingPaper() {
     if (this.pendingTimer) {
-      clearInterval(this.pendingTimer);
+      clearTimeout(this.pendingTimer);
       this.pendingTimer = null;
     }
     if (!this.paperItem || this.paperItem.ofdOk) return;
-    const ms = this.paperFromScan ? 2200 : 8000;
-    this.pendingTimer = setInterval(() => {
+    this._ofdTries = 0;
+    const tick = () => {
       if (!this.paperItem || this.paperItem.ofdOk) {
-        clearInterval(this.pendingTimer);
         this.pendingTimer = null;
         return;
       }
       this.refreshOfd(true);
-    }, ms);
+      this._ofdTries = (this._ofdTries || 0) + 1;
+      const wait = this._ofdTries < 8 ? 2500 : 15000;
+      this.pendingTimer = setTimeout(tick, wait);
+    };
+    this.pendingTimer = setTimeout(tick, this.paperFromScan ? 600 : 2000);
   },
 
   closePaper() {
     if (this.pendingTimer) {
-      clearInterval(this.pendingTimer);
+      clearTimeout(this.pendingTimer);
       this.pendingTimer = null;
     }
+    const closed = this.paperItem;
     const modal = document.getElementById('chek-paper-modal');
     if (modal) {
       modal.classList.remove('open');
@@ -834,6 +870,12 @@ const VMCheks = {
     this.paperItem = null;
     this.paperFromScan = false;
     this.paperDup = false;
+    if (closed && closed.plate) this.openPlate = closed.plate;
+    if (closed && closed.id && String(closed.id).indexOf('tmp') !== 0) {
+      this.highlightId = closed.id;
+    }
+    this.render();
+    this.kickPending();
   },
 
   async onQr(text) {
@@ -861,8 +903,18 @@ const VMCheks = {
       if (d.item && d.item.id) this.seenIds && this.seenIds.add(String(d.item.id));
       this.render();
       if (d.item) {
-        this.openPaper(d.item, true, !!d.duplicate);
-        this.refreshOfd(true);
+        const keep = this.paperItem && (
+          String(this.paperItem.id) === 'tmp_scan' ||
+          String(this.paperItem.id) === String(d.item.id)
+        );
+        if (keep) {
+          this.openPaper(d.item, true, !!d.duplicate);
+          this.refreshOfd(true);
+        } else {
+          this.highlightId = d.item.id;
+          this.render();
+          this.kickPending();
+        }
       } else {
         this.toast(d.duplicate ? 'Bu chek avval saqlangan' : 'Chek saqlandi');
       }
@@ -879,8 +931,11 @@ const VMCheks = {
 
   async refreshOfd(silent) {
     const id = this.paperItem && this.paperItem.id;
-    if (!id || String(id).indexOf('tmp') === 0 || this._refBusy) return;
-    this._refBusy = true;
+    if (!id || String(id).indexOf('tmp') === 0) return;
+    if (!this._refBusyIds) this._refBusyIds = new Set();
+    const key = String(id);
+    if (this._refBusyIds.has(key)) return;
+    this._refBusyIds.add(key);
     if (!silent) this.toast('OFD dan qayta so‘ralmoqda…');
     try {
       const d = await vmApi('/api/office/cheks/refresh', {
@@ -890,20 +945,25 @@ const VMCheks = {
       });
       this.items = Array.isArray(d.items) ? d.items : this.items;
       if (d.item) {
-        const was = this.paperItem && this.paperItem.ofdOk;
-        this.paperItem = d.item;
-        this.openPaper(d.item, this.paperFromScan, this.paperDup);
-        if (!silent) this.toast(d.item.ofdOk ? 'OFD dan to‘liq chek keldi' : (d.item.ofdNote || 'Hali shakllanmoqda'));
-        else if (d.item.ofdOk && !was) {
-          this.beep();
-          this.toast('OFD dan to‘liq chek keldi');
+        const stillOpen = this.paperItem && String(this.paperItem.id) === key;
+        if (stillOpen) {
+          const was = this.paperItem.ofdOk;
+          this.paperItem = d.item;
+          this.openPaper(d.item, this.paperFromScan, this.paperDup);
+          if (!silent) this.toast(d.item.ofdOk ? 'OFD dan to‘liq chek keldi' : (d.item.ofdNote || 'Hali shakllanmoqda'));
+          else if (d.item.ofdOk && !was) {
+            this.beep();
+            this.toast('OFD dan to‘liq chek keldi');
+          }
+        } else if (d.item.ofdOk && !this.scanning) {
+          this.highlightId = d.item.id;
         }
       }
       this.render();
     } catch (e) {
       if (!silent) this.toast(e.message || 'OFD ochilmadi');
     } finally {
-      this._refBusy = false;
+      this._refBusyIds.delete(key);
     }
   },
 
@@ -911,15 +971,16 @@ const VMCheks = {
     const id = this.paperItem && this.paperItem.id;
     const amt = document.getElementById('chek-manual-amt');
     const mer = document.getElementById('chek-manual-mer');
-    if (!id) return;
+    if (!id || String(id).indexOf('tmp') === 0) {
+      this.toast('Avval chek saqlansin');
+      return;
+    }
+    const body = { id, merchant: mer && mer.value };
+    if (amt && String(amt.value).trim()) body.amount = amt.value;
     try {
       const d = await vmApi('/api/office/cheks/update', {
         method: 'POST',
-        body: JSON.stringify({
-          id,
-          amount: amt && amt.value,
-          merchant: mer && mer.value
-        })
+        body: JSON.stringify(body)
       });
       this.items = Array.isArray(d.items) ? d.items : this.items;
       if (d.item) {
@@ -927,13 +988,14 @@ const VMCheks = {
         this.openPaper(d.item, this.paperFromScan, this.paperDup);
       }
       this.render();
-      this.toast('Summa saqlandi');
+      this.toast('Chek yangilandi');
     } catch (e) {
       this.toast(e.message || 'Saqlanmadi');
     }
   },
 
   async remove(id) {
+    if (!id || String(id).indexOf('tmp') === 0) return;
     if (!confirm('Shu chek o‘chirilsinmi? (faqat shu bo‘lim, hisobotga tegmaydi)')) return;
     try {
       const d = await vmApi('/api/office/cheks/delete', {
@@ -943,6 +1005,7 @@ const VMCheks = {
       this.items = Array.isArray(d.items) ? d.items : this.items;
       this.closePaper();
       this.render();
+      this.toast('Chek o‘chirildi');
     } catch (e) {
       this.toast(e.message || 'O‘chirilmadi');
     }
