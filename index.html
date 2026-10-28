@@ -1815,43 +1815,100 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 
 
 
+.chek-live {
+  margin: 0 12px 10px; padding: 10px 14px; border-radius: 12px;
+  background: #082033; color: #d7fbe8; font-size: 12px; font-weight: 700;
+  letter-spacing: .02em; display: flex; align-items: center; gap: 10px;
+}
+.chek-live i {
+  width: 10px; height: 10px; border-radius: 50%; background: #3dff8a;
+  box-shadow: 0 0 0 0 rgba(61,255,138,.7); animation: chekPulse 1.6s infinite;
+  flex: 0 0 auto;
+}
+@keyframes chekPulse {
+  0% { box-shadow: 0 0 0 0 rgba(61,255,138,.55); }
+  70% { box-shadow: 0 0 0 10px rgba(61,255,138,0); }
+  100% { box-shadow: 0 0 0 0 rgba(61,255,138,0); }
+}
 .chek-hint {
   margin: 0 16px 10px; padding: 10px 12px; border-radius: 10px;
-  background: #fff8e8; color: #7a4e00; font-size: 12px; line-height: 1.45;
+  background: #fff8e8; color: #7a4e00; font-size: 12px; line-height: 1.5;
   border: 1px solid #f0d9a0;
 }
-.chek-fleet { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 14px; }
+.chek-totals {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+  padding: 0 12px 12px;
+}
+.chek-fleet[hidden], #chek-car-view[hidden], #chek-totals[hidden] {
+  display: none !important;
+}
+.chek-tot {
+  background: #f4f7fb; border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 8px; text-align: center;
+}
+.chek-tot b { display: block; font: 700 15px/1.2 var(--mono); color: var(--ink); }
+.chek-tot span { display: block; margin-top: 3px; font-size: 10px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.chek-fleet { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 18px; }
 .chek-card {
-  border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 14px; background: #fff;
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer;
+  width: 100%; text-align: left; font: inherit; color: inherit;
+  -webkit-appearance: none; appearance: none;
 }
-.chek-card.is-open { border-color: #c5d4e6; box-shadow: 0 6px 16px rgba(11,31,58,.06); }
-.chek-card-h {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer;
-}
-.chek-n { font: 600 11px var(--mono); color: var(--faint); width: 18px; }
+.chek-card:hover { border-color: #c5d4e6; box-shadow: 0 8px 18px rgba(11,31,58,.08); }
+.chek-n { font: 600 11px var(--mono); color: var(--faint); width: 18px; flex: 0 0 auto; }
 .chek-who { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
-.chek-who b { font-size: 13px; color: var(--ink); }
+.chek-who b { font-size: 14px; color: var(--ink); }
 .chek-who em { font-size: 11px; color: var(--muted); font-style: normal; }
+.chek-last { font-style: normal; font-size: 11px; color: #5b6b7c; margin-top: 2px; }
 .chek-sum { text-align: right; margin-left: auto; }
 .chek-sum strong { display: block; font: 700 13px/1.2 var(--mono); color: var(--ink); }
 .chek-sum small { color: var(--muted); font-size: 10px; }
-.chek-scan-btn { flex: 0 0 auto; }
-.chek-card-b { border-top: 1px solid var(--line); padding: 10px 12px 12px; background: #f7fafc; }
-.chek-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 12px; }
-.chek-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.chek-item {
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px;
+.chek-go { color: var(--muted); font-size: 18px; padding-left: 4px; }
+.chek-empty { padding: 22px 16px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.5; }
+#chek-car-view { padding: 0 12px 20px; }
+.chek-back {
+  border: 0; background: transparent; color: var(--accent); font: 600 13px inherit;
+  padding: 4px 0 10px; cursor: pointer;
 }
-.chek-item-h { display: flex; align-items: center; gap: 8px; }
-.chek-amt { font: 700 14px var(--mono); color: var(--ink); }
-.chek-when { margin-left: auto; font-size: 11px; color: var(--muted); }
-.chek-del { width: 36px; min-width: 36px; padding: 0; }
-.chek-mer { margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
-.chek-meta { margin-top: 2px; font-size: 11px; color: var(--muted); }
-.chek-goods { margin: 6px 0 0; padding-left: 16px; font-size: 11px; color: var(--ink-2); }
-.chek-warn { margin-top: 6px; font-size: 11px; color: #9a3412; }
-#chek-scan-cam { width: 100%; min-height: 220px; background: #0b1f3a; border-radius: 12px; overflow: hidden; }
-#chek-scan-file-sink { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.chek-car-head {
+  display: flex; align-items: center; gap: 10px; padding: 4px 0 12px;
+}
+.chek-car-head .chek-who b { font-size: 16px; }
+.chek-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.chek-stat {
+  background: #0b1f3a; color: #fff; border-radius: 14px; padding: 12px 14px;
+}
+.chek-stat span { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+.chek-stat b { display: block; margin-top: 4px; font: 700 18px/1.15 var(--mono); }
+.chek-add-btn { width: 100%; height: 52px; font-size: 15px; margin-bottom: 12px; letter-spacing: .04em; }
+.chek-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.chek-mini {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: #fffdf6; border: 1px dashed #c9b896; border-radius: 8px;
+  padding: 12px 14px; font: inherit; color: inherit;
+  box-shadow: 0 4px 10px rgba(80, 60, 20, .06);
+  -webkit-appearance: none; appearance: none; position: relative;
+}
+.chek-mini-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.chek-mini-h b { font: 700 16px var(--mono); }
+.chek-mini-h small { color: var(--muted); font-size: 11px; }
+.chek-mini em { display: block; margin-top: 4px; font-style: normal; font-size: 12px; font-weight: 600; }
+.chek-mini span { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
+.chek-pill {
+  display: inline-block; margin-top: 8px; padding: 3px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  font-style: normal;
+}
+.chek-pill.ok { background: #e5f8ec; color: #0f7a3e; }
+.chek-pill.wait { background: #fff4d6; color: #9a5b00; }
+#chek-scan-cam {
+  display: none; width: 100%; min-height: 240px; background: #0b1f3a;
+  border-radius: 12px; overflow: hidden; position: relative; margin-bottom: 10px;
+}
+#chek-scan-cam.is-on { display: block; }
+#chek-scan-cam video, #chek-scan-cam canvas { width: 100% !important; height: auto !important; }
+#chek-scan-file-sink { position: absolute; left: -9999px; width: 280px; height: 280px; overflow: hidden; }
 #chek-top-title { display: none; min-width: 0; }
 body:not(.page-chek) #chek-board { display: none !important; }
 body.page-chek .driver-strip-wrap,
@@ -1861,9 +1918,110 @@ body.page-chek main > :not(#chek-board) { display: none !important; }
 body.page-chek .page-wrap { grid-template-columns: 1fr; }
 body.page-chek #chek-board { display: block; }
 body.page-chek #chek-top-title { display: block; }
+html.page-chek .app-main .topbar .tb-actions,
+body.page-chek .app-main .topbar .tb-actions,
+html.page-chek .app-main .topbar .acts,
+body.page-chek .app-main .topbar .acts,
+body.page-chek .tb-actions {
+  display: none !important;
+}
+body.page-chek .toast,
+html.page-chek .toast,
+body.page-chek .toast-msg,
+html.page-chek .toast-msg {
+  display: none !important;
+}
+body.page-chek #docs-badge,
+body.page-chek .vm-docs-badge {
+  display: none !important;
+}
+.chek-scan-help {
+  margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--ink-2);
+}
+.chek-scan-status {
+  display: none; margin-bottom: 10px; padding: 10px 12px; border-radius: 10px;
+  background: #eef4fb; color: #0b1f3a; font-size: 13px; font-weight: 600;
+}
+.chek-scan-status.on { display: block; }
+.chek-scan-status.busy { background: #fff4d6; }
+.chek-scan-status.bad { background: #fde8e8; color: #9a1f1f; }
+.chek-photo-btn {
+  width: 100%; height: 52px; font-size: 14px; display: flex; align-items: center; justify-content: center;
+  margin: 0 0 8px; white-space: normal; letter-spacing: .04em;
+}
+.chek-scan-alt { width: 100%; height: 44px; margin-bottom: 8px; }
+.chek-link-box { margin-top: 8px; }
+.chek-link-box summary {
+  cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; padding: 6px 0;
+}
+#chek-flash {
+  position: fixed; inset: 0; z-index: 920; pointer-events: none;
+  background: rgba(255, 214, 64, .0); opacity: 0;
+}
+#chek-flash.on { animation: chekFlash .55s ease; }
+@keyframes chekFlash {
+  0% { opacity: 0; background: rgba(255,214,64,0); }
+  20% { opacity: 1; background: rgba(255,214,64,.38); }
+  100% { opacity: 0; background: rgba(255,214,64,0); }
+}
+#chek-paper-modal .modal-box { background: #dfe6ee; max-width: 420px; }
+#chek-paper-modal.open .chek-paper {
+  animation: chekDrop .42s cubic-bezier(.18,1.15,.32,1);
+}
+@keyframes chekDrop {
+  from { transform: translateY(-28px) scale(.96); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.chek-paper-wrap { padding: 18px 16px 10px; max-height: min(72vh, 760px); overflow: auto; }
+.chek-paper {
+  background: #fffef8;
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(20,40,70,.035) 28px);
+  width: 100%; padding: 20px 16px 22px;
+  font-family: "Courier New", ui-monospace, var(--mono), monospace;
+  color: #1b2430;
+  box-shadow: 0 16px 40px rgba(11,31,58,.22);
+  position: relative;
+}
+.chek-paper:before, .chek-paper:after {
+  content: ""; position: absolute; left: 0; right: 0; height: 10px;
+  background: radial-gradient(circle at 8px 10px, transparent 7px, #dfe6ee 8px) repeat-x;
+  background-size: 16px 10px;
+}
+.chek-paper:before { top: -10px; }
+.chek-paper:after { bottom: -10px; transform: rotate(180deg); }
+.chek-p-brand { text-align: center; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #5c6573; }
+.chek-p-flag { text-align: center; font-size: 13px; font-weight: 800; letter-spacing: .22em; margin: 6px 0 4px; }
+.chek-p-title { text-align: center; font-size: 16px; font-weight: 800; margin: 4px 0 2px; }
+.chek-p-sub { text-align: center; font-size: 12px; margin-bottom: 6px; }
+.chek-p-line { border: 0; border-top: 1px dashed #b7c0cc; margin: 10px 0; }
+.chek-p-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; margin: 3px 0; }
+.chek-p-row b { font-weight: 700; text-align: right; }
+.chek-p-items { margin: 8px 0; font-size: 12px; }
+.chek-p-item { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; }
+.chek-p-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
+.chek-p-total span { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+.chek-p-total b { font-size: 22px; }
+.chek-p-ok { text-align: center; margin-top: 12px; font-size: 12px; font-weight: 800; color: #0f7a3e; }
+.chek-p-warn { text-align: center; margin-top: 10px; font-size: 11px; color: #9a5b00; line-height: 1.45; background: #fff6e4; padding: 8px 10px; border-radius: 8px; }
+.chek-p-qrbox { text-align: center; margin: 12px 0 4px; }
+.chek-p-qrbox img { width: 148px; height: 148px; image-rendering: pixelated; background: #fff; }
+.chek-p-qrbox small { display: block; margin-top: 4px; font-size: 10px; color: #5c6573; }
+.chek-p-bars {
+  height: 36px; margin-top: 12px;
+  background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 5px);
+  opacity: .85;
+}
+.chek-p-manual { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #b7c0cc; }
+.chek-p-manual p { font-size: 11px; color: #5c6573; margin: 0 0 8px; line-height: 1.4; }
+.chek-p-manual label { display:block; font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin: 8px 0 4px; }
+.chek-p-manual input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); font: 13px var(--mono); }
 @media (max-width: 800px) {
-  .chek-card-h { flex-wrap: wrap; }
-  .chek-scan-btn { width: 100%; justify-content: center; }
+  #chek-scan-modal.modal-bg, #chek-paper-modal.modal-bg {
+    align-items: flex-end; padding: 0;
+  }
+  #chek-scan-modal .modal-box, #chek-paper-modal .modal-box {
+    max-width: 100%; border-radius: 16px 16px 0 0;
+  }
 }
 
 .modal-bg {
@@ -2585,10 +2743,13 @@ input, select, textarea { max-width: 100%; }
     <div class="card" id="chek-board">
       <div class="sec-head">
         <h3>Chek</h3>
-        <span class="cnt" id="chek-board-meta">Sinov bo‘limi · hisobotga ta’sir qilmaydi</span>
+        <span class="cnt" id="chek-board-meta">Hisobotga yozilmaydi</span>
       </div>
-      <div class="chek-hint">Har mashina uchun zapravka chekidagi QR ni skanerlang. Ma’lumot shu yerda chekdek saqlanadi. Hozircha yoqilg‘i, GPS va ballga ulanmagan.</div>
+      <div class="chek-live" id="chek-live"><i></i><span id="chek-live-text">MONITOR YONIQ — telefon QR ni o‘qisa, chek shu ekranda ochiladi</span></div>
+      <div class="chek-hint">Mashinani bosing — nechta chek va qancha so‘m. Telefon yoki shu kompyuterda QR ni oling: qog‘oz chek darhol ochiladi va ovoz chiqadi. Soliq OFD hali bermasa ham terminal, chek № va QR saqlanadi.</div>
+      <div id="chek-totals" class="chek-totals"></div>
       <div id="chek-fleet" class="chek-fleet"></div>
+      <div id="chek-car-view" hidden></div>
     </div>
 
     <div id="kpi-container">
@@ -2816,6 +2977,7 @@ input, select, textarea { max-width: 100%; }
 
 
 
+<div id="chek-flash" aria-hidden="true"></div>
 <div class="modal-bg" id="chek-scan-modal" aria-hidden="true">
   <div class="modal-box">
     <div class="modal-head">
@@ -2823,15 +2985,39 @@ input, select, textarea { max-width: 100%; }
       <button type="button" class="modal-close" id="chek-scan-close" aria-label="Yopish">×</button>
     </div>
     <div class="form-row">
+      <p class="chek-scan-help">Zapravka chekidagi <b>pastki QR</b> ni rasmga oling. Kompyuterda Chek oynasi ochiq bo‘lsa, shu qog‘oz chek u yerda ham tushadi.</p>
+      <div class="chek-scan-status" id="chek-scan-status"></div>
       <div id="chek-scan-cam"></div>
       <div id="chek-scan-file-sink"></div>
-      <label class="btn btn-outline btn-sm" for="chek-scan-file" style="margin-top:10px;display:inline-flex;justify-content:center;">Rasmdan o‘qish</label>
+      <label class="btn btn-gold chek-photo-btn" for="chek-scan-file">Chekni rasmga olish</label>
       <input type="file" id="chek-scan-file" accept="image/*" capture="environment" hidden>
-      <label style="display:block;margin-top:12px;">Yoki QR havolasini yozing</label>
-      <input type="text" id="chek-qr-text" placeholder="https://ofd.soliq.uz/check?...">
+      <label class="btn btn-outline btn-sm chek-scan-alt" for="chek-scan-gallery">Galereyadan tanlash</label>
+      <input type="file" id="chek-scan-gallery" accept="image/*" hidden>
+      <button type="button" class="btn btn-outline chek-scan-alt" id="chek-scan-live">Jonli kamerani yoqish</button>
+      <details class="chek-link-box">
+        <summary>QR havolasini yozish</summary>
+        <label style="display:block;margin-top:8px;">ofd.soliq.uz havolasi</label>
+        <input type="text" id="chek-qr-text" placeholder="https://ofd.soliq.uz/check?...">
+        <button type="button" class="btn btn-gold chek-scan-alt" id="chek-scan-paste" style="margin-top:8px;">Havoladan saqlash</button>
+      </details>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="chek-paper-modal" aria-hidden="true">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="chek-paper-title">Fiskal chek</h3>
+      <button type="button" class="modal-close" id="chek-paper-close" aria-label="Yopish">×</button>
+    </div>
+    <div class="chek-paper-wrap">
+      <div class="chek-paper" id="chek-paper"></div>
     </div>
     <div class="modal-footer">
-      <button type="button" class="btn btn-gold" id="chek-scan-paste">Havoladan saqlash</button>
+      <button type="button" class="btn btn-outline" id="chek-paper-del">O‘chirish</button>
+      <button type="button" class="btn btn-outline" id="chek-paper-refresh">OFD qayta</button>
+      <button type="button" class="btn btn-gold" id="chek-paper-again">Yana skanerlash</button>
+      <button type="button" class="btn btn-light" id="chek-paper-done">Yopish</button>
     </div>
   </div>
 </div>
@@ -3018,7 +3204,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=30"></script>
-<script src="cheks.js?v=2"></script>
+<script src="cheks.js?v=6"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

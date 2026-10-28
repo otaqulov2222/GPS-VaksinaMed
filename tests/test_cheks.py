@@ -23,6 +23,60 @@ class CheksParseTest(unittest.TestCase):
         self.assertEqual(d["amount"], 72000)
         self.assertEqual(d["inn"], "123456789")
 
+    def test_ofd_sign_headers(self):
+        h = cheks.ofd_sign_headers("Y2231006003520", "62194", now=1700000000)
+        self.assertEqual(h["X-Timestamp"], "1700000000")
+        self.assertEqual(len(h["X-Signature"]), 64)
+
+    def test_parse_payment_json(self):
+        data = {
+            "success": True,
+            "data": {
+                "tin": "123456789",
+                "cashTotal": 0,
+                "cardTotal": 72000,
+                "kkmName": "Online KKM",
+                "extraInfo": {"companyName": "OLTIN YOL", "address": "Toshkent", "paymentType": 2},
+                "paymentDetails": [{"name": "AI-80", "amount": 10, "price": 72000}],
+            },
+        }
+        d = cheks.parse_ofd_payment(data)
+        self.assertEqual(d["merchant"], "OLTIN YOL")
+        self.assertEqual(d["inn"], "123456789")
+        self.assertEqual(d["amount"], 72000)
+        self.assertEqual(d["payMethod"], "Bank kartasi")
+        self.assertEqual(d["items"][0]["name"], "AI-80")
+
+    def test_public_note_hides_urlerror(self):
+        n = cheks.public_ofd_note(False, False, "OFD ochilmadi (URLError)", None)
+        self.assertNotIn("URLError", n)
+        self.assertIn("OFD", n)
+
+    def test_public_note_pending(self):
+        n = cheks.public_ofd_note(False, True, "Chek shakllanmoqda", None)
+        self.assertIn("shakllan", n.lower())
+
+    def test_fast_record_skips_ofd(self):
+        u = "https://ofd.soliq.uz/check?t=Y2231006003520&r=62194&c=20261022234230&s=051359812533"
+        t0 = __import__("time").time()
+        built = cheks.build_chek_record(u, fetch_ofd=False)
+        dt = __import__("time").time() - t0
+        self.assertTrue(built["ok"])
+        self.assertEqual(built["rec"]["terminalId"], "Y2231006003520")
+        self.assertEqual(built["rec"]["receiptNo"], "62194")
+        self.assertLess(dt, 0.2)
+
+    def test_public_row_maps_old_error(self):
+        row = cheks.public_chek_row({
+            "ofdOk": False,
+            "ofdPending": False,
+            "ofdNote": "OFD ochilmadi (URLError)",
+            "amount": None,
+            "terminalId": "Y2231006003520",
+        })
+        self.assertFalse(row.get("ofdOk"))
+        self.assertNotIn("URLError", row["ofdNote"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,17 +1,27 @@
 """Zapravka cheklari (sandbox) — yoqilg'i hisobotiga ta'sir qilmaydi."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 import html as htmlmod
 import json
 import re
+import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
 from html.parser import HTMLParser
 
-OFD_HOSTS = ("ofd.soliq.uz", "fact.soliq.uz", "my.soliq.uz")
-UA = "Mozilla/5.0 (compatible; VaksinaMed-Chek/1.0)"
+OFD_HOSTS = ("ofd.soliq.uz", "fact.soliq.uz", "my.soliq.uz", "new-ofd.soliq.uz")
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+OFD_API = "https://new-ofd.soliq.uz/api/payment"
+# ofd.soliq.uz chek sahifasi o'zi shu kalit bilan imzolaydi (ommaviy web).
+OFD_HMAC = "thisIsPaymentSecretKey123@#"
 
 
 class _TextExtractor(HTMLParser):
@@ -216,48 +226,287 @@ def _merge_json_receipt(out, data):
                 out["items"].append({"name": name[:120], "qty": qty, "sum": sm})
 
 
-def fetch_ofd_details(qr_url, timeout=10):
-    url = str(qr_url or "").strip()
-    note = ""
-    html = ""
-    if not url.startswith("https://"):
-        return {"ofdOk": False, "ofdNote": "Havola yo'q", "merchant": "", "inn": "", "amount": None, "items": []}
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html,application/json"})
+def _ssl_ctx():
+    ctx = ssl._create_unverified_context()
+    return ctx
+
+
+def ofd_sign_headers(terminal_id, payment_no, now=None):
+    ts = int(now if now is not None else time.time())
+    msg = ("%s:%s:%s" % (terminal_id, payment_no, ts)).encode("utf-8")
+    sig = hmac.new(OFD_HMAC.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+    return {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": UA,
+        "Origin": "https://ofd.soliq.uz",
+        "Referer": "https://ofd.soliq.uz/",
+        "X-Timestamp": str(ts),
+        "X-Signature": sig,
+    }
+
+
+def _http_json(req, timeout=12):
+    with urllib.request.urlopen(req, timeout=timeout, context=_ssl_ctx()) as resp:
+        raw = resp.read()[:400000]
+        ctype = (resp.headers.get("Content-Type") or "").lower()
+        return resp.status, ctype, raw.decode("utf-8", "replace")
+
+
+def parse_ofd_payment(data):
+    out = {
+        "merchant": "",
+        "inn": "",
+        "amount": None,
+        "items": [],
+        "address": "",
+        "cashTotal": None,
+        "cardTotal": None,
+        "payMethod": "",
+        "kkmName": "",
+        "cardType": "",
+        "vatTotal": None,
+        "ofdPending": False,
+    }
+    if not isinstance(data, dict):
+        return out
+    blob = data.get("data") if isinstance(data.get("data"), dict) else data
+    if not isinstance(blob, dict):
+        return out
+    extra = blob.get("extraInfo") if isinstance(blob.get("extraInfo"), dict) else {}
+    out["merchant"] = str(extra.get("companyName") or blob.get("kkmName") or "").strip()[:180]
+    out["address"] = str(extra.get("address") or "").strip()[:220]
+    out["kkmName"] = str(blob.get("kkmName") or "").strip()[:120]
+    out["cardType"] = str(extra.get("cardType") or extra.get("card") or "").strip()[:40]
+    vat = _ofd_som(blob.get("vatTotal"))
+    out["vatTotal"] = vat
+    tin = str(blob.get("tin") or extra.get("tin") or "").strip()
+    if re.fullmatch(r"\d{9}", tin):
+        out["inn"] = tin
+    cash = _ofd_som(blob.get("cashTotal"))
+    card = _ofd_som(blob.get("cardTotal"))
+    out["cashTotal"] = cash
+    out["cardTotal"] = card
+    total = (cash or 0) + (card or 0)
+    ptype = extra.get("paymentType")
+    pay_map = {1: "Naqd", 2: "Bank kartasi", 3: "QR", 4: "Aralash"}
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()[:400000]
-            ctype = (resp.headers.get("Content-Type") or "").lower()
-        text = raw.decode("utf-8", "replace")
-        if "json" in ctype or text.lstrip().startswith("{"):
+        out["payMethod"] = pay_map.get(int(ptype), "")
+    except (TypeError, ValueError):
+        out["payMethod"] = ""
+    if not out["payMethod"]:
+        if cash and card:
+            out["payMethod"] = "Aralash"
+        elif card:
+            out["payMethod"] = "Bank kartasi"
+        elif cash:
+            out["payMethod"] = "Naqd"
+    details = blob.get("paymentDetails") or blob.get("items") or []
+    if isinstance(details, list):
+        for it in details[:40]:
+            if not isinstance(it, dict):
+                continue
+            name = str(it.get("name") or it.get("productName") or it.get("title") or "").strip()
+            qty = it.get("amount") if it.get("amount") is not None else it.get("qty")
+            sm = _ofd_som(it.get("price") if it.get("price") is not None else it.get("sum"))
+            if name:
+                out["items"].append({"name": name[:120], "qty": qty, "sum": sm})
+    if total > 0:
+        out["amount"] = round(total, 2)
+    elif out["items"]:
+        acc = 0
+        ok = False
+        for it in out["items"]:
+            if it.get("sum") is not None:
+                acc += float(it["sum"])
+                ok = True
+        if ok and acc > 0:
+            out["amount"] = round(acc, 2)
+    return out
+
+
+def _ofd_som(val):
+    if val is None or val == "":
+        return None
+    try:
+        x = float(val)
+    except (TypeError, ValueError):
+        return _to_som(val)
+    if not x:
+        return 0.0
+    return round(x, 2)
+
+
+def _has_amount(amount):
+    try:
+        return amount not in (None, "") and float(amount) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def public_ofd_note(ofd_ok=False, ofd_pending=False, note="", amount=None):
+    """Foydalanuvchiga texnik xato (URLError va h.k.) ko'rsatilmasin."""
+    has_amt = _has_amount(amount)
+    if ofd_ok and has_amt:
+        return ""
+    raw = str(note or "").strip()
+    low = raw.lower()
+    if ofd_pending or "shakllan" in low:
+        return "Soliq OFD da chek hali shakllanmoqda (48 soatgacha). Qog‘oz saqlandi."
+    if re.search(r"urlerror|sslerror|timeout|timed out|connection|handshake|urlopen|eof", raw, re.I):
+        return "Soliq OFD vaqtincha javob bermadi. Chek saqlandi — avtomatik qayta urinamiz."
+    cleaned = re.sub(r"\s*\([A-Za-z_]*Error\)\s*", " ", raw).strip()
+    cleaned = re.sub(r"\bOFD ochilmadi\b", "OFD vaqtincha javob bermadi", cleaned, flags=re.I)
+    if cleaned:
+        return cleaned[:180]
+    if not has_amt:
+        return "Chek saqlandi. OFD dan summa hali kelmadi."
+    return ""
+
+
+def public_chek_row(row):
+    if not isinstance(row, dict):
+        return row
+    out = dict(row)
+    note = str(out.get("ofdNote") or "")
+    if "shakllan" in note.lower() and not out.get("ofdOk"):
+        out["ofdPending"] = True
+    out["ofdNote"] = public_ofd_note(
+        bool(out.get("ofdOk")),
+        bool(out.get("ofdPending")),
+        note,
+        out.get("amount"),
+    )
+    return out
+
+
+def fetch_ofd_api(parsed, timeout=8):
+    term = str((parsed or {}).get("terminalId") or "")
+    payno = str((parsed or {}).get("receiptNo") or "")
+    stamp = str((parsed or {}).get("stamp") or "")
+    sign = str((parsed or {}).get("fiscalSign") or "")
+    empty = {
+        "ofdOk": False,
+        "ofdNote": "",
+        "merchant": "",
+        "inn": "",
+        "amount": None,
+        "items": [],
+        "address": "",
+        "cashTotal": None,
+        "cardTotal": None,
+        "payMethod": "",
+        "kkmName": "",
+        "cardType": "",
+        "vatTotal": None,
+        "ofdPending": False,
+    }
+    if not term or not payno or not stamp:
+        return empty
+    body = json.dumps(
+        {
+            "terminalId": term,
+            "paymentNo": payno,
+            "paymentDate": stamp,
+            "paymentType": "CHECK",
+            **({"fiscalSign": sign} if sign else {}),
+        }
+    ).encode("utf-8")
+    last_note = ""
+    attempts = 2
+    while attempts:
+        attempts -= 1
+        req = urllib.request.Request(
+            OFD_API,
+            data=body,
+            method="POST",
+            headers=ofd_sign_headers(term, payno),
+        )
+        try:
+            _status, _ctype, text = _http_json(req, timeout=timeout)
+            data = json.loads(text) if text.lstrip().startswith("{") else {}
+            parsed_pay = parse_ofd_payment(data)
+            parsed_pay["ofdOk"] = _has_amount(parsed_pay.get("amount"))
+            parsed_pay["ofdPending"] = False
+            parsed_pay["ofdNote"] = public_ofd_note(
+                parsed_pay["ofdOk"],
+                False,
+                "" if parsed_pay["ofdOk"] else (data.get("message") or ""),
+                parsed_pay.get("amount"),
+            )
+            return parsed_pay
+        except urllib.error.HTTPError as e:
+            raw = ""
             try:
-                parsed = {"merchant": "", "inn": "", "amount": None, "items": []}
-                _merge_json_receipt(parsed, json.loads(text))
-                parsed["ofdOk"] = parsed.get("amount") is not None and float(parsed.get("amount") or 0) > 0
-                parsed["ofdNote"] = "" if parsed["ofdOk"] else "OFD JSON da summa yo'q"
-                return parsed
+                raw = e.read().decode("utf-8", "replace")[:800]
             except Exception:
-                html = text
-        else:
-            html = text
-    except urllib.error.HTTPError as e:
-        note = "OFD javobi " + str(e.code)
-    except Exception as e:
-        note = "OFD ochilmadi (" + type(e).__name__ + ")"
+                raw = ""
+            msg = ""
+            try:
+                msg = str((json.loads(raw) or {}).get("message") or "")
+            except Exception:
+                msg = raw[:180]
+            if e.code in (404, 422) or "shakllan" in (msg or "").lower():
+                empty["ofdPending"] = True
+                empty["ofdNote"] = public_ofd_note(False, True, msg, None)
+                return empty
+            last_note = msg or ("OFD javobi " + str(e.code))
+            if e.code in (401, 403, 500, 502, 503) and attempts:
+                time.sleep(0.35)
+                continue
+            break
+        except Exception:
+            last_note = "Soliq OFD vaqtincha javob bermadi."
+            if attempts:
+                time.sleep(0.45)
+                continue
+            break
+    empty["ofdNote"] = public_ofd_note(False, False, last_note, None)
+    return empty
 
-    parsed = parse_ofd_html(html) if html else {"merchant": "", "inn": "", "amount": None, "items": []}
-    parsed["ofdOk"] = parsed.get("amount") is not None and float(parsed.get("amount") or 0) > 0
-    if parsed["ofdOk"]:
-        parsed["ofdNote"] = ""
-    else:
-        parsed["ofdNote"] = note or "Chek saqlandi. OFD dan summa kelmadi — QR va sana yozildi."
-    return parsed
+
+def fetch_ofd_details(qr_url, timeout=8, parsed=None):
+    url = str(qr_url or "").strip()
+    if parsed is None and url:
+        parsed = parse_qr_payload(url)
+        if not parsed.get("ok"):
+            parsed = None
+    api = fetch_ofd_api(parsed, timeout=timeout) if parsed else ofd_shell()
+    if not parsed:
+        api["ofdPending"] = False
+        api["ofdNote"] = "Havola yo'q"
+        return api
+    api["ofdNote"] = public_ofd_note(
+        bool(api.get("ofdOk")), bool(api.get("ofdPending")),
+        api.get("ofdNote") or "", api.get("amount"),
+    )
+    return api
 
 
-def build_chek_record(qr_raw, extra=None):
+def ofd_shell():
+    return {
+        "merchant": "",
+        "inn": "",
+        "amount": None,
+        "items": [],
+        "address": "",
+        "cashTotal": None,
+        "cardTotal": None,
+        "payMethod": "",
+        "kkmName": "",
+        "cardType": "",
+        "vatTotal": None,
+        "ofdOk": False,
+        "ofdPending": True,
+        "ofdNote": "Chek saqlandi. OFD dan o‘qilmoqda…",
+    }
+
+
+def build_chek_record(qr_raw, extra=None, fetch_ofd=True):
     parsed = parse_qr_payload(qr_raw)
     if not parsed.get("ok"):
         return parsed
-    ofd = fetch_ofd_details(parsed["qr"])
+    ofd = fetch_ofd_details(parsed["qr"], parsed=parsed) if fetch_ofd else ofd_shell()
     rec = {
         "qr": parsed["qr"],
         "terminalId": parsed["terminalId"],
@@ -268,8 +517,21 @@ def build_chek_record(qr_raw, extra=None):
         "inn": ofd.get("inn") or "",
         "amount": ofd.get("amount"),
         "items": ofd.get("items") or [],
+        "address": ofd.get("address") or "",
+        "cashTotal": ofd.get("cashTotal"),
+        "cardTotal": ofd.get("cardTotal"),
+        "payMethod": ofd.get("payMethod") or "",
+        "kkmName": ofd.get("kkmName") or "",
+        "cardType": ofd.get("cardType") or "",
+        "vatTotal": ofd.get("vatTotal"),
         "ofdOk": bool(ofd.get("ofdOk")),
-        "ofdNote": ofd.get("ofdNote") or "",
+        "ofdPending": bool(ofd.get("ofdPending")),
+        "ofdNote": public_ofd_note(
+            bool(ofd.get("ofdOk")),
+            bool(ofd.get("ofdPending")),
+            ofd.get("ofdNote") or "",
+            ofd.get("amount"),
+        ),
     }
     if isinstance(extra, dict):
         if extra.get("amount") not in (None, ""):

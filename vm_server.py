@@ -2403,6 +2403,13 @@ class OfficeStore:
         items.sort(key=lambda r: str(r.get("paidAt") or r.get("createdAt") or ""), reverse=True)
         return items
 
+    def cheks_public(self):
+        return [self._chek_pub(x) for x in self.cheks_list()]
+
+    def _chek_pub(self, row):
+        import cheks as chekmod
+        return chekmod.public_chek_row(row) if row else row
+
     def cheks_add(self, plate, rec, username=""):
         import cheks as chekmod
 
@@ -2410,7 +2417,11 @@ class OfficeStore:
         key = compact_plate(plate)
         if not key:
             return None, "Mashina tanlanmagan"
-        built = chekmod.build_chek_record(rec.get("qr") if isinstance(rec, dict) else rec, rec if isinstance(rec, dict) else None)
+        built = chekmod.build_chek_record(
+            rec.get("qr") if isinstance(rec, dict) else rec,
+            rec if isinstance(rec, dict) else None,
+            fetch_ofd=False,
+        )
         if not built.get("ok"):
             return None, built.get("error") or "QR o'qilmadi"
         row = built["rec"]
@@ -2420,9 +2431,7 @@ class OfficeStore:
         for old in items:
             same = (sig and old.get("fiscalSign") == sig) or (qr and old.get("qr") == qr)
             if same:
-                return None, "Bu chek allaqachon saqlangan" + (
-                    " (" + str(old.get("plate") or "") + ")" if old.get("plate") else ""
-                )
+                return old, "duplicate"
         row["id"] = "chk_" + secrets.token_hex(8)
         row["plate"] = plate
         row["plateKey"] = key
@@ -2442,6 +2451,69 @@ class OfficeStore:
             return False
         self._save("office:fuel-cheks-sandbox", {"items": nxt})
         return True
+
+    def cheks_refresh(self, rec_id):
+        import cheks as chekmod
+
+        rid = str(rec_id or "").strip()
+        items = self.cheks_list()
+        row = next((x for x in items if str(x.get("id") or "") == rid), None)
+        if not row:
+            return None, "Chek topilmadi"
+        ofd = chekmod.fetch_ofd_details(row.get("qr") or "")
+        if ofd.get("merchant"):
+            row["merchant"] = ofd.get("merchant")
+        if ofd.get("inn"):
+            row["inn"] = ofd.get("inn")
+        if ofd.get("amount") not in (None, ""):
+            row["amount"] = ofd.get("amount")
+        if ofd.get("items"):
+            row["items"] = ofd.get("items")
+        if ofd.get("address"):
+            row["address"] = ofd.get("address")
+        if ofd.get("cashTotal") not in (None, ""):
+            row["cashTotal"] = ofd.get("cashTotal")
+        if ofd.get("cardTotal") not in (None, ""):
+            row["cardTotal"] = ofd.get("cardTotal")
+        if ofd.get("payMethod"):
+            row["payMethod"] = ofd.get("payMethod")
+        if ofd.get("kkmName"):
+            row["kkmName"] = ofd.get("kkmName")
+        if ofd.get("cardType"):
+            row["cardType"] = ofd.get("cardType")
+        if ofd.get("vatTotal") not in (None, ""):
+            row["vatTotal"] = ofd.get("vatTotal")
+        row["ofdOk"] = bool(ofd.get("ofdOk"))
+        row["ofdPending"] = bool(ofd.get("ofdPending"))
+        row["ofdNote"] = chekmod.public_ofd_note(
+            row["ofdOk"], row["ofdPending"], ofd.get("ofdNote") or "", row.get("amount")
+        )
+        row["ofdRefreshedAt"] = iso_now()
+        self._save("office:fuel-cheks-sandbox", {"items": items[:4000]})
+        return row, ""
+
+    def cheks_update(self, rec_id, patch, username=""):
+        import cheks as chekmod
+
+        rid = str(rec_id or "").strip()
+        items = self.cheks_list()
+        row = next((x for x in items if str(x.get("id") or "") == rid), None)
+        if not row:
+            return None, "Chek topilmadi"
+        patch = patch if isinstance(patch, dict) else {}
+        if patch.get("amount") not in (None, ""):
+            amt = chekmod._to_som(patch.get("amount"))
+            if not amt or amt <= 0:
+                return None, "Summa noto'g'ri"
+            row["amount"] = amt
+            row["manual"] = True
+        if patch.get("merchant"):
+            row["merchant"] = str(patch.get("merchant"))[:180]
+            row["manual"] = True
+        row["updatedAt"] = iso_now()
+        row["updatedBy"] = str(username or "")[:40]
+        self._save("office:fuel-cheks-sandbox", {"items": items[:4000]})
+        return row, ""
 
     def save_fuel_meta(self, body):
         cur = self.fuel_meta()
@@ -5147,7 +5219,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_ops_read()
             if not sess:
                 return
-            self.send_json({"ok": True, "sandbox": True, "items": OFFICE.cheks_list()})
+            self.send_json({"ok": True, "sandbox": True, "monitor": True, "items": OFFICE.cheks_public()})
             return
 
         if path == "/api/office/fuel/docs-alerts":
@@ -5991,10 +6063,45 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 body,
                 sess.get("username") or "",
             )
+            if err == "duplicate":
+                self.send_json({
+                    "ok": True,
+                    "sandbox": True,
+                    "duplicate": True,
+                    "item": OFFICE._chek_pub(row),
+                    "items": OFFICE.cheks_public(),
+                })
+                return
             if err:
                 self.send_json({"ok": False, "error": err, "sandbox": True}, 400)
                 return
-            self.send_json({"ok": True, "sandbox": True, "item": row, "items": OFFICE.cheks_list()})
+            self.send_json({"ok": True, "sandbox": True, "item": OFFICE._chek_pub(row), "items": OFFICE.cheks_public()})
+            return
+
+        if path == "/api/office/cheks/refresh":
+            sess = self.require_user()
+            if not sess:
+                return
+            if self.deny_driver_write(sess):
+                return
+            row, err = OFFICE.cheks_refresh(body.get("id"))
+            if err:
+                self.send_json({"ok": False, "error": err, "sandbox": True}, 400)
+                return
+            self.send_json({"ok": True, "sandbox": True, "item": OFFICE._chek_pub(row), "items": OFFICE.cheks_public()})
+            return
+
+        if path == "/api/office/cheks/update":
+            sess = self.require_user()
+            if not sess:
+                return
+            if self.deny_driver_write(sess):
+                return
+            row, err = OFFICE.cheks_update(body.get("id"), body, sess.get("username") or "")
+            if err:
+                self.send_json({"ok": False, "error": err, "sandbox": True}, 400)
+                return
+            self.send_json({"ok": True, "sandbox": True, "item": OFFICE._chek_pub(row), "items": OFFICE.cheks_public()})
             return
 
         if path == "/api/office/cheks/delete":
@@ -6007,7 +6114,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if not ok:
                 self.send_json({"ok": False, "error": "Chek topilmadi", "sandbox": True}, 404)
                 return
-            self.send_json({"ok": True, "sandbox": True, "items": OFFICE.cheks_list()})
+            self.send_json({"ok": True, "sandbox": True, "items": OFFICE.cheks_public()})
             return
 
         if path == "/api/office/fuel/month":
