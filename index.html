@@ -1903,11 +1903,20 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .chek-pill.ok { background: #e5f8ec; color: #0f7a3e; }
 .chek-pill.wait { background: #fff4d6; color: #9a5b00; }
 #chek-scan-cam {
-  display: none; width: 100%; min-height: 240px; background: #0b1f3a;
+  display: block; width: 100%; min-height: 280px; background: #0b1f3a;
   border-radius: 12px; overflow: hidden; position: relative; margin-bottom: 10px;
 }
 #chek-scan-cam.is-on { display: block; }
-#chek-scan-cam video, #chek-scan-cam canvas { width: 100% !important; height: auto !important; }
+#chek-scan-cam video, #chek-scan-cam canvas { width: 100% !important; height: 280px !important; object-fit: cover; }
+#chek-scan-cam.is-on:after {
+  content: ""; position: absolute; left: 14%; right: 14%; top: 16%; bottom: 16%;
+  border: 2px solid #3dff8a; border-radius: 14px; pointer-events: none;
+  box-shadow: 0 0 0 999px rgba(0,0,0,.28);
+}
+.chek-scan-ph {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #9ec2e8; font-size: 13px; font-weight: 600;
+}
 #chek-scan-file-sink { position: absolute; left: -9999px; width: 280px; height: 280px; overflow: hidden; }
 #chek-top-title { display: none; min-width: 0; }
 body:not(.page-chek) #chek-board { display: none !important; }
@@ -1989,9 +1998,17 @@ body.page-chek .vm-docs-badge {
 }
 .chek-paper:before { top: -10px; }
 .chek-paper:after { bottom: -10px; transform: rotate(180deg); }
+.chek-uz { text-align: center; padding: 4px 0 12px; margin-bottom: 10px; border-bottom: 1px dashed #b7c0cc; }
+.chek-uz-brand { font-size: 20px; font-weight: 800; letter-spacing: .14em; color: #1a4fa0; }
+.chek-uz-mer { font-size: 12px; font-weight: 700; margin: 6px 0 4px; text-transform: uppercase; }
+.chek-uz-pay { margin-top: 10px; font-size: 13px; font-weight: 700; }
+.chek-uz-sum { font-size: 22px; font-weight: 800; margin: 4px 0; }
+.chek-uz-ok { font-size: 14px; font-weight: 800; }
 .chek-p-brand { text-align: center; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #5c6573; }
-.chek-p-flag { text-align: center; font-size: 13px; font-weight: 800; letter-spacing: .22em; margin: 6px 0 4px; }
-.chek-p-title { text-align: center; font-size: 16px; font-weight: 800; margin: 4px 0 2px; }
+.chek-p-flag { text-align: center; font-size: 13px; font-weight: 800; letter-spacing: .28em; margin: 8px 0 4px; }
+.chek-p-title { text-align: center; font-size: 15px; font-weight: 800; margin: 4px 0 2px; text-transform: uppercase; }
+.chek-p-prod { margin: 8px 0; }
+.chek-p-prod-n { font-size: 12px; line-height: 1.35; }
 .chek-p-sub { text-align: center; font-size: 12px; margin-bottom: 6px; }
 .chek-p-line { border: 0; border-top: 1px dashed #b7c0cc; margin: 10px 0; }
 .chek-p-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; margin: 3px 0; }
@@ -2746,7 +2763,7 @@ input, select, textarea { max-width: 100%; }
         <span class="cnt" id="chek-board-meta">Hisobotga yozilmaydi</span>
       </div>
       <div class="chek-live" id="chek-live"><i></i><span id="chek-live-text">MONITOR YONIQ — telefon QR ni o‘qisa, chek shu ekranda ochiladi</span></div>
-      <div class="chek-hint">Mashinani bosing — nechta chek va qancha so‘m. Telefon yoki shu kompyuterda QR ni oling: qog‘oz chek darhol ochiladi va ovoz chiqadi. Soliq OFD hali bermasa ham terminal, chek № va QR saqlanadi.</div>
+      <div class="chek-hint">Mashinani bosing. Telefonda QR skaner — kamerani chekdagi QR ga tuting, rasm olish shart emas. Qog‘oz chek (UZCARD + SOTUV CHEKI) o‘zi yasaladi va kompyuterda ham tushadi.</div>
       <div id="chek-totals" class="chek-totals"></div>
       <div id="chek-fleet" class="chek-fleet"></div>
       <div id="chek-car-view" hidden></div>
@@ -2985,17 +3002,17 @@ input, select, textarea { max-width: 100%; }
       <button type="button" class="modal-close" id="chek-scan-close" aria-label="Yopish">×</button>
     </div>
     <div class="form-row">
-      <p class="chek-scan-help">Zapravka chekidagi <b>pastki QR</b> ni rasmga oling. Kompyuterda Chek oynasi ochiq bo‘lsa, shu qog‘oz chek u yerda ham tushadi.</p>
+      <p class="chek-scan-help">Chekdagi <b>pastki QR</b> ni ramkaga tuting — kamera o‘zi o‘qiydi, rasm olish shart emas. Qog‘oz chek darhol yasaladi.</p>
       <div class="chek-scan-status" id="chek-scan-status"></div>
-      <div id="chek-scan-cam"></div>
+      <div id="chek-scan-cam"><span class="chek-scan-ph">Kamera ochilmoqda…</span></div>
       <div id="chek-scan-file-sink"></div>
-      <label class="btn btn-gold chek-photo-btn" for="chek-scan-file">Chekni rasmga olish</label>
-      <input type="file" id="chek-scan-file" accept="image/*" capture="environment" hidden>
-      <label class="btn btn-outline btn-sm chek-scan-alt" for="chek-scan-gallery">Galereyadan tanlash</label>
-      <input type="file" id="chek-scan-gallery" accept="image/*" hidden>
-      <button type="button" class="btn btn-outline chek-scan-alt" id="chek-scan-live">Jonli kamerani yoqish</button>
       <details class="chek-link-box">
-        <summary>QR havolasini yozish</summary>
+        <summary>Kamera ochilmasa — zaxira</summary>
+        <label class="btn btn-gold chek-photo-btn" for="chek-scan-file" style="margin-top:8px;">Rasmga olish</label>
+        <input type="file" id="chek-scan-file" accept="image/*" capture="environment" hidden>
+        <label class="btn btn-outline btn-sm chek-scan-alt" for="chek-scan-gallery">Galereyadan</label>
+        <input type="file" id="chek-scan-gallery" accept="image/*" hidden>
+        <button type="button" class="btn btn-outline chek-scan-alt" id="chek-scan-live">Kamerani qayta ochish</button>
         <label style="display:block;margin-top:8px;">ofd.soliq.uz havolasi</label>
         <input type="text" id="chek-qr-text" placeholder="https://ofd.soliq.uz/check?...">
         <button type="button" class="btn btn-gold chek-scan-alt" id="chek-scan-paste" style="margin-top:8px;">Havoladan saqlash</button>
@@ -3204,7 +3221,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=30"></script>
-<script src="cheks.js?v=6"></script>
+<script src="cheks.js?v=7"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

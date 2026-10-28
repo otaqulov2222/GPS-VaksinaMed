@@ -35,6 +35,17 @@ const VMCheks = {
     return this.money(v) || 'kutilmoqda';
   },
 
+  som(v, empty) {
+    if (v == null || v === '') return empty == null ? 'kutilmoqda' : empty;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return empty == null ? 'kutilmoqda' : empty;
+    const neg = n < 0;
+    const abs = Math.abs(n);
+    const parts = abs.toFixed(2).split('.');
+    const grouped = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return (neg ? '-' : '') + grouped + '.' + parts[1];
+  },
+
   drivers() {
     let list = [];
     if (typeof fleetDriversLive === 'function') list = fleetDriversLive();
@@ -275,7 +286,7 @@ const VMCheks = {
     const name = d.shortName || d.fullName || '—';
     const rows = list.length
       ? `<ul class="chek-list">${list.map(r => this.miniHtml(r)).join('')}</ul>`
-      : '<div class="chek-empty">Bu mashinada hali chek yo‘q. Pastdagi tugma bilan zapravka chekidagi QR ni rasmga oling — qog‘oz chek shu yerda ochiladi.</div>';
+      : '<div class="chek-empty">Bu mashinada hali chek yo‘q. «QR skaner» ni bosing — kamerani chekdagi QR ga tuting, rasm olish shart emas. Qog‘oz chek o‘zi yasaladi.</div>';
     view.innerHTML = `
       <button type="button" class="chek-back" id="chek-back">← Mashinalar</button>
       <div class="chek-car-head">
@@ -289,7 +300,7 @@ const VMCheks = {
         <div class="chek-stat"><span>Shu oy cheklar</span><b>${st.monthCount}</b></div>
         <div class="chek-stat"><span>Shu oy summa</span><b>${this.money(st.monthSum) || '0 so‘m'}</b></div>
       </div>
-      <button type="button" class="btn btn-gold chek-add-btn" id="chek-add">QR skaner — chek qo‘shish</button>
+      <button type="button" class="btn btn-gold chek-add-btn" id="chek-add">QR skaner — kamera o‘zi o‘qiydi</button>
       ${rows}`;
   },
 
@@ -308,21 +319,27 @@ const VMCheks = {
 
   paperHtml(r) {
     const d = this.driverOf(r.plate);
+    const merchant = r.merchant || r.kkmName || 'SOTUV CHEKI';
     const items = (r.items || []).filter(it => it && it.name).slice(0, 16).map(it => {
-      const qty = it.qty != null && it.qty !== '' ? String(it.qty) : '';
-      const sm = this.money(it.sum);
-      return `<div class="chek-p-item"><span>${this.esc(it.name)}${qty ? ' × ' + this.esc(qty) : ''}</span><span>${this.esc(sm || '')}</span></div>`;
+      const qty = it.qty != null && it.qty !== '' ? Number(it.qty) : NaN;
+      const sum = it.sum != null && it.sum !== '' ? Number(it.sum) : NaN;
+      const unit = Number.isFinite(qty) && qty !== 0 && Number.isFinite(sum) ? (sum / qty) : NaN;
+      const qtyLine = Number.isFinite(qty) && Number.isFinite(unit)
+        ? `<div class="chek-p-row"><span>${this.esc(String(qty))} × ${this.esc(this.som(unit, ''))} so'm</span><b>= ${this.esc(this.som(sum, ''))}</b></div>`
+        : (Number.isFinite(sum) ? `<div class="chek-p-row"><span></span><b>= ${this.esc(this.som(sum))}</b></div>` : '');
+      return `<div class="chek-p-prod"><div class="chek-p-prod-n">${this.esc(it.name)}</div>${qtyLine}</div>`;
     }).join('');
-    const cash = r.cashTotal != null && Number(r.cashTotal) > 0
-      ? `<div class="chek-p-row"><span>Naqd</span><b>${this.esc(this.money(r.cashTotal))}</b></div>` : '';
-    const card = r.cardTotal != null && Number(r.cardTotal) > 0
-      ? `<div class="chek-p-row"><span>${this.esc(r.cardType ? ('Karta · ' + r.cardType) : 'Karta')}</span><b>${this.esc(this.money(r.cardTotal))}</b></div>` : '';
-    const vat = r.vatTotal != null && Number(r.vatTotal) > 0
-      ? `<div class="chek-p-row"><span>QQS</span><b>${this.esc(this.money(r.vatTotal))}</b></div>` : '';
-    const pay = r.payMethod ? `<div class="chek-p-row"><span>To‘lov</span><b>${this.esc(r.payMethod)}</b></div>` : '';
-    const addr = r.address ? `<div class="chek-p-sub">${this.esc(r.address)}</div>` : '';
-    const inn = r.inn ? `<div class="chek-p-row"><span>STIR</span><b>${this.esc(r.inn)}</b></div>` : '';
-    const kkm = r.kkmName ? `<div class="chek-p-row"><span>KKM</span><b>${this.esc(r.kkmName)}</b></div>` : '';
+    const vatN = r.vatTotal != null && Number(r.vatTotal) > 0 ? Number(r.vatTotal) : null;
+    const cardN = r.cardTotal != null && Number(r.cardTotal) > 0 ? Number(r.cardTotal) : null;
+    const cashN = r.cashTotal != null && Number(r.cashTotal) > 0 ? Number(r.cashTotal) : null;
+    const payName = r.cardType || r.payMethod || (cardN ? 'PL.KARTA' : (cashN ? 'NAQD' : ''));
+    const vat = vatN != null
+      ? `<div class="chek-p-row"><span>QQS 12.00%</span><b>= ${this.esc(this.som(vatN))}</b></div>` : '';
+    const payLine = (cardN || cashN)
+      ? `<div class="chek-p-row"><span>${this.esc(cardN ? ('PL.KARTA so\'m' + (r.cardType ? (' · ' + r.cardType) : '')) : 'NAQD so\'m')}</span><b>= ${this.esc(this.som(cardN || cashN))}</b></div>`
+      : (payName ? `<div class="chek-p-row"><span>To‘lov</span><b>${this.esc(payName)}</b></div>` : '');
+    const vatJami = vatN != null
+      ? `<div class="chek-p-row"><span>QQS qiymati</span><b>= ${this.esc(this.som(vatN))}</b></div>` : '';
     const kind = this.ofdKind(r);
     const warn = kind === 'ok'
       ? ''
@@ -332,7 +349,7 @@ const VMCheks = {
       : '';
     const needAmt = r.amount == null || r.amount === '';
     const manual = needAmt ? `<div class="chek-p-manual">
-      <p>Soliq hali summani bermadi. Chekdagi JAMI ni yozib qo‘ying — OFD tayyor bo‘lganda o‘zi yangilanadi.</p>
+      <p>Soliq hali JAMI ni bermadi. Chekdagi summani yozing — OFD tayyor bo‘lganda o‘zi yangilanadi.</p>
       <label>Summa (so‘m)</label>
       <input type="number" id="chek-manual-amt" min="1" step="1" inputmode="numeric" placeholder="masalan 72000">
       <label>Stansiya nomi</label>
@@ -342,31 +359,38 @@ const VMCheks = {
     const qr = r.qr
       ? `<div class="chek-p-qrbox">
           <img alt="OFD QR" width="168" height="168" src="https://api.qrserver.com/v1/create-qr-code/?size=168x168&amp;margin=2&amp;data=${encodeURIComponent(r.qr)}">
-          <small>Telefon QR ni qayta o‘qishi mumkin</small>
         </div>`
       : '';
-    const merchant = r.merchant || r.kkmName || 'Zapravka cheki';
+    const confirmed = r.ofdOk || (r.amount != null && r.amount !== '');
     return `
-      <div class="chek-p-brand">O‘zbekiston Respublikasi · Soliq OFD</div>
-      <div class="chek-p-flag">FISKAL CHEK</div>
+      <div class="chek-uz">
+        <div class="chek-uz-brand">${this.esc(r.cardType || 'UZCARD')}</div>
+        <div class="chek-uz-mer">${this.esc(merchant)}</div>
+        ${r.address ? `<div class="chek-p-sub">${this.esc(r.address)}</div>` : ''}
+        <div class="chek-p-row"><span>Sanasi</span><b>${this.esc(this.when(r))}</b></div>
+        <div class="chek-uz-pay">To‘lov qilish</div>
+        <div class="chek-uz-sum">${this.esc(this.som(r.amount))} UZS</div>
+        <div class="chek-uz-ok">${confirmed ? 'Tasdiqlangan' : 'Qabul qilindi'}</div>
+      </div>
       <div class="chek-p-title">${this.esc(merchant)}</div>
-      ${addr}
-      <div class="chek-p-sub">${this.esc(this.when(r))}</div>
+      ${r.address ? `<div class="chek-p-sub">${this.esc(r.address)}</div>` : ''}
+      <div class="chek-p-flag">SOTUV CHEKI</div>
+      <hr class="chek-p-line">
+      ${items || '<div class="chek-p-sub">Mahsulot qatori OFD dan kutilmoqda</div>'}
+      ${vat}
+      <hr class="chek-p-line">
+      <div class="chek-p-total"><span>JAMI</span><b>= ${this.esc(this.som(r.amount))}</b></div>
+      ${vatJami}${payLine}
       <hr class="chek-p-line">
       <div class="chek-p-row"><span>Mashina</span><b>${this.esc(r.plate || '')}</b></div>
       <div class="chek-p-row"><span>Haydovchi</span><b>${this.esc(d.shortName || d.fullName || '—')}</b></div>
-      ${inn}${kkm}
-      <hr class="chek-p-line">
-      ${items ? `<div class="chek-p-items">${items}</div><hr class="chek-p-line">` : ''}
-      ${cash}${card}${vat}${pay}
-      <div class="chek-p-total"><span>Jami</span><b>${this.esc(this.moneyOrWait(r.amount))}</b></div>
-      <hr class="chek-p-line">
+      <div class="chek-p-row"><span>STIR</span><b>${this.esc(r.inn || '—')}</b></div>
+      ${r.kkmName ? `<div class="chek-p-row"><span>FM</span><b>${this.esc(r.kkmName)}</b></div>` : ''}
       <div class="chek-p-row"><span>Terminal</span><b>${this.esc(r.terminalId || '—')}</b></div>
       <div class="chek-p-row"><span>Chek №</span><b>${this.esc(r.receiptNo || '—')}</b></div>
-      <div class="chek-p-row"><span>FP</span><b>${this.esc(r.fiscalSign || '—')}</b></div>
+      <div class="chek-p-row"><span>FB</span><b>${this.esc(r.fiscalSign || '—')}</b></div>
       <div class="chek-pill ${kind}" style="margin:12px auto 0;">${this.esc(this.ofdLabel(r))}</div>
       ${qr}
-      <div class="chek-p-bars" aria-hidden="true"></div>
       ${warn}${saved}${manual}`;
   },
 
@@ -604,13 +628,14 @@ const VMCheks = {
     if (q) q.value = '';
     if (cam) {
       cam.classList.remove('is-on');
-      cam.innerHTML = '';
+      cam.innerHTML = '<span class="chek-scan-ph">Kamera ochilmoqda…</span>';
     }
     this.setStatus('');
     if (modal) {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
     }
+    this.startCamera();
   },
 
   camBox() {
@@ -644,7 +669,7 @@ const VMCheks = {
       await this.loadLib();
       const camId = await this.pickBackCameraId();
       this.scanner = new window.Html5Qrcode('chek-scan-cam');
-      const box = { fps: 12, qrbox: { width: 240, height: 240 }, aspectRatio: 1.333, disableFlip: false };
+      const box = { fps: 18, qrbox: { width: 250, height: 250 }, aspectRatio: 1.333, disableFlip: false };
       const source = camId ? camId : { facingMode: { exact: 'environment' } };
       try {
         await this.scanner.start(source, box, (text) => { this.onQr(text); }, () => {});
@@ -655,8 +680,8 @@ const VMCheks = {
       this.setStatus('QR qidirilmoqda — chekni kameraga tuting');
     } catch (e) {
       host.classList.remove('is-on');
-      host.innerHTML = '';
-      this.setStatus('Jonli kamera ochilmadi. «Chekni rasmga olish» ni bosing — telefonlarda ishonchliroq.', 'bad');
+      host.innerHTML = '<span class="chek-scan-ph">Kamera ochilmadi</span>';
+      this.setStatus('Kamera ochilmadi. Pastdagi zaxiradan foydalaning yoki kamerani qayta oching.', 'bad');
     }
   },
 
@@ -687,7 +712,7 @@ const VMCheks = {
             return;
           }
         } catch (e) {}
-        this.nativeLoop = setTimeout(tick, 180);
+        this.nativeLoop = setTimeout(tick, 90);
       };
       tick();
       this.setStatus('QR qidirilmoqda — chekni kameraga tuting');
