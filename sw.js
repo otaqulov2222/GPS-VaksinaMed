@@ -1,5 +1,5 @@
 /* VaksinaMed PWA — shell cache (API hech qachon keshlanmaydi). */
-const CACHE = 'vm-shell-v1';
+const CACHE = 'vm-shell-v2';
 const PRECACHE = [
   '/offline.html',
   '/logo/apple-touch-icon.png',
@@ -51,6 +51,23 @@ self.addEventListener('fetch', (event) => {
             (await caches.match('/login'));
           return cached || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
         })
+    );
+    return;
+  }
+
+  // ?v= bilan JS/CSS — avval tarmoq, kesh eski Labo rasmini ushlab qolmasin
+  const versioned = url.searchParams.has('v') && (url.pathname.endsWith('.js') || url.pathname.endsWith('.css'));
+  if (versioned) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => undefined);
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || fetch(req)))
     );
     return;
   }

@@ -46,6 +46,11 @@ const FLEET_DRIVERS = [
 /* Parkda yo'q — server metasida qolgan bo'lsa ham hech qayerda ko'rsatilmaydi */
 const FLEET_RETIRED = ['01A055MA', '01567SGA'];
 
+/* Raqam → rusum (meta/kind labo qolib ketgan bo'lsa ham) */
+const FLEET_MODEL_BY_PLATE = {
+  '01849SNA': 'onix'
+};
+
 /* Haqiqiy foto (Wikimedia Commons): fon olib tashlangan, begona raqam yopilgan, old tomoni chapga.
    CC BY / CC BY-SA — muallif title'da qolishi shart */
 const FLEET_MODELS = {
@@ -83,8 +88,14 @@ function fleetIsRetired(p) {
 /** Raqam bo'yicha model kaliti: model → brand matni → kind (damas/labo) */
 function fleetModelOf(plate) {
   const want = fleetPlateKey(plate);
+  if (FLEET_MODEL_BY_PLATE[want] && FLEET_MODELS[FLEET_MODEL_BY_PLATE[want]]) {
+    return FLEET_MODEL_BY_PLATE[want];
+  }
+  const fromFleet = FLEET_DRIVERS.find(x => fleetPlateKey(x.car) === want);
   const list = (typeof DRIVERS !== 'undefined' && Array.isArray(DRIVERS)) ? DRIVERS : FLEET_DRIVERS;
-  const d = list.find(x => fleetPlateKey(x.car) === want) || FLEET_DRIVERS.find(x => fleetPlateKey(x.car) === want) || {};
+  const d = (fromFleet && fromFleet.model ? fromFleet : null)
+    || list.find(x => fleetPlateKey(x.car) === want)
+    || {};
   const m = String(d.model || '').toLowerCase();
   if (FLEET_MODELS[m]) return m;
   const brand = String(d.brand || '').toLowerCase();
