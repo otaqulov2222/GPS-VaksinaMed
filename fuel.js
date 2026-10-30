@@ -353,7 +353,7 @@ function vehicleInfo(plate) {
     benzinNorm: extra.benzinNorm != null && extra.benzinNorm !== '' && n(extra.benzinNorm) > 0 ? n(extra.benzinNorm) : (diesel ? 10 : 4),
     gasPrice: extra.gasPrice != null && extra.gasPrice !== '' && n(extra.gasPrice) > 0 ? n(extra.gasPrice) : 5200,
     benzinPrice: extra.benzinPrice != null && extra.benzinPrice !== '' && n(extra.benzinPrice) > 0 ? n(extra.benzinPrice) : 11000,
-    hidden: !!extra.hidden,
+    hidden: DEFAULT_FLEET.some(d => plateCompact(d.car) === plateCompact(plate)) ? false : !!extra.hidden,
     nameHistory: Array.isArray(extra.nameHistory) ? extra.nameHistory : []
   };
 }

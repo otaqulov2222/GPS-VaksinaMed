@@ -39,11 +39,12 @@ const FLEET_DRIVERS = [
     routes: 'М.Улугбек, Қибрай',
     pharmacies: 'Учхоз,Учхоз макро,Кибрай фарход мадад,Поселка,Салар,МУ Налоговый,Ит Парк,Дархон,Кардиалогия,Алайский Ардус,Паркент,Ганга' },
   { car: '01 331 MLA', kind: 'truck', model: 'isuzu', fullName: 'Ахтамов', shortName: 'Ахтамов', color: '#7f8c8d', routes: '—', fuelType: 'dizel_gaz', pharmacies: '' },
-  { car: '01 406 GNA', kind: 'car', model: 'cobalt', fullName: '01 406 GNA', shortName: '406 GNA', color: '#95a5a6', routes: '—', pharmacies: '' }
+  { car: '01 406 GNA', kind: 'car', model: 'cobalt', fullName: '01 406 GNA', shortName: '406 GNA', color: '#95a5a6', routes: '—', pharmacies: '' },
+  { car: '01 849 SNA', kind: 'labo', model: 'labo', fullName: 'Абдурахимов Козим', shortName: 'Козим', color: '#00b894', routes: '—', pharmacies: '' }
 ];
 
 /* Parkda yo'q — server metasida qolgan bo'lsa ham hech qayerda ko'rsatilmaydi */
-const FLEET_RETIRED = ['01A055MA', '01567SGA', '01849SNA'];
+const FLEET_RETIRED = ['01A055MA', '01567SGA'];
 
 /* Haqiqiy foto (Wikimedia Commons): fon olib tashlangan, begona raqam yopilgan, old tomoni chapga.
    CC BY / CC BY-SA — muallif title'da qolishi shart */
@@ -186,7 +187,7 @@ function applyFleetNameOverrides(vehicles, opts) {
     }
     if (extra.brand != null && extra.brand !== '') d.brand = extra.brand;
     if (extra.fuelType) d.fuelType = extra.fuelType;
-    if (extra.hidden != null) d.hidden = !!extra.hidden;
+    if (extra.hidden != null) d.hidden = fleetIsRetired(d.car) ? true : false;
   };
   [FLEET_DRIVERS, FLEET_BASE, window.DRIVERS, window.FLEET_BASE].forEach(list => {
     if (Array.isArray(list)) list.forEach(patch);

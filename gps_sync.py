@@ -136,6 +136,19 @@ def compact_car(s):
     return re.sub(r"\s+", "", str(s or "").upper())
 
 
+def plates_match(a, b):
+    """01 849 SNA ↔ 849 SNA / 01849SNA — Wialon nomi qisqa bo'lsa ham topiladi."""
+    ca, cb = compact_car(a), compact_car(b)
+    if not ca or not cb:
+        return False
+    if ca == cb:
+        return True
+    short, long = (ca, cb) if len(ca) <= len(cb) else (cb, ca)
+    if len(short) < 5:
+        return False
+    return long.endswith(short) and bool(re.search(r"\d{3}[A-Z]{2,3}$", short))
+
+
 _RETIRED_CACHE = {"mtime": None, "set": frozenset()}
 
 
@@ -248,6 +261,9 @@ def find_driver_by_car(drivers, car_raw):
         if compact_car(d["car"]) == compact:
             return d
     hits = [d for d in drivers if compact.startswith(compact_car(d["car"])) or compact_car(d["car"]).startswith(compact)]
+    if len(hits) == 1:
+        return hits[0]
+    hits = [d for d in drivers if plates_match(d.get("car"), compact)]
     if len(hits) == 1:
         return hits[0]
     m = re.match(r"^(\d{5})", compact)
@@ -1424,10 +1440,7 @@ def fetch_live_fleet(office, base_dir):
             continue
         drv = by_plate.get(plate_key)
         if not drv:
-            for k, d in by_plate.items():
-                if k and plate_key and (plate_key.startswith(k) or k.startswith(plate_key)):
-                    drv = d
-                    break
+            drv = find_driver_by_car(drivers, u.get("carNumber") or u.get("name"))
         pos = u.get("pos")
         age = None
         status = "offline"
