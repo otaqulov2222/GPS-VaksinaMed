@@ -2503,7 +2503,7 @@ class OfficeStore:
             self._cheks_put(nxt)
             return True
 
-    def cheks_refresh(self, rec_id):
+    def cheks_refresh(self, rec_id, ofd_payload=None):
         import cheks as chekmod
 
         rid = str(rec_id or "").strip()
@@ -2513,7 +2513,13 @@ class OfficeStore:
             if not row0:
                 return None, "Chek topilmadi"
             qr = row0.get("qr") or ""
-        ofd = chekmod.fetch_ofd_details(qr)
+        ofd = None
+        if isinstance(ofd_payload, dict) and ofd_payload:
+            ofd = chekmod.ofd_from_payload(ofd_payload)
+        if not ofd or not ofd.get("ofdOk"):
+            ofd_srv = chekmod.fetch_ofd_details(qr, timeout=6, attempts=1)
+            if not ofd or ofd_srv.get("ofdOk"):
+                ofd = ofd_srv
         with self.lock:
             latest = self.cheks_list()
             items = chekmod.merge_chek_items(known, latest)
@@ -2522,6 +2528,8 @@ class OfficeStore:
                 return None, "Chek topilmadi"
             self._apply_ofd_fields(row, ofd)
             row["ofdRefreshedAt"] = iso_now()
+            if ofd.get("ofdOk"):
+                row["manual"] = False
             self._cheks_put(items)
             return row, ""
 
@@ -6118,7 +6126,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             if self.deny_driver_write(sess):
                 return
-            row, err = OFFICE.cheks_refresh(body.get("id"))
+            row, err = OFFICE.cheks_refresh(body.get("id"), body.get("ofd"))
             if err:
                 self.send_json({"ok": False, "error": err, "sandbox": True}, 400)
                 return

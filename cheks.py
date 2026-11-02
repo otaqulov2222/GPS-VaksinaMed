@@ -264,6 +264,24 @@ def _http_json(req, timeout=12):
         return resp.status, ctype, raw.decode("utf-8", "replace")
 
 
+def ofd_from_payload(data):
+    """Soliq /api/payment JSON → ichki OFD maydonlari."""
+    blob = data if isinstance(data, dict) else {}
+    parsed = parse_ofd_payment(blob)
+    parsed["ofdOk"] = _has_amount(parsed.get("amount"))
+    parsed["ofdPending"] = False
+    msg = ""
+    if not parsed["ofdOk"]:
+        msg = str(blob.get("message") or "")
+        inner = blob.get("data") if isinstance(blob.get("data"), dict) else {}
+        if not msg and isinstance(inner, dict):
+            msg = str(inner.get("message") or "")
+    parsed["ofdNote"] = public_ofd_note(
+        parsed["ofdOk"], False, msg, parsed.get("amount")
+    )
+    return parsed
+
+
 def parse_ofd_payment(data):
     out = {
         "merchant": "",
@@ -441,7 +459,7 @@ def merge_chek_items(*groups):
     return items
 
 
-def fetch_ofd_api(parsed, timeout=16):
+def fetch_ofd_api(parsed, timeout=8, attempts=2):
     term = str((parsed or {}).get("terminalId") or "")
     payno = str((parsed or {}).get("receiptNo") or "")
     stamp = str((parsed or {}).get("stamp") or "")
@@ -474,9 +492,9 @@ def fetch_ofd_api(parsed, timeout=16):
         }
     ).encode("utf-8")
     last_note = ""
-    attempts = 2
-    while attempts:
-        attempts -= 1
+    left = max(1, int(attempts or 1))
+    while left:
+        left -= 1
         req = urllib.request.Request(
             OFD_API,
             data=body,
@@ -486,16 +504,7 @@ def fetch_ofd_api(parsed, timeout=16):
         try:
             _status, _ctype, text = _http_json(req, timeout=timeout)
             data = json.loads(text) if text.lstrip().startswith("{") else {}
-            parsed_pay = parse_ofd_payment(data)
-            parsed_pay["ofdOk"] = _has_amount(parsed_pay.get("amount"))
-            parsed_pay["ofdPending"] = False
-            parsed_pay["ofdNote"] = public_ofd_note(
-                parsed_pay["ofdOk"],
-                False,
-                "" if parsed_pay["ofdOk"] else (data.get("message") or ""),
-                parsed_pay.get("amount"),
-            )
-            return parsed_pay
+            return ofd_from_payload(data)
         except urllib.error.HTTPError as e:
             raw = ""
             try:
@@ -512,13 +521,13 @@ def fetch_ofd_api(parsed, timeout=16):
                 empty["ofdNote"] = public_ofd_note(False, True, msg, None)
                 return empty
             last_note = msg or ("OFD javobi " + str(e.code))
-            if e.code in (401, 403, 500, 502, 503) and attempts:
+            if e.code in (401, 403, 500, 502, 503) and left:
                 time.sleep(0.35)
                 continue
             break
         except Exception:
             last_note = "OFD dan to‘liq chek olinmoqda."
-            if attempts:
+            if left:
                 time.sleep(0.45)
                 continue
             break
@@ -526,13 +535,13 @@ def fetch_ofd_api(parsed, timeout=16):
     return empty
 
 
-def fetch_ofd_details(qr_url, timeout=16, parsed=None):
+def fetch_ofd_details(qr_url, timeout=8, parsed=None, attempts=2):
     url = str(qr_url or "").strip()
     if parsed is None and url:
         parsed = parse_qr_payload(url)
         if not parsed.get("ok"):
             parsed = None
-    api = fetch_ofd_api(parsed, timeout=timeout) if parsed else ofd_shell()
+    api = fetch_ofd_api(parsed, timeout=timeout, attempts=attempts) if parsed else ofd_shell()
     if not parsed:
         api["ofdPending"] = False
         api["ofdNote"] = "Havola yo'q"

@@ -98,6 +98,26 @@ class CheksParseTest(unittest.TestCase):
         self.assertEqual(a["amount"], 85000)
         self.assertEqual(a["merchant"], "EKOGAZ")
 
+    def test_ofd_from_payload(self):
+        data = {
+            "success": True,
+            "data": {
+                "tin": "307766465",
+                "cashTotal": 0,
+                "cardTotal": 85000,
+                "vatTotal": 9107.14,
+                "kkmName": "Online KKM",
+                "extraInfo": {"companyName": "QOYLIQ EKOGAZ", "paymentType": 2, "cardType": "1"},
+                "paymentDetails": [{"name": "Gaz metan", "amount": 14.912, "price": 85000}],
+            },
+        }
+        d = cheks.ofd_from_payload(data)
+        self.assertTrue(d["ofdOk"])
+        self.assertEqual(d["amount"], 85000)
+        self.assertEqual(d["merchant"], "QOYLIQ EKOGAZ")
+        self.assertEqual(d["cardType"], "UZCARD")
+        self.assertEqual(d["items"][0]["name"], "Gaz metan")
+
     def test_public_row_maps_old_error(self):
         row = cheks.public_chek_row({
             "ofdOk": False,

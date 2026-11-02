@@ -103,15 +103,92 @@ const VMCheks = {
   },
 
   ofdKind(r) {
-    if (r && r.ofdOk && Number(r.amount) > 0) return 'ok';
+    if (r && Number(r.amount) > 0) return 'ok';
     if (r && (r.ofdPending || !r.ofdOk)) return 'wait';
     return 'wait';
   },
 
   ofdLabel(r) {
-    if (this.ofdKind(r) === 'ok') return 'OFD tasdiqlagan';
+    if (r && r.ofdOk && Number(r.amount) > 0) return 'OFD tasdiqlagan';
+    if (r && Number(r.amount) > 0) return r.manual ? 'Summa kiritilgan' : 'OFD tasdiqlagan';
     if (r && r.manual) return 'Summa kiritilgan';
     return 'OFD kutilmoqda';
+  },
+
+  ofdStamp(r) {
+    const qr = String((r && r.qr) || '');
+    const m = qr.match(/[?&]c=(\d{12,14})/i);
+    if (m) {
+      const c = m[1];
+      return c.length === 12 ? c + '00' : c.slice(0, 14);
+    }
+    const paid = String((r && r.paidAt) || '').replace(/\D/g, '');
+    if (paid.length >= 14) return paid.slice(0, 14);
+    if (paid.length === 12) return paid + '00';
+    return '';
+  },
+
+  async ofdHmac(term, payno) {
+    const ts = String(Math.floor(Date.now() / 1000));
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode('thisIsPaymentSecretKey123@#'),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const buf = await crypto.subtle.sign('HMAC', key, enc.encode(term + ':' + payno + ':' + ts));
+    const sig = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    return { ts, sig };
+  },
+
+  async fetchOfdRaw(row) {
+    const term = String((row && row.terminalId) || '');
+    const payno = String((row && row.receiptNo) || '');
+    const stamp = this.ofdStamp(row);
+    const sign = String((row && row.fiscalSign) || '');
+    if (!term || !payno || !stamp || !crypto.subtle) return null;
+    const { ts, sig } = await this.ofdHmac(term, payno);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const res = await fetch('https://new-ofd.soliq.uz/api/payment', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Timestamp': ts,
+          'X-Signature': sig
+        },
+        body: JSON.stringify({
+          terminalId: term,
+          paymentNo: payno,
+          paymentDate: stamp,
+          paymentType: 'CHECK',
+          ...(sign ? { fiscalSign: sign } : {})
+        }),
+        signal: ctrl.signal
+      });
+      const data = await res.json().catch(() => null);
+      if (!data || typeof data !== 'object') return null;
+      return data;
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  async postRefresh(row) {
+    const body = { id: row && row.id };
+    const ofd = await this.fetchOfdRaw(row);
+    if (ofd) body.ofd = ofd;
+    return vmApi('/api/office/cheks/refresh', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      timeoutMs: ofd ? 12000 : 18000
+    });
   },
 
   parseQr(raw) {
@@ -605,7 +682,7 @@ const VMCheks = {
       const gap = age > 86400000 ? 60000 : (age > 3600000 ? 15000 : 5000);
       if (Number.isFinite(refreshed) && now - refreshed < gap) return false;
       return true;
-    }).slice(0, 2);
+    }).slice(0, 4);
     if (!need.length) return;
     this._kickAt = now;
     this._kickBusy = true;
@@ -613,11 +690,7 @@ const VMCheks = {
       try {
         for (const row of need) {
           try {
-            const d = await vmApi('/api/office/cheks/refresh', {
-              method: 'POST',
-              body: JSON.stringify({ id: row.id }),
-              timeoutMs: 28000
-            });
+            const d = await this.postRefresh(row);
             if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));
             else if (Array.isArray(d.items)) this.applyItems(d.items);
           } catch (e) {}
@@ -1016,11 +1089,7 @@ const VMCheks = {
     this._refBusyIds.add(key);
     if (!silent) this.toast('OFD dan qayta so‘ralmoqda…');
     try {
-      const d = await vmApi('/api/office/cheks/refresh', {
-        method: 'POST',
-        body: JSON.stringify({ id }),
-        timeoutMs: 28000
-      });
+      const d = await this.postRefresh(this.paperItem);
       if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));
       else if (Array.isArray(d.items)) this.applyItems(d.items);
       if (d.item) {
