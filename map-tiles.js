@@ -1,20 +1,20 @@
 'use strict';
 /**
- * Xarita — API kalitsiz. Carto YO‘Q (API KEY REQUIRED).
- * Esri Street birinchi (tez CDN, aniq yo‘llar); OSM fallback.
+ * Xarita — API kalitsiz. Carto YO‘Q (API KEY REQUIRED watermark).
+ * OSM.org birinchi (ko‘cha / joy nomlari); Esri + DE fallback.
  */
 
 const VM_TILE_SOURCES = [
   {
-    // Esri World Street — kalit yo‘q, tiniq ko‘chalar
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    // OpenStreetMap — ko‘cha, binolar, joy nomlari (kalit yo‘q)
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     subdomains: null,
     maxZoom: 20,
     maxNativeZoom: 19
   },
   {
-    // OSM — do‘kon / joy nomlari (yuqori zoom)
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    // Esri Street — tez CDN zaxira
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
     subdomains: null,
     maxZoom: 20,
     maxNativeZoom: 19
@@ -32,7 +32,6 @@ const VM_TILE_OPTS = {
   maxZoom: 20,
   maxNativeZoom: 19,
   minZoom: 3,
-  // crossOrigin o‘chirilgan — ba’zi CDN img ni osiltirib qo‘yardi
   updateWhenIdle: false,
   updateWhenZooming: true,
   keepBuffer: 4,
