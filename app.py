@@ -362,7 +362,7 @@ async def handle(request: Request, full_path: str = ""):
         js = (
             "(function(){function go(){try{var ns=document.querySelectorAll('.nav-rail .nav-links');"
             "ns.forEach(function(nav){var u=window.VM_USER;var role=u&&u.role;"
-            "var staff=role==='admin'||role==='admin_pro';var drv=role==='driver';"
+            "var staff=role==='admin'||role==='admin_pro'||role==='viewer';var drv=role==='driver';"
             "var a=nav.querySelector('a[href=\"/live\"],a[href=\"/live.html\"],#nav-live');"
             "if(drv||(u&&!staff)){if(a)a.remove();return;}"
             "if(!u){if(a){a.classList.add('staff-only');a.setAttribute('hidden','hidden');}return;}"

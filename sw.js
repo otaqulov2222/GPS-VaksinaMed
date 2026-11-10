@@ -1,7 +1,7 @@
 /* VaksinaMed PWA — shell cache (API hech qachon keshlanmaydi). */
-/* v3: eski v1/v2 keshlarini TO‘LIQ tozalaydi (eski "API key" xarita versiyasi
-   qurilmalarda qotib qolgan edi); JS/CSS endi har doim tarmoqdan. */
-const CACHE = 'vm-shell-v5';
+/* v6: activate faqat ESKI keshni o‘chiradi (joriy precache saqlanadi).
+   JS/CSS — network-first. */
+const CACHE = 'vm-shell-v6';
 const PRECACHE = [
   '/offline.html',
   '/logo/apple-touch-icon.png?v=5',
@@ -21,10 +21,10 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  // HAMMA keshni o‘chirish — eski SW/v1 pinning dan qutqarish
+  // Faqat eski nomlarni o‘chirish — yangi precache ni o‘chirmaslik
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -33,7 +33,6 @@ function isApi(url) {
   return url.pathname.startsWith('/api/');
 }
 
-/* Tarmoq birinchi, xato bo‘lsa kesh — yangilanishlar darhol yetib boradi */
 function networkFirst(req, navFallback) {
   return fetch(req)
     .then((res) => {
@@ -61,25 +60,21 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (isApi(url)) return;
 
-  // Navigatsiya: tarmoq birinchi, xato bo‘lsa offline / login kesh
   if (req.mode === 'navigate') {
     event.respondWith(networkFirst(req, true));
     return;
   }
 
-  // JS/CSS (v=li ham, v=siz ham) — har doim tarmoq birinchi.
-  // Aks holda eski SW keshi yangi versiyani ko‘rsatmay qotib qoladi.
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
     event.respondWith(networkFirst(req, false));
     return;
   }
 
-  // Statik (rasm/logo): kesh → tarmoq
   event.respondWith(
     caches.match(req).then((hit) => {
       if (hit) return hit;
       return fetch(req).then((res) => {
-        if (res && res.ok && (url.pathname.startsWith('/logo/') || url.pathname.endsWith('.png') || url.pathname.endsWith('.webp') || url.pathname.endsWith('.svg'))) {
+        if (res && res.ok && (url.pathname.startsWith('/logo/') || url.pathname.endsWith('.png') || url.pathname.endsWith('.webp') || url.pathname.endsWith('.svg') || url.pathname.endsWith('.ico'))) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => undefined);
         }

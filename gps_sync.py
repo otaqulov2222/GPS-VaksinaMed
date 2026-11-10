@@ -1414,8 +1414,19 @@ class WialonClient:
             return None
 
 
+_LIVE_FLEET_CACHE = {"at": 0.0, "payload": None}
+_LIVE_FLEET_TTL = 4.0  # sekund — har 5s poll Wialon login stormini oldini oladi
+
+
 def fetch_live_fleet(office, base_dir):
     """Park live holati — Live sahifa uchun."""
+    import time as _time
+
+    now_m = _time.monotonic()
+    cached = _LIVE_FLEET_CACHE.get("payload")
+    if cached and (now_m - float(_LIVE_FLEET_CACHE.get("at") or 0)) < _LIVE_FLEET_TTL:
+        return cached
+
     cfg = office.gps_config_internal() if office else {}
     if not cfg.get("configured"):
         return {"ok": False, "error": "GPS sozlanmagan", "units": [], "configured": False}
@@ -1494,7 +1505,7 @@ def fetch_live_fleet(office, base_dir):
             str(x.get("car") or ""),
         )
     )
-    return {
+    payload = {
         "ok": True,
         "configured": True,
         "ts": now,
@@ -1506,6 +1517,9 @@ def fetch_live_fleet(office, base_dir):
             "offline": sum(1 for x in units if x.get("status") == "offline"),
         },
     }
+    _LIVE_FLEET_CACHE["at"] = _time.monotonic()
+    _LIVE_FLEET_CACHE["payload"] = payload
+    return payload
 
 
 def fetch_wialon_zones_catalog(office, base_dir=None):

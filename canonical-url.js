@@ -33,7 +33,7 @@
       addMeta('application-name', 'GPS');
       // Eski Vite \"V\" / eski favicon linklarini olib tashlash
       try {
-        head.querySelectorAll('link[rel=\"icon\"], link[rel=\"shortcut icon\"], link[rel=\"apple-touch-icon\"]').forEach(function (n) {
+        head.querySelectorAll('link[rel=\"icon\"], link[rel=\"shortcut icon\"], link[rel=\"apple-touch-icon\"], link[rel=\"manifest\"]').forEach(function (n) {
           n.parentNode.removeChild(n);
         });
       } catch (eRm) { /* ignore */ }
@@ -75,7 +75,7 @@
     var okProto = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if (okProto && 'serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/sw.js?v=5', { scope: '/' }).catch(function () { /* ignore */ });
+        navigator.serviceWorker.register('/sw.js?v=6', { scope: '/' }).catch(function () { /* ignore */ });
       });
     }
   } catch (e2) { /* ignore */ }

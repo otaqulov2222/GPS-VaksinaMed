@@ -173,7 +173,8 @@ function vmApplyRoleNav(user) {
 function vmEnsureLiveNav() {
     const path = (location.pathname || '').replace(/\\/g, '/');
     const onLive = /\/live(\.html)?$/.test(path);
-    const staff = vmIsStaff(window.VM_USER);
+    // Kuzatuvchi ham Live ko‘radi (ops read)
+    const staff = vmCanViewOps(window.VM_USER);
     const drv = vmIsDriver(window.VM_USER);
 
     document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {
@@ -336,7 +337,8 @@ function vmEnsurePanelNav() {
 function vmEnsureChekNav() {
     const path = (location.pathname || '').replace(/\\/g, '/');
     const onChek = /\/chek\/?$/.test(path);
-    const staff = vmIsStaff(window.VM_USER);
+    // Kuzatuvchi Chek ro‘yxatini o‘qiydi
+    const staff = vmCanViewOps(window.VM_USER);
     const drv = vmIsDriver(window.VM_USER);
 
     document.querySelectorAll('.nav-rail .nav-links').forEach((nav) => {

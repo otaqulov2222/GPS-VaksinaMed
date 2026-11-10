@@ -319,7 +319,7 @@ function liveUpsertMarker(unit) {
   if (!LIVE.map || !unit || !unit.pos) return;
   const key = String(unit.car || unit.id || unit.name);
   const ll = [Number(unit.pos.lat), Number(unit.pos.lng)];
-  if (!ll[0] || !ll[1]) return;
+  if (!Number.isFinite(ll[0]) || !Number.isFinite(ll[1])) return;
   const course = liveCourse(unit, key);
   LIVE.lastCourse[key] = course;
   const spd = Math.round(Number(unit.pos.speed) || 0);
