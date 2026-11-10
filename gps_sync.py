@@ -1593,6 +1593,7 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
         updated = 0
         samples = []
         cars_out = dict(cars)
+        patched = {}
         # Eng eski km birinchi
         jobs = []
         for unit in units:
@@ -1653,10 +1654,11 @@ def refresh_day_trip_km(office, base_dir, date_str=None, time_budget_sec=100, sa
             row["kmSyncedAt"] = int(time.time())
             cars_out[drv["car"]] = row
             if changed:
+                patched[drv["car"]] = row
                 updated += 1
 
-        if updated:
-            office.save_report(date_str, cars_out, saved_by=saved_by)
+        if updated and patched:
+            office.save_report(date_str, patched, saved_by=saved_by, mode="merge")
             office.set_gps_status(
                 running=False,
                 cars=len(cars_out),
@@ -2522,7 +2524,7 @@ def reprocess_day(office, base_dir, date_str):
         reprocess_car_record(rec, car, drivers, pharmacies, pharm_index, reviews=reviews, zones=zones)
         done += 1
     if done:
-        office.save_report(date_str, cars, saved_by="reprocess")
+        office.save_report(date_str, cars, saved_by="reprocess", mode="merge")
     return done
 
 
@@ -2580,16 +2582,20 @@ def analyze_data(stops, car_key, stats, drivers, pharmacies, reviews=None):
     )
     problem_stops = sum(1 for s in stops or [] if stop_counts_as_problem(s, car_key, reviews))
     outside_city = sum(1 for s in stops or [] if s.get("isOutside"))
+    km = float((stats or {}).get("probeg") or 0)
+    trips = int((stats or {}).get("poezdok") or 0)
+    idle = (not stops) and km < 1.0 and trips <= 0
     score = 10.0
     breakdown = ["Boshlang'ich ball: 10.0"]
     recs = []
     if problem_stops > 0:
-        deduct = min(problem_stops * 1.0, 3.0)
+        deduct = min(problem_stops * 1.0, 4.0)
         score -= deduct
         breakdown.append(f"-{deduct:.1f}: {problem_stops} ta muammoli to'xtash")
         recs.append(f"{problem_stops} ta ruxsatsiz joyda to'xtash aniqlandi")
     if missed:
-        deduct = min(len(missed) * 0.5, 2.0)
+        # Cap 5.0 — to'liq o'tkazilgan kun endi B emas (C/D/F)
+        deduct = min(len(missed) * 0.5, 5.0)
         score -= deduct
         breakdown.append(f"-{deduct:.1f}: {len(missed)} ta dorixona o'tkazib yuborilgan")
         recs.append("O'tkazib yuborilgan: " + ", ".join(missed[:3]) + ("..." if len(missed) > 3 else ""))
@@ -2601,6 +2607,11 @@ def analyze_data(stops, car_key, stats, drivers, pharmacies, reviews=None):
     if max_speed > 90:
         score -= 0.5
         breakdown.append(f"-0.5: Tezlik normasi oshirildi ({max_speed} km/s)")
+    # Idle: biriktirilgan dorixona bor, harakat/tashrif yo'q → F
+    if own_pharms and missed and len(missed) >= len(own_pharms) and idle:
+        score = min(score, 1.5)
+        breakdown.append("Idle: harakat yo'q / biriktirilgan dorixonalarga borilmadi")
+        recs.append("Kun bo'yi GPS harakati yoki dorixona tashrifi yo'q")
     if not missed and own_pharms:
         score += 0.5
         breakdown.append("+0.5: Barcha dorixonalarga borildi")
@@ -2905,6 +2916,7 @@ def sync_today(
 
         reviews = office.reviews(date_str) or {}
         done = 0
+        patched = {}
         for row in unit_rows:
             drv, raw_stops, stats = row[0], row[1], row[2]
             points = row[3] if len(row) > 3 else []
@@ -2926,12 +2938,14 @@ def sync_today(
                 "clockTz": CLOCK_TZ,
             }
             cars[drv["car"]].pop("stale", None)
+            patched[drv["car"]] = cars[drv["car"]]
             done += 1
 
         synced_n = sum(1 for r in cars.values() if isinstance(r, dict) and r.get("syncedAt"))
         partial = synced_n < total_fleet
-        if cars:
-            office.save_report(date_str, cars, saved_by=saved_by)
+        # Faqat shu run da yangilangan plate lar — boshqa yozuvchilar bilan race kamayadi
+        if patched:
+            office.save_report(date_str, patched, saved_by=saved_by, mode="merge")
         # Kun davomida km o'sadi — Boomerang «Пробег в поездках» ni qayta yozamiz
         km_r = run_km_refresh("after")
         km_n = int((km_r or {}).get("updated") or 0)

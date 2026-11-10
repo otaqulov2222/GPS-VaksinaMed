@@ -1,11 +1,11 @@
 #!/bin/bash
-# Hetzner Console da bir marta:
-#   bash /opt/vaksina/app/scripts/enable_hr_logistics.sh
+# Hetzner Console da:
+#   VM_HR_API_KEY_SET='...' bash /opt/vaksina/app/scripts/enable_hr_logistics.sh
 set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/vaksina/app}"
 ENV_FILE="$APP_DIR/.env"
-KEY="${VM_HR_API_KEY_SET:-VmHr_2026_K9mP2qL7nR4wT8yX3zA}"
-BASE="${VM_PUBLIC_BASE_URL_SET:-https://vaksinagps.duckdns.org}"
+KEY="${VM_HR_API_KEY_SET:?Set VM_HR_API_KEY_SET to a secret key (do not use git defaults)}"
+BASE="${VM_PUBLIC_BASE_URL_SET:-https://vaksinamedgps.uz}"
 
 touch "$ENV_FILE"
 set_kv() {

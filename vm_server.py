@@ -2042,19 +2042,39 @@ class OfficeStore:
         rows.sort(key=lambda r: (r["date"], r["in"]), reverse=True)
         return {"total": len(rows), "durSec": dur_total, "cars": cars, "stops": rows[: max(1, int(limit or 40))]}
 
-    def save_report(self, date, cars, saved_by=""):
+    def save_report(self, date, cars, saved_by="", mode="replace"):
+        """Hisobot yozish.
+
+        mode:
+          - replace: butun cars xarita (migration / ichki toza yozuv)
+          - merge: kelgan plate larni ustiga yozadi, boshqa plate lar saqlanadi
+            (brauzer POST / GPS sync — overwrite race ni oldini oladi)
+        """
         if not valid_date(date):
             return None, "Sana noto'g'ri"
         if not isinstance(cars, dict):
             return None, "Ma'lumot noto'g'ri"
-        upgrade_report_cars_clock(cars)
-        payload = {
-            "date": date,
-            "savedAt": iso_now(),
-            "savedBy": str(saved_by or "")[:40],
-            "cars": cars,
-        }
+        mode = str(mode or "replace").strip().lower()
+        if mode not in ("replace", "merge"):
+            mode = "replace"
         with self.lock:
+            out_cars = cars
+            if mode == "merge":
+                prev = self._load("office:report:" + date, {}) or {}
+                prev_cars = {}
+                if isinstance(prev, dict) and isinstance(prev.get("cars"), dict):
+                    prev_cars = dict(prev.get("cars") or {})
+                for k, v in cars.items():
+                    if isinstance(v, dict) and str(k or "").strip():
+                        prev_cars[str(k)] = v
+                out_cars = prev_cars
+            upgrade_report_cars_clock(out_cars)
+            payload = {
+                "date": date,
+                "savedAt": iso_now(),
+                "savedBy": str(saved_by or "")[:40],
+                "cars": out_cars,
+            }
             self._save("office:report:" + date, payload)
         if DEPARTURES:
             DEPARTURES.invalidate(date)
@@ -5850,8 +5870,12 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             if self.deny_driver_write(sess):
                 return
+            # Brauzer to'liq kunni yuborsa ham boshqa plate larni o'chirmasin
             payload, err = OFFICE.save_report(
-                body.get("date"), body.get("cars") or {}, sess.get("username")
+                body.get("date"),
+                body.get("cars") or {},
+                sess.get("username"),
+                mode="merge",
             )
             if err:
                 self.send_json({"ok": False, "error": err}, 400)
@@ -6890,14 +6914,14 @@ def init_app(base_dir=None):
         try:
             import support_ai
 
-            # HR Logistika default → keyin .env (mavjud env ustiga yozilmaydi)
+            # 1) defaults (faqat bo'sh env)  2) .env override=True (server ustun)
             for env_path in (
                 os.path.join(base_dir, "scripts", "hr_logistics.env.defaults"),
                 "/opt/vaksina/scripts/hr_logistics.env.defaults",
                 "/opt/vaksina/app/scripts/hr_logistics.env.defaults",
-                os.path.join(base_dir, ".env"),
             ):
-                support_ai.load_dotenv(env_path)
+                support_ai.load_dotenv(env_path, override=False)
+            support_ai.load_dotenv(os.path.join(base_dir, ".env"), override=True)
         except Exception:
             pass
         production_checks()
@@ -6957,9 +6981,9 @@ def main():
             os.path.join(DIRECTORY, "scripts", "hr_logistics.env.defaults"),
             "/opt/vaksina/scripts/hr_logistics.env.defaults",
             "/opt/vaksina/app/scripts/hr_logistics.env.defaults",
-            os.path.join(DIRECTORY, ".env"),
         ):
-            support_ai.load_dotenv(env_path)
+            support_ai.load_dotenv(env_path, override=False)
+        support_ai.load_dotenv(os.path.join(DIRECTORY, ".env"), override=True)
     except Exception:
         pass
     parser = argparse.ArgumentParser(description="VaksinaMed GPS Monitor Server")

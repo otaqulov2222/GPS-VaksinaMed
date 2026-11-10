@@ -549,7 +549,7 @@ const VMOffice = {
             showToast('Belgilash saqlanmadi: ' + e.message, 'error');
             return;
         }
-        // Server reprocess_day qilgan — hisobotni qayta yuklash (yagona ball manbai)
+        // Server reprocess_day allaqachon saqlagan — qayta POST qilmaslik (overwrite race)
         try {
             await this.loadReportIfNeeded(dateVal, true);
         } catch (e) {
@@ -560,7 +560,6 @@ const VMOffice = {
         if (typeof saveAll === 'function') saveAll();
         if (typeof refreshUI === 'function') refreshUI();
         this.renderFleetBoard();
-        this.saveReport(dateVal);
     },
 
     recForPlate(day, plate) {

@@ -48,8 +48,12 @@ QOIDALAR (majburiy):
 """
 
 
-def load_dotenv(path: str | None = None) -> None:
-    """Oddiy .env o'qish (paketsiz). Mavjud env ni ustiga yozmaydi."""
+def load_dotenv(path: str | None = None, override: bool = False) -> None:
+    """Oddiy .env o'qish (paketsiz).
+
+    override=False: mavjud env ni saqlaydi (defaults / shell).
+    override=True: fayl qiymati ustun (server .env uchun).
+    """
     base = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if not os.path.isfile(base):
         return
@@ -62,7 +66,9 @@ def load_dotenv(path: str | None = None) -> None:
                 k, v = line.split("=", 1)
                 k = k.strip()
                 v = v.strip().strip('"').strip("'")
-                if k and k not in os.environ:
+                if not k:
+                    continue
+                if override or k not in os.environ:
                     os.environ[k] = v
     except OSError:
         pass
