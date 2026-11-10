@@ -4,11 +4,13 @@
 const CACHE = 'vm-shell-v3';
 const PRECACHE = [
   '/offline.html',
-  '/logo/apple-touch-icon.png',
-  '/logo/icon-192.png',
-  '/logo/icon-512.png',
-  '/logo/mark.svg?v=3',
-  '/site.webmanifest',
+  '/logo/apple-touch-icon.png?v=4',
+  '/logo/icon-192.png?v=4',
+  '/logo/icon-512.png?v=4',
+  '/logo/favicon-32.png?v=4',
+  '/logo/mark.svg?v=4',
+  '/favicon.ico?v=4',
+  '/site.webmanifest?v=4',
   '/canonical-url.js',
 ];
 

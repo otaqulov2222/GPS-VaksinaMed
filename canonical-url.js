@@ -31,10 +31,19 @@
       addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
       addMeta('apple-mobile-web-app-title', 'VaksinaGPS');
       addMeta('application-name', 'VaksinaGPS');
-      addLink('manifest', '/site.webmanifest');
-      addLink('apple-touch-icon', '/logo/apple-touch-icon.png', '180x180');
-      addLink('icon', '/logo/icon-192.png', '192x192', 'image/png');
-      addLink('icon', '/logo/favicon-32.png', '32x32', 'image/png');
+      // Eski Vite \"V\" / eski favicon linklarini olib tashlash
+      try {
+        head.querySelectorAll('link[rel=\"icon\"], link[rel=\"shortcut icon\"], link[rel=\"apple-touch-icon\"]').forEach(function (n) {
+          n.parentNode.removeChild(n);
+        });
+      } catch (eRm) { /* ignore */ }
+      addLink('manifest', '/site.webmanifest?v=4');
+      addLink('apple-touch-icon', '/logo/apple-touch-icon.png?v=4', '180x180');
+      // Brand mark — Vite ko‘k \"V\" emas
+      addLink('icon', '/logo/mark.svg?v=4', null, 'image/svg+xml');
+      addLink('icon', '/logo/favicon-32.png?v=4', '32x32', 'image/png');
+      addLink('icon', '/logo/icon-192.png?v=4', '192x192', 'image/png');
+      addLink('shortcut icon', '/favicon.ico?v=4');
       void box;
     }
   } catch (e) { /* ignore */ }
@@ -66,7 +75,7 @@
     var okProto = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if (okProto && 'serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/sw.js?v=3', { scope: '/' }).catch(function () { /* ignore */ });
+        navigator.serviceWorker.register('/sw.js?v=4', { scope: '/' }).catch(function () { /* ignore */ });
       });
     }
   } catch (e2) { /* ignore */ }
