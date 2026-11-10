@@ -1,20 +1,20 @@
 'use strict';
 /**
- * Xarita plitkalari — API kalitsiz, ko‘cha/do‘kon aniq.
- * Carto ishlatilmaydi (API KEY REQUIRED).
+ * Xarita — API kalitsiz. Carto YO‘Q (API KEY REQUIRED).
+ * Esri Street birinchi (tez CDN, aniq yo‘llar); OSM fallback.
  */
 
 const VM_TILE_SOURCES = [
   {
-    // OSM France HOT — ko‘cha, binolar, do‘konlar (yuqori zoom)
-    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-    subdomains: 'abc',
+    // Esri World Street — kalit yo‘q, tiniq ko‘chalar
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    subdomains: null,
     maxZoom: 20,
-    maxNativeZoom: 20
+    maxNativeZoom: 19
   },
   {
-    // Esri Street — tiniq yo‘llar, kalit yo‘q
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    // OSM — do‘kon / joy nomlari (yuqori zoom)
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     subdomains: null,
     maxZoom: 20,
     maxNativeZoom: 19
@@ -24,21 +24,15 @@ const VM_TILE_SOURCES = [
     subdomains: 'abc',
     maxZoom: 20,
     maxNativeZoom: 19
-  },
-  {
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: null,
-    maxZoom: 20,
-    maxNativeZoom: 19
   }
 ];
 
 const VM_TILE_OPTS = {
   attribution: '',
   maxZoom: 20,
-  maxNativeZoom: 18,
+  maxNativeZoom: 19,
   minZoom: 3,
-  crossOrigin: true,
+  // crossOrigin o‘chirilgan — ba’zi CDN img ni osiltirib qo‘yardi
   updateWhenIdle: false,
   updateWhenZooming: true,
   keepBuffer: 4,
