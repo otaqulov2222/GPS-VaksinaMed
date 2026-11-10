@@ -1,22 +1,23 @@
 'use strict';
 /**
- * Xarita plitkalari — ochiq CDN + tez fallback.
- * OSM ba'zan UZ dan sekin/bo'sh qoladi; Carto birinchi.
+ * Xarita plitkalari — API kalitsiz, ko‘cha/do‘kon aniq.
+ * Carto ishlatilmaydi (API KEY REQUIRED).
  */
 
 const VM_TILE_SOURCES = [
   {
-    // Carto — barqaror CDN, kalit yo‘q
-    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    subdomains: 'abcd',
+    // OSM France HOT — ko‘cha, binolar, do‘konlar (yuqori zoom)
+    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    subdomains: 'abc',
     maxZoom: 20,
     maxNativeZoom: 20
   },
   {
-    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-    subdomains: 'abc',
+    // Esri Street — tiniq yo‘llar, kalit yo‘q
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    subdomains: null,
     maxZoom: 20,
-    maxNativeZoom: 18
+    maxNativeZoom: 19
   },
   {
     url: 'https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png',
@@ -38,7 +39,6 @@ const VM_TILE_OPTS = {
   maxNativeZoom: 18,
   minZoom: 3,
   crossOrigin: true,
-  // zoom paytida eski plitkani cho‘zib xiralashtirmaslik
   updateWhenIdle: false,
   updateWhenZooming: true,
   keepBuffer: 4,
@@ -55,8 +55,7 @@ function vmAddMapTiles(map) {
     layer: null,
     failBurst: 0,
     failWindowAt: 0,
-    switchedAt: 0,
-    healTimer: 0
+    switchedAt: 0
   };
   map._vmTileState = state;
 
@@ -77,7 +76,6 @@ function vmAddMapTiles(map) {
         state.failBurst = 0;
       }
       state.failBurst += 1;
-      // 3 ta xato / 4s — keyingi CDN
       if (switched || state.idx !== i || state.failBurst < 3) return;
       if (now - state.switchedAt < 2500) return;
       switched = true;
@@ -108,7 +106,6 @@ function vmAddMapTiles(map) {
   return state.layer;
 }
 
-/** Yangilash / tab qaytganda — plitkalarni qayta tortish */
 function vmHealMapTiles(map) {
   if (!map) return;
   try {
