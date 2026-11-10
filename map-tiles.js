@@ -1,97 +1,144 @@
 'use strict';
 /**
- * Xarita plitkalari — API kalitsiz ochiq manbalar.
- * Carto (API KEY REQUIRED) va ArcGIS Street ("Map data not yet available") ishlatilmaydi.
+ * Xarita plitkalari — ochiq CDN + tez fallback.
+ * OSM ba'zan UZ dan sekin/bo'sh qoladi; Carto birinchi.
  */
 
 const VM_TILE_SOURCES = [
-    {
-        // OSM France HOT — shaharlarda yuqori zoom yaxshi, kalit yo‘q
-        url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-        subdomains: 'abc',
-        maxZoom: 20,
-        maxNativeZoom: 18
-    },
-    {
-        url: 'https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png',
-        subdomains: 'abc',
-        maxZoom: 20,
-        maxNativeZoom: 18
-    },
-    {
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        subdomains: 'abc',
-        maxZoom: 20,
-        maxNativeZoom: 19
-    }
+  {
+    // Carto — barqaror CDN, kalit yo‘q
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+    maxZoom: 20,
+    maxNativeZoom: 20
+  },
+  {
+    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    subdomains: 'abc',
+    maxZoom: 20,
+    maxNativeZoom: 18
+  },
+  {
+    url: 'https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png',
+    subdomains: 'abc',
+    maxZoom: 20,
+    maxNativeZoom: 19
+  },
+  {
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: null,
+    maxZoom: 20,
+    maxNativeZoom: 19
+  }
 ];
 
 const VM_TILE_OPTS = {
-    attribution: '',
-    maxZoom: 20,
-    maxNativeZoom: 18,
-    minZoom: 3,
-    crossOrigin: true,
-    updateWhenIdle: true,
-    updateWhenZooming: false,
-    keepBuffer: 3,
-    detectRetina: false
+  attribution: '',
+  maxZoom: 20,
+  maxNativeZoom: 18,
+  minZoom: 3,
+  crossOrigin: true,
+  // zoom paytida eski plitkani cho‘zib xiralashtirmaslik
+  updateWhenIdle: false,
+  updateWhenZooming: true,
+  keepBuffer: 4,
+  detectRetina: true,
+  errorTileUrl:
+    'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 };
 
 function vmAddMapTiles(map) {
-    if (!map || typeof L === 'undefined') return null;
-    let idx = 0;
-    let active = null;
-    let failCount = 0;
+  if (!map || typeof L === 'undefined') return null;
 
-    function mount(i) {
-        const src = VM_TILE_SOURCES[i];
-        if (!src) return null;
-        const opts = Object.assign({}, VM_TILE_OPTS);
-        if (src.subdomains) opts.subdomains = src.subdomains;
-        if (src.maxZoom != null) opts.maxZoom = src.maxZoom;
-        if (src.maxNativeZoom != null) opts.maxNativeZoom = src.maxNativeZoom;
-        const layer = L.tileLayer(src.url, opts);
-        let switched = false;
-        layer.on('tileerror', () => {
-            failCount += 1;
-            if (switched || idx !== i || failCount < 6) return;
-            switched = true;
-            failCount = 0;
-            try { map.removeLayer(layer); } catch (e) {}
-            idx = i + 1;
-            active = mount(idx);
-        });
-        layer.on('load', () => { failCount = 0; });
-        layer.addTo(map);
-        return layer;
-    }
+  const state = {
+    idx: 0,
+    layer: null,
+    failBurst: 0,
+    failWindowAt: 0,
+    switchedAt: 0,
+    healTimer: 0
+  };
+  map._vmTileState = state;
 
-    try {
-        if (map.setMaxZoom) map.setMaxZoom(20);
-    } catch (e) {}
+  function mount(i) {
+    const src = VM_TILE_SOURCES[i];
+    if (!src) return null;
+    const opts = Object.assign({}, VM_TILE_OPTS);
+    if (src.subdomains) opts.subdomains = src.subdomains;
+    if (src.maxZoom != null) opts.maxZoom = src.maxZoom;
+    if (src.maxNativeZoom != null) opts.maxNativeZoom = src.maxNativeZoom;
+    const layer = L.tileLayer(src.url, opts);
+    let switched = false;
 
-    active = mount(0);
-    return active;
+    layer.on('tileerror', () => {
+      const now = Date.now();
+      if (now - state.failWindowAt > 4000) {
+        state.failWindowAt = now;
+        state.failBurst = 0;
+      }
+      state.failBurst += 1;
+      // 3 ta xato / 4s — keyingi CDN
+      if (switched || state.idx !== i || state.failBurst < 3) return;
+      if (now - state.switchedAt < 2500) return;
+      switched = true;
+      state.switchedAt = now;
+      state.failBurst = 0;
+      try {
+        map.removeLayer(layer);
+      } catch (e) {}
+      state.idx = i + 1;
+      state.layer = mount(state.idx);
+      map._vmTileLayer = state.layer;
+    });
+
+    layer.on('load', () => {
+      state.failBurst = 0;
+    });
+
+    layer.addTo(map);
+    return layer;
+  }
+
+  try {
+    if (map.setMaxZoom) map.setMaxZoom(20);
+  } catch (e) {}
+
+  state.layer = mount(0);
+  map._vmTileLayer = state.layer;
+  return state.layer;
+}
+
+/** Yangilash / tab qaytganda — plitkalarni qayta tortish */
+function vmHealMapTiles(map) {
+  if (!map) return;
+  try {
+    map.invalidateSize({ pan: false });
+  } catch (e) {}
+  const layer = map._vmTileLayer;
+  if (!layer) return;
+  try {
+    if (typeof layer.redraw === 'function') layer.redraw();
+  } catch (e) {}
 }
 
 function vmDefer(fn, ms) {
-    const wait = ms == null ? 320 : ms;
-    return new Promise(resolve => {
-        const run = () => {
-            try {
-                resolve(typeof fn === 'function' ? fn() : undefined);
-            } catch (e) {
-                resolve(undefined);
-            }
-        };
-        if (typeof requestIdleCallback === 'function') {
-            requestIdleCallback(run, { timeout: wait + 400 });
-        } else {
-            setTimeout(run, wait);
-        }
-    });
+  const wait = ms == null ? 320 : ms;
+  return new Promise((resolve) => {
+    const run = () => {
+      try {
+        resolve(typeof fn === 'function' ? fn() : undefined);
+      } catch (e) {
+        resolve(undefined);
+      }
+    };
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(run, { timeout: wait + 400 });
+    } else {
+      setTimeout(run, wait);
+    }
+  });
 }
 
 window.vmAddMapTiles = vmAddMapTiles;
+window.vmHealMapTiles = vmHealMapTiles;
 window.vmDefer = vmDefer;
