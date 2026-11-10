@@ -19,10 +19,10 @@ const LIVE = {
 };
 
 const LIVE_KIND_SRC = {
-  truck: '/assets/live/icon-truck.png?v=3',
-  damas: '/assets/live/icon-damas.png?v=3',
-  labo: '/assets/live/icon-labo.png?v=3',
-  car: '/assets/live/icon-car.png?v=1',
+  truck: '/assets/live/icon-truck.png?v=5',
+  damas: '/assets/live/icon-damas.png?v=5',
+  labo: '/assets/live/icon-labo.png?v=5',
+  car: '/assets/live/icon-car.png?v=5',
 };
 
 /* Ikonka faylida old tomon YUQORIGA qaragan (0° = shimol). */

@@ -430,22 +430,32 @@ body.app-body {
 }
 .live-unit {
   position: relative;
-  width: 44px;
-  height: 58px;
+  width: 46px;
+  height: 60px;
   display: grid;
   place-items: center;
   transform-origin: 50% 50%;
   transition: transform .35s linear;
-  filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
+  /* faqat soyasi — quti/fon yo‘q */
+  filter: drop-shadow(0 1px 2px rgba(11,31,58,.45)) drop-shadow(0 3px 8px rgba(11,31,58,.22));
+  background: transparent !important;
 }
 .live-unit-img {
-  width: 40px;
-  height: 56px;
+  width: 42px;
+  height: 58px;
   object-fit: contain;
   display: block;
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  /* PNG shaffof; qora fon qolsa ham aralashtirib yashirish */
+  mix-blend-mode: normal;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
 }
 .live-unit-img.offline { filter: grayscale(.85) brightness(1.05); opacity: .88; }
 .live-unit-img.moving { filter: saturate(1.08) contrast(1.02); }
@@ -507,16 +517,23 @@ body.app-body {
   margin-top: 2px;
   font: 800 10px/1 'IBM Plex Mono', monospace;
   color: #0f8a38;
-  background: rgba(255,255,255,.92);
-  border: 1px solid #9fd4b0;
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(159,212,176,.85);
   border-radius: 999px;
   padding: 2px 7px;
   white-space: nowrap;
   box-shadow: 0 1px 4px rgba(11,31,58,.12);
   z-index: 5;
 }
+/* holat — yumshoq yashil nur (quti emas) */
 .live-marker.moving .live-unit {
-  filter: drop-shadow(0 0 6px rgba(34,197,94,.55)) drop-shadow(0 2px 3px rgba(0,0,0,.35));
+  filter: drop-shadow(0 0 5px rgba(34,197,94,.5)) drop-shadow(0 1px 2px rgba(11,31,58,.4)) drop-shadow(0 3px 8px rgba(11,31,58,.2));
+}
+.live-marker.stopped .live-unit {
+  filter: drop-shadow(0 0 4px rgba(26,95,180,.35)) drop-shadow(0 1px 2px rgba(11,31,58,.4)) drop-shadow(0 3px 8px rgba(11,31,58,.2));
+}
+.live-marker.offline .live-unit {
+  filter: drop-shadow(0 1px 2px rgba(11,31,58,.3)) grayscale(.2);
 }
 .live-marker {
   width: 78px;
@@ -750,6 +767,6 @@ body.app-body {
 <script src="auth.js?v=44"></script>
 <script src="map-tiles.js?v=8"></script>
 <script src="map-geozones.js?v=5"></script>
-<script src="live.js?v=18"></script>
+<script src="live.js?v=19"></script>
 </body>
 </html>
