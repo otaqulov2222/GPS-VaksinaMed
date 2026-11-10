@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "VAKSINA MED GPS",
-  "short_name": "VaksinaGPS",
+  "name": "GPS",
+  "short_name": "GPS",
   "description": "VaksinaMed GPS · Davomat · Park nazorati",
   "start_url": "/login",
   "scope": "/",

@@ -29,8 +29,8 @@
       addMeta('apple-mobile-web-app-capable', 'yes');
       addMeta('mobile-web-app-capable', 'yes');
       addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
-      addMeta('apple-mobile-web-app-title', 'VaksinaGPS');
-      addMeta('application-name', 'VaksinaGPS');
+      addMeta('apple-mobile-web-app-title', 'GPS');
+      addMeta('application-name', 'GPS');
       // Eski Vite \"V\" / eski favicon linklarini olib tashlash
       try {
         head.querySelectorAll('link[rel=\"icon\"], link[rel=\"shortcut icon\"], link[rel=\"apple-touch-icon\"]').forEach(function (n) {
