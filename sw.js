@@ -1,16 +1,16 @@
 /* VaksinaMed PWA — shell cache (API hech qachon keshlanmaydi). */
 /* v3: eski v1/v2 keshlarini TO‘LIQ tozalaydi (eski "API key" xarita versiyasi
    qurilmalarda qotib qolgan edi); JS/CSS endi har doim tarmoqdan. */
-const CACHE = 'vm-shell-v3';
+const CACHE = 'vm-shell-v5';
 const PRECACHE = [
   '/offline.html',
-  '/logo/apple-touch-icon.png?v=4',
-  '/logo/icon-192.png?v=4',
-  '/logo/icon-512.png?v=4',
-  '/logo/favicon-32.png?v=4',
-  '/logo/mark.svg?v=4',
-  '/favicon.ico?v=4',
-  '/site.webmanifest?v=4',
+  '/logo/apple-touch-icon.png?v=5',
+  '/logo/icon-192.png?v=5',
+  '/logo/icon-512.png?v=5',
+  '/logo/favicon-32.png?v=5',
+  '/logo/favicon-pin.svg?v=5',
+  '/favicon.ico?v=5',
+  '/site.webmanifest?v=5',
   '/canonical-url.js',
 ];
 

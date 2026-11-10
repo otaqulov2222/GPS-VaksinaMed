@@ -37,13 +37,13 @@
           n.parentNode.removeChild(n);
         });
       } catch (eRm) { /* ignore */ }
-      addLink('manifest', '/site.webmanifest?v=4');
-      addLink('apple-touch-icon', '/logo/apple-touch-icon.png?v=4', '180x180');
-      // Brand mark — Vite ko‘k \"V\" emas
-      addLink('icon', '/logo/mark.svg?v=4', null, 'image/svg+xml');
-      addLink('icon', '/logo/favicon-32.png?v=4', '32x32', 'image/png');
-      addLink('icon', '/logo/icon-192.png?v=4', '192x192', 'image/png');
-      addLink('shortcut icon', '/favicon.ico?v=4');
+      addLink('manifest', '/site.webmanifest?v=5');
+      addLink('apple-touch-icon', '/logo/apple-touch-icon.png?v=5', '180x180');
+      // Lokatsiya pin — fonsiz (qora/navy kvadrat YO‘Q)
+      addLink('icon', '/logo/favicon-pin.svg?v=5', null, 'image/svg+xml');
+      addLink('icon', '/logo/favicon-32.png?v=5', '32x32', 'image/png');
+      addLink('icon', '/logo/icon-192.png?v=5', '192x192', 'image/png');
+      addLink('shortcut icon', '/favicon.ico?v=5');
       void box;
     }
   } catch (e) { /* ignore */ }
@@ -75,7 +75,7 @@
     var okProto = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if (okProto && 'serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/sw.js?v=4', { scope: '/' }).catch(function () { /* ignore */ });
+        navigator.serviceWorker.register('/sw.js?v=5', { scope: '/' }).catch(function () { /* ignore */ });
       });
     }
   } catch (e2) { /* ignore */ }
