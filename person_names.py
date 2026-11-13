@@ -75,3 +75,49 @@ def short_from_person_name(name):
     if parts:
         return parts[0][:40]
     return str(name or "").strip()[:40]
+
+
+def compact_plate_key(plate):
+    return re.sub(r"[\s/\-_]+", "", str(plate or "")).upper()
+
+
+def driver_name_on_date(vehicles, plate, date, current_name=""):
+    """
+    Mashina bo'yicha sanadagi haydovchi (nameHistory + joriy name).
+    Misol: 592 da 12-gacha Avazbek, 13-dan Sharipov — 12-sana → Avazbek.
+    """
+    fallback = normalize_person_name(current_name) or str(current_name or "").strip()
+    if not isinstance(vehicles, dict):
+        return fallback
+    want = compact_plate_key(plate)
+    if not want:
+        return fallback
+    rec = None
+    for k, v in vehicles.items():
+        if compact_plate_key(k) == want and isinstance(v, dict):
+            rec = v
+            break
+    if not rec:
+        return fallback
+    cur = normalize_person_name(rec.get("name") or "") or str(rec.get("name") or "").strip() or fallback
+    hist = [
+        h
+        for h in (rec.get("nameHistory") or [])
+        if isinstance(h, dict) and str(h.get("fromDate") or "").strip()[:10] and str(h.get("name") or "").strip()
+    ]
+    if not hist:
+        return cur
+    hist.sort(key=lambda h: str(h.get("fromDate") or "")[:10])
+    d = str(date or "").strip()[:10]
+    if not d:
+        return cur
+    first_fd = str(hist[0].get("fromDate") or "")[:10]
+    if d < first_fd:
+        prev = normalize_person_name(hist[0].get("prevName") or "") or str(hist[0].get("prevName") or "").strip()
+        return prev or cur
+    chosen = None
+    for h in hist:
+        fd = str(h.get("fromDate") or "")[:10]
+        if fd and fd <= d:
+            chosen = normalize_person_name(h.get("name") or "") or str(h.get("name") or "").strip()
+    return chosen or cur

@@ -3607,7 +3607,13 @@ class OfficeStore:
                 old = str(u.get("name") or "").strip()
                 if old == nm:
                     continue
+                # Eski F.I.O. saqlansin (tabel match / tarix qidiruv)
+                aliases = [str(a).strip() for a in (u.get("aliases") or []) if str(a).strip()]
+                if old and old not in aliases and old != nm:
+                    aliases.append(old)
+                u["aliases"] = aliases[-12:]
                 u["name"] = nm
+                u["nameUpdatedAt"] = iso_now()
                 changed = True
                 n += 1
             if changed:
@@ -4966,7 +4972,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             # Faqat faol haydovchi + adminlar (Admin Pro davomat ro'yxatida ko'rinmaydi)
             users = [u for u in users if u.get("active", True)]
             users = attendance_roster(users)
-            self.send_json({"ok": True, **ATTENDANCE.board(date, users)})
+            vehicles = (OFFICE.fuel_meta() or {}).get("vehicles") if OFFICE else {}
+            self.send_json({"ok": True, **ATTENDANCE.board(date, users, vehicles=vehicles)})
             return
 
         if path == "/api/attendance/history":
@@ -5008,7 +5015,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 month = att_mod.today_str()[:7]
             users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
             users = attendance_roster(users)
-            self.send_json({"ok": True, **ATTENDANCE.month_report(month, users)})
+            vehicles = (OFFICE.fuel_meta() or {}).get("vehicles") if OFFICE else {}
+            self.send_json({"ok": True, **ATTENDANCE.month_report(month, users, vehicles=vehicles)})
             return
 
         if path == "/api/attendance/hisobot":
@@ -5025,7 +5033,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             date_to = (qs.get("to") or [""])[0]
             users = [u for u in STORE.list_users(viewer_role=sess.get("role")) if u.get("active", True)]
             users = attendance_roster(users)
-            res = ATTENDANCE.hisobot(period, users, date=date, date_from=date_from, date_to=date_to)
+            vehicles = (OFFICE.fuel_meta() or {}).get("vehicles") if OFFICE else {}
+            res = ATTENDANCE.hisobot(
+                period, users, date=date, date_from=date_from, date_to=date_to, vehicles=vehicles
+            )
             res["departures"] = departures_for_users(users, res.get("dates") or [])
             self.send_json({"ok": True, **res})
             return
@@ -6603,6 +6614,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 challenge=body.get("challenge"),
                 descriptor=body.get("descriptor"),
                 qr_ticket=body.get("qrTicket") or body.get("qr_ticket"),
+                car=str(sess.get("car") or ""),
             )
             if err:
                 self.send_json({"ok": False, "error": err}, 400)

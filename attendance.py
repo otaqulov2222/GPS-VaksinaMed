@@ -1070,9 +1070,10 @@ class AttendanceStore:
         challenge: str | None = None,
         descriptor=None,
         qr_ticket: str | None = None,
+        car: str = "",
     ) -> tuple[dict | None, str | None]:
         settings = self.settings_for_user(
-            {"id": user_id, "username": username, "name": name, "role": role}
+            {"id": user_id, "username": username, "name": name, "role": role, "car": car}
         )
         if not settings.get("enabled", True):
             return None, "Davomat hozir o'chirilgan"
@@ -1173,9 +1174,20 @@ class AttendanceStore:
                     "username": str(username or "")[:60],
                     "name": str(name or "")[:80],
                     "role": str(role or "")[:20],
+                    "car": str(car or "")[:32],
                     "in": None,
                     "out": None,
                 }
+            # Kunlik snapshot: shu kun kim kelgani / qaysi mashina (keyin almashtirilsa ham)
+            if kind == "in":
+                if name:
+                    urec["name"] = str(name)[:80]
+                if username:
+                    urec["username"] = str(username)[:60]
+                if car:
+                    urec["car"] = str(car)[:32]
+            elif not urec.get("car") and car:
+                urec["car"] = str(car)[:32]
             if kind == "in" and urec.get("in"):
                 return None, "Bugun kirish allaqachon qayd etilgan"
             if kind == "out":
@@ -1268,6 +1280,8 @@ class AttendanceStore:
                 {
                     "date": d,
                     "status": status,
+                    "name": rec.get("name") or "",
+                    "car": rec.get("car") or "",
                     "in": inn,
                     "out": out,
                     "worked_sec": worked,
@@ -1300,7 +1314,7 @@ class AttendanceStore:
     def roster_users(cls, users: list | None) -> list:
         return [u for u in (users or []) if not cls.is_hidden_from_roster(u)]
 
-    def board(self, date: str, users: list) -> dict:
+    def board(self, date: str, users: list, vehicles=None) -> dict:
         users = self.roster_users(users)
         day = self.day_records(date)
         rows = []
@@ -1311,7 +1325,7 @@ class AttendanceStore:
             rec = day.get(uid) if isinstance(day.get(uid), dict) else {}
             inn = self._strip_punch(rec.get("in") if isinstance(rec.get("in"), dict) else None)
             out = self._strip_punch(rec.get("out") if isinstance(rec.get("out"), dict) else None)
-            row = self._row_from_punches(u, date, inn, out, rec)
+            row = self._row_from_punches(u, date, inn, out, rec, vehicles=vehicles)
             rows.append(row)
         counts = {
             "total": len(rows),
@@ -1423,7 +1437,30 @@ class AttendanceStore:
             return "Admin"
         return role or "Xodim"
 
-    def _row_from_punches(self, u: dict, date: str, inn, out, urec: dict | None = None) -> dict:
+    def _resolve_row_identity(self, u: dict, date: str, urec: dict, vehicles=None) -> tuple[str, str, str]:
+        """
+        Ko'rsatish uchun ism/mashina:
+        1) kunlik snapshot (urec) — almashtirishdan keyin ham eski kun saqlanadi
+        2) NARX nameHistory bo'yicha shu sanadagi haydovchi
+        3) joriy user
+        """
+        urec = urec if isinstance(urec, dict) else {}
+        u = u if isinstance(u, dict) else {}
+        car = str(urec.get("car") or u.get("car") or "")[:32]
+        username = str(urec.get("username") or u.get("username") or "")[:60]
+        name = str(urec.get("name") or "").strip()
+        if not name and vehicles is not None and car:
+            try:
+                from person_names import driver_name_on_date
+
+                name = driver_name_on_date(vehicles, car, date, u.get("name") or "")
+            except Exception:
+                name = ""
+        if not name:
+            name = str(u.get("name") or "")[:80]
+        return name[:80], car, username
+
+    def _row_from_punches(self, u: dict, date: str, inn, out, urec: dict | None = None, vehicles=None) -> dict:
         urec = urec if isinstance(urec, dict) else {}
         uid = str(u.get("id") or "")
         status_override = str(urec.get("statusOverride") or "").strip().lower()
@@ -1458,13 +1495,15 @@ class AttendanceStore:
             or (out and (out.get("remote") or out.get("method") == "remote"))
         )
 
+        name, car, username = self._resolve_row_identity(u, date, urec, vehicles)
+
         return {
             "userId": uid,
-            "username": u.get("username"),
-            "name": u.get("name"),
+            "username": username or u.get("username"),
+            "name": name,
             "role": u.get("role"),
             "lavozim": self._lavozim(u),
-            "car": u.get("car") or "",
+            "car": car,
             "date": date,
             "status": status,
             "remote": remote,
@@ -1574,9 +1613,14 @@ class AttendanceStore:
                     "username": str(meta.get("username") or "")[:60],
                     "name": str(meta.get("name") or "")[:80],
                     "role": str(meta.get("role") or "")[:20],
+                    "car": str(meta.get("car") or "")[:32],
                     "in": None,
                     "out": None,
                 }
+            if meta.get("name"):
+                urec["name"] = str(meta.get("name") or "")[:80]
+            if meta.get("car"):
+                urec["car"] = str(meta.get("car") or "")[:32]
 
             urec.pop("statusOverride", None)
 
@@ -1832,7 +1876,7 @@ class AttendanceStore:
             n += 1
         return out
 
-    def hisobot(self, period: str, users: list, date: str = "", date_from: str = "", date_to: str = "") -> dict:
+    def hisobot(self, period: str, users: list, date: str = "", date_from: str = "", date_to: str = "", vehicles=None) -> dict:
         """Kunlik / haftalik / oylik / oralik — xodim qatorlari + kech/erta metrikalari."""
         users = self.roster_users(users)
         today = today_str()
@@ -1886,7 +1930,7 @@ class AttendanceStore:
                 # Multi-day: faqat kelganlarni ko‘rsatish (bo‘sh qatorlarni kesish) — oylik/hafta uchun
                 if show_date_col and not inn and not out and not urec.get("statusOverride"):
                     continue
-                rows.append(self._row_from_punches(u, dd, inn, out, urec))
+                rows.append(self._row_from_punches(u, dd, inn, out, urec, vehicles=vehicles))
 
         # Kunlik: barcha xodimlar (yo‘qlik ham)
         if not show_date_col:
@@ -2002,7 +2046,7 @@ class AttendanceStore:
         except Exception:
             return None
 
-    def month_report(self, month: str, users: list) -> dict:
+    def month_report(self, month: str, users: list, vehicles=None) -> dict:
         """Admin: oy bo'yicha jamoa hisoboti + KPI."""
         users = self.roster_users(users)
         dates = self._month_dates(month)
@@ -2110,7 +2154,7 @@ class AttendanceStore:
             am = int(sum(arrival_mins) / len(arrival_mins))
             avg_arrival = f"{am // 60:02d}:{am % 60:02d}"
 
-        today_board = self.board(today_str(), users)
+        today_board = self.board(today_str(), users, vehicles=vehicles)
         return {
             "month": month,
             "dates": [d for d in dates if d <= today_str()],
@@ -2180,10 +2224,14 @@ class AttendanceStore:
                     "date": d,
                     "weekday": datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=TZ).strftime("%a"),
                     "status": status,
+                    "name": (urec or {}).get("name") or meta.get("name") or "",
+                    "car": (urec or {}).get("car") or meta.get("car") or "",
                     "inAt": self._hhmmss_from_iso(inn.get("at") if inn else None),
                     "outAt": self._hhmmss_from_iso(out.get("at") if out else None),
                     "late": status == "late",
                     "worked_sec": ws,
+                    "in": inn,
+                    "out": out,
                     "distance_m": (inn or {}).get("distance_m") if inn else None,
                     "note": (inn or {}).get("note") if inn else None,
                 }

@@ -3147,11 +3147,12 @@
                 </div>
                 <div class="scroll-x">
                 <table class="att-table dash-table hist-table">
-                  <thead><tr><th>Sana</th><th>Keldim</th><th>Ketdim</th><th>Ish vaqti</th><th>Holat</th></tr></thead>
+                  <thead><tr><th>Sana</th><th>Ism / mashina</th><th>Keldim</th><th>Ketdim</th><th>Ish vaqti</th><th>Holat</th></tr></thead>
                   <tbody>
                     ${history.map((r) => `
                       <tr class="dash-row status-${esc(statusBadgeClass(r.status))}">
                         <td>${fmtDate(r.date)}</td>
+                        <td>${esc(r.name || '—')}${r.car ? `<div class="att-sub">${esc(r.car)}</div>` : ''}</td>
                         <td class="mono">${r.in ? punchTime(r.in) + (r.late || (r.in && r.in.late) ? ' · kech' : '') : '—'}</td>
                         <td class="mono">${r.out ? punchTime(r.out) : '—'}</td>
                         <td class="mono">${r.worked_sec != null ? fmtDur(r.worked_sec) : (r.in && !r.out ? '…' : '—')}</td>
