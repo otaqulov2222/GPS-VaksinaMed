@@ -1248,7 +1248,7 @@ function readCarsTableToMeta() {
       }
       if (k === 'name') {
         const nm = String(el.value || '').trim();
-        rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).pop() || '')) || rec.short;
+        rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).filter(Boolean)[0] || '')) || rec.short;
       }
       if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType') {
         getCar(plate)[k] = rec[k];
@@ -1458,8 +1458,15 @@ async function saveMeta() {
     const rec = STATE.meta.vehicles[plate];
     if (!rec || typeof rec !== 'object') return;
     if (!String(rec.name || '').trim()) rec.name = plate;
-    if (!String(rec.short || '').trim()) {
-      rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(rec.name) : '') || rec.name;
+    if (typeof fleetNormalizePersonName === 'function') {
+      rec.name = fleetNormalizePersonName(rec.name) || rec.name;
+    }
+    const looksPlate = /^\d{2}\b/.test(String(rec.name || ''));
+    const shortNow = String(rec.short || '').trim();
+    const wantShort = (typeof fleetShortFromName === 'function' ? fleetShortFromName(rec.name) : '') || rec.name;
+    const badShort = !shortNow || (typeof fleetIsPatronymicToken === 'function' && fleetIsPatronymicToken(shortNow));
+    if (!looksPlate || badShort) {
+      rec.short = wantShort;
     }
   });
   const d = await vmApi('/api/office/fuel/meta', {
@@ -1507,7 +1514,7 @@ function applyCarField(plate, el) {
   }
   if (k === 'name') {
     const nm = String(el.value || '').trim();
-    rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).pop() || '')) || rec.short;
+    rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(nm) : (nm.split(/\s+/).filter(Boolean)[0] || '')) || rec.short;
   }
   if (k === 'gasNorm' || k === 'benzinNorm' || k === 'gasPrice' || k === 'benzinPrice' || k === 'fuelType' || k === 'mixPct' || k === 'mixLiqPct') {
     const car = getCar(plate);
@@ -3380,7 +3387,7 @@ function renderCars() {
     });
     const rec = ensureVehicleMeta(car);
     rec.name = name;
-    rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(name) : (name.split(' ').pop() || '')) || name;
+    rec.short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(name) : (name.split(/\s+/).filter(Boolean)[0] || '')) || name;
     rec.brand = brand;
     rec.hidden = false;
     if (!Array.isArray(rec.nameHistory)) rec.nameHistory = [];
@@ -4036,7 +4043,10 @@ async function commitDriverRename() {
   const dateEl = document.getElementById('drv-rn-date');
   const basisEl = document.getElementById('drv-rn-basis');
   const noEl = document.getElementById('drv-rn-orderno');
-  const newName = String((nameEl && nameEl.value) || '').trim();
+  let newName = String((nameEl && nameEl.value) || '').trim();
+  if (typeof fleetNormalizePersonName === 'function') {
+    newName = fleetNormalizePersonName(newName) || newName;
+  }
   const fromDate = String((dateEl && dateEl.value) || '').trim().slice(0, 10);
   const orderBasis = String((basisEl && basisEl.value) || '').trim();
   const orderNo = String((noEl && noEl.value) || '').trim();
@@ -4062,7 +4072,8 @@ async function commitDriverRename() {
   }
 
   const rec = ensureVehicleMeta(plate);
-  const short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(newName) : (newName.split(/\s+/).pop() || '')) || newName;
+  const cleanName = (typeof fleetNormalizePersonName === 'function' ? fleetNormalizePersonName(newName) : newName) || newName;
+  const short = (typeof fleetShortFromName === 'function' ? fleetShortFromName(cleanName) : (cleanName.split(/\s+/).filter(Boolean)[0] || '')) || cleanName;
 
   if (mode === 'edit') {
     rec.nameHistory = Array.isArray(rec.nameHistory) ? rec.nameHistory : [];
@@ -4071,7 +4082,7 @@ async function commitDriverRename() {
       return;
     }
     const last = rec.nameHistory[rec.nameHistory.length - 1];
-    last.name = newName;
+    last.name = cleanName;
     last.short = short;
     last.fromDate = fromDate;
     last.orderBasis = orderBasis;
@@ -4079,10 +4090,10 @@ async function commitDriverRename() {
     last.at = new Date().toISOString().slice(0, 19);
     last.by = (window.VMAuth && VMAuth.user && (VMAuth.user.username || VMAuth.user.name || VMAuth.user.login)) || last.by || '';
     if (!last.prevName) last.prevName = oldName;
-    rec.name = newName;
+    rec.name = cleanName;
     rec.short = short;
   } else {
-    if (namesEqual(newName, oldName)) {
+    if (namesEqual(cleanName, oldName)) {
       toast('Saqlanmadi: YANGI ism HOZIRGIdan farq qilishi kerak');
       if (nameEl) {
         nameEl.classList.add('invalid');
@@ -4093,7 +4104,7 @@ async function commitDriverRename() {
       return;
     }
     const entry = {
-      name: newName,
+      name: cleanName,
       short,
       fromDate,
       orderBasis,
@@ -4105,7 +4116,7 @@ async function commitDriverRename() {
     rec.nameHistory = Array.isArray(rec.nameHistory) ? rec.nameHistory : [];
     rec.nameHistory.push(entry);
     if (rec.nameHistory.length > 40) rec.nameHistory = rec.nameHistory.slice(-40);
-    rec.name = newName;
+    rec.name = cleanName;
     rec.short = short;
 
     const day = n(fromDate.slice(8, 10)) || 1;
@@ -4115,7 +4126,7 @@ async function commitDriverRename() {
       car.driverChanges = car.driverChanges || [];
       car.driverChanges.push({
         day,
-        name: newName,
+        name: cleanName,
         fromDate,
         orderBasis,
         orderNo
@@ -4127,7 +4138,7 @@ async function commitDriverRename() {
   document.querySelectorAll('#panel-cars tr[data-plate]').forEach(tr => {
     if (tr.getAttribute('data-plate') !== plate) return;
     const inp = tr.querySelector('input[data-v="name"]');
-    if (inp) inp.value = newName;
+    if (inp) inp.value = cleanName;
   });
 
   closeDriverRenameModal();

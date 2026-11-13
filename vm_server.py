@@ -244,6 +244,13 @@ def compact_plate(plate):
     return re.sub(r"\s+", "", str(plate or "").upper())
 
 
+from person_names import (  # noqa: E402
+    is_patronymic_token,
+    normalize_person_name,
+    short_from_person_name,
+)
+
+
 def retired_plates():
     try:
         from gps_sync import retired_plates as _retired
@@ -251,6 +258,40 @@ def retired_plates():
         return _retired(DIRECTORY)
     except Exception:
         return frozenset()
+
+
+def overlay_fleet_driver_names(users):
+    """NARX/fuel_meta joriy haydovchi ismini user.name ustiga qo'yish (nusxa)."""
+    users = list(users or [])
+    try:
+        if not OFFICE:
+            return users
+        vehicles = (OFFICE.fuel_meta() or {}).get("vehicles") or {}
+        if not isinstance(vehicles, dict):
+            return users
+        by_car = {}
+        for plate, rec in vehicles.items():
+            if not isinstance(rec, dict):
+                continue
+            nm = normalize_person_name(rec.get("name") or "")
+            if not nm:
+                continue
+            by_car[compact_plate(plate)] = nm
+        if not by_car:
+            return users
+        out = []
+        for u in users:
+            row = dict(u) if isinstance(u, dict) else u
+            if isinstance(row, dict) and row.get("role") == "driver":
+                ck = compact_plate(row.get("car"))
+                if ck and ck in by_car:
+                    row = dict(row)
+                    row["name"] = by_car[ck]
+                    row["nameFromFleet"] = True
+            out.append(row)
+        return out
+    except Exception:
+        return users
 
 
 def attendance_roster(users):
@@ -262,7 +303,7 @@ def attendance_roster(users):
     ]
     if ATTENDANCE and hasattr(ATTENDANCE, "roster_users"):
         users = ATTENDANCE.roster_users(users)
-    return users
+    return overlay_fleet_driver_names(users)
 
 
 def car_users(plate, users=None):
@@ -2406,6 +2447,39 @@ class OfficeStore:
         )
         if isinstance(data.get("docs"), list):
             data["docs"] = {}
+        # Eski xato short ('o\'g\'li'/ism) → boshidagi so'z; buyruq '-га' ni tozalash
+        vehicles = data.get("vehicles")
+        if isinstance(vehicles, dict) and vehicles:
+            dirty = False
+            for rec in vehicles.values():
+                if not isinstance(rec, dict):
+                    continue
+                raw_name = str(rec.get("name") or "").strip()
+                if not raw_name:
+                    continue
+                name = normalize_person_name(raw_name)
+                short_in = str(rec.get("short") or "").strip()
+                # Raqam-nom (01 567 SGA) — shortni majburiy almashtirmaymiz
+                if re.match(r"^\d{2}\b", name):
+                    short = short_in or short_from_person_name(name)
+                else:
+                    short = short_from_person_name(name)
+                if name != raw_name or short != short_in:
+                    rec["name"] = name
+                    rec["short"] = short
+                    dirty = True
+            if dirty and not getattr(self, "_fuel_meta_name_repairing", False):
+                self._fuel_meta_name_repairing = True
+                try:
+                    self._save("fuel:meta", data)
+                    try:
+                        n = self.sync_driver_users_from_vehicles(vehicles)
+                        if n:
+                            print("[fuel-meta] repaired names + synced users:", n)
+                    except Exception as e:
+                        print("[fuel-meta-repair-sync]", e)
+                finally:
+                    self._fuel_meta_name_repairing = False
         return data
 
     def cheks_store(self):
@@ -2611,13 +2685,15 @@ class OfficeStore:
                 ft = str(rec.get("fuelType") or "mixed")[:12]
                 if ft not in ("mixed", "gaz", "benzin", "dizel", "dizel_gaz"):
                     ft = "mixed"
-                name = str(rec.get("name") or "").strip()[:80]
+                name = normalize_person_name(str(rec.get("name") or "").strip()[:80])
                 if not name:
                     name = p
-                short = str(rec.get("short") or "").strip()[:40]
-                if not short:
-                    parts = name.split()
-                    short = (parts[-1] if parts else name)[:40]
+                short_in = str(rec.get("short") or "").strip()[:40]
+                # Qisqa ism — boshidagi so'z (oxiridagi o'g'li emas)
+                if re.match(r"^\d{2}\b", name):
+                    short = short_in or short_from_person_name(name)
+                else:
+                    short = short_from_person_name(name)
                 entry = {
                     "name": name,
                     "short": short,
@@ -2649,13 +2725,14 @@ class OfficeStore:
                 for hi, h in enumerate(hist_in):
                     if hi >= 40 or not isinstance(h, dict):
                         continue
-                    nm = str(h.get("name") or "").strip()[:80]
+                    nm = normalize_person_name(str(h.get("name") or "").strip()[:80])
                     if not nm:
                         continue
+                    hs = short_from_person_name(nm)
                     cleaned_hist.append(
                         {
                             "name": nm,
-                            "short": str(h.get("short") or "")[:40],
+                            "short": hs,
                             "fromDate": str(h.get("fromDate") or "")[:10],
                             "orderBasis": str(h.get("orderBasis") or h.get("buyruq") or "")[:120],
                             "orderNo": str(h.get("orderNo") or h.get("buyruqNo") or "")[:40],
@@ -2776,6 +2853,14 @@ class OfficeStore:
 
             cur["docs"] = merged_docs
         self._save("fuel:meta", cur)
+        # Mashina NARX dagi haydovchi → Davomat/login user ismi
+        try:
+            veh = cur.get("vehicles") if isinstance(cur.get("vehicles"), dict) else {}
+            n = self.sync_driver_users_from_vehicles(veh)
+            if n:
+                print("[fuel-meta] driver user names synced:", n)
+        except Exception as e:
+            print("[fuel-meta-sync-users]", e)
         try:
             import gps_sync
 
@@ -3481,11 +3566,11 @@ class OfficeStore:
         out = dict(drv) if isinstance(drv, dict) else {}
         if not rec or not str(rec.get("name") or "").strip():
             return out
-        name = str(rec.get("name") or "").strip()[:80]
-        short = str(rec.get("short") or "").strip()[:40]
-        if not short:
-            parts = name.split()
-            short = parts[-1] if parts else name
+        name = normalize_person_name(str(rec.get("name") or "").strip()[:80])
+        if re.match(r"^\d{2}\b", name):
+            short = str(rec.get("short") or "").strip()[:40] or short_from_person_name(name)
+        else:
+            short = short_from_person_name(name)
         out["fullName"] = name
         out["name"] = name
         out["shortName"] = short
@@ -3493,6 +3578,47 @@ class OfficeStore:
         if brand:
             out["brand"] = brand
         return out
+
+    def sync_driver_users_from_vehicles(self, vehicles):
+        """NARX da haydovchi almashtirilsa — shu mashina login userining ismini yangilash."""
+        if not STORE or not isinstance(vehicles, dict):
+            return 0
+        by_car = {}
+        for plate, rec in vehicles.items():
+            if not isinstance(rec, dict):
+                continue
+            nm = normalize_person_name(rec.get("name") or "")
+            if not nm:
+                continue
+            by_car[compact_plate(plate)] = nm
+        if not by_car:
+            return 0
+        n = 0
+        with STORE.lock:
+            data = STORE._read()
+            changed = False
+            for u in data.get("users") or []:
+                if not isinstance(u, dict) or u.get("role") != "driver":
+                    continue
+                ck = compact_plate(u.get("car"))
+                nm = by_car.get(ck)
+                if not nm:
+                    continue
+                old = str(u.get("name") or "").strip()
+                if old == nm:
+                    continue
+                u["name"] = nm
+                changed = True
+                n += 1
+            if changed:
+                STORE._write(data)
+                for s in STORE.sessions.values():
+                    if not isinstance(s, dict):
+                        continue
+                    ck = compact_plate(s.get("car"))
+                    if ck and ck in by_car:
+                        s["name"] = by_car[ck]
+        return n
 
     def _fleet_pharmacy_names(self, plate):
         try:
@@ -4995,7 +5121,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             sess = self.require_ops_read()
             if not sess:
                 return
-            self.send_json({"ok": True, "users": STORE.list_users(viewer_role=sess.get("role"))})
+            users = STORE.list_users(viewer_role=sess.get("role"))
+            # Davomat/admin ro'yxatida NARX joriy haydovchi ismi
+            users = overlay_fleet_driver_names(users)
+            self.send_json({"ok": True, "users": users})
             return
         if path == "/api/sessions":
             sess = self.require_ops_read()

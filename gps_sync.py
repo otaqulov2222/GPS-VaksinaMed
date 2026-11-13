@@ -200,6 +200,30 @@ def load_fleet_drivers(base_dir):
 
 def overlay_fuel_driver_names(office, drivers):
     try:
+        from person_names import is_patronymic_token, normalize_person_name, short_from_person_name
+    except Exception:
+        is_patronymic_token = None
+        normalize_person_name = None
+        short_from_person_name = None
+
+    def _fix_name_short(raw_name, raw_short=""):
+        name = str(raw_name or "").strip()
+        short = str(raw_short or "").strip()
+        if normalize_person_name:
+            name = normalize_person_name(name) or name
+        looks_plate = bool(re.match(r"^\d{2}\b", name))
+        if short_from_person_name and (
+            (not looks_plate)
+            or (not short)
+            or (is_patronymic_token and is_patronymic_token(short))
+        ):
+            short = short_from_person_name(name)
+        if not short:
+            parts = [p for p in name.split() if p]
+            short = parts[0] if parts else name
+        return name, short
+
+    try:
         vehicles = (office.fuel_meta() or {}).get("vehicles") or {}
     except Exception:
         vehicles = {}
@@ -218,11 +242,7 @@ def overlay_fuel_driver_names(office, drivers):
                 break
         if not rec or not str(rec.get("name") or "").strip():
             continue
-        name = str(rec.get("name") or "").strip()
-        short = str(rec.get("short") or "").strip()
-        if not short:
-            parts = name.split()
-            short = parts[-1] if parts else name
+        name, short = _fix_name_short(rec.get("name"), rec.get("short"))
         d["fullName"] = name
         d["shortName"] = short
         d["name"] = name
@@ -233,11 +253,10 @@ def overlay_fuel_driver_names(office, drivers):
         want = compact_car(plate)
         if want in seen or want in retired:
             continue
-        name = str(rec.get("name") or "").strip() or str(plate).strip()
-        short = str(rec.get("short") or "").strip()
-        if not short:
-            parts = name.split()
-            short = parts[-1] if parts else name
+        name, short = _fix_name_short(
+            rec.get("name") or str(plate).strip(),
+            rec.get("short"),
+        )
         out.append({
             "car": str(plate).strip(),
             "fullName": name,

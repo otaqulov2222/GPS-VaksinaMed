@@ -113,9 +113,42 @@ function fleetPhotoHtml(plate, cls) {
   return `<img class="${esc(cls || 'fleet-photo')} m-${m}" src="${p.src}" alt="${esc(p.t)}" title="${esc(p.t + ' · Foto: ' + p.credit + ' / Wikimedia Commons')}" loading="lazy" decoding="async" draggable="false">`;
 }
 
+/** Buyruq matnidan '-га' va o'g'li/qizi qo'shimchalarini tozalash */
+function fleetNormalizePersonName(name) {
+  let s = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const parts = s.split(' ');
+  let last = parts[parts.length - 1];
+  // Faqat kirill '-га' (lotin 'ga' — SGA kabi kalitlarni buzmasin)
+  if (/га$/.test(last)) {
+    last = last.replace(/га$/, '');
+    if (last) parts[parts.length - 1] = last;
+  }
+  while (parts.length && fleetIsPatronymicToken(parts[parts.length - 1])) parts.pop();
+  return parts.join(' ').trim() || s;
+}
+
+function fleetIsPatronymicToken(tok) {
+  let t = String(tok || '').trim().toLowerCase();
+  if (!t) return false;
+  t = t.replace(/[ʼ'`´ʻʹʿ`]/g, "'");
+  t = t.replace(/(га|ga|ни|ning|нинг)$/i, '');
+  const fold = t.replace(/o'/g, 'o').replace(/g'/g, 'g').replace(/'/g, '');
+  const bad = {
+    ogli: 1, ogliga: 1, ugli: 1, ugliga: 1,
+    'ўғли': 1, 'ўғлига': 1, угли: 1, углы: 1,
+    qizi: 1, qiziga: 1, 'қизи': 1, 'қизига': 1, кизи: 1, кызы: 1
+  };
+  return !!(bad[fold] || bad[t] || bad[String(tok || '').trim().toLowerCase()]);
+}
+
+/** Qisqa ism: boshidagi so'z — oxiridagi o'g'li emas */
 function fleetShortFromName(name) {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : '';
+  const norm = fleetNormalizePersonName(name);
+  const parts = norm.split(/\s+/).filter((p) => p && !fleetIsPatronymicToken(p));
+  if (parts.length) return parts[0];
+  const raw = String(name || '').trim().split(/\s+/).filter((p) => p && !fleetIsPatronymicToken(p));
+  return raw.length ? raw[0] : '';
 }
 
 function fleetDriversLive() {
@@ -191,9 +224,12 @@ function applyFleetNameOverrides(vehicles, opts) {
     const extra = recFor(d.car);
     if (!extra) return;
     if (extra.name) {
-      d.fullName = extra.name;
-      d.name = extra.name;
-      d.shortName = extra.short || fleetShortFromName(extra.name) || extra.name;
+      const nm = fleetNormalizePersonName(extra.name) || extra.name;
+      d.fullName = nm;
+      d.name = nm;
+      const looksPlate = /^\d{2}\b/.test(nm);
+      const sh = String(extra.short || '').trim();
+      d.shortName = (looksPlate && sh && !fleetIsPatronymicToken(sh) ? sh : fleetShortFromName(nm)) || nm;
       d.short = d.shortName;
     }
     if (extra.brand != null && extra.brand !== '') d.brand = extra.brand;
@@ -209,8 +245,10 @@ function applyFleetNameOverrides(vehicles, opts) {
     if (!extra || extra.hidden || fleetIsRetired(plate)) return;
     const exists = FLEET_DRIVERS.some(d => fleetPlateKey(d.car) === fleetPlateKey(plate));
     if (exists) return;
-    const name = String(extra.name || plate).trim() || plate;
-    const short = extra.short || fleetShortFromName(name) || name;
+    const name = fleetNormalizePersonName(String(extra.name || plate).trim() || plate) || plate;
+    const looksPlate = /^\d{2}\b/.test(name);
+    const sh0 = String(extra.short || '').trim();
+    const short = (looksPlate && sh0 && !fleetIsPatronymicToken(sh0) ? sh0 : fleetShortFromName(name)) || name;
     const rawKind = String(extra.kind || 'truck').toLowerCase();
     const kind = ['damas', 'labo', 'car'].includes(rawKind) ? rawKind : 'truck';
     const model = String(extra.model || '').toLowerCase();
@@ -269,5 +307,7 @@ window.FLEET_MODELS = FLEET_MODELS;
 window.fleetModelOf = fleetModelOf;
 window.fleetPhotoHtml = fleetPhotoHtml;
 window.fleetShortFromName = fleetShortFromName;
+window.fleetNormalizePersonName = fleetNormalizePersonName;
+window.fleetIsPatronymicToken = fleetIsPatronymicToken;
 window.listenFleetNameOverrides = listenFleetNameOverrides;
 window.patchStoredDriversInState = patchStoredDriversInState;
