@@ -49,6 +49,7 @@ const STATE = {
   dirty: false,
   /** true faqat writeParams/renderDailyTable dan keyin — bo'sh DOM 269 ni nollamasin */
   formHydrated: false,
+  importNoFlush: false,
   carsOpenPlate: '',
   saveInFlight: false,
   saveQueued: false,
@@ -877,10 +878,20 @@ function rememberPersistInfo(d) {
 }
 
 function buildFuelMonthPayload() {
-  flushFormToState();
+  // Excel import paytida DOM flush STATE ni nollashi mumkin — o'tkazib yuboriladi
+  if (!STATE.importNoFlush) flushFormToState();
   syncAllCarsDayPrices();
   Object.keys(STATE.cars || {}).forEach(k => syncParamsToMeta(k, STATE.cars[k]));
-  return { month: STATE.month, cars: carsToSave({ skipFlush: true }) };
+  const cars = carsToSave({ skipFlush: true });
+  const payload = { month: STATE.month, cars };
+  // Import: barcha _replaceDays mashinalar to'liq almashtirilsin
+  if (Object.keys(STATE.cars || {}).some((k) => STATE.cars[k] && STATE.cars[k]._replaceDays)) {
+    payload.replaceDays = true;
+    Object.keys(cars).forEach((k) => {
+      if (cars[k] && typeof cars[k] === 'object') cars[k].replaceDays = true;
+    });
+  }
+  return payload;
 }
 
 /** Sahifa yopilganda — serverga keepalive POST + local zaxira */
@@ -1434,10 +1445,20 @@ function carsToSave(opts) {
       return;
     }
     const prev = out[canon];
-    out[canon] = Object.assign({}, prev, stripped, {
-      days: Object.assign({}, prev.days || {}, stripped.days || {}),
-      replaceDays: !!(prev.replaceDays || stripped.replaceDays)
-    });
+    const repl = !!(prev.replaceDays || stripped.replaceDays);
+    if (repl) {
+      // replaceDays: eski kunlar bilan merge yo'q — Excel to'liq almashtiradi
+      const useStripped = carScore(stripped) >= carScore(prev);
+      out[canon] = Object.assign({}, useStripped ? prev : stripped, useStripped ? stripped : prev, {
+        days: useStripped ? (stripped.days || {}) : (prev.days || {}),
+        replaceDays: true
+      });
+    } else {
+      out[canon] = Object.assign({}, prev, stripped, {
+        days: Object.assign({}, prev.days || {}, stripped.days || {}),
+        replaceDays: false
+      });
+    }
   });
   if (STATE.car) {
     const canon = canonicalPlate(STATE.car) || STATE.car;
@@ -4799,6 +4820,20 @@ function detectWaybillColMapByGroups(aoa) {
     else if (/масофа|masofa|юрилган|пробег/.test(all)) key = pick('gasKm', 'benKm');
     else if (/сарф|расход|sarf/.test(all)) key = pick('gasUsed', 'benUsed');
     else if (/заправка|пластик|олинган|olingan|выдан|получен/.test(all) && !/сумма|summa|нарх|narx/.test(all)) key = pick('gasIn', 'benzinIn');
+    // Guruh matni faqat chap ustunda (merge) — o'ngdagi «БЕНЗИН» bargini ham bog'lash
+    if (!key && kind === 'ben') {
+      const left = map.gasIn === c - 1 ? 'gasIn'
+        : map.gasBal === c - 1 ? 'gasBal'
+        : map.gasNorm === c - 1 ? 'gasNorm'
+        : map.gasKm === c - 1 ? 'gasKm'
+        : map.gasUsed === c - 1 ? 'gasUsed'
+        : null;
+      if (left === 'gasIn') key = 'benzinIn';
+      else if (left === 'gasBal') key = 'benBal';
+      else if (left === 'gasNorm') key = 'benNorm';
+      else if (left === 'gasKm') key = 'benKm';
+      else if (left === 'gasUsed') key = 'benUsed';
+    }
     if (key && map[key] == null) map[key] = c;
   }
   if (map.gasIn == null && map.benzinIn == null) return null;
@@ -5136,8 +5171,15 @@ function waybillJamiCheck(parsed, jamiRow, col) {
   const cell = (k) => {
     const c = col[k];
     if (c == null || c < 0) return null;
-    return excelCellPresent(jamiRow[c]) && typeof jamiRow[c] === 'number' ? jamiRow[c] : null;
+    if (!excelCellPresent(jamiRow[c])) return null;
+    // Excel ba'zan ЖАМИ ni matn qilib beradi ("3168.52")
+    if (typeof jamiRow[c] === 'number' && Number.isFinite(jamiRow[c])) return jamiRow[c];
+    const parsed = n(jamiRow[c]);
+    return parsed || (String(jamiRow[c]).trim() === '0' ? 0 : null);
   };
+  // Import uchun majburiy: olingan yoqilg'i, km, spidometr.
+  // Sarf/qoldiq — Excel formulasi (dizel_gazda gaz km ga ham dizel, qo'lda 0 sarf) farq qilishi mumkin.
+  const HARD = { gasIn: 1, benzinIn: 1, gasKm: 1, benKm: 1, odoEnd: 1 };
   const fields = [
     ['gasIn', 'olingan gaz', cell('gasIn')],
     ['benzinIn', 'olingan benzin', cell('benzinIn')],
@@ -5151,14 +5193,19 @@ function waybillJamiCheck(parsed, jamiRow, col) {
   ];
   const rows = [];
   const diffs = [];
+  const softDiffs = [];
   fields.forEach(([k, label, excel]) => {
     if (excel == null || sys[k] == null) return;
     const s = cleanFloat(sys[k]);
     const ok = Math.abs(s - excel) <= Math.max(0.01, Math.abs(excel) * 0.0001);
-    rows.push({ k, label, excel, sys: s, ok });
-    if (!ok) diffs.push({ k, label, excel, sys: s });
+    rows.push({ k, label, excel, sys: s, ok, hard: !!HARD[k] });
+    if (!ok) {
+      const item = { k, label, excel, sys: s };
+      if (HARD[k]) diffs.push(item);
+      else softDiffs.push(item);
+    }
   });
-  return { rows, diffs, ok: !diffs.length };
+  return { rows, diffs, softDiffs, ok: !diffs.length };
 }
 
 function parseKunlikAoa(aoa) {
@@ -5572,12 +5619,49 @@ async function previewImportFile(file) {
   }
 }
 
+function importedCarTotals(plate) {
+  const t = totals(calcCar(getCar(plate)));
+  return { km: cleanFloat(t.km), gasIn: cleanFloat(t.gasIn), benzinIn: cleanFloat(t.benzinIn), gasKm: cleanFloat(t.gasKm), liqKm: cleanFloat(t.liqKm) };
+}
+
+function verifyImportAgainstJami(pack) {
+  const lines = [];
+  (pack.checks || []).forEach((c) => {
+    if (!c || !c.jami || !c.jami.rows || !c.jami.rows.length) return;
+    const got = importedCarTotals(c.plate);
+    const want = {};
+    c.jami.rows.forEach((r) => { want[r.k] = r.excel; });
+    const checks = [
+      ['gasIn', got.gasIn, want.gasIn, 'olingan gaz'],
+      ['benzinIn', got.benzinIn, want.benzinIn, 'olingan benzin'],
+      ['gasKm', got.gasKm, want.gasKm, 'gaz km'],
+      ['benKm', got.liqKm, want.benKm, 'benzin km']
+    ];
+    const bad = [];
+    checks.forEach(([k, sys, excel, label]) => {
+      if (excel == null || sys == null) return;
+      if (Math.abs(sys - excel) > Math.max(0.05, Math.abs(excel) * 0.001)) {
+        bad.push(label + ': Excel ' + fmtNum(excel) + ' ≠ tizim ' + fmtNum(sys));
+      }
+    });
+    if (bad.length) lines.push('⚠ ' + (plateCode(c.plate) || c.plate) + ' — ' + bad.join('; '));
+  });
+  return lines;
+}
+
 async function runExcelImportPack(pack) {
   let mon = Number(document.getElementById('import-month').value);
   let year = Number(document.getElementById('import-year').value);
   if (!(mon >= 1 && mon <= 12) && pack.monthYear) mon = pack.monthYear.month;
   if (!(year >= 2020 && year <= 2035) && pack.monthYear) year = pack.monthYear.year;
   if (!(mon >= 1 && mon <= 12) || !(year >= 2020 && year <= 2035)) throw new Error('Oy yoki yil noto\'g\'ri tanlangan');
+  const parseBad = importCheckBad(pack);
+  if (parseBad.length) {
+    throw new Error(
+      'Excel «ЖАМИ» bilan farq (' + parseBad.length + ' varaq) — import to\'xtatildi.\n' +
+      importCheckText(pack)
+    );
+  }
   const ym = year + '-' + String(mon).padStart(2, '0');
   flushFormToState();
   if (STATE.month !== ym) await changeMonth(ym);
@@ -5595,10 +5679,27 @@ async function runExcelImportPack(pack) {
   });
   if (pack.cars[0] && pack.cars[0].plate) STATE.car = canonicalPlate(pack.cars[0].plate);
   markDirty();
-  writeParams();
-  await renderAll();
-  await saveMeta();
-  await saveMonth();
+  // Import: DOM flush eski/bo'sh input bilan Excelni yeb qo'ymasın
+  STATE.importNoFlush = true;
+  STATE.formHydrated = false;
+  try {
+    writeParams();
+    await renderAll();
+    const appliedBad = verifyImportAgainstJami(pack);
+    if (appliedBad.length) {
+      throw new Error(
+        'Excel ЖАМИ bilan mos kelmadi — SAQLANMADI:\n' + appliedBad.join('\n') +
+        '\nCtrl+F5 qilib Excelni qayta import qiling.'
+      );
+    }
+    await saveMeta();
+    await saveMonth();
+    try { localStorage.removeItem(localMonthKey(ym)); } catch (_e) {}
+    writeLocalMonth();
+  } finally {
+    STATE.importNoFlush = false;
+    STATE.formHydrated = true;
+  }
   renderCarryWarn();
   let msg = '✓ Fayl yuklandi — ' + filled + ' mashina to\'ldirildi.';
   const monthly = pack.cars.some(c => c.parsed.meta && c.parsed.meta.sheetType === 'monthly');
@@ -5614,6 +5715,7 @@ async function runExcelImportPack(pack) {
   }
   const check = importCheckText(pack);
   if (check) msg += '\n\n' + check;
+  msg += '\n\nExcel «ЖАМИ» (olingan / km) bilan mos ✓';
   return { filled, missingOdo, msg };
 }
 
@@ -5631,8 +5733,11 @@ async function applyExcelImportModal() {
   const year = document.getElementById('import-year').value;
   const label = (UZ_M_LOW[mon - 1] || '') + ' ' + year;
   const bad = importCheckBad(IMPORT.pack);
+  if (bad.length) {
+    toast('Excel «ЖАМИ» bilan farq — import mumkin emas. Fayl/ustunlarni tekshiring.\n' + importCheckText(IMPORT.pack));
+    return;
+  }
   const ok = await showConfirmModal(
-    (bad.length ? '⚠ DIQQAT: ' + bad.length + ' varaqda Excel «ЖАМИ» bilan farq bor — pastda ko\'ring.\n\n' : '') +
     'Excel fayldan aniqlandi: «' + label + '».\n' +
     importPreviewText(IMPORT.pack) + '\n\n' +
     'Shu oy to\'ldiriladi (mavjud ma\'lumot almashtiriladi). Davom etamizmi?'
