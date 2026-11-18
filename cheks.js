@@ -10,6 +10,7 @@ if (/\/chek\/?$/.test(location.pathname || '')) {
 const VMCheks = {
   items: [],
   openPlate: '',
+  selectedId: '',
   scanning: false,
   scanner: null,
   libPromise: null,
@@ -298,7 +299,12 @@ const VMCheks = {
       if (fresh.length) {
         const row = this.items.find((x) => String(x.id) === String(fresh[0].id)) || fresh[0];
         this.openPlate = row.plate || this.openPlate;
+        if (row.id != null) {
+          this.selectedId = String(row.id);
+          this.highlightId = row.id;
+        }
         this.pingLive(row);
+        this._renderSig = '';
         this.render();
         this.flash();
         this.beep();
@@ -331,7 +337,7 @@ const VMCheks = {
     const rows = this.drivers();
     const ym = this.ymNow();
     const all = this.stats(this.items, ym);
-    const sig = [this.openPlate, this.highlightId, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
+    const sig = [this.openPlate, this.selectedId, this.highlightId, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
     if (sig === this._renderSig) return;
     this._renderSig = sig;
     if (meta) {
@@ -390,10 +396,38 @@ const VMCheks = {
     }).join('');
   },
 
+  ensureSelected(list) {
+    if (!list || !list.length) {
+      this.selectedId = '';
+      return null;
+    }
+    const want = String(this.selectedId || this.highlightId || '');
+    let row = want ? list.find((x) => String(x.id) === want) : null;
+    if (!row) row = list[0];
+    this.selectedId = row && row.id != null ? String(row.id) : '';
+    return row;
+  },
+
+  previewPaneHtml(row) {
+    if (!row) {
+      return `<div class="chek-preview-empty">
+        <div class="chek-preview-empty-ico" aria-hidden="true">№</div>
+        <b>Chek tanlang</b>
+        <p>Chapdagi ro‘yxatdan chekni bosing — bu yerda fiskal qog‘oz ko‘rinishi ochiladi.</p>
+      </div>`;
+    }
+    return `<div class="chek-paper chek-paper-inline">${this.paperHtml(row, true)}</div>
+      <div class="chek-preview-actions">
+        <button type="button" class="btn btn-outline chek-act-edit" data-id="${this.esc(row.id)}">Tahrirlash</button>
+        <button type="button" class="btn btn-outline chek-act-del" data-id="${this.esc(row.id)}">O‘chirish</button>
+      </div>`;
+  },
+
   renderCar(view, plate, ym) {
     const d = this.driverOf(plate);
     const list = this.forPlate(plate);
     const st = this.stats(list, ym);
+    const selected = this.ensureSelected(list);
     const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(plate, 'fb-photo') : '';
     const model = typeof fleetModelOf === 'function' ? fleetModelOf(plate) : '';
     const minfo = model && window.FLEET_MODELS ? window.FLEET_MODELS[model] : null;
@@ -403,28 +437,40 @@ const VMCheks = {
       : '<div class="chek-empty">Bu mashinada hali chek yo‘q. «QR skaner» ni bosing — kamerani chekdagi QR ga tuting, rasm olish shart emas. Qog‘oz chek o‘zi yasaladi.</div>';
     view.innerHTML = `
       <button type="button" class="chek-back" id="chek-back">← Mashinalar</button>
-      <div class="chek-car-head">
-        <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
-        <span class="chek-who">
-          <b>${this.esc(name)}</b>
-          <em class="font-mono">${this.esc(plate)}</em>
-        </span>
+      <div class="chek-car-toolbar">
+        <div class="chek-car-head">
+          <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
+          <span class="chek-who">
+            <b>${this.esc(name)}</b>
+            <em class="font-mono">${this.esc(plate)}</em>
+          </span>
+        </div>
+        <div class="chek-stats">
+          <div class="chek-stat"><span>Shu oy cheklar</span><b>${st.monthCount}</b></div>
+          <div class="chek-stat"><span>Shu oy summa</span><b>${this.money(st.monthSum) || '0 so‘m'}</b></div>
+        </div>
+        <button type="button" class="btn btn-gold chek-add-btn" id="chek-add">QR skaner — kamera o‘zi o‘qiydi</button>
       </div>
-      <div class="chek-stats">
-        <div class="chek-stat"><span>Shu oy cheklar</span><b>${st.monthCount}</b></div>
-        <div class="chek-stat"><span>Shu oy summa</span><b>${this.money(st.monthSum) || '0 so‘m'}</b></div>
-      </div>
-      <button type="button" class="btn btn-gold chek-add-btn" id="chek-add">QR skaner — kamera o‘zi o‘qiydi</button>
-      ${rows}`;
+      <div class="chek-workspace">
+        <div class="chek-col-list">
+          <div class="chek-col-h">Cheklar ro‘yxati <b>${list.length}</b></div>
+          ${rows}
+        </div>
+        <div class="chek-col-preview">
+          <div class="chek-col-h">Chek ko‘rinishi <b>${selected ? (this.money(selected.amount) || 'OFD') : '—'}</b></div>
+          <div class="chek-preview-stage" id="chek-preview">${this.previewPaneHtml(selected)}</div>
+        </div>
+      </div>`;
   },
 
   miniHtml(r) {
     const kind = this.ofdKind(r);
     const id = this.esc(r.id);
     const neu = this.highlightId && String(this.highlightId) === String(r.id);
+    const active = this.selectedId && String(this.selectedId) === String(r.id);
     const mer = r.merchant || r.kkmName || '';
     const amt = this.money(r.amount);
-    return `<li class="chek-mini-wrap${neu ? ' is-new' : ''}${kind === 'ok' ? ' is-ok' : ' is-wait'}">
+    return `<li class="chek-mini-wrap${neu ? ' is-new' : ''}${active ? ' is-active' : ''}${kind === 'ok' ? ' is-ok' : ' is-wait'}">
       <button type="button" class="chek-mini" data-id="${id}">
         <div class="chek-mini-h">
           <b>${this.esc(amt || 'OFD dan olinmoqda')}</b>
@@ -441,7 +487,7 @@ const VMCheks = {
     </li>`;
   },
 
-  paperHtml(r) {
+  paperHtml(r, forPreview) {
     const d = this.driverOf(r.plate);
     const merchant = r.merchant || r.kkmName || '';
     const items = (r.items || []).filter(it => it && it.name).slice(0, 16).map(it => {
@@ -468,12 +514,12 @@ const VMCheks = {
     const warn = kind === 'ok'
       ? ''
       : `<div class="chek-p-warn">${this.esc(r.ofdNote || 'OFD dan to‘liq chek olinmoqda — o‘zi tushadi, qo‘lda yozish shart emas.')}</div>`;
-    const saved = this.paperFromScan
+    const saved = (!forPreview && this.paperFromScan)
       ? `<div class="chek-p-ok">${this.paperDup ? 'Bu chek avval saqlangan' : 'Yangi chek · monitorga tushdi'}</div>`
       : '';
     const amtVal = r.amount != null && r.amount !== '' && Number.isFinite(Number(r.amount))
       ? String(Math.round(Number(r.amount))) : '';
-    const manual = r.ofdOk ? '' : `<details class="chek-p-manual">
+    const manual = (forPreview || r.ofdOk) ? '' : `<details class="chek-p-manual">
       <summary>OFD kechiksa — qo‘lda yozish</summary>
       <p>Odatda shart emas. OFD tasdiqlasa stansiya, mahsulot va JAMI o‘zi tushadi.</p>
       <label>Summa (so‘m)</label>
@@ -550,6 +596,7 @@ const VMCheks = {
       const back = e.target.closest('#chek-back');
       if (back) {
         this.openPlate = '';
+        this.selectedId = '';
         this.render();
         return;
       }
@@ -570,14 +617,24 @@ const VMCheks = {
         e.preventDefault();
         const id = editBtn.getAttribute('data-id');
         const row = this.items.find(x => String(x.id) === String(id));
-        if (row) this.openPaper(row, false, false);
+        if (row) {
+          this.selectedId = String(row.id);
+          this.openPaper(row, false, false);
+        }
         return;
       }
       const mini = e.target.closest('.chek-mini');
       if (mini) {
         const id = mini.getAttribute('data-id');
         const row = this.items.find(x => String(x.id) === String(id));
-        if (row) this.openPaper(row, false, false);
+        if (!row) return;
+        this.selectedId = String(row.id);
+        this._renderSig = '';
+        this.render();
+        const preview = document.getElementById('chek-preview');
+        if (preview && window.matchMedia && window.matchMedia('(max-width: 980px)').matches) {
+          preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
         return;
       }
       const card = e.target.closest('.chek-card');
@@ -585,6 +642,7 @@ const VMCheks = {
         const plate = card.getAttribute('data-plate');
         if (plate) {
           this.openPlate = plate;
+          this.selectedId = '';
           this._renderSig = '';
           this.render();
           this.kickPending(plate);
@@ -1024,6 +1082,7 @@ const VMCheks = {
     if (closed && closed.plate) this.openPlate = closed.plate;
     if (closed && closed.id && String(closed.id).indexOf('tmp') !== 0) {
       this.highlightId = closed.id;
+      this.selectedId = String(closed.id);
     }
     this.render();
     this.kickPending();
@@ -1157,6 +1216,9 @@ const VMCheks = {
       if (Array.isArray(d.items)) this.applyItems(d.items);
       this.items = (this.items || []).filter((x) => !this.deletedIds.has(String(x.id)));
       this.closePaper();
+      if (String(this.selectedId) === String(id)) this.selectedId = '';
+      if (String(this.highlightId) === String(id)) this.highlightId = '';
+      this._renderSig = '';
       this.render();
       this.toast('Chek o‘chirildi');
     } catch (e) {
