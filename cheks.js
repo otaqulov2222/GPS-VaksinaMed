@@ -564,12 +564,16 @@ const VMCheks = {
     const totals = document.getElementById('chek-totals');
     const meta = document.getElementById('chek-board-meta');
     if (!fleet || !view) return;
-    const rows = this.drivers();
+    const allDrivers = this.drivers();
     const ym = this.currentYm();
     const day = this.currentDay();
     const label = this.periodLabel(ym, day);
     const all = this.stats(this.items, ym, day);
-    const sig = [ym, day, this.openPlate, this.selectedId, this.highlightId, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
+    // Kun tanlanganda — faqat shu kunda cheki bor mashinalar; oy bo‘yicha — hammasi.
+    const rows = day
+      ? allDrivers.filter((d) => this.forPlatePeriod(d.car || '', ym, day).length > 0)
+      : allDrivers;
+    const sig = [ym, day, this.openPlate, this.selectedId, this.highlightId, allDrivers.length, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
     if (sig === this._renderSig) return;
     this._renderSig = sig;
     this.renderPeriodBar(ym, day);
@@ -581,9 +585,9 @@ const VMCheks = {
     if (totals) {
       totals.innerHTML = `
         <div class="chek-tot chek-tot-cars">
-          <span class="chek-tot-k">Park</span>
-          <b>${rows.length}</b>
-          <em>mashina</em>
+          <span class="chek-tot-k">${day ? 'Chekli mashina' : 'Park'}</span>
+          <b>${day ? rows.length : allDrivers.length}</b>
+          <em>${day ? this.esc(label) : (allDrivers.length + ' mashina')}</em>
         </div>
         <div class="chek-tot chek-tot-count">
           <span class="chek-tot-k">Cheklar</span>
@@ -609,15 +613,28 @@ const VMCheks = {
     view.hidden = true;
     view.innerHTML = '';
     if (totals) totals.hidden = false;
-    if (!rows.length) {
+    if (!allDrivers.length) {
       fleet.innerHTML = '<div class="chek-empty">Mashinalar ro‘yxati topilmadi.</div>';
       return;
     }
-    const withChek = rows.filter((d) => this.stats(this.forPlate(d.car || ''), ym, day).monthCount > 0).length;
+    if (day && !rows.length) {
+      fleet.innerHTML = `<div class="chek-fleet-h">
+          <div>
+            <strong>Mashinalar</strong>
+            <span>${this.esc(label)} · chek kiritilmagan</span>
+          </div>
+          <b>0</b>
+        </div>
+        <div class="chek-empty">Bu kunda hech qaysi mashinaga chek kiritilmagan. Boshqa kun tanlang yoki QR / qo‘lda kiritish bilan qo‘shing.</div>`;
+      return;
+    }
+    const headSub = day
+      ? (rows.length + ' mashinada chek bor · ' + label)
+      : (rows.filter((d) => this.forPlatePeriod(d.car || '', ym, '').length > 0).length + ' tasida chek bor · ' + label);
     fleet.innerHTML = `<div class="chek-fleet-h">
         <div>
-          <strong>Mashinalar</strong>
-          <span>${withChek ? (withChek + ' tasida chek bor') : ('Hali chek yo‘q · ' + this.esc(label))}</span>
+          <strong>${day ? 'Chekli mashinalar' : 'Mashinalar'}</strong>
+          <span>${this.esc(headSub)}</span>
         </div>
         <b>${rows.length}</b>
       </div>` + rows.map((d, i) => {
