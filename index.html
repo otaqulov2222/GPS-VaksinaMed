@@ -2021,6 +2021,68 @@ body.page-chek #chek-board {
   border-radius: 0;
 }
 body.page-chek #chek-board > .sec-head { display: none !important; }
+.chek-period {
+  display: none;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 20px 0;
+  box-sizing: border-box;
+}
+body.page-chek .chek-period {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.chek-period-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(11, 31, 58, .04);
+}
+.chek-period-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.chek-period-title {
+  font: 700 15px/1.2 inherit;
+  color: var(--ink);
+  min-width: 140px;
+}
+.chek-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.chek-period-nav .btn {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 12px;
+}
+.chek-period-nav .month-pick,
+.chek-period input[type="month"] {
+  height: 40px;
+  min-width: 150px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: 600 13px/1 var(--mono);
+  color: var(--ink);
+  background: #f7fafc;
+}
 body.page-chek #chek-totals {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2028,7 +2090,7 @@ body.page-chek #chek-totals {
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
-  padding: 16px 20px 10px;
+  padding: 12px 20px 10px;
   box-sizing: border-box;
 }
 body.page-chek #chek-fleet {
@@ -2135,9 +2197,19 @@ body.page-chek #chek-top-title { display: block; }
   }
   body.page-chek #chek-totals,
   body.page-chek #chek-fleet,
-  body.page-chek #chek-car-view {
+  body.page-chek #chek-car-view,
+  body.page-chek .chek-period {
     padding-left: 12px;
     padding-right: 12px;
+  }
+  .chek-period-nav {
+    width: 100%;
+    margin-left: 0;
+  }
+  .chek-period-nav .month-pick,
+  .chek-period input[type="month"] {
+    flex: 1;
+    min-width: 0;
   }
 }
 html.page-chek .app-main .topbar .tb-actions,
@@ -3015,6 +3087,7 @@ input, select, textarea { max-width: 100%; }
         <h3>Chek</h3>
         <span class="cnt" id="chek-board-meta">Hisobotga yozilmaydi</span>
       </div>
+      <div id="chek-period" class="chek-period"></div>
       <div id="chek-totals" class="chek-totals"></div>
       <div id="chek-fleet" class="chek-fleet"></div>
       <div id="chek-car-view" hidden></div>
@@ -3512,7 +3585,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=31"></script>
-<script src="cheks.js?v=16"></script>
+<script src="cheks.js?v=17"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

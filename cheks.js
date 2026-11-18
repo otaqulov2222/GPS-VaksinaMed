@@ -11,6 +11,7 @@ const VMCheks = {
   items: [],
   openPlate: '',
   selectedId: '',
+  periodYm: '',
   scanning: false,
   scanner: null,
   libPromise: null,
@@ -77,12 +78,51 @@ const VMCheks = {
     return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   },
 
+  currentYm() {
+    const ym = String(this.periodYm || '').slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(ym)) return ym;
+    this.periodYm = this.ymNow();
+    return this.periodYm;
+  },
+
+  shiftYm(ym, delta) {
+    const m = String(ym || this.currentYm()).match(/^(\d{4})-(\d{2})$/);
+    if (!m) return this.ymNow();
+    const d = new Date(Number(m[1]), Number(m[2]) - 1 + Number(delta || 0), 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  },
+
+  monthTitle(ym) {
+    const months = [
+      'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+      'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'
+    ];
+    const m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return 'Oy';
+    const idx = Number(m[2]) - 1;
+    return (months[idx] || m[2]) + ' ' + m[1];
+  },
+
   inMonth(r, ym) {
     const raw = String((r && (r.paidAt || r.createdAt)) || '');
     const iso = raw.replace(' ', 'T');
     if (iso.slice(0, 7) === ym) return true;
     const m = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
     return !!(m && (m[3] + '-' + m[2]) === ym);
+  },
+
+  forPlatePeriod(plate, ym) {
+    return this.forPlate(plate).filter((r) => this.inMonth(r, ym || this.currentYm()));
+  },
+
+  setPeriod(ym) {
+    const next = String(ym || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(next)) return;
+    if (next === this.currentYm()) return;
+    this.periodYm = next;
+    this._renderSig = '';
+    try { localStorage.setItem('vm_chek_period', next); } catch (e) {}
+    this.render();
   },
 
   stats(list, ym) {
@@ -386,6 +426,50 @@ const VMCheks = {
     if (live) live.textContent = this.lastPing;
   },
 
+  renderPeriodBar(ym) {
+    const host = document.getElementById('chek-period');
+    if (!host) return;
+    const title = this.monthTitle(ym);
+    const isCur = ym === this.ymNow();
+    host.innerHTML = `
+      <div class="chek-period-card">
+        <span class="chek-period-label">Davr</span>
+        <b class="chek-period-title">${this.esc(title)}${isCur ? '' : ''}</b>
+        <div class="chek-period-nav">
+          <button type="button" class="btn btn-outline" id="chek-period-prev" title="Oldingi oy">‹</button>
+          <input type="month" id="chek-period-input" class="month-pick" value="${this.esc(ym)}" title="Oy tanlash">
+          <button type="button" class="btn btn-outline" id="chek-period-next" title="Keyingi oy">›</button>
+          <button type="button" class="btn btn-light" id="chek-period-now" ${isCur ? 'disabled' : ''}>Shu oy</button>
+        </div>
+      </div>`;
+    const input = document.getElementById('chek-period-input');
+    const prev = document.getElementById('chek-period-prev');
+    const next = document.getElementById('chek-period-next');
+    const nowBtn = document.getElementById('chek-period-now');
+    if (input && !input._vmBound) {
+      input._vmBound = true;
+      input.addEventListener('change', () => this.setPeriod(input.value));
+    } else if (input) {
+      input.value = ym;
+    }
+    if (prev && !prev._vmBound) {
+      prev._vmBound = true;
+      prev.addEventListener('click', () => this.setPeriod(this.shiftYm(this.currentYm(), -1)));
+    }
+    if (next && !next._vmBound) {
+      next._vmBound = true;
+      next.addEventListener('click', () => this.setPeriod(this.shiftYm(this.currentYm(), 1)));
+    }
+    if (nowBtn && !nowBtn._vmBound) {
+      nowBtn._vmBound = true;
+      nowBtn.addEventListener('click', () => this.setPeriod(this.ymNow()));
+    } else if (nowBtn) {
+      nowBtn.disabled = isCur;
+    }
+    const sub = document.querySelector('#chek-top-title .tb-sub');
+    if (sub) sub.textContent = 'Zapravka cheklari · ' + title + ' · hisobotga ta’sir qilmaydi';
+  },
+
   render() {
     const fleet = document.getElementById('chek-fleet');
     const view = document.getElementById('chek-car-view');
@@ -393,21 +477,22 @@ const VMCheks = {
     const meta = document.getElementById('chek-board-meta');
     if (!fleet || !view) return;
     const rows = this.drivers();
-    const ym = this.ymNow();
+    const ym = this.currentYm();
     const all = this.stats(this.items, ym);
-    const sig = [this.openPlate, this.selectedId, this.highlightId, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
+    const sig = [ym, this.openPlate, this.selectedId, this.highlightId, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
     if (sig === this._renderSig) return;
     this._renderSig = sig;
+    this.renderPeriodBar(ym);
     if (meta) {
-      meta.textContent = all.count
-        ? (all.monthCount + ' chek shu oy · ' + (this.money(all.monthSum) || '0 so‘m'))
-        : 'Hisobotga yozilmaydi';
+      meta.textContent = all.monthCount
+        ? (all.monthCount + ' chek · ' + this.monthTitle(ym) + ' · ' + (this.money(all.monthSum) || '0 so‘m'))
+        : (this.monthTitle(ym) + ' · chek yo‘q');
     }
     if (totals) {
       totals.innerHTML = `
         <div class="chek-tot"><b>${rows.length}</b><span>Mashina</span></div>
-        <div class="chek-tot"><b>${all.monthCount}</b><span>Chek (oy)</span></div>
-        <div class="chek-tot"><b>${this.money(all.monthSum) || '0 so‘m'}</b><span>Jami (oy)</span></div>`;
+        <div class="chek-tot"><b>${all.monthCount}</b><span>Chek · ${this.esc(this.monthTitle(ym))}</span></div>
+        <div class="chek-tot"><b>${this.money(all.monthSum) || '0 so‘m'}</b><span>Jami · ${this.esc(this.monthTitle(ym))}</span></div>`;
     }
     const open = this.openPlate;
     if (open) {
@@ -427,8 +512,8 @@ const VMCheks = {
     }
     fleet.innerHTML = rows.map((d, i) => {
       const plate = d.car || '';
-      const list = this.forPlate(plate);
-      const st = this.stats(list, ym);
+      const list = this.forPlatePeriod(plate, ym);
+      const st = this.stats(this.forPlate(plate), ym);
       const last = list[0];
       const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(plate, 'fb-photo') : '';
       const model = typeof fleetModelOf === 'function' ? fleetModelOf(plate) : '';
@@ -436,7 +521,7 @@ const VMCheks = {
       const name = d.shortName || d.fullName || '—';
       const lastLine = last
         ? (this.moneyOrWait(last.amount) + ' · ' + this.when(last))
-        : 'Hali chek yo‘q';
+        : ('Hali chek yo‘q · ' + this.monthTitle(ym));
       return `<button type="button" class="chek-card" data-plate="${this.esc(plate)}">
         <span class="chek-n">${i + 1}</span>
         <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
@@ -447,7 +532,7 @@ const VMCheks = {
         </span>
         <span class="chek-sum">
           <strong>${this.money(st.monthSum) || '0 so‘m'}</strong>
-          <small>${st.monthCount ? (st.monthCount + ' chek · shu oy') : 'chek yo‘q'}</small>
+          <small>${st.monthCount ? (st.monthCount + ' chek') : 'chek yo‘q'}</small>
         </span>
         <span class="chek-go" aria-hidden="true">›</span>
       </button>`;
@@ -483,16 +568,18 @@ const VMCheks = {
 
   renderCar(view, plate, ym) {
     const d = this.driverOf(plate);
-    const list = this.forPlate(plate);
-    const st = this.stats(list, ym);
+    const allList = this.forPlate(plate);
+    const list = this.forPlatePeriod(plate, ym);
+    const st = this.stats(allList, ym);
     const selected = this.ensureSelected(list);
     const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(plate, 'fb-photo') : '';
     const model = typeof fleetModelOf === 'function' ? fleetModelOf(plate) : '';
     const minfo = model && window.FLEET_MODELS ? window.FLEET_MODELS[model] : null;
     const name = d.shortName || d.fullName || '—';
+    const title = this.monthTitle(ym);
     const rows = list.length
       ? `<ul class="chek-list">${list.map(r => this.miniHtml(r)).join('')}</ul>`
-      : '<div class="chek-empty">Bu mashinada hali chek yo‘q. «QR skaner» ni bosing — kamerani chekdagi QR ga tuting, rasm olish shart emas. Qog‘oz chek o‘zi yasaladi.</div>';
+      : `<div class="chek-empty">${this.esc(title)} uchun chek yo‘q. Boshqa oy tanlang yoki QR / qo‘lda kiritish bilan qo‘shing.</div>`;
     view.innerHTML = `
       <button type="button" class="chek-back" id="chek-back">← Mashinalar</button>
       <div class="chek-car-toolbar">
@@ -504,8 +591,8 @@ const VMCheks = {
           </span>
         </div>
         <div class="chek-stats">
-          <div class="chek-stat"><span>Shu oy cheklar</span><b>${st.monthCount}</b></div>
-          <div class="chek-stat"><span>Shu oy summa</span><b>${this.money(st.monthSum) || '0 so‘m'}</b></div>
+          <div class="chek-stat"><span>${this.esc(title)} · cheklar</span><b>${st.monthCount}</b></div>
+          <div class="chek-stat"><span>${this.esc(title)} · summa</span><b>${this.money(st.monthSum) || '0 so‘m'}</b></div>
         </div>
         <div class="chek-actions-col">
           <button type="button" class="btn btn-gold chek-add-btn" id="chek-add">QR skaner — kamera o‘zi o‘qiydi</button>
@@ -514,7 +601,7 @@ const VMCheks = {
       </div>
       <div class="chek-workspace">
         <div class="chek-col-list">
-          <div class="chek-col-h">Cheklar ro‘yxati <b>${list.length}</b></div>
+          <div class="chek-col-h">${this.esc(title)} · cheklar <b>${list.length}</b></div>
           ${rows}
         </div>
         <div class="chek-col-preview">
@@ -1459,6 +1546,11 @@ const VMCheks = {
 window.VMCheks = VMCheks;
 document.addEventListener('DOMContentLoaded', () => {
   if (!document.getElementById('chek-fleet')) return;
+  try {
+    const saved = String(localStorage.getItem('vm_chek_period') || '').slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(saved)) VMCheks.periodYm = saved;
+  } catch (e) {}
+  if (!VMCheks.periodYm) VMCheks.periodYm = VMCheks.ymNow();
   VMCheks.bind();
   VMCheks.load();
   setTimeout(() => { if (!VMCheks.drivers().length) VMCheks.load(); }, 700);
