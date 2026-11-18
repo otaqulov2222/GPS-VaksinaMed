@@ -131,13 +131,13 @@ class CheksParseTest(unittest.TestCase):
 
     def test_manual_fields_build_ofd(self):
         p = cheks.build_ofd_url(
-            "329090111713",
+            "YZ329090111713",
             "149478",
             "27.10.2024 08:57",
             "069988523883",
         )
         self.assertTrue(p["ok"])
-        self.assertEqual(p["terminalId"], "329090111713")
+        self.assertEqual(p["terminalId"], "YZ329090111713")
         self.assertEqual(p["receiptNo"], "149478")
         self.assertEqual(p["fiscalSign"], "069988523883")
         self.assertEqual(p["stamp"], "20241027085700")
@@ -146,7 +146,7 @@ class CheksParseTest(unittest.TestCase):
 
     def test_resolve_chek_input_fields(self):
         p = cheks.resolve_chek_input({
-            "terminalId": "YZ1",
+            "terminalId": "YZ123456789012",
             "receiptNo": "12",
             "paidAt": "2026-11-18 12:30",
             "fiscalSign": "99",
@@ -154,19 +154,41 @@ class CheksParseTest(unittest.TestCase):
         self.assertTrue(p["ok"])
         self.assertEqual(p["stamp"], "20261118123000")
         built = cheks.build_chek_record({
-            "terminalId": "YZ1",
+            "terminalId": "YZ123456789012",
             "receiptNo": "12",
             "paidAt": "18.11.2026 12:30",
             "fiscalSign": "99",
         }, fetch_ofd=False)
         self.assertTrue(built["ok"])
-        self.assertEqual(built["rec"]["terminalId"], "YZ1")
+        self.assertEqual(built["rec"]["terminalId"], "YZ123456789012")
         self.assertEqual(built["rec"]["receiptNo"], "12")
 
     def test_manual_requires_fields(self):
-        self.assertFalse(cheks.build_ofd_url("", "1", "27.10.2024 08:57")["ok"])
-        self.assertFalse(cheks.build_ofd_url("1", "", "27.10.2024 08:57")["ok"])
-        self.assertFalse(cheks.build_ofd_url("1", "2", "")["ok"])
+        self.assertFalse(cheks.build_ofd_url("", "1", "27.10.2024 08:57", "99")["ok"])
+        self.assertFalse(cheks.build_ofd_url("YZ1", "", "27.10.2024 08:57", "99")["ok"])
+        miss = cheks.lookup_manual_chek({"receiptNo": "1"}, known_terminals=["YZ123456789012"])
+        self.assertFalse(miss["ok"])
+        miss2 = cheks.lookup_manual_chek({"fiscalSign": "99"}, known_terminals=["YZ123456789012"])
+        self.assertFalse(miss2["ok"])
+
+    def test_terminal_prefix_expand(self):
+        terms = cheks.expand_terminal_candidates("329090111713", known_terms=["Y2231006003520"])
+        self.assertIn("329090111713", terms)
+        self.assertTrue(any(t.startswith("YZ") and t.endswith("329090111713") for t in terms))
+        self.assertIn("Y2231006003520", terms)
+
+    def test_stamp_candidates_with_date(self):
+        stamps = cheks.expand_stamp_candidates("27.10.2024 08:57", max_n=12)
+        self.assertIn("20241027085700", stamps)
+        self.assertTrue(any(s.startswith("20241027") for s in stamps))
+
+    def test_lookup_manual_needs_known_terminal(self):
+        r = cheks.lookup_manual_chek(
+            {"receiptNo": "149478", "fiscalSign": "069988523883"},
+            known_terminals=[],
+        )
+        self.assertFalse(r["ok"])
+        self.assertIn("Terminal", r.get("error") or "")
 
 
 if __name__ == "__main__":

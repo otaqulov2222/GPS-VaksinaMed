@@ -99,24 +99,244 @@ def normalize_human_datetime(raw):
     return ofd_payment_date(s)
 
 
+def _clean_id(raw):
+    return re.sub(r"\s+", "", str(raw or "")).strip()
+
+
+def expand_terminal_candidates(raw_term, known_terms=None, limit=20):
+    """12 xonali terminalga odatiy OFD prefikslarini qo‘shib 14 belgilikka yetkazadi."""
+    out = []
+    seen = set()
+
+    def add(t):
+        t = _clean_id(t)
+        if not t or t in seen:
+            return
+        seen.add(t)
+        out.append(t[:40])
+        digits = re.sub(r"\D", "", t)
+        if len(t) == 12 and digits == t:
+            for pref in ("YZ", "UZ", "EZ", "EP", "NZ", "AZ", "Y2", "Y0", "Z0"):
+                add(pref + t)
+        if len(t) > 14 and digits:
+            if len(digits) >= 12:
+                add(digits[-12:])
+            if len(digits) >= 14:
+                add(digits[-14:])
+
+    add(raw_term)
+    for t in known_terms or []:
+        add(t)
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
+def expand_stamp_candidates(raw_when, max_n=24):
+    """Sana bo‘lmasa yaqin vaqtlarni, bo‘lsa ±daqiqalarni sinaydi."""
+    from datetime import timedelta
+
+    out = []
+    seen = set()
+
+    def add(s):
+        s = str(s or "").strip()
+        if not s:
+            return
+        if re.fullmatch(r"\d{8,14}", s):
+            stamp = ofd_payment_date(s)
+        else:
+            stamp = ofd_payment_date(normalize_human_datetime(s))
+        if not stamp or len(re.sub(r"\D", "", stamp)) < 8 or stamp in seen:
+            return
+        seen.add(stamp)
+        out.append(stamp)
+
+    now = datetime.now()
+    if raw_when:
+        base = normalize_human_datetime(raw_when)
+        if base:
+            add(base)
+            try:
+                dt = datetime.strptime(base[:14], "%Y%m%d%H%M%S")
+                for delta in (0, -1, 1, -2, 2, -3, 3, -5, 5, -10, 10, -15, 15, -30, 30):
+                    add((dt + timedelta(minutes=delta)).strftime("%Y%m%d%H%M%S"))
+                    add((dt + timedelta(minutes=delta)).strftime("%Y%m%d%H%M00"))
+                add(dt.strftime("%Y%m%d%H0000"))
+                add(dt.strftime("%Y%m%d000000"))
+            except ValueError:
+                pass
+    else:
+        add(now.strftime("%Y%m%d%H%M%S"))
+        add(now.strftime("%Y%m%d%H%M00"))
+        for delta_m in range(0, 240, 10):
+            add((now - timedelta(minutes=delta_m)).strftime("%Y%m%d%H%M00"))
+            if len(out) >= max_n // 2:
+                break
+        for d in range(0, 4):
+            day = now - timedelta(days=d)
+            for hh in (7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22):
+                add(day.strftime("%Y%m%d") + "%02d0000" % hh)
+                add(day.strftime("%Y%m%d") + "%02d3000" % hh)
+                if len(out) >= max_n:
+                    return out[:max_n]
+    return out[:max_n]
+
+
 def build_ofd_url(terminal_id, receipt_no, paid_at_or_stamp, fiscal_sign=""):
     """Qog'ozdagi Terminal / Chek № / Sana / FB dan OFD havola yasaydi."""
-    term = re.sub(r"\s+", "", str(terminal_id or "")).strip()
-    receipt = re.sub(r"\s+", "", str(receipt_no or "")).strip()
-    sign = re.sub(r"\s+", "", str(fiscal_sign or "")).strip()
-    stamp = normalize_human_datetime(paid_at_or_stamp)
+    term = _clean_id(terminal_id)
+    receipt = _clean_id(receipt_no)
+    sign = _clean_id(fiscal_sign)
+    stamp = normalize_human_datetime(paid_at_or_stamp) or ofd_payment_date(paid_at_or_stamp)
     if not term:
-        return {"ok": False, "error": "Terminal raqamini yozing"}
+        return {"ok": False, "error": "Terminal topilmadi"}
     if not receipt:
         return {"ok": False, "error": "Chek № ni yozing"}
     if not stamp or len(re.sub(r"\D", "", stamp)) < 8:
-        return {"ok": False, "error": "Sanani yozing (masalan 27.10.2024 08:57)"}
+        stamp = datetime.now().strftime("%Y%m%d%H%M%S")
     stamp = ofd_payment_date(stamp)
     q = {"t": term[:40], "r": receipt[:40], "c": stamp}
     if sign:
         q["s"] = sign[:40]
     url = "https://ofd.soliq.uz/check?" + urllib.parse.urlencode(q)
     return parse_qr_payload(url)
+
+
+def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
+    """
+    Minimal kiritish: Chek № + FB.
+    Terminal/sana bo‘lmasa — avvalgi cheklar + yaqin vaqtlar bilan OFD dan to‘liq chekni qidiradi.
+    """
+    fields = fields if isinstance(fields, dict) else {}
+    receipt = _clean_id(
+        fields.get("receiptNo") or fields.get("paymentNo") or fields.get("r") or fields.get("chekNo")
+    )
+    sign = _clean_id(
+        fields.get("fiscalSign") or fields.get("fb") or fields.get("s") or fields.get("fiscal")
+    )
+    term_in = _clean_id(
+        fields.get("terminalId") or fields.get("terminal") or fields.get("t")
+    )
+    when = (
+        fields.get("paidAt")
+        or fields.get("stamp")
+        or fields.get("paymentDate")
+        or fields.get("c")
+        or fields.get("when")
+        or ""
+    )
+    if not receipt:
+        return {"ok": False, "error": "Chek № ni yozing"}
+    if not sign:
+        return {"ok": False, "error": "FB (fiskal belgi) ni yozing"}
+
+    terminals = expand_terminal_candidates(term_in, known_terminals, limit=16)
+    if not terminals:
+        return {
+            "ok": False,
+            "error": "Terminal noma’lum. Qog‘ozdagi Terminal ni bir marta yozing — keyin eslab qolamiz.",
+        }
+
+    stamps = expand_stamp_candidates(when, max_n=20 if when else 16)
+    best_pending = None
+    tries = 0
+    for term in terminals:
+        # Har terminal uchun avval eng yaxshi 4 ta stamp
+        for stamp in stamps[:4]:
+            if tries >= max_tries:
+                break
+            parsed = build_ofd_url(term, receipt, stamp, sign)
+            if not parsed.get("ok"):
+                continue
+            tries += 1
+            ofd = fetch_ofd_api(parsed, timeout=timeout, attempts=1)
+            if ofd.get("ofdOk") and _has_amount(ofd.get("amount")):
+                rec = {
+                    "qr": parsed["qr"],
+                    "terminalId": parsed["terminalId"],
+                    "receiptNo": parsed["receiptNo"],
+                    "fiscalSign": parsed["fiscalSign"] or sign,
+                    "paidAt": parsed["paidAt"],
+                    "merchant": ofd.get("merchant") or "",
+                    "inn": ofd.get("inn") or "",
+                    "amount": ofd.get("amount"),
+                    "items": ofd.get("items") or [],
+                    "address": ofd.get("address") or "",
+                    "cashTotal": ofd.get("cashTotal"),
+                    "cardTotal": ofd.get("cardTotal"),
+                    "payMethod": ofd.get("payMethod") or "",
+                    "kkmName": ofd.get("kkmName") or "",
+                    "cardType": ofd.get("cardType") or "",
+                    "vatTotal": ofd.get("vatTotal"),
+                    "ofdOk": True,
+                    "ofdPending": False,
+                    "ofdNote": public_ofd_note(True, False, ofd.get("ofdNote") or "", ofd.get("amount")),
+                    "manualLookup": True,
+                }
+                return {"ok": True, "rec": rec, "tries": tries}
+            if ofd.get("ofdPending") and best_pending is None:
+                best_pending = (parsed, ofd)
+        if tries >= max_tries:
+            break
+        # Sana berilgan bo‘lsa — shu terminalda qolgan stamp’larni ham sinaymiz
+        if when:
+            for stamp in stamps[4:]:
+                if tries >= max_tries:
+                    break
+                parsed = build_ofd_url(term, receipt, stamp, sign)
+                if not parsed.get("ok"):
+                    continue
+                tries += 1
+                ofd = fetch_ofd_api(parsed, timeout=timeout, attempts=1)
+                if ofd.get("ofdOk") and _has_amount(ofd.get("amount")):
+                    rec = {
+                        "qr": parsed["qr"],
+                        "terminalId": parsed["terminalId"],
+                        "receiptNo": parsed["receiptNo"],
+                        "fiscalSign": parsed["fiscalSign"] or sign,
+                        "paidAt": parsed["paidAt"],
+                        "merchant": ofd.get("merchant") or "",
+                        "inn": ofd.get("inn") or "",
+                        "amount": ofd.get("amount"),
+                        "items": ofd.get("items") or [],
+                        "address": ofd.get("address") or "",
+                        "cashTotal": ofd.get("cashTotal"),
+                        "cardTotal": ofd.get("cardTotal"),
+                        "payMethod": ofd.get("payMethod") or "",
+                        "kkmName": ofd.get("kkmName") or "",
+                        "cardType": ofd.get("cardType") or "",
+                        "vatTotal": ofd.get("vatTotal"),
+                        "ofdOk": True,
+                        "ofdPending": False,
+                        "ofdNote": public_ofd_note(True, False, ofd.get("ofdNote") or "", ofd.get("amount")),
+                        "manualLookup": True,
+                    }
+                    return {"ok": True, "rec": rec, "tries": tries}
+                if ofd.get("ofdPending") and best_pending is None:
+                    best_pending = (parsed, ofd)
+
+    if best_pending:
+        parsed, ofd = best_pending
+        shell = ofd_shell()
+        shell.update({
+            "qr": parsed["qr"],
+            "terminalId": parsed["terminalId"],
+            "receiptNo": parsed["receiptNo"],
+            "fiscalSign": parsed["fiscalSign"] or sign,
+            "paidAt": parsed["paidAt"],
+            "ofdOk": False,
+            "ofdPending": True,
+            "ofdNote": public_ofd_note(False, True, ofd.get("ofdNote") or "", None),
+            "manualLookup": True,
+        })
+        return {"ok": True, "rec": shell, "tries": tries, "pending": True}
+
+    return {
+        "ok": False,
+        "error": "OFD dan topilmadi. Chek № / FB ni tekshiring yoki Terminal va sanani qo‘shing.",
+        "tries": tries,
+    }
 
 
 def resolve_chek_input(raw):
@@ -132,7 +352,8 @@ def resolve_chek_input(raw):
             or raw.get("stamp")
             or raw.get("paymentDate")
             or raw.get("c")
-            or raw.get("when"),
+            or raw.get("when")
+            or datetime.now().strftime("%Y%m%d%H%M%S"),
             raw.get("fiscalSign") or raw.get("fb") or raw.get("s") or "",
         )
     return parse_qr_payload(raw)

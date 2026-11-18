@@ -2547,6 +2547,27 @@ class OfficeStore:
         )
         return row
 
+    def cheks_terminal_hints(self, plate=""):
+        """Shu mashina / parkdagi avvalgi terminallar — qo‘lda qidiruv uchun."""
+        key = compact_plate(plate)
+        same = []
+        other = []
+        seen = set()
+        for row in self.cheks_list():
+            if not isinstance(row, dict):
+                continue
+            term = str(row.get("terminalId") or "").strip()
+            if not term or term in seen:
+                continue
+            seen.add(term)
+            if key and compact_plate(row.get("plate") or "") == key:
+                same.append(term)
+            else:
+                other.append(term)
+            if len(same) + len(other) >= 24:
+                break
+        return same + other
+
     def cheks_add(self, plate, rec, username=""):
         import cheks as chekmod
 
@@ -2554,11 +2575,19 @@ class OfficeStore:
         key = compact_plate(plate)
         if not key:
             return None, "Mashina tanlanmagan"
-        built = chekmod.build_chek_record(
-            rec if isinstance(rec, dict) else rec,
-            rec if isinstance(rec, dict) else None,
-            fetch_ofd=False,
+        body = rec if isinstance(rec, dict) else {"qr": rec}
+        want_manual = bool(
+            body.get("manualLookup")
+            or (
+                not str(body.get("qr") or "").strip()
+                and (body.get("receiptNo") or body.get("fiscalSign") or body.get("fb"))
+            )
         )
+        if want_manual:
+            known = self.cheks_terminal_hints(plate)
+            built = chekmod.lookup_manual_chek(body, known_terminals=known, timeout=5, max_tries=36)
+        else:
+            built = chekmod.build_chek_record(body, body, fetch_ofd=False)
         if not built.get("ok"):
             return None, built.get("error") or "QR o'qilmadi"
         row = built["rec"]

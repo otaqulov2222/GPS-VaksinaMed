@@ -3280,27 +3280,32 @@ input, select, textarea { max-width: 100%; }
       <button type="button" class="modal-close" id="chek-manual-close" aria-label="Yopish">×</button>
     </div>
     <div class="form-row">
-      <p class="chek-manual-help">Qog‘oz chekdagi <b>Terminal</b>, <b>Chek №</b> va <b>sana/vaqt</b> ni yozing — tizim OFD dan chekni o‘zi topadi. <b>FB</b> bo‘lsa aniqroq bo‘ladi.</p>
+      <p class="chek-manual-help">Faqat <b>Chek №</b> va <b>FB</b> yozing — tizim OFD dan to‘liq chekni o‘zi topadi (summa, stansiya, mahsulot).</p>
       <div class="chek-scan-status" id="chek-manual-status"></div>
       <div class="chek-manual-grid">
-        <div>
-          <label for="chek-m-term">Terminal</label>
-          <input type="text" id="chek-m-term" inputmode="numeric" autocomplete="off" placeholder="329090111713">
-        </div>
         <div>
           <label for="chek-m-rno">Chek №</label>
           <input type="text" id="chek-m-rno" inputmode="numeric" autocomplete="off" placeholder="149478">
         </div>
-        <div class="full">
-          <label for="chek-m-when">Sana va vaqt</label>
-          <input type="text" id="chek-m-when" autocomplete="off" placeholder="27.10.2024 08:57">
-        </div>
-        <div class="full">
-          <label for="chek-m-fb">FB / fiskal belgi (ixtiyoriy)</label>
+        <div>
+          <label for="chek-m-fb">FB</label>
           <input type="text" id="chek-m-fb" inputmode="numeric" autocomplete="off" placeholder="069988523883">
         </div>
       </div>
-      <p class="chek-manual-hint">Raqamlar qog‘oz chekning pastida yozilgan. Vaqt taxminan to‘g‘ri bo‘lsa ham OFD topishi mumkin.</p>
+      <details class="chek-link-box" id="chek-manual-extra">
+        <summary>Topilmasa — Terminal / sana (ixtiyoriy)</summary>
+        <div class="chek-manual-grid" style="margin-top:8px;">
+          <div class="full">
+            <label for="chek-m-term">Terminal</label>
+            <input type="text" id="chek-m-term" inputmode="text" autocomplete="off" placeholder="YZ329090111713 yoki 329090111713">
+          </div>
+          <div class="full">
+            <label for="chek-m-when">Sana va vaqt</label>
+            <input type="text" id="chek-m-when" autocomplete="off" placeholder="27.10.2024 08:57">
+          </div>
+        </div>
+      </details>
+      <p class="chek-manual-hint">FB va Chek № qog‘ozning pastida. Terminal bir marta topsa, keyingi safar eslab qoladi.</p>
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-light" id="chek-manual-cancel">Bekor</button>
@@ -3507,7 +3512,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=31"></script>
-<script src="cheks.js?v=15"></script>
+<script src="cheks.js?v=16"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

@@ -223,13 +223,31 @@ const VMCheks = {
     const term = String((fields && fields.terminalId) || '').replace(/\s+/g, '').trim();
     const rno = String((fields && fields.receiptNo) || '').replace(/\s+/g, '').trim();
     const fb = String((fields && fields.fiscalSign) || '').replace(/\s+/g, '').trim();
-    const stamp = this.normalizeStamp(fields && fields.when);
-    if (!term) return { ok: false, error: 'Terminal raqamini yozing' };
+    let stamp = this.normalizeStamp(fields && fields.when);
     if (!rno) return { ok: false, error: 'Chek № ni yozing' };
-    if (!stamp || stamp.length < 8) return { ok: false, error: 'Sanani yozing (masalan 27.10.2024 08:57)' };
-    const q = new URLSearchParams({ t: term.slice(0, 40), r: rno.slice(0, 40), c: stamp });
-    if (fb) q.set('s', fb.slice(0, 40));
+    if (!fb) return { ok: false, error: 'FB raqamini yozing' };
+    if (!stamp || stamp.length < 8) {
+      const now = new Date();
+      stamp = String(now.getFullYear())
+        + String(now.getMonth() + 1).padStart(2, '0')
+        + String(now.getDate()).padStart(2, '0')
+        + String(now.getHours()).padStart(2, '0')
+        + String(now.getMinutes()).padStart(2, '0')
+        + String(now.getSeconds()).padStart(2, '0');
+    }
+    if (!term) return { ok: false, error: 'Terminal kerak (yoki avvalgi cheklar bo‘lsin)' };
+    const q = new URLSearchParams({ t: term.slice(0, 40), r: rno.slice(0, 40), c: stamp, s: fb.slice(0, 40) });
     return { ok: true, qr: 'https://ofd.soliq.uz/check?' + q.toString() };
+  },
+
+  lastTerminalFor(plate) {
+    const list = this.forPlate(plate || this.openPlate);
+    for (let i = 0; i < list.length; i++) {
+      const t = String((list[i] && list[i].terminalId) || '').trim();
+      if (t) return t;
+    }
+    const any = (this.items || []).find((x) => x && x.terminalId);
+    return any ? String(any.terminalId) : '';
   },
 
   parseQr(raw) {
@@ -491,7 +509,7 @@ const VMCheks = {
         </div>
         <div class="chek-actions-col">
           <button type="button" class="btn btn-gold chek-add-btn" id="chek-add">QR skaner — kamera o‘zi o‘qiydi</button>
-          <button type="button" class="btn btn-outline chek-manual-btn" id="chek-manual-open">Qo‘lda kiritish — Terminal / Chek №</button>
+          <button type="button" class="btn btn-outline chek-manual-btn" id="chek-manual-open">Qo‘lda kiritish — Chek № / FB</button>
         </div>
       </div>
       <div class="chek-workspace">
@@ -1094,24 +1112,21 @@ const VMCheks = {
     const rno = document.getElementById('chek-m-rno');
     const when = document.getElementById('chek-m-when');
     const fb = document.getElementById('chek-m-fb');
-    if (term) term.value = '';
+    const hintTerm = this.lastTerminalFor(this.openPlate);
+    if (term) term.value = hintTerm || '';
     if (rno) rno.value = '';
     if (fb) fb.value = '';
-    if (when) {
-      const now = new Date();
-      const dd = String(now.getDate()).padStart(2, '0');
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const yyyy = now.getFullYear();
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mi = String(now.getMinutes()).padStart(2, '0');
-      when.value = dd + '.' + mm + '.' + yyyy + ' ' + hh + ':' + mi;
-    }
-    this.setManualStatus('');
+    if (when) when.value = '';
+    const extra = document.getElementById('chek-manual-extra');
+    if (extra) extra.open = !hintTerm;
+    this.setManualStatus(hintTerm
+      ? ('Terminal eslab qolindi: ' + hintTerm + ' — faqat Chek № va FB yozing')
+      : 'Birinchi marta: Chek № + FB. Topilmasa Terminal ni ochib yozing.');
     if (modal) {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
     }
-    setTimeout(() => { if (term) term.focus(); }, 50);
+    setTimeout(() => { if (rno) rno.focus(); }, 50);
   },
 
   closeManual() {
@@ -1125,20 +1140,84 @@ const VMCheks = {
 
   async submitManual() {
     if (this._busy) return;
-    const built = this.buildOfdUrl({
-      terminalId: (document.getElementById('chek-m-term') || {}).value,
-      receiptNo: (document.getElementById('chek-m-rno') || {}).value,
-      when: (document.getElementById('chek-m-when') || {}).value,
-      fiscalSign: (document.getElementById('chek-m-fb') || {}).value
-    });
-    if (!built.ok) {
-      this.setManualStatus(built.error, 'bad');
-      this.toast(built.error);
+    const receiptNo = String(((document.getElementById('chek-m-rno') || {}).value) || '').replace(/\s+/g, '').trim();
+    const fiscalSign = String(((document.getElementById('chek-m-fb') || {}).value) || '').replace(/\s+/g, '').trim();
+    const terminalId = String(((document.getElementById('chek-m-term') || {}).value) || '').replace(/\s+/g, '').trim();
+    const when = String(((document.getElementById('chek-m-when') || {}).value) || '').trim();
+    if (!receiptNo) {
+      this.setManualStatus('Chek № ni yozing', 'bad');
+      this.toast('Chek № ni yozing');
       return;
     }
-    this.setManualStatus('OFD dan qidirilmoqda…', 'busy');
-    this.closeManual();
-    await this.onQr(built.qr);
+    if (!fiscalSign) {
+      this.setManualStatus('FB raqamini yozing', 'bad');
+      this.toast('FB raqamini yozing');
+      return;
+    }
+    if (!terminalId && !this.lastTerminalFor(this.openPlate) && !(this.items || []).some((x) => x && x.terminalId)) {
+      const extra = document.getElementById('chek-manual-extra');
+      if (extra) extra.open = true;
+      this.setManualStatus('Birinchi marta Terminal ni ham yozing (keyin eslab qoladi)', 'bad');
+      this.toast('Terminal ni yozing');
+      const termEl = document.getElementById('chek-m-term');
+      if (termEl) termEl.focus();
+      return;
+    }
+    this.setManualStatus('OFD dan to‘liq chek qidirilmoqda…', 'busy');
+    this._busy = true;
+    this.flash();
+    this.beep();
+    const draft = {
+      id: 'tmp_scan',
+      plate: this.openPlate,
+      receiptNo,
+      fiscalSign,
+      terminalId: terminalId || this.lastTerminalFor(this.openPlate),
+      paidAt: when || '',
+      merchant: '',
+      amount: null,
+      items: [],
+      ofdOk: false,
+      ofdPending: true,
+      ofdNote: 'OFD dan qidirilmoqda…'
+    };
+    this.pingLive(draft);
+    try {
+      this.closeManual();
+      this.openPaper(draft, true, false);
+      const body = {
+        plate: this.openPlate,
+        manualLookup: true,
+        receiptNo,
+        fiscalSign,
+        terminalId: terminalId || undefined,
+        paidAt: when || undefined
+      };
+      const d = await vmApi('/api/office/cheks/scan', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        timeoutMs: 90000
+      });
+      if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));
+      else if (Array.isArray(d.items)) this.applyItems(d.items);
+      this.render();
+      if (d.item) {
+        this.selectedId = String(d.item.id);
+        this.highlightId = d.item.id;
+        this.openPaper(d.item, true, !!d.duplicate);
+        if (!d.item.ofdOk) this.refreshOfd(true);
+        this.toast(d.item.ofdOk
+          ? ('Topildi: ' + (this.money(d.item.amount) || d.item.merchant || 'chek'))
+          : (d.duplicate ? 'Bu chek avval saqlangan' : 'Saqlandi — OFD hali to‘ldirilmoqda'));
+      } else {
+        this.toast(d.error || 'Topilmadi');
+      }
+    } catch (e) {
+      this.toast((e && e.message) || 'OFD qidiruv xato');
+      this.setManualStatus((e && e.message) || 'Xato', 'bad');
+    } finally {
+      this._busy = false;
+    }
   },
 
   async closeScan() {
