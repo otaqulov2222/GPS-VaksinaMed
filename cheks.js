@@ -580,11 +580,24 @@ const VMCheks = {
     }
     if (totals) {
       totals.innerHTML = `
-        <div class="chek-tot"><b>${rows.length}</b><span>Mashina</span></div>
-        <div class="chek-tot"><b>${all.monthCount}</b><span>Chek · ${this.esc(label)}</span></div>
-        <div class="chek-tot"><b>${this.money(all.monthSum) || '0 so‘m'}</b><span>Jami · ${this.esc(label)}</span></div>`;
+        <div class="chek-tot chek-tot-cars">
+          <span class="chek-tot-k">Park</span>
+          <b>${rows.length}</b>
+          <em>mashina</em>
+        </div>
+        <div class="chek-tot chek-tot-count">
+          <span class="chek-tot-k">Cheklar</span>
+          <b>${all.monthCount}</b>
+          <em>${this.esc(label)}</em>
+        </div>
+        <div class="chek-tot chek-tot-sum">
+          <span class="chek-tot-k">Jami summa</span>
+          <b>${this.money(all.monthSum) || '0 so‘m'}</b>
+          <em>${this.esc(label)}</em>
+        </div>`;
     }
     const open = this.openPlate;
+    document.body.classList.toggle('page-chek-car', !!open);
     if (open) {
       fleet.hidden = true;
       view.hidden = false;
@@ -600,7 +613,14 @@ const VMCheks = {
       fleet.innerHTML = '<div class="chek-empty">Mashinalar ro‘yxati topilmadi.</div>';
       return;
     }
-    fleet.innerHTML = rows.map((d, i) => {
+    const withChek = rows.filter((d) => this.stats(this.forPlate(d.car || ''), ym, day).monthCount > 0).length;
+    fleet.innerHTML = `<div class="chek-fleet-h">
+        <div>
+          <strong>Mashinalar</strong>
+          <span>${withChek ? (withChek + ' tasida chek bor') : ('Hali chek yo‘q · ' + this.esc(label))}</span>
+        </div>
+        <b>${rows.length}</b>
+      </div>` + rows.map((d, i) => {
       const plate = d.car || '';
       const list = this.forPlatePeriod(plate, ym, day);
       const st = this.stats(this.forPlate(plate), ym, day);
@@ -612,7 +632,8 @@ const VMCheks = {
       const lastLine = last
         ? (this.moneyOrWait(last.amount) + ' · ' + this.when(last))
         : ('Hali chek yo‘q · ' + label);
-      return `<button type="button" class="chek-card" data-plate="${this.esc(plate)}">
+      const has = st.monthCount > 0;
+      return `<button type="button" class="chek-card${has ? ' has-chek' : ' is-empty'}" data-plate="${this.esc(plate)}">
         <span class="chek-n">${i + 1}</span>
         <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
         <span class="chek-who">
@@ -622,7 +643,7 @@ const VMCheks = {
         </span>
         <span class="chek-sum">
           <strong>${this.money(st.monthSum) || '0 so‘m'}</strong>
-          <small>${st.monthCount ? (st.monthCount + ' chek') : 'chek yo‘q'}</small>
+          <small>${has ? (st.monthCount + ' chek') : 'chek yo‘q'}</small>
         </span>
         <span class="chek-go" aria-hidden="true">›</span>
       </button>`;
