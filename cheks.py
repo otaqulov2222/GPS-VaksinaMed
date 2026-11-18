@@ -55,6 +55,89 @@ class _TextExtractor(HTMLParser):
         self.parts.append(t)
 
 
+def normalize_human_datetime(raw):
+    """Qog'oz chekdagi sana/vaqtni OFD stamp (YYYYMMDDHHMMSS) ga aylantiradi."""
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    # Avval odam formatlari (27.10.2024 08:57) — raqam-only dan oldin.
+    m = re.match(
+        r"^(\d{1,2})[./](\d{1,2})[./](\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?",
+        s,
+    )
+    if m:
+        dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        hh = int(m.group(4) or 0)
+        mi = int(m.group(5) or 0)
+        ss = int(m.group(6) or 0)
+        try:
+            datetime(yyyy, mm, dd, hh, mi, ss)
+        except ValueError:
+            return ""
+        return "%04d%02d%02d%02d%02d%02d" % (yyyy, mm, dd, hh, mi, ss)
+    m2 = re.match(
+        r"^(\d{4})-(\d{2})-(\d{2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?",
+        s,
+    )
+    if m2:
+        yyyy, mm, dd = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
+        hh = int(m2.group(4) or 0)
+        mi = int(m2.group(5) or 0)
+        ss = int(m2.group(6) or 0)
+        try:
+            datetime(yyyy, mm, dd, hh, mi, ss)
+        except ValueError:
+            return ""
+        return "%04d%02d%02d%02d%02d%02d" % (yyyy, mm, dd, hh, mi, ss)
+    digits = re.sub(r"\D", "", s)
+    if len(digits) >= 14:
+        return digits[:14]
+    if len(digits) == 12:
+        return digits + "00"
+    if len(digits) == 8:
+        return digits + "000000"
+    return ofd_payment_date(s)
+
+
+def build_ofd_url(terminal_id, receipt_no, paid_at_or_stamp, fiscal_sign=""):
+    """Qog'ozdagi Terminal / Chek № / Sana / FB dan OFD havola yasaydi."""
+    term = re.sub(r"\s+", "", str(terminal_id or "")).strip()
+    receipt = re.sub(r"\s+", "", str(receipt_no or "")).strip()
+    sign = re.sub(r"\s+", "", str(fiscal_sign or "")).strip()
+    stamp = normalize_human_datetime(paid_at_or_stamp)
+    if not term:
+        return {"ok": False, "error": "Terminal raqamini yozing"}
+    if not receipt:
+        return {"ok": False, "error": "Chek № ni yozing"}
+    if not stamp or len(re.sub(r"\D", "", stamp)) < 8:
+        return {"ok": False, "error": "Sanani yozing (masalan 27.10.2024 08:57)"}
+    stamp = ofd_payment_date(stamp)
+    q = {"t": term[:40], "r": receipt[:40], "c": stamp}
+    if sign:
+        q["s"] = sign[:40]
+    url = "https://ofd.soliq.uz/check?" + urllib.parse.urlencode(q)
+    return parse_qr_payload(url)
+
+
+def resolve_chek_input(raw):
+    """QR havola yoki qo'lda kiritilgan maydonlardan OFD parse."""
+    if isinstance(raw, dict):
+        qr = str(raw.get("qr") or "").strip()
+        if qr:
+            return parse_qr_payload(qr)
+        return build_ofd_url(
+            raw.get("terminalId") or raw.get("terminal") or raw.get("t"),
+            raw.get("receiptNo") or raw.get("paymentNo") or raw.get("r"),
+            raw.get("paidAt")
+            or raw.get("stamp")
+            or raw.get("paymentDate")
+            or raw.get("c")
+            or raw.get("when"),
+            raw.get("fiscalSign") or raw.get("fb") or raw.get("s") or "",
+        )
+    return parse_qr_payload(raw)
+
+
 def parse_qr_payload(raw):
     s = str(raw or "").strip()
     if not s:
@@ -573,9 +656,11 @@ def ofd_shell():
 
 
 def build_chek_record(qr_raw, extra=None, fetch_ofd=True):
-    parsed = parse_qr_payload(qr_raw)
+    parsed = resolve_chek_input(qr_raw)
     if not parsed.get("ok"):
         return parsed
+    if isinstance(qr_raw, dict) and extra is None:
+        extra = qr_raw
     ofd = fetch_ofd_details(parsed["qr"], parsed=parsed) if fetch_ofd else ofd_shell()
     rec = {
         "qr": parsed["qr"],

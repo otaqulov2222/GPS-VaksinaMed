@@ -2050,7 +2050,7 @@ body.page-chek #chek-car-view {
 }
 body.page-chek .chek-car-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1.1fr) minmax(240px, 1fr) minmax(220px, .9fr);
+  grid-template-columns: minmax(220px, 1.1fr) minmax(240px, 1fr) minmax(240px, 1fr);
   gap: 12px;
   align-items: stretch;
   margin-bottom: 16px;
@@ -2065,11 +2065,13 @@ body.page-chek .chek-car-toolbar .chek-stats {
   margin: 0;
   grid-template-columns: 1fr 1fr;
 }
-body.page-chek .chek-car-toolbar .chek-add-btn {
-  margin: 0;
-  height: 100%;
-  min-height: 64px;
+body.page-chek .chek-car-toolbar .chek-actions-col {
   align-self: stretch;
+}
+body.page-chek .chek-car-toolbar .chek-add-btn,
+body.page-chek .chek-car-toolbar .chek-manual-btn {
+  margin: 0;
+  flex: 1;
 }
 body.page-chek .chek-workspace {
   display: grid;
@@ -2106,8 +2108,12 @@ body.page-chek #chek-top-title { display: block; }
   body.page-chek .chek-car-toolbar {
     grid-template-columns: 1fr 1fr;
   }
-  body.page-chek .chek-car-toolbar .chek-add-btn {
+  body.page-chek .chek-car-toolbar .chek-actions-col {
     grid-column: 1 / -1;
+    flex-direction: row;
+  }
+  body.page-chek .chek-car-toolbar .chek-add-btn,
+  body.page-chek .chek-car-toolbar .chek-manual-btn {
     min-height: 52px;
   }
 }
@@ -2169,6 +2175,45 @@ body.page-chek .vm-docs-badge {
 .chek-link-box { margin-top: 8px; }
 .chek-link-box summary {
   cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; padding: 6px 0;
+}
+.chek-actions-col {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.chek-actions-col .chek-add-btn,
+.chek-actions-col .chek-manual-btn {
+  width: 100%; margin: 0; min-height: 48px; height: auto; white-space: normal;
+}
+.chek-manual-btn {
+  font-size: 14px; letter-spacing: .02em; font-weight: 700;
+}
+.chek-manual-help {
+  margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--ink-2);
+}
+.chek-manual-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px;
+}
+.chek-manual-grid .full { grid-column: 1 / -1; }
+.chek-manual-grid label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 5px;
+}
+.chek-manual-grid input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 10px; font: 14px/1.3 var(--mono);
+  background: #fff; color: var(--ink);
+}
+.chek-manual-grid input:focus {
+  outline: none; border-color: #1d4f91; box-shadow: 0 0 0 3px rgba(29,79,145,.12);
+}
+.chek-manual-hint {
+  margin: 10px 0 0; font-size: 12px; color: var(--muted); line-height: 1.4;
+}
+#chek-manual-modal .modal-box { max-width: 480px; }
+#chek-manual-modal .modal-footer {
+  display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px;
+}
+@media (max-width: 560px) {
+  .chek-manual-grid { grid-template-columns: 1fr; }
 }
 #chek-flash {
   position: fixed; inset: 0; z-index: 920; pointer-events: none;
@@ -3212,6 +3257,7 @@ input, select, textarea { max-width: 100%; }
       <div class="chek-scan-status" id="chek-scan-status"></div>
       <div id="chek-scan-cam"><span class="chek-scan-ph">Kamera ochilmoqda…</span></div>
       <div id="chek-scan-file-sink"></div>
+      <button type="button" class="btn btn-outline chek-scan-alt" id="chek-scan-to-manual">Kamera ishlamasa — qo‘lda kiritish</button>
       <details class="chek-link-box">
         <summary>Kamera ochilmasa — zaxira</summary>
         <label class="btn btn-gold chek-photo-btn" for="chek-scan-file" style="margin-top:8px;">Rasmga olish</label>
@@ -3223,6 +3269,42 @@ input, select, textarea { max-width: 100%; }
         <input type="text" id="chek-qr-text" placeholder="https://ofd.soliq.uz/check?...">
         <button type="button" class="btn btn-gold chek-scan-alt" id="chek-scan-paste" style="margin-top:8px;">Havoladan saqlash</button>
       </details>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="chek-manual-modal" aria-hidden="true">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="chek-manual-title">Qo‘lda chek</h3>
+      <button type="button" class="modal-close" id="chek-manual-close" aria-label="Yopish">×</button>
+    </div>
+    <div class="form-row">
+      <p class="chek-manual-help">Qog‘oz chekdagi <b>Terminal</b>, <b>Chek №</b> va <b>sana/vaqt</b> ni yozing — tizim OFD dan chekni o‘zi topadi. <b>FB</b> bo‘lsa aniqroq bo‘ladi.</p>
+      <div class="chek-scan-status" id="chek-manual-status"></div>
+      <div class="chek-manual-grid">
+        <div>
+          <label for="chek-m-term">Terminal</label>
+          <input type="text" id="chek-m-term" inputmode="numeric" autocomplete="off" placeholder="329090111713">
+        </div>
+        <div>
+          <label for="chek-m-rno">Chek №</label>
+          <input type="text" id="chek-m-rno" inputmode="numeric" autocomplete="off" placeholder="149478">
+        </div>
+        <div class="full">
+          <label for="chek-m-when">Sana va vaqt</label>
+          <input type="text" id="chek-m-when" autocomplete="off" placeholder="27.10.2024 08:57">
+        </div>
+        <div class="full">
+          <label for="chek-m-fb">FB / fiskal belgi (ixtiyoriy)</label>
+          <input type="text" id="chek-m-fb" inputmode="numeric" autocomplete="off" placeholder="069988523883">
+        </div>
+      </div>
+      <p class="chek-manual-hint">Raqamlar qog‘oz chekning pastida yozilgan. Vaqt taxminan to‘g‘ri bo‘lsa ham OFD topishi mumkin.</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-light" id="chek-manual-cancel">Bekor</button>
+      <button type="button" class="btn btn-gold" id="chek-manual-submit">OFD dan topish</button>
     </div>
   </div>
 </div>
@@ -3425,7 +3507,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=31"></script>
-<script src="cheks.js?v=14"></script>
+<script src="cheks.js?v=15"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

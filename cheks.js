@@ -192,6 +192,46 @@ const VMCheks = {
     });
   },
 
+  normalizeStamp(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    let m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if (m) {
+      const dd = String(m[1]).padStart(2, '0');
+      const mm = String(m[2]).padStart(2, '0');
+      const yyyy = m[3];
+      const hh = String(m[4] || '0').padStart(2, '0');
+      const mi = String(m[5] || '0').padStart(2, '0');
+      const ss = String(m[6] || '0').padStart(2, '0');
+      return yyyy + mm + dd + hh + mi + ss;
+    }
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if (m) {
+      const hh = String(m[4] || '0').padStart(2, '0');
+      const mi = String(m[5] || '0').padStart(2, '0');
+      const ss = String(m[6] || '0').padStart(2, '0');
+      return m[1] + m[2] + m[3] + hh + mi + ss;
+    }
+    const digits = s.replace(/\D/g, '');
+    if (digits.length >= 14) return digits.slice(0, 14);
+    if (digits.length === 12) return digits + '00';
+    if (digits.length === 8) return digits + '000000';
+    return digits.length >= 8 ? digits : '';
+  },
+
+  buildOfdUrl(fields) {
+    const term = String((fields && fields.terminalId) || '').replace(/\s+/g, '').trim();
+    const rno = String((fields && fields.receiptNo) || '').replace(/\s+/g, '').trim();
+    const fb = String((fields && fields.fiscalSign) || '').replace(/\s+/g, '').trim();
+    const stamp = this.normalizeStamp(fields && fields.when);
+    if (!term) return { ok: false, error: 'Terminal raqamini yozing' };
+    if (!rno) return { ok: false, error: 'Chek № ni yozing' };
+    if (!stamp || stamp.length < 8) return { ok: false, error: 'Sanani yozing (masalan 27.10.2024 08:57)' };
+    const q = new URLSearchParams({ t: term.slice(0, 40), r: rno.slice(0, 40), c: stamp });
+    if (fb) q.set('s', fb.slice(0, 40));
+    return { ok: true, qr: 'https://ofd.soliq.uz/check?' + q.toString() };
+  },
+
   parseQr(raw) {
     let s = String(raw || '').trim();
     if (!s) return null;
@@ -449,7 +489,10 @@ const VMCheks = {
           <div class="chek-stat"><span>Shu oy cheklar</span><b>${st.monthCount}</b></div>
           <div class="chek-stat"><span>Shu oy summa</span><b>${this.money(st.monthSum) || '0 so‘m'}</b></div>
         </div>
-        <button type="button" class="btn btn-gold chek-add-btn" id="chek-add">QR skaner — kamera o‘zi o‘qiydi</button>
+        <div class="chek-actions-col">
+          <button type="button" class="btn btn-gold chek-add-btn" id="chek-add">QR skaner — kamera o‘zi o‘qiydi</button>
+          <button type="button" class="btn btn-outline chek-manual-btn" id="chek-manual-open">Qo‘lda kiritish — Terminal / Chek №</button>
+        </div>
       </div>
       <div class="chek-workspace">
         <div class="chek-col-list">
@@ -588,6 +631,18 @@ const VMCheks = {
     el.textContent = text;
   },
 
+  setManualStatus(text, kind) {
+    const el = document.getElementById('chek-manual-status');
+    if (!el) return;
+    if (!text) {
+      el.className = 'chek-scan-status';
+      el.textContent = '';
+      return;
+    }
+    el.className = 'chek-scan-status on' + (kind ? ' ' + kind : '');
+    el.textContent = text;
+  },
+
   bind() {
     const board = document.getElementById('chek-board');
     if (!board || board._vmChekBound) return;
@@ -603,6 +658,11 @@ const VMCheks = {
       const add = e.target.closest('#chek-add');
       if (add) {
         this.openScan(this.openPlate);
+        return;
+      }
+      const manOpen = e.target.closest('#chek-manual-open');
+      if (manOpen) {
+        this.openManual(this.openPlate);
         return;
       }
       const delBtn = e.target.closest('.chek-act-del');
@@ -653,6 +713,12 @@ const VMCheks = {
     if (close) close.onclick = () => this.closeScan();
     const paste = document.getElementById('chek-scan-paste');
     if (paste) paste.onclick = () => this.submitPaste();
+    const toManual = document.getElementById('chek-scan-to-manual');
+    if (toManual) toManual.onclick = async () => {
+      const plate = this.openPlate;
+      await this.closeScan();
+      this.openManual(plate);
+    };
     const live = document.getElementById('chek-scan-live');
     if (live) live.onclick = () => this.startCamera();
     const file = document.getElementById('chek-scan-file');
@@ -667,6 +733,30 @@ const VMCheks = {
       if (f) this.scanFile(f);
       ev.target.value = '';
     };
+    const mClose = document.getElementById('chek-manual-close');
+    const mCancel = document.getElementById('chek-manual-cancel');
+    if (mClose) mClose.onclick = () => this.closeManual();
+    if (mCancel) mCancel.onclick = () => this.closeManual();
+    const mSubmit = document.getElementById('chek-manual-submit');
+    if (mSubmit) mSubmit.onclick = () => this.submitManual();
+    const mModal = document.getElementById('chek-manual-modal');
+    if (mModal && !mModal._vmBgClose) {
+      mModal._vmBgClose = true;
+      mModal.addEventListener('click', (e) => {
+        if (e.target === mModal) this.closeManual();
+      });
+    }
+    ['chek-m-term', 'chek-m-rno', 'chek-m-when', 'chek-m-fb'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el || el._vmEnter) return;
+      el._vmEnter = true;
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          this.submitManual();
+        }
+      });
+    });
     const pClose = document.getElementById('chek-paper-close');
     const pDone = document.getElementById('chek-paper-done');
     if (pClose) pClose.onclick = () => this.closePaper();
@@ -989,6 +1079,66 @@ const VMCheks = {
     const t = el && el.value.trim();
     if (!t) { this.toast('QR havolasini yozing'); return; }
     this.onQr(t);
+  },
+
+  openManual(plate) {
+    this.openPlate = plate || this.openPlate;
+    this.render();
+    const modal = document.getElementById('chek-manual-modal');
+    const title = document.getElementById('chek-manual-title');
+    const d = this.driverOf(this.openPlate);
+    if (title) {
+      title.textContent = ((d.shortName || d.fullName || '') + ' · ' + (this.openPlate || '')).trim() + ' — qo‘lda';
+    }
+    const term = document.getElementById('chek-m-term');
+    const rno = document.getElementById('chek-m-rno');
+    const when = document.getElementById('chek-m-when');
+    const fb = document.getElementById('chek-m-fb');
+    if (term) term.value = '';
+    if (rno) rno.value = '';
+    if (fb) fb.value = '';
+    if (when) {
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const yyyy = now.getFullYear();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mi = String(now.getMinutes()).padStart(2, '0');
+      when.value = dd + '.' + mm + '.' + yyyy + ' ' + hh + ':' + mi;
+    }
+    this.setManualStatus('');
+    if (modal) {
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    setTimeout(() => { if (term) term.focus(); }, 50);
+  },
+
+  closeManual() {
+    const modal = document.getElementById('chek-manual-modal');
+    this.setManualStatus('');
+    if (modal) {
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  },
+
+  async submitManual() {
+    if (this._busy) return;
+    const built = this.buildOfdUrl({
+      terminalId: (document.getElementById('chek-m-term') || {}).value,
+      receiptNo: (document.getElementById('chek-m-rno') || {}).value,
+      when: (document.getElementById('chek-m-when') || {}).value,
+      fiscalSign: (document.getElementById('chek-m-fb') || {}).value
+    });
+    if (!built.ok) {
+      this.setManualStatus(built.error, 'bad');
+      this.toast(built.error);
+      return;
+    }
+    this.setManualStatus('OFD dan qidirilmoqda…', 'busy');
+    this.closeManual();
+    await this.onQr(built.qr);
   },
 
   async closeScan() {

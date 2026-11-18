@@ -129,6 +129,45 @@ class CheksParseTest(unittest.TestCase):
         self.assertFalse(row.get("ofdOk"))
         self.assertNotIn("URLError", row["ofdNote"])
 
+    def test_manual_fields_build_ofd(self):
+        p = cheks.build_ofd_url(
+            "329090111713",
+            "149478",
+            "27.10.2024 08:57",
+            "069988523883",
+        )
+        self.assertTrue(p["ok"])
+        self.assertEqual(p["terminalId"], "329090111713")
+        self.assertEqual(p["receiptNo"], "149478")
+        self.assertEqual(p["fiscalSign"], "069988523883")
+        self.assertEqual(p["stamp"], "20241027085700")
+        self.assertEqual(p["paidAt"], "2024-10-27 08:57:00")
+        self.assertIn("ofd.soliq.uz/check?", p["qr"])
+
+    def test_resolve_chek_input_fields(self):
+        p = cheks.resolve_chek_input({
+            "terminalId": "YZ1",
+            "receiptNo": "12",
+            "paidAt": "2026-11-18 12:30",
+            "fiscalSign": "99",
+        })
+        self.assertTrue(p["ok"])
+        self.assertEqual(p["stamp"], "20261118123000")
+        built = cheks.build_chek_record({
+            "terminalId": "YZ1",
+            "receiptNo": "12",
+            "paidAt": "18.11.2026 12:30",
+            "fiscalSign": "99",
+        }, fetch_ofd=False)
+        self.assertTrue(built["ok"])
+        self.assertEqual(built["rec"]["terminalId"], "YZ1")
+        self.assertEqual(built["rec"]["receiptNo"], "12")
+
+    def test_manual_requires_fields(self):
+        self.assertFalse(cheks.build_ofd_url("", "1", "27.10.2024 08:57")["ok"])
+        self.assertFalse(cheks.build_ofd_url("1", "", "27.10.2024 08:57")["ok"])
+        self.assertFalse(cheks.build_ofd_url("1", "2", "")["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

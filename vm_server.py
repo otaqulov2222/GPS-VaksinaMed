@@ -2555,7 +2555,7 @@ class OfficeStore:
         if not key:
             return None, "Mashina tanlanmagan"
         built = chekmod.build_chek_record(
-            rec.get("qr") if isinstance(rec, dict) else rec,
+            rec if isinstance(rec, dict) else rec,
             rec if isinstance(rec, dict) else None,
             fetch_ofd=False,
         )
