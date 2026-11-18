@@ -12,6 +12,7 @@ const VMCheks = {
   openPlate: '',
   selectedId: '',
   periodYm: '',
+  periodDay: '',
   scanning: false,
   scanner: null,
   libPromise: null,
@@ -103,36 +104,102 @@ const VMCheks = {
     return (months[idx] || m[2]) + ' ' + m[1];
   },
 
-  inMonth(r, ym) {
+  rowDateKey(r) {
     const raw = String((r && (r.paidAt || r.createdAt)) || '');
     const iso = raw.replace(' ', 'T');
-    if (iso.slice(0, 7) === ym) return true;
+    if (/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso.slice(0, 10);
     const m = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
-    return !!(m && (m[3] + '-' + m[2]) === ym);
+    if (m) return m[3] + '-' + m[2] + '-' + m[1];
+    return '';
   },
 
-  forPlatePeriod(plate, ym) {
-    return this.forPlate(plate).filter((r) => this.inMonth(r, ym || this.currentYm()));
+  inMonth(r, ym) {
+    const key = this.rowDateKey(r);
+    return !!(key && key.slice(0, 7) === ym);
+  },
+
+  inDay(r, day) {
+    return this.rowDateKey(r) === String(day || '');
+  },
+
+  currentDay() {
+    const d = String(this.periodDay || '');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d.slice(0, 7) === this.currentYm()) return d;
+    return '';
+  },
+
+  periodLabel(ym, day) {
+    if (day) {
+      const m = String(day).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return Number(m[3]) + ' ' + this.monthTitle(m[1] + '-' + m[2]);
+    }
+    return this.monthTitle(ym);
+  },
+
+  filterPeriod(list, ym, day) {
+    const y = ym || this.currentYm();
+    const d = day == null ? this.currentDay() : day;
+    if (d) return (list || []).filter((r) => this.inDay(r, d));
+    return (list || []).filter((r) => this.inMonth(r, y));
+  },
+
+  forPlatePeriod(plate, ym, day) {
+    return this.filterPeriod(this.forPlate(plate), ym, day);
+  },
+
+  daysWithData(ym) {
+    const set = new Set();
+    (this.items || []).forEach((r) => {
+      const key = this.rowDateKey(r);
+      if (key && key.slice(0, 7) === ym) set.add(key);
+    });
+    return set;
+  },
+
+  todayStr() {
+    const n = new Date();
+    return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
   },
 
   setPeriod(ym) {
     const next = String(ym || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(next)) return;
-    if (next === this.currentYm()) return;
+    if (next === this.currentYm() && !this.periodDay) return;
     this.periodYm = next;
+    if (this.periodDay && this.periodDay.slice(0, 7) !== next) this.periodDay = '';
     this._renderSig = '';
-    try { localStorage.setItem('vm_chek_period', next); } catch (e) {}
+    try {
+      localStorage.setItem('vm_chek_period', next);
+      localStorage.setItem('vm_chek_day', this.periodDay || '');
+    } catch (e) {}
     this.render();
   },
 
-  stats(list, ym) {
-    const month = (list || []).filter(r => this.inMonth(r, ym));
+  setDay(day) {
+    const ds = String(day || '');
+    if (ds && !/^\d{4}-\d{2}-\d{2}$/.test(ds)) return;
+    if (ds) {
+      this.periodYm = ds.slice(0, 7);
+      this.periodDay = ds;
+    } else {
+      this.periodDay = '';
+    }
+    this._renderSig = '';
+    try {
+      localStorage.setItem('vm_chek_period', this.periodYm);
+      localStorage.setItem('vm_chek_day', this.periodDay || '');
+    } catch (e) {}
+    this.render();
+  },
+
+  stats(list, ym, day) {
+    const filtered = this.filterPeriod(list, ym, day);
     const sum = (arr) => arr.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     return {
-      count: list.length,
-      sum: sum(list),
-      monthCount: month.length,
-      monthSum: sum(month)
+      count: (list || []).length,
+      sum: sum(list || []),
+      monthCount: filtered.length,
+      monthSum: sum(filtered)
     };
   },
 
@@ -426,48 +493,69 @@ const VMCheks = {
     if (live) live.textContent = this.lastPing;
   },
 
-  renderPeriodBar(ym) {
+  renderPeriodBar(ym, day) {
     const host = document.getElementById('chek-period');
     if (!host) return;
     const title = this.monthTitle(ym);
-    const isCur = ym === this.ymNow();
+    const label = this.periodLabel(ym, day);
+    const today = this.todayStr();
+    const withData = this.daysWithData(ym);
+    const m = String(ym).match(/^(\d{4})-(\d{2})$/);
+    const yNum = m ? Number(m[1]) : new Date().getFullYear();
+    const mNum = m ? Number(m[2]) - 1 : new Date().getMonth();
+    const firstDow = new Date(yNum, mNum, 1).getDay();
+    const offset = firstDow === 0 ? 6 : firstDow - 1;
+    const daysIn = new Date(yNum, mNum + 1, 0).getDate();
+    let grid = '';
+    for (let i = 0; i < offset; i++) grid += '<div class="cal-day cal-day-empty"></div>';
+    for (let d = 1; d <= daysIn; d++) {
+      const ds = ym + '-' + String(d).padStart(2, '0');
+      const fut = ds > today;
+      let cls = 'cal-day';
+      if (fut) cls += ' cal-day-future';
+      else if (ds === today) cls += ' is-today';
+      if (withData.has(ds)) cls += ' has-data';
+      if (day && ds === day) cls += ' active';
+      const tip = withData.has(ds) ? (ds + ' · chek bor') : ds;
+      grid += fut
+        ? `<div class="${cls}" title="${this.esc(tip)}">${d}</div>`
+        : `<button type="button" class="${cls}" data-chek-day="${ds}" title="${this.esc(tip)}">${d}</button>`;
+    }
+    const dayCount = withData.size;
+    const dayStats = day ? this.stats(this.items, ym, day) : null;
+    const statusText = day
+      ? (dayStats.monthCount ? (dayStats.monthCount + ' chek') : 'Chek yo‘q')
+      : (dayCount + ' kun');
+    const statusCls = day
+      ? (dayStats.monthCount ? 'chip chip-green' : 'chip chip-gray')
+      : 'chip chip-blue';
     host.innerHTML = `
-      <div class="chek-period-card">
-        <span class="chek-period-label">Davr</span>
-        <b class="chek-period-title">${this.esc(title)}${isCur ? '' : ''}</b>
-        <div class="chek-period-nav">
-          <button type="button" class="btn btn-outline" id="chek-period-prev" title="Oldingi oy">‹</button>
-          <input type="month" id="chek-period-input" class="month-pick" value="${this.esc(ym)}" title="Oy tanlash">
-          <button type="button" class="btn btn-outline" id="chek-period-next" title="Keyingi oy">›</button>
-          <button type="button" class="btn btn-light" id="chek-period-now" ${isCur ? 'disabled' : ''}>Shu oy</button>
+      <div class="chek-cal-card">
+        <div class="chek-cal-head">
+          <h3>Kalendar</h3>
+          <span class="${statusCls}" id="chek-cal-count">${this.esc(statusText)}</span>
+        </div>
+        <div class="cal-nav">
+          <button type="button" id="chek-period-prev" title="Oldingi oy">&lt;</button>
+          <span id="chek-cal-month-label">${this.esc(title.toUpperCase())}</span>
+          <button type="button" id="chek-period-next" title="Keyingi oy">&gt;</button>
+        </div>
+        <div class="chek-cal-body">
+          <div class="cal-week-labels">
+            <span>Du</span><span>Se</span><span>Ch</span><span>Pa</span><span>Ju</span><span>Sh</span><span>Ya</span>
+          </div>
+          <div class="cal-grid" id="chek-cal-grid">${grid}</div>
+        </div>
+        <div class="cal-selected-box chek-cal-selected">
+          <span id="chek-cal-selected-label">${this.esc(day ? label : ('Butun oy · ' + title))}</span>
+          <div class="chek-cal-selected-acts">
+            <button type="button" class="btn btn-light btn-sm" id="chek-period-now">Bugun</button>
+            <button type="button" class="btn btn-outline btn-sm" id="chek-cal-month" ${day ? '' : 'disabled'}>Butun oy</button>
+          </div>
         </div>
       </div>`;
-    const input = document.getElementById('chek-period-input');
-    const prev = document.getElementById('chek-period-prev');
-    const next = document.getElementById('chek-period-next');
-    const nowBtn = document.getElementById('chek-period-now');
-    if (input && !input._vmBound) {
-      input._vmBound = true;
-      input.addEventListener('change', () => this.setPeriod(input.value));
-    } else if (input) {
-      input.value = ym;
-    }
-    if (prev && !prev._vmBound) {
-      prev._vmBound = true;
-      prev.addEventListener('click', () => this.setPeriod(this.shiftYm(this.currentYm(), -1)));
-    }
-    if (next && !next._vmBound) {
-      next._vmBound = true;
-      next.addEventListener('click', () => this.setPeriod(this.shiftYm(this.currentYm(), 1)));
-    }
-    if (nowBtn && !nowBtn._vmBound) {
-      nowBtn._vmBound = true;
-      nowBtn.addEventListener('click', () => this.setPeriod(this.ymNow()));
-    } else if (nowBtn) {
-      nowBtn.disabled = isCur;
-    }
     const sub = document.querySelector('#chek-top-title .tb-sub');
-    if (sub) sub.textContent = 'Zapravka cheklari · ' + title + ' · hisobotga ta’sir qilmaydi';
+    if (sub) sub.textContent = 'Zapravka cheklari · ' + label + ' · hisobotga ta’sir qilmaydi';
   },
 
   render() {
@@ -478,28 +566,30 @@ const VMCheks = {
     if (!fleet || !view) return;
     const rows = this.drivers();
     const ym = this.currentYm();
-    const all = this.stats(this.items, ym);
-    const sig = [ym, this.openPlate, this.selectedId, this.highlightId, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
+    const day = this.currentDay();
+    const label = this.periodLabel(ym, day);
+    const all = this.stats(this.items, ym, day);
+    const sig = [ym, day, this.openPlate, this.selectedId, this.highlightId, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
     if (sig === this._renderSig) return;
     this._renderSig = sig;
-    this.renderPeriodBar(ym);
+    this.renderPeriodBar(ym, day);
     if (meta) {
       meta.textContent = all.monthCount
-        ? (all.monthCount + ' chek · ' + this.monthTitle(ym) + ' · ' + (this.money(all.monthSum) || '0 so‘m'))
-        : (this.monthTitle(ym) + ' · chek yo‘q');
+        ? (all.monthCount + ' chek · ' + label + ' · ' + (this.money(all.monthSum) || '0 so‘m'))
+        : (label + ' · chek yo‘q');
     }
     if (totals) {
       totals.innerHTML = `
         <div class="chek-tot"><b>${rows.length}</b><span>Mashina</span></div>
-        <div class="chek-tot"><b>${all.monthCount}</b><span>Chek · ${this.esc(this.monthTitle(ym))}</span></div>
-        <div class="chek-tot"><b>${this.money(all.monthSum) || '0 so‘m'}</b><span>Jami · ${this.esc(this.monthTitle(ym))}</span></div>`;
+        <div class="chek-tot"><b>${all.monthCount}</b><span>Chek · ${this.esc(label)}</span></div>
+        <div class="chek-tot"><b>${this.money(all.monthSum) || '0 so‘m'}</b><span>Jami · ${this.esc(label)}</span></div>`;
     }
     const open = this.openPlate;
     if (open) {
       fleet.hidden = true;
       view.hidden = false;
       if (totals) totals.hidden = true;
-      this.renderCar(view, open, ym);
+      this.renderCar(view, open, ym, day);
       return;
     }
     fleet.hidden = false;
@@ -512,8 +602,8 @@ const VMCheks = {
     }
     fleet.innerHTML = rows.map((d, i) => {
       const plate = d.car || '';
-      const list = this.forPlatePeriod(plate, ym);
-      const st = this.stats(this.forPlate(plate), ym);
+      const list = this.forPlatePeriod(plate, ym, day);
+      const st = this.stats(this.forPlate(plate), ym, day);
       const last = list[0];
       const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(plate, 'fb-photo') : '';
       const model = typeof fleetModelOf === 'function' ? fleetModelOf(plate) : '';
@@ -521,7 +611,7 @@ const VMCheks = {
       const name = d.shortName || d.fullName || '—';
       const lastLine = last
         ? (this.moneyOrWait(last.amount) + ' · ' + this.when(last))
-        : ('Hali chek yo‘q · ' + this.monthTitle(ym));
+        : ('Hali chek yo‘q · ' + label);
       return `<button type="button" class="chek-card" data-plate="${this.esc(plate)}">
         <span class="chek-n">${i + 1}</span>
         <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
@@ -561,25 +651,27 @@ const VMCheks = {
     }
     return `<div class="chek-paper chek-paper-inline">${this.paperHtml(row, true)}</div>
       <div class="chek-preview-actions">
+        <button type="button" class="btn btn-gold chek-act-pdf" data-id="${this.esc(row.id)}">PDF yuklab olish</button>
         <button type="button" class="btn btn-outline chek-act-edit" data-id="${this.esc(row.id)}">Tahrirlash</button>
         <button type="button" class="btn btn-outline chek-act-del" data-id="${this.esc(row.id)}">O‘chirish</button>
       </div>`;
   },
 
-  renderCar(view, plate, ym) {
+  renderCar(view, plate, ym, day) {
     const d = this.driverOf(plate);
+    const dayKey = day == null ? this.currentDay() : day;
     const allList = this.forPlate(plate);
-    const list = this.forPlatePeriod(plate, ym);
-    const st = this.stats(allList, ym);
+    const list = this.forPlatePeriod(plate, ym, dayKey);
+    const st = this.stats(allList, ym, dayKey);
     const selected = this.ensureSelected(list);
     const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(plate, 'fb-photo') : '';
     const model = typeof fleetModelOf === 'function' ? fleetModelOf(plate) : '';
     const minfo = model && window.FLEET_MODELS ? window.FLEET_MODELS[model] : null;
     const name = d.shortName || d.fullName || '—';
-    const title = this.monthTitle(ym);
+    const title = this.periodLabel(ym, dayKey);
     const rows = list.length
       ? `<ul class="chek-list">${list.map(r => this.miniHtml(r)).join('')}</ul>`
-      : `<div class="chek-empty">${this.esc(title)} uchun chek yo‘q. Boshqa oy tanlang yoki QR / qo‘lda kiritish bilan qo‘shing.</div>`;
+      : `<div class="chek-empty">${this.esc(title)} uchun chek yo‘q. Boshqa kun/oy tanlang yoki QR / qo‘lda kiritish bilan qo‘shing.</div>`;
     view.innerHTML = `
       <button type="button" class="chek-back" id="chek-back">← Mashinalar</button>
       <div class="chek-car-toolbar">
@@ -629,10 +721,191 @@ const VMCheks = {
         <i class="chek-pill ${kind}">${this.esc(this.ofdLabel(r))}</i>
       </button>
       <div class="chek-mini-acts">
+        <button type="button" class="chek-act chek-act-pdf" data-id="${id}">PDF</button>
         <button type="button" class="chek-act chek-act-edit" data-id="${id}">Tahrirlash</button>
         <button type="button" class="chek-act chek-act-del" data-id="${id}">O‘chirish</button>
       </div>
     </li>`;
+  },
+
+  pdfTxt(s) {
+    const t = String(s == null ? '' : s);
+    if (typeof uzLatin === 'function') return uzLatin(t);
+    return t;
+  },
+
+  async ensurePdfDoc() {
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!JsPDF) throw new Error('PDF moduli yuklanmadi. Ctrl+F5 qiling.');
+    const doc = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    let font = 'helvetica';
+    try {
+      if (typeof loadPdfFonts === 'function' && typeof applyPdfFont === 'function') {
+        const fonts = await loadPdfFonts();
+        applyPdfFont(doc, fonts);
+        if (window.VM_PDF_FONT) font = window.VM_PDF_FONT;
+      }
+    } catch (e) {}
+    return { doc, font };
+  },
+
+  async downloadPdf(idOrRow) {
+    const row = (idOrRow && typeof idOrRow === 'object')
+      ? idOrRow
+      : this.items.find((x) => String(x.id) === String(idOrRow));
+    if (!row) {
+      this.toast('Chek topilmadi');
+      return;
+    }
+    try {
+      this.toast('PDF tayyorlanmoqda…');
+      const { doc, font } = await this.ensurePdfDoc();
+      const useNoto = font === 'NotoSans';
+      const T = (s) => (useNoto ? String(s == null ? '' : s) : this.pdfTxt(s));
+      const setF = (style, size) => {
+        doc.setFont(font, style || 'normal');
+        if (size) doc.setFontSize(size);
+      };
+      const line = (yPos) => {
+        doc.setDrawColor(180);
+        try {
+          if (doc.setLineDash) doc.setLineDash([1, 1], 0);
+          else if (doc.setLineDashPattern) doc.setLineDashPattern([1, 1], 0);
+        } catch (e) {}
+        doc.line(18, yPos, 192, yPos);
+        try {
+          if (doc.setLineDash) doc.setLineDash([]);
+          else if (doc.setLineDashPattern) doc.setLineDashPattern([], 0);
+        } catch (e) {}
+      };
+      const d = this.driverOf(row.plate);
+      const merchant = row.merchant || row.kkmName || 'Zapravka';
+      const amt = this.som(row.amount);
+      let y = 18;
+
+      setF('bold', 16);
+      doc.setTextColor(26, 79, 160);
+      doc.text(T(row.cardType || row.payMethod || 'UZCARD'), 105, y, { align: 'center' });
+      y += 8;
+      setF('bold', 13);
+      doc.setTextColor(20, 30, 45);
+      doc.text(T(merchant), 105, y, { align: 'center' });
+      y += 6;
+      if (row.address) {
+        setF('normal', 9);
+        doc.setTextColor(90, 100, 115);
+        const addr = doc.splitTextToSize(T(row.address), 160);
+        doc.text(addr, 105, y, { align: 'center' });
+        y += addr.length * 4.2 + 2;
+      }
+      setF('normal', 10);
+      doc.setTextColor(40, 50, 65);
+      doc.text(T('Sanasi: ' + this.when(row)), 105, y, { align: 'center' });
+      y += 8;
+      setF('bold', 11);
+      doc.text(T('SOTUV CHEKI'), 105, y, { align: 'center' });
+      y += 4;
+      line(y);
+      y += 8;
+
+      const items = (row.items || []).filter((it) => it && it.name).slice(0, 20);
+      if (items.length) {
+        items.forEach((it) => {
+          const qty = it.qty != null && it.qty !== '' ? Number(it.qty) : NaN;
+          const sum = it.sum != null && it.sum !== '' ? Number(it.sum) : NaN;
+          const unit = Number.isFinite(qty) && qty !== 0 && Number.isFinite(sum) ? (sum / qty) : NaN;
+          setF('bold', 10);
+          doc.setTextColor(20, 30, 45);
+          const nameLines = doc.splitTextToSize(T(it.name), 170);
+          doc.text(nameLines, 20, y);
+          y += nameLines.length * 4.5;
+          setF('normal', 9);
+          doc.setTextColor(70, 80, 95);
+          if (Number.isFinite(qty) && Number.isFinite(unit)) {
+            doc.text(T(String(qty) + ' x ' + this.som(unit, '') + " so'm"), 20, y);
+            doc.text(T('= ' + this.som(sum, '')), 190, y, { align: 'right' });
+            y += 5;
+          } else if (Number.isFinite(sum)) {
+            doc.text(T('= ' + this.som(sum)), 190, y, { align: 'right' });
+            y += 5;
+          }
+          y += 2;
+        });
+      } else {
+        setF('normal', 9);
+        doc.setTextColor(120, 120, 120);
+        doc.text(T('Mahsulot qatori OFD dan kelmagan'), 105, y, { align: 'center' });
+        y += 6;
+      }
+
+      if (row.vatTotal != null && Number(row.vatTotal) > 0) {
+        setF('normal', 9);
+        doc.setTextColor(70, 80, 95);
+        doc.text(T('QQS 12.00%'), 20, y);
+        doc.text(T('= ' + this.som(row.vatTotal)), 190, y, { align: 'right' });
+        y += 6;
+      }
+      line(y);
+      y += 8;
+      setF('bold', 12);
+      doc.setTextColor(20, 30, 45);
+      doc.text(T('JAMI'), 20, y);
+      doc.text(T('= ' + amt), 190, y, { align: 'right' });
+      y += 7;
+      if (row.cardTotal != null && Number(row.cardTotal) > 0) {
+        setF('normal', 9);
+        doc.text(T('PL.KARTA' + (row.cardType ? (' · ' + row.cardType) : '')), 20, y);
+        doc.text(T('= ' + this.som(row.cardTotal)), 190, y, { align: 'right' });
+        y += 5;
+      } else if (row.cashTotal != null && Number(row.cashTotal) > 0) {
+        setF('normal', 9);
+        doc.text(T('NAQD'), 20, y);
+        doc.text(T('= ' + this.som(row.cashTotal)), 190, y, { align: 'right' });
+        y += 5;
+      }
+      line(y);
+      y += 8;
+
+      const meta = [
+        ['Mashina', row.plate || '—'],
+        ['Haydovchi', d.shortName || d.fullName || '—'],
+        ['STIR', row.inn || '—'],
+        ['FM', row.kkmName || '—'],
+        ['Terminal', row.terminalId || '—'],
+        ['Chek №', row.receiptNo || '—'],
+        ['FB', row.fiscalSign || '—'],
+        ['Holat', this.ofdLabel(row)]
+      ];
+      setF('normal', 9);
+      meta.forEach((pair) => {
+        if (!pair[1] || pair[1] === '—') {
+          if (pair[0] === 'FM' || pair[0] === 'STIR') return;
+        }
+        doc.setTextColor(90, 100, 115);
+        doc.text(T(pair[0]), 20, y);
+        doc.setTextColor(20, 30, 45);
+        doc.text(T(String(pair[1])), 190, y, { align: 'right' });
+        y += 5.2;
+      });
+
+      y += 6;
+      setF('normal', 8);
+      doc.setTextColor(120, 130, 140);
+      doc.text(T('VaksinaMed · Zapravka cheki · hisobotga ta\'sir qilmaydi'), 105, y, { align: 'center' });
+      if (row.qr) {
+        y += 5;
+        const shortQr = String(row.qr).length > 70 ? String(row.qr).slice(0, 67) + '...' : String(row.qr);
+        doc.text(T(shortQr), 105, y, { align: 'center' });
+      }
+
+      const plateSafe = String(row.plate || 'chek').replace(/\s+/g, '_');
+      const noSafe = String(row.receiptNo || row.id || 'ofd').replace(/[^\w.-]+/g, '');
+      const name = 'chek-' + plateSafe + '-' + noSafe + '.pdf';
+      doc.save(name);
+      this.toast('PDF yuklandi');
+    } catch (e) {
+      this.toast((e && e.message) || 'PDF chiqmadi');
+    }
   },
 
   paperHtml(r, forPreview) {
@@ -752,6 +1025,35 @@ const VMCheks = {
     const board = document.getElementById('chek-board');
     if (!board || board._vmChekBound) return;
     board._vmChekBound = true;
+    const periodHost = document.getElementById('chek-period');
+    if (periodHost && !periodHost._vmChekBound) {
+      periodHost._vmChekBound = true;
+      periodHost.addEventListener('click', (e) => {
+        if (e.target.closest('#chek-period-prev')) {
+          this.setPeriod(this.shiftYm(this.currentYm(), -1));
+          return;
+        }
+        if (e.target.closest('#chek-period-next')) {
+          this.setPeriod(this.shiftYm(this.currentYm(), 1));
+          return;
+        }
+        if (e.target.closest('#chek-period-now')) {
+          this.setDay(this.todayStr());
+          return;
+        }
+        if (e.target.closest('#chek-cal-month')) {
+          this.setDay('');
+          return;
+        }
+        const dayBtn = e.target.closest('[data-chek-day]');
+        if (dayBtn) {
+          const ds = dayBtn.getAttribute('data-chek-day');
+          if (!ds) return;
+          if (this.currentDay() === ds) this.setDay('');
+          else this.setDay(ds);
+        }
+      });
+    }
     board.addEventListener('click', (e) => {
       const back = e.target.closest('#chek-back');
       if (back) {
@@ -768,6 +1070,13 @@ const VMCheks = {
       const manOpen = e.target.closest('#chek-manual-open');
       if (manOpen) {
         this.openManual(this.openPlate);
+        return;
+      }
+      const pdfBtn = e.target.closest('.chek-act-pdf');
+      if (pdfBtn) {
+        e.preventDefault();
+        const id = pdfBtn.getAttribute('data-id');
+        if (id) this.downloadPdf(id);
         return;
       }
       const delBtn = e.target.closest('.chek-act-del');
@@ -871,6 +1180,11 @@ const VMCheks = {
       const plate = this.openPlate || (this.paperItem && this.paperItem.plate);
       this.closePaper();
       this.openScan(plate);
+    };
+    const pPdf = document.getElementById('chek-paper-pdf');
+    if (pPdf) pPdf.onclick = () => {
+      if (this.paperItem) this.downloadPdf(this.paperItem);
+      else this.toast('Avval chekni oching');
     };
     const paperModal = document.getElementById('chek-paper-modal');
     if (paperModal && !paperModal._vmBgClose) {
@@ -1549,6 +1863,8 @@ document.addEventListener('DOMContentLoaded', () => {
   try {
     const saved = String(localStorage.getItem('vm_chek_period') || '').slice(0, 7);
     if (/^\d{4}-\d{2}$/.test(saved)) VMCheks.periodYm = saved;
+    const savedDay = String(localStorage.getItem('vm_chek_day') || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(savedDay)) VMCheks.periodDay = savedDay;
   } catch (e) {}
   if (!VMCheks.periodYm) VMCheks.periodYm = VMCheks.ymNow();
   VMCheks.bind();
