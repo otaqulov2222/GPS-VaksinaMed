@@ -2623,15 +2623,43 @@ class OfficeStore:
                 t = str(t or "").strip()
                 if t and t not in known:
                     known.append(t)
-            # paidAt chalkashishi mumkin — qo‘lda qidiruvda e'tiborsiz (stamp seed/now)
-            body_lookup = dict(body)
-            body_lookup.pop("paidAt", None)
-            body_lookup.pop("stamp", None)
-            body_lookup.pop("paymentDate", None)
-            body_lookup.pop("when", None)
-            built = chekmod.lookup_manual_chek(
-                body_lookup, known_terminals=known[:16], timeout=4, max_tries=14
-            )
+            # Brauzer Soliqdan topib yuborgan OFD — server qayta qidirmaydi (timeout yo‘q)
+            built = None
+            ofd_in = body.get("ofd") if isinstance(body.get("ofd"), dict) else None
+            if body.get("clientOfd") and ofd_in:
+                ofd_parsed = chekmod.ofd_from_payload(ofd_in)
+                term = str(
+                    body.get("terminalId")
+                    or body.get("fm")
+                    or body.get("terminal")
+                    or ""
+                ).strip()
+                rno = str(body.get("receiptNo") or body.get("paymentNo") or "").strip()
+                fb = str(body.get("fiscalSign") or body.get("fb") or "").strip()
+                stamp = str(body.get("paidAt") or body.get("stamp") or "").strip()
+                if (
+                    chekmod.is_ofd_terminal(term)
+                    and rno
+                    and fb
+                    and ofd_parsed.get("ofdOk")
+                    and chekmod._has_amount(ofd_parsed.get("amount"))
+                ):
+                    parsed = chekmod.build_ofd_url(term, rno, stamp, fb)
+                    if parsed.get("ok"):
+                        built = {
+                            "ok": True,
+                            "rec": chekmod._manual_hit_rec(parsed, ofd_parsed, fb),
+                        }
+            if not built:
+                body_lookup = dict(body)
+                body_lookup.pop("paidAt", None)
+                body_lookup.pop("stamp", None)
+                body_lookup.pop("paymentDate", None)
+                body_lookup.pop("when", None)
+                body_lookup.pop("ofd", None)
+                built = chekmod.lookup_manual_chek(
+                    body_lookup, known_terminals=known[:16], timeout=3, max_tries=10
+                )
         else:
             built = chekmod.build_chek_record(body, body, fetch_ofd=False)
         if not built.get("ok"):
