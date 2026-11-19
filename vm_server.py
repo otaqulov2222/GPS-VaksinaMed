@@ -2622,6 +2622,15 @@ class OfficeStore:
                 return None, {"error": err, "needFm": True}
             return None, err
         row = built["rec"]
+        # Qo‘lda: faqat OFD tasdiqlagan to‘liq chek saqlanadi — soxta «kutilmoqda» yo‘q
+        if want_manual and not row.get("ofdOk"):
+            return None, {
+                "error": (
+                    "OFD dan to‘liq chek olinmadi. Qog‘ozdagi FM (14 belgi) ni tekshirib "
+                    "Chek № va FB bilan qayta yozing."
+                ),
+                "needFm": True,
+            }
         dup_id = ""
         with self.lock:
             items = self.cheks_list()
