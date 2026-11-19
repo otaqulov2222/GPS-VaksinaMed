@@ -1987,7 +1987,8 @@ const VMCheks = {
     const keep = { receiptNo, fiscalSign, terminalId, when };
     const pool = this.knownTerminalPool().slice(0, 8);
 
-    const doLookup = async (term, paidAt) => {
+    const doLookup = async (term) => {
+      // Sanani yubormaymiz — boshqa chek sanasi to‘g‘ri terminalni buzardi
       const body = {
         plate: this.openPlate,
         manualLookup: true,
@@ -1995,7 +1996,6 @@ const VMCheks = {
         fiscalSign,
         knownTerminals: pool
       };
-      if (paidAt) body.paidAt = paidAt;
       if (term) {
         body.terminalId = term;
         body.fm = term;
@@ -2003,7 +2003,7 @@ const VMCheks = {
       return vmApi('/api/office/cheks/scan', {
         method: 'POST',
         body: JSON.stringify(body),
-        timeoutMs: 35000
+        timeoutMs: 40000
       });
     };
 
@@ -2032,17 +2032,19 @@ const VMCheks = {
     };
 
     try {
-      let d = await doLookup(terminalId, when || undefined);
-      // Noto‘g‘ri FM (boshqa chekning) — FM va sanani tashlab faqat Chek+FB + known bilan qayta
-      if (!applyHit(d) && terminalId && (d.needFm || !d.ok)) {
-        this.setManualStatus('Noto‘g‘ri Terminal — FM maydoni tozalandi, faqat Chek № + FB…', 'busy');
+      // Avval faqat Chek+FB (seed/known) — chalkash FM/sana bilan vaqt yo‘qotmaymiz
+      let d = await doLookup('');
+      if (!applyHit(d) && terminalId) {
+        this.setManualStatus('Chek+FB yetmadi — yozilgan Terminal bilan…', 'busy');
+        d = await doLookup(terminalId);
+      }
+      if (!applyHit(d) && terminalId) {
         const termEl = document.getElementById('chek-m-term');
         const whenEl = document.getElementById('chek-m-when');
         if (termEl) termEl.value = '';
         if (whenEl) whenEl.value = '';
         keep.terminalId = '';
         keep.when = '';
-        d = await doLookup('', undefined);
       }
       if (applyHit(d)) return;
       let err = d.error || 'OFD dan to‘liq chek topilmadi.';

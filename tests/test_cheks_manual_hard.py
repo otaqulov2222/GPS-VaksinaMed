@@ -105,11 +105,11 @@ class ManualHardeningTest(unittest.TestCase):
                 "receiptNo": "75947",
                 "fiscalSign": "223241506405",
                 "terminalId": "VG544170024111",
-                "paidAt": "11-11-2026 20:04:41",
+                "paidAt": "15.11.2026 22:51",  # boshqa chek sanasi
             },
-            known_terminals=["VG544170024111", "LG420211628460"],
+            known_terminals=["VG544170024111"],
             timeout=2,
-            max_tries=12,
+            max_tries=14,
         )
         self.assertTrue(r["ok"])
         self.assertNotIn("pending", r)
@@ -119,6 +119,36 @@ class ManualHardeningTest(unittest.TestCase):
         self.assertEqual(rec["terminalId"], "LG420211628460")
         self.assertEqual(rec["amount"], 84100)
         self.assertIn("UNG PETRO", rec["merchant"])
+
+    @mock.patch("cheks.fetch_ofd_api")
+    def test_wrong_date_does_not_kill_correct_terminal(self, fetch):
+        """Birinchi (chalkash) stamp fail — to‘g‘ri terminal keyingi stamp bilan topiladi."""
+        calls = {"n": 0}
+
+        def side_effect(parsed, timeout=5, attempts=1):
+            calls["n"] += 1
+            stamp = str((parsed or {}).get("stamp") or "")
+            term = str((parsed or {}).get("terminalId") or "")
+            # 15.11 sanasi noto‘g‘ri — keyingi (hozirgi) stampda topiladi
+            if term == "LG420211628460" and not stamp.startswith("20261115"):
+                return _ok_ofd()
+            return _pending_ofd()
+
+        fetch.side_effect = side_effect
+        r = cheks.lookup_manual_chek(
+            {
+                "receiptNo": "75947",
+                "fiscalSign": "223241506405",
+                "terminalId": "LG420211628460",
+                "paidAt": "15.11.2026 22:51",
+            },
+            known_terminals=[],
+            timeout=2,
+            max_tries=14,
+        )
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["rec"]["terminalId"], "LG420211628460")
+        self.assertGreaterEqual(calls["n"], 2)
 
     @mock.patch("cheks.fetch_ofd_api")
     def test_never_returns_soft_pending_shell(self, fetch):
@@ -137,9 +167,9 @@ class ManualHardeningTest(unittest.TestCase):
         self.assertTrue(r.get("needFm"))
         self.assertIsNone(r.get("pending"))
         self.assertNotIn("rec", r)
-        # Har terminal 1 marta (VG + seed LG…) — soft-pending yo‘q
+        # Soft-pending yo‘q; urinishlar cheklangan
         self.assertGreaterEqual(r["tries"], 1)
-        self.assertLessEqual(r["tries"], 4)
+        self.assertLessEqual(r["tries"], 14)
         self.assertIn("VG544170024111", r.get("error") or "")
 
     @mock.patch("cheks.fetch_ofd_api")

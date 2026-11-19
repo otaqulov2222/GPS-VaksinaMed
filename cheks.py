@@ -349,16 +349,23 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             "error": "FM/Terminal 14 belgi bo‘lishi kerak (masalan LG420230610919). Qog‘ozdagi Terminal ni yozing — «PAX A-930» emas.",
             "needFm": True,
         }
-    # Known + park seed — faqat Chek № + FB bilan topish uchun
+    # Tartib: foydalanuvchi FM → park seed → known (seed hech qachon kesilmasin)
+    seeds = [t for t in FLEET_TERMINAL_SEEDS if is_ofd_terminal(_clean_id(t))]
     pool = []
     seen_pool = set()
-    for t in list(known_terminals or []) + list(FLEET_TERMINAL_SEEDS):
+    for t in list(seeds) + list(known_terminals or []):
         t = _clean_id(t)
         if not is_ofd_terminal(t) or t in seen_pool:
             continue
         seen_pool.add(t)
         pool.append(t)
-    terminals = expand_terminal_candidates(term_in, pool, limit=20)
+    expanded = expand_terminal_candidates(term_in, pool, limit=24)
+    ordered = []
+    for t in ([term_in] if user_exact else []) + list(seeds) + list(expanded):
+        t = _clean_id(t)
+        if is_ofd_terminal(t) and t not in ordered:
+            ordered.append(t)
+    terminals = ordered[:10]
     if not terminals:
         return {
             "ok": False,
@@ -366,24 +373,36 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             "needFm": True,
         }
 
-    # Tez va qat’iy: noto‘g‘ri FM ni ko‘p marta urinib timeout qilmaymiz
+    # Sana chalkashishi mumkin: 1 ta foydalanuvchi sanasi + «hozir» stamp’lar (ustun)
     when_ok = bool(normalize_human_datetime(when)) if when else False
-    # Boshqa chekning sanasi chalkashtirilsa ham — kam stamp, tez fail
-    stamp_n = 3 if when_ok else 4
-    stamps = expand_stamp_candidates(when if when_ok else "", max_n=stamp_n)
+    stamps = []
+    seen_s = set()
+
+    def _add_stamps(seq):
+        for s in seq:
+            if s not in seen_s:
+                seen_s.add(s)
+                stamps.append(s)
+
+    if when_ok:
+        user_stamps = expand_stamp_candidates(when, max_n=3)
+        now_stamps = expand_stamp_candidates("", max_n=4)
+        if user_stamps:
+            _add_stamps(user_stamps[:1])
+        _add_stamps(now_stamps)
+        _add_stamps(user_stamps[1:])
+    else:
+        _add_stamps(expand_stamp_candidates("", max_n=5))
     if not stamps:
-        stamps = expand_stamp_candidates("", max_n=4)
+        _add_stamps(expand_stamp_candidates("", max_n=4))
+    stamps = stamps[:7]
     timeout = max(3, min(int(timeout or 4), 4))
-    if user_exact:
-        terminals = [term_in] + [t for t in terminals if t != term_in]
-    terminals = [t for t in terminals if is_ofd_terminal(t)][:6]
-    max_tries = 8 if user_exact else 10
+    max_tries = 14
     tries = 0
-    dead = set()  # pending/noto‘g‘ri terminal — qayta urinilmaydi
 
     def try_one(term, stamp):
         nonlocal tries
-        if tries >= max_tries or term in dead:
+        if tries >= max_tries:
             return None
         parsed = build_ofd_url(term, receipt, stamp, sign)
         if not parsed.get("ok"):
@@ -392,21 +411,22 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
         ofd = fetch_ofd_api(parsed, timeout=timeout, attempts=1)
         if ofd.get("ofdOk") and _has_amount(ofd.get("amount")):
             return _manual_hit_rec(parsed, ofd, sign)
-        # Noto‘g‘ri FM / boshqa chek terminali — shu terminalni tashlaymiz
-        dead.add(term)
         return None
 
-    # Avval: har terminalga 1 ta eng yaxshi stamp
+    # Har terminalga bir necha stamp — chalkash sana to‘g‘ri FM ni o‘ldirmasin.
+    # Noto‘g‘ri yozilgan FM (seed emas): 1 stamp bilan tez tashlanadi.
+    seed_set = set(seeds)
     for term in terminals:
-        hit = try_one(term, stamps[0])
-        if hit:
-            return {"ok": True, "rec": hit, "tries": tries}
-    # Keyin: qolgan stamp’lar (faqat tirik terminallar)
-    for stamp in stamps[1:]:
-        for term in terminals:
+        if user_exact and term == term_in and term not in seed_set:
+            budget = 1
+        else:
+            budget = min(4, len(stamps))
+        for stamp in stamps[:budget]:
             hit = try_one(term, stamp)
             if hit:
                 return {"ok": True, "rec": hit, "tries": tries}
+            if tries >= max_tries:
+                break
         if tries >= max_tries:
             break
 
@@ -420,8 +440,8 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
         "ok": False,
         "error": (
             hint
-            + "OFD topilmadi. Shu qog‘ozdagi Terminal/FM ni yozing (14 belgi: LG…/VG…/YZ…). "
-            "Boshqa chekning FM sini yozmang. Faqat Chek № + FB ham sinashing."
+            + "OFD topilmadi. FM maydonini bo‘sh qoldirib faqat Chek № + FB yozing. "
+            "Yoki shu qog‘ozdagi Terminal (14 belgi). «PAX A-930» — KKM, Terminal emas."
         ),
         "tries": tries,
         "needFm": True,

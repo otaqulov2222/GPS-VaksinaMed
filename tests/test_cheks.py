@@ -205,13 +205,32 @@ class CheksParseTest(unittest.TestCase):
         self.assertIn("20241027085700", stamps)
         self.assertTrue(any(s.startswith("20241027") for s in stamps))
 
-    def test_lookup_manual_needs_known_terminal(self):
+    @__import__("unittest").mock.patch("cheks.fetch_ofd_api")
+    def test_lookup_manual_needs_known_terminal(self, fetch):
+        fetch.return_value = {
+            "ofdOk": False,
+            "ofdPending": True,
+            "ofdNote": "pending",
+            "amount": None,
+            "items": [],
+            "merchant": "",
+            "inn": "",
+            "address": "",
+            "cashTotal": None,
+            "cardTotal": None,
+            "payMethod": "",
+            "kkmName": "",
+            "cardType": "",
+            "vatTotal": None,
+        }
         r = cheks.lookup_manual_chek(
             {"receiptNo": "149478", "fiscalSign": "069988523883"},
             known_terminals=[],
+            timeout=1,
+            max_tries=4,
         )
         self.assertFalse(r["ok"])
-        self.assertIn("Terminal", r.get("error") or "")
+        self.assertTrue(r.get("needFm"))
 
 
 if __name__ == "__main__":

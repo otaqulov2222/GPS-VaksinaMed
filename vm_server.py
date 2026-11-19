@@ -2623,7 +2623,15 @@ class OfficeStore:
                 t = str(t or "").strip()
                 if t and t not in known:
                     known.append(t)
-            built = chekmod.lookup_manual_chek(body, known_terminals=known[:8], timeout=4, max_tries=10)
+            # paidAt chalkashishi mumkin — qo‘lda qidiruvda e'tiborsiz (stamp seed/now)
+            body_lookup = dict(body)
+            body_lookup.pop("paidAt", None)
+            body_lookup.pop("stamp", None)
+            body_lookup.pop("paymentDate", None)
+            body_lookup.pop("when", None)
+            built = chekmod.lookup_manual_chek(
+                body_lookup, known_terminals=known[:16], timeout=4, max_tries=14
+            )
         else:
             built = chekmod.build_chek_record(body, body, fetch_ofd=False)
         if not built.get("ok"):
