@@ -2108,12 +2108,44 @@ const VMCheks = {
     this.setStatus('Rasm o‘qilmoqda…', 'busy');
     try {
       await this.stopCamera();
-      await this.loadLib();
-      const host = this.camBox();
-      if (host) host.innerHTML = '';
-      const tmp = new window.Html5Qrcode(host ? 'chek-scan-cam' : 'chek-scan-file-sink');
-      const text = await tmp.scanFile(file, true);
-      try { tmp.clear(); } catch (e) {}
+      let text = '';
+      try {
+        await this.loadLib();
+        const host = this.camBox();
+        if (host) host.innerHTML = '';
+        const tmp = new window.Html5Qrcode(host ? 'chek-scan-cam' : 'chek-scan-file-sink');
+        text = await tmp.scanFile(file, true);
+        try { tmp.clear(); } catch (e) {}
+      } catch (e1) {
+        text = '';
+      }
+      if (!text) {
+        await this.loadJsQr();
+        text = await new Promise((resolve) => {
+          const img = new Image();
+          const url = URL.createObjectURL(file);
+          img.onload = () => {
+            try {
+              const c = document.createElement('canvas');
+              const max = 1000;
+              const sc = Math.min(1, max / Math.max(img.width, img.height));
+              c.width = Math.max(1, Math.round(img.width * sc));
+              c.height = Math.max(1, Math.round(img.height * sc));
+              const ctx = c.getContext('2d', { willReadFrequently: true });
+              ctx.drawImage(img, 0, 0, c.width, c.height);
+              const hit = this.decodeJsQr(ctx.getImageData(0, 0, c.width, c.height));
+              URL.revokeObjectURL(url);
+              resolve(hit || '');
+            } catch (e2) {
+              URL.revokeObjectURL(url);
+              resolve('');
+            }
+          };
+          img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+          img.src = url;
+        });
+      }
+      if (!text) throw new Error('no-qr');
       await this.onQr(text);
     } catch (e) {
       this.setStatus('QR rasmda topilmadi. Chekdagi QR ni yaqinroq, tekis va yorug‘ qilib oling.', 'bad');
