@@ -208,7 +208,7 @@ def expand_stamp_candidates(raw_when, max_n=24):
             add(base)
             try:
                 dt = datetime.strptime(base[:14], "%Y%m%d%H%M%S")
-                for delta in (0, -1, 1, -2, 2, -3, 3, -5, 5, -10, 10, -15, 15, -30, 30):
+                for delta in (0, -1, 1, -2, 2, -3, 3, -5, 5, -10, 10, -15, 15, -30, 30, -45, 45, -60, 60):
                     add((dt + timedelta(minutes=delta)).strftime("%Y%m%d%H%M%S"))
                     add((dt + timedelta(minutes=delta)).strftime("%Y%m%d%H%M00"))
                 add(dt.strftime("%Y%m%d%H0000"))
@@ -216,17 +216,20 @@ def expand_stamp_candidates(raw_when, max_n=24):
             except ValueError:
                 pass
     else:
+        # Minimal kiritish: oxirgi 2 kun ichida zich qidiruv
         add(now.strftime("%Y%m%d%H%M%S"))
         add(now.strftime("%Y%m%d%H%M00"))
-        for delta_m in range(0, 240, 10):
+        for delta_m in range(0, 360, 5):
             add((now - timedelta(minutes=delta_m)).strftime("%Y%m%d%H%M00"))
-            if len(out) >= max_n // 2:
+            if len(out) >= max(12, max_n // 2):
                 break
-        for d in range(0, 4):
+        for d in range(0, 5):
             day = now - timedelta(days=d)
-            for hh in (7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22):
+            for hh in range(6, 24):
                 add(day.strftime("%Y%m%d") + "%02d0000" % hh)
+                add(day.strftime("%Y%m%d") + "%02d1500" % hh)
                 add(day.strftime("%Y%m%d") + "%02d3000" % hh)
+                add(day.strftime("%Y%m%d") + "%02d4500" % hh)
                 if len(out) >= max_n:
                     return out[:max_n]
     return out[:max_n]
@@ -327,16 +330,20 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             "needFm": True,
         }
 
-    # Aniq FM + sana → kam urinish, tez javob (skaner kabi)
-    stamp_n = 12 if (user_exact and when) else (16 if when else (10 if user_exact else 14))
+    # Minimal kiritish (Chek № + FB) uchun kengroq qidiruv; aniq FM bo‘lsa — tez
+    stamp_n = 14 if (user_exact and when) else (22 if when else (16 if user_exact else 28))
     stamps = expand_stamp_candidates(when, max_n=stamp_n)
-    if user_exact:
-        max_tries = min(max_tries, 12 if when else 8)
+    if user_exact and when:
+        max_tries = min(max(max_tries, 12), 16)
         timeout = max(timeout, 7)
-    elif terminals:
-        # Faqat Chek № + FB: avvalgi terminal(lar) bilan tez qidiruv
-        max_tries = min(max_tries, 24)
-        timeout = max(3, min(timeout, 6))
+    elif user_exact:
+        max_tries = min(max(max_tries, 16), 20)
+        timeout = max(timeout, 6)
+    else:
+        # Faqat Chek № + FB — park terminallari bilan maksimal urinish
+        max_tries = min(max(max_tries, 40), 48)
+        timeout = max(4, min(timeout, 6))
+        terminals = expand_terminal_candidates(term_in, known_terminals, limit=28)
     best_pending = None
     tries = 0
 
@@ -356,20 +363,25 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             best_pending = (parsed, ofd)
         return None
 
+    # Avval har terminalning eng yaxshi stamp’lari, keyin qolganlari
+    first_n = 8 if user_exact else 6
     for term in terminals:
-        for stamp in stamps[: (6 if user_exact else 4)]:
+        for stamp in stamps[:first_n]:
             hit = try_one(term, stamp)
             if hit:
                 return {"ok": True, "rec": hit, "tries": tries}
         if tries >= max_tries:
             break
-        if when:
-            for stamp in stamps[6 if user_exact else 4 :]:
+    if tries < max_tries:
+        for term in terminals:
+            for stamp in stamps[first_n:]:
                 hit = try_one(term, stamp)
                 if hit:
                     return {"ok": True, "rec": hit, "tries": tries}
                 if tries >= max_tries:
                     break
+            if tries >= max_tries:
+                break
 
     if best_pending:
         parsed, ofd = best_pending

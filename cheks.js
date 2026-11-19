@@ -387,30 +387,43 @@ const VMCheks = {
   rememberTerminal(plate, term) {
     const t = String(term || '').replace(/\s+/g, '').trim();
     if (!this.isOfdTerminal(t)) return;
-    try { localStorage.setItem(this.termStorageKey(plate), t); } catch (e) {}
+    try {
+      localStorage.setItem(this.termStorageKey(plate), t);
+      const poolKey = 'vm_chek_fm_pool';
+      let pool = [];
+      try { pool = JSON.parse(localStorage.getItem(poolKey) || '[]'); } catch (e2) { pool = []; }
+      if (!Array.isArray(pool)) pool = [];
+      pool = [t].concat(pool.filter((x) => x !== t)).slice(0, 40);
+      localStorage.setItem(poolKey, JSON.stringify(pool));
+    } catch (e) {}
+  },
+
+  knownTerminalPool() {
+    const out = [];
+    const seen = {};
+    const add = (t) => {
+      t = String(t || '').replace(/\s+/g, '').trim();
+      if (!this.isOfdTerminal(t) || seen[t]) return;
+      seen[t] = 1;
+      out.push(t);
+    };
+    const plate = this.openPlate;
+    (this.forPlate(plate) || []).forEach((r) => { if (r && r.ofdOk) add(r.terminalId); });
+    (this.items || []).forEach((r) => { if (r && r.ofdOk) add(r.terminalId); });
+    try {
+      add(localStorage.getItem(this.termStorageKey(plate)));
+      const pool = JSON.parse(localStorage.getItem('vm_chek_fm_pool') || '[]');
+      if (Array.isArray(pool)) pool.forEach(add);
+    } catch (e) {}
+    return out;
   },
 
   lastTerminalFor(plate) {
-    const list = this.forPlate(plate || this.openPlate);
-    for (let i = 0; i < list.length; i++) {
-      const row = list[i];
-      if (!row || !row.ofdOk) continue;
-      const t = String(row.terminalId || '').replace(/\s+/g, '').trim();
-      if (this.isOfdTerminal(t)) {
-        this.rememberTerminal(plate || this.openPlate, t);
-        return t;
-      }
+    const pool = this.knownTerminalPool();
+    if (pool.length) {
+      this.rememberTerminal(plate || this.openPlate, pool[0]);
+      return pool[0];
     }
-    const any = (this.items || []).find((x) => x && x.ofdOk && this.isOfdTerminal(x.terminalId));
-    if (any) {
-      const t = String(any.terminalId).replace(/\s+/g, '').trim();
-      this.rememberTerminal(plate || this.openPlate, t);
-      return t;
-    }
-    try {
-      const stored = String(localStorage.getItem(this.termStorageKey(plate)) || '').trim();
-      if (this.isOfdTerminal(stored)) return stored;
-    } catch (e) {}
     return '';
   },
 
@@ -1290,6 +1303,10 @@ const VMCheks = {
     };
     const live = document.getElementById('chek-scan-live');
     if (live) live.onclick = () => this.startCamera();
+    const torch = document.getElementById('chek-scan-torch');
+    if (torch) torch.onclick = () => this.toggleTorch();
+    const refocus = document.getElementById('chek-scan-refocus');
+    if (refocus) refocus.onclick = () => this.refocusCamera();
     const file = document.getElementById('chek-scan-file');
     if (file) file.onchange = (ev) => {
       const f = ev.target.files && ev.target.files[0];
@@ -1613,78 +1630,235 @@ const VMCheks = {
     return host;
   },
 
+  videoTrack() {
+    const s = this.nativeStream;
+    return s && s.getVideoTracks ? (s.getVideoTracks()[0] || null) : null;
+  },
+
+  async applyFocusBoost(track) {
+    if (!track || !track.getCapabilities) return;
+    try {
+      const caps = track.getCapabilities() || {};
+      const adv = [];
+      if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) adv.push({ focusMode: 'continuous' });
+      else if (caps.focusMode && caps.focusMode.indexOf('single-shot') >= 0) adv.push({ focusMode: 'single-shot' });
+      if (caps.exposureMode && caps.exposureMode.indexOf('continuous') >= 0) adv.push({ exposureMode: 'continuous' });
+      if (caps.whiteBalanceMode && caps.whiteBalanceMode.indexOf('continuous') >= 0) adv.push({ whiteBalanceMode: 'continuous' });
+      if (adv.length) await track.applyConstraints({ advanced: adv });
+      if (caps.focusDistance) {
+        try {
+          const mid = (Number(caps.focusDistance.min) + Number(caps.focusDistance.max)) / 2;
+          await track.applyConstraints({ advanced: [{ focusDistance: mid }] });
+        } catch (e2) {}
+      }
+    } catch (e) {}
+  },
+
+  async toggleTorch() {
+    const track = this.videoTrack();
+    if (!track || !track.getCapabilities) {
+      this.toast('Chiroq bu telefonda yo‘q');
+      return;
+    }
+    try {
+      const caps = track.getCapabilities() || {};
+      if (!caps.torch) {
+        this.toast('Chiroq qo‘llab-quvvatlanmaydi');
+        return;
+      }
+      this._torchOn = !this._torchOn;
+      await track.applyConstraints({ advanced: [{ torch: !!this._torchOn }] });
+      this.setStatus(this._torchOn ? 'Chiroq yoqildi — QR ni tuting' : 'Chiroq o‘chirildi');
+    } catch (e) {
+      this.toast('Chiroq ochilmadi');
+    }
+  },
+
+  async refocusCamera() {
+    const track = this.videoTrack();
+    if (!track) {
+      this.startCamera();
+      return;
+    }
+    this.setStatus('Fokus yangilanmoqda…', 'busy');
+    try {
+      const caps = track.getCapabilities ? (track.getCapabilities() || {}) : {};
+      if (caps.focusMode && caps.focusMode.indexOf('single-shot') >= 0) {
+        await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+      }
+      await this.applyFocusBoost(track);
+      this.setStatus('QR qidirilmoqda — yashil ramkaga tuting');
+    } catch (e) {
+      this.startCamera();
+    }
+  },
+
   async pickBackCameraId() {
     try {
       if (!window.Html5Qrcode || !Html5Qrcode.getCameras) return null;
       const cams = await Html5Qrcode.getCameras();
       if (!cams || !cams.length) return null;
-      const back = cams.find((c) => /back|rear|environment|orqa|world/i.test(c.label || ''));
-      return (back || cams[cams.length - 1] || cams[0]).id;
+      const scored = cams.map((c) => {
+        const label = String(c.label || '').toLowerCase();
+        let score = 0;
+        if (/back|rear|environment|orqa|world|главн|traseira/i.test(label)) score += 5;
+        if (/ultra|wide|0\.5/i.test(label)) score -= 2;
+        if (/front|user|selfie|old/i.test(label)) score -= 5;
+        return { id: c.id, score };
+      }).sort((a, b) => b.score - a.score);
+      return (scored[0] && scored[0].id) || cams[cams.length - 1].id;
     } catch (e) {
       return null;
     }
   },
 
+  scanVideoConstraints(deviceId) {
+    const base = {
+      width: { ideal: 1920, min: 1280 },
+      height: { ideal: 1080, min: 720 },
+      frameRate: { ideal: 30, min: 15 },
+      aspectRatio: { ideal: 1.777 }
+    };
+    if (deviceId) return Object.assign({ deviceId: { exact: deviceId } }, base);
+    return Object.assign({ facingMode: { ideal: 'environment' } }, base);
+  },
+
   async startCamera() {
     const host = this.camBox();
     if (!host) return;
+    this._torchOn = false;
     this.setStatus('Kamera ochilmoqda — QR ni ramkaga tuting', 'busy');
     try {
       await this.stopCamera();
-      if (window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      // iPhone/Safari: native stream + fokus + BarcodeDetector (eng aniq)
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const ok = await this.startNativeCamera(host);
         if (ok) return;
       }
       await this.loadLib();
       const camId = await this.pickBackCameraId();
-      this.scanner = new window.Html5Qrcode('chek-scan-cam');
-      const box = { fps: 18, qrbox: { width: 250, height: 250 }, aspectRatio: 1.333, disableFlip: false };
-      const source = camId ? camId : { facingMode: { exact: 'environment' } };
+      this.scanner = new window.Html5Qrcode('chek-scan-cam', { verbose: false });
+      const box = {
+        fps: 30,
+        qrbox(viewW, viewH) {
+          const edge = Math.floor(Math.min(viewW, viewH) * 0.78);
+          return { width: edge, height: edge };
+        },
+        aspectRatio: 1.777,
+        disableFlip: false,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        videoConstraints: this.scanVideoConstraints(camId)
+      };
       try {
-        await this.scanner.start(source, box, (text) => { this.onQr(text); }, () => {});
+        await this.scanner.start(camId || { facingMode: 'environment' }, box, (text) => { this.onQr(text); }, () => {});
       } catch (e1) {
-        await this.scanner.start({ facingMode: 'environment' }, box, (text) => { this.onQr(text); }, () => {});
+        await this.scanner.start(
+          { facingMode: 'environment' },
+          Object.assign({}, box, { videoConstraints: this.scanVideoConstraints(null) }),
+          (text) => { this.onQr(text); },
+          () => {}
+        );
       }
       this.scanning = true;
-      this.setStatus('QR qidirilmoqda — chekni kameraga tuting');
+      this.setStatus('QR qidirilmoqda — yashil ramkaga tuting (yorug‘ joy)');
     } catch (e) {
       host.classList.remove('is-on');
       host.innerHTML = '<span class="chek-scan-ph">Kamera ochilmadi</span>';
-      this.setStatus('Kamera ochilmadi. Pastdagi zaxiradan foydalaning yoki kamerani qayta oching.', 'bad');
+      this.setStatus('Kamera ochilmadi. Chiroq / qo‘lda kiritish / rasmga olishni sinang.', 'bad');
     }
   },
 
   async startNativeCamera(host) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-      });
+      let stream = null;
+      const tries = [
+        this.scanVideoConstraints(null),
+        { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      ];
+      for (let i = 0; i < tries.length; i++) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: tries[i] });
+          break;
+        } catch (e) {}
+      }
+      if (!stream) return false;
       const video = document.createElement('video');
       video.setAttribute('playsinline', 'true');
+      video.setAttribute('webkit-playsinline', 'true');
       video.setAttribute('autoplay', 'true');
       video.muted = true;
+      video.playsInline = true;
       video.srcObject = stream;
       host.innerHTML = '';
       host.appendChild(video);
       await video.play();
-      const det = new window.BarcodeDetector({ formats: ['qr_code'] });
+      const track = stream.getVideoTracks()[0];
+      await this.applyFocusBoost(track);
       this.nativeStream = stream;
       this.nativeVideo = video;
       this.scanning = true;
+      this._scanBusy = false;
+      this._scanCanvas = document.createElement('canvas');
+      const hasDetector = !!(window.BarcodeDetector);
+      let det = null;
+      if (hasDetector) {
+        try { det = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; }
+      }
       const tick = async () => {
         if (!this.scanning || !this.nativeVideo) return;
+        if (this._scanBusy) {
+          this.nativeLoop = requestAnimationFrame(tick);
+          return;
+        }
+        this._scanBusy = true;
         try {
-          const codes = await det.detect(this.nativeVideo);
-          if (codes && codes[0] && codes[0].rawValue) {
-            this.onQr(codes[0].rawValue);
-            return;
+          const v = this.nativeVideo;
+          if (v.readyState >= 2) {
+            let found = '';
+            if (det) {
+              try {
+                const codes = await det.detect(v);
+                if (codes && codes[0] && codes[0].rawValue) found = codes[0].rawValue;
+              } catch (e) {}
+            }
+            if (!found) {
+              // Kontrast kuchaytirilgan kadr — xira kamerada yordam beradi
+              const cw = Math.min(960, v.videoWidth || 640);
+              const ch = Math.round(cw * ((v.videoHeight || 480) / (v.videoWidth || 640)));
+              const c = this._scanCanvas;
+              c.width = cw;
+              c.height = ch;
+              const ctx = c.getContext('2d', { willReadFrequently: true });
+              if (ctx && cw > 0 && ch > 0) {
+                ctx.filter = 'contrast(1.35) brightness(1.12)';
+                ctx.drawImage(v, 0, 0, cw, ch);
+                if (det) {
+                  try {
+                    const codes2 = await det.detect(c);
+                    if (codes2 && codes2[0] && codes2[0].rawValue) found = codes2[0].rawValue;
+                  } catch (e2) {}
+                }
+              }
+            }
+            if (found) {
+              this._scanBusy = false;
+              this.onQr(found);
+              return;
+            }
           }
         } catch (e) {}
-        this.nativeLoop = setTimeout(tick, 90);
+        this._scanBusy = false;
+        this.nativeLoop = requestAnimationFrame(tick);
       };
-      tick();
-      this.setStatus('QR qidirilmoqda — chekni kameraga tuting');
+      this.nativeLoop = requestAnimationFrame(tick);
+      // Har 2.5 soniyada fokusni yangilab turish (xira kameraga yordam)
+      this._focusTimer = setInterval(() => {
+        if (this.scanning) this.applyFocusBoost(this.videoTrack());
+      }, 2500);
+      this.setStatus(det
+        ? 'QR qidirilmoqda — yashil ramkaga tuting'
+        : 'QR qidirilmoqda — chiroqni yoqing yoki yaqinroq tuting');
       return true;
     } catch (e) {
       this.stopNative();
@@ -1694,14 +1868,21 @@ const VMCheks = {
 
   stopNative() {
     if (this.nativeLoop) {
-      clearTimeout(this.nativeLoop);
+      try { cancelAnimationFrame(this.nativeLoop); } catch (e) {}
+      try { clearTimeout(this.nativeLoop); } catch (e) {}
       this.nativeLoop = null;
+    }
+    if (this._focusTimer) {
+      clearInterval(this._focusTimer);
+      this._focusTimer = null;
     }
     if (this.nativeStream) {
       this.nativeStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
       this.nativeStream = null;
     }
     this.nativeVideo = null;
+    this._scanCanvas = null;
+    this._torchOn = false;
   },
 
   async stopCamera() {
@@ -1829,7 +2010,8 @@ const VMCheks = {
         manualLookup: true,
         receiptNo,
         fiscalSign,
-        paidAt: when || undefined
+        paidAt: when || undefined,
+        knownTerminals: this.knownTerminalPool().slice(0, 28)
       };
       if (terminalId) {
         body.terminalId = terminalId;

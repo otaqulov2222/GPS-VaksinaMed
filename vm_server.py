@@ -2590,7 +2590,12 @@ class OfficeStore:
         )
         if want_manual:
             known = self.cheks_terminal_hints(plate)
-            built = chekmod.lookup_manual_chek(body, known_terminals=known, timeout=5, max_tries=36)
+            client_known = body.get("knownTerminals") if isinstance(body.get("knownTerminals"), list) else []
+            for t in client_known:
+                t = str(t or "").strip()
+                if t and t not in known:
+                    known.append(t)
+            built = chekmod.lookup_manual_chek(body, known_terminals=known, timeout=6, max_tries=48)
         else:
             built = chekmod.build_chek_record(body, body, fetch_ofd=False)
         if not built.get("ok"):
