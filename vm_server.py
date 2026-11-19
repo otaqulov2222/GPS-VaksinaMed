@@ -2626,7 +2626,8 @@ class OfficeStore:
             # Brauzer Soliqdan topib yuborgan OFD — server qayta qidirmaydi (timeout yo‘q)
             built = None
             ofd_in = body.get("ofd") if isinstance(body.get("ofd"), dict) else None
-            if body.get("clientOfd") and ofd_in:
+            want_client = bool(body.get("clientOfd") or body.get("skipServerOfd"))
+            if want_client and ofd_in:
                 ofd_parsed = chekmod.ofd_from_payload(ofd_in)
                 term = str(
                     body.get("terminalId")
@@ -2646,10 +2647,17 @@ class OfficeStore:
                 ):
                     parsed = chekmod.build_ofd_url(term, rno, stamp, fb)
                     if parsed.get("ok"):
-                        built = {
-                            "ok": True,
-                            "rec": chekmod._manual_hit_rec(parsed, ofd_parsed, fb),
-                        }
+                        rec = chekmod._manual_hit_rec(parsed, ofd_parsed, fb)
+                        qr_in = str(body.get("qr") or "").strip()
+                        if qr_in.startswith("http"):
+                            rec["qr"] = qr_in[:500]
+                        built = {"ok": True, "rec": rec}
+                if not built:
+                    # Brauzer yuborgan — sekin server OFD ga tushirmaymiz
+                    return None, {
+                        "error": "OFD ma’lumot saqlanmadi. Qayta bosing.",
+                        "needFm": True,
+                    }
             if not built:
                 body_lookup = dict(body)
                 body_lookup.pop("paidAt", None)
@@ -2658,7 +2666,7 @@ class OfficeStore:
                 body_lookup.pop("when", None)
                 body_lookup.pop("ofd", None)
                 built = chekmod.lookup_manual_chek(
-                    body_lookup, known_terminals=known[:16], timeout=3, max_tries=10
+                    body_lookup, known_terminals=known[:12], timeout=3, max_tries=8
                 )
         else:
             built = chekmod.build_chek_record(body, body, fetch_ofd=False)

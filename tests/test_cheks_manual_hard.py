@@ -221,6 +221,32 @@ class ManualHardeningTest(unittest.TestCase):
         self.assertEqual(rec["qrSource"], "manual")
         self.assertTrue(rec["qr"])
 
+    def test_client_ofd_payload_roundtrip(self):
+        """Brauzer yuborgan Soliq JSON → ofdOk yozuv."""
+        raw = {
+            "success": True,
+            "status": 200,
+            "data": {
+                "cashTotal": 0,
+                "cardTotal": 84100,
+                "vatTotal": 9010.71,
+                "kkmName": "PAX A-930",
+                "tin": "123456789",
+                "paymentDetails": [{"name": "Metan", "amount": 1, "price": 84100}],
+                "extraInfo": {"companyName": '"UNG PETRO" MCHJ', "address": "Toshkent"},
+            },
+        }
+        ofd = cheks.ofd_from_payload(raw)
+        self.assertTrue(ofd["ofdOk"])
+        self.assertEqual(ofd["amount"], 84100)
+        parsed = cheks.build_ofd_url(
+            "LG420211628460", "75947", "20261119134500", "223241506405"
+        )
+        rec = cheks._manual_hit_rec(parsed, ofd, "223241506405")
+        self.assertTrue(rec["ofdOk"])
+        self.assertEqual(rec["amount"], 84100)
+        self.assertIn("UNG PETRO", rec["merchant"])
+
     def test_ofd_link_fields_unique_per_receipt(self):
         a = cheks.build_ofd_url("LG1", "111", "11.11.2026 10:00:00", "111")
         b = cheks.build_ofd_url("LG1", "222", "11.11.2026 10:00:00", "222")

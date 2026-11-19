@@ -308,6 +308,7 @@ const VMCheks = {
   },
 
   stampCandidatesManual() {
+    // Soliq FB+Chek+Terminal bilan paymentDate ni deyarli e'tiborsiz qiladi — 1-2 stamp yetadi
     const out = [];
     const seen = {};
     const add = (d) => {
@@ -317,16 +318,16 @@ const VMCheks = {
         + String(d.getDate()).padStart(2, '0')
         + String(d.getHours()).padStart(2, '0')
         + String(d.getMinutes()).padStart(2, '0')
-        + String(d.getSeconds()).padStart(2, '0');
+        + '00';
       if (seen[s]) return;
       seen[s] = 1;
       out.push(s);
     };
     const now = new Date();
-    [0, -1, -2, -5, -15, -60, -120, -1440].forEach((m) => {
-      add(new Date(now.getTime() + m * 60000));
-    });
-    return out.slice(0, 8);
+    add(now);
+    add(new Date(now.getTime() - 60000));
+    add(new Date(now.getTime() - 86400000));
+    return out;
   },
 
   async fetchOfdAt(term, payno, stamp, sign) {
@@ -388,13 +389,18 @@ const VMCheks = {
       terms.push(t);
     };
     this.fleetTerminalSeeds().forEach(add);
-    (pool || []).forEach(add);
+    (pool || []).slice(0, 6).forEach(add);
     add(terminalId);
     const stamps = this.stampCandidatesManual();
+    // Avval: har terminalga 1 stamp (FB bor — Soliq topadi)
     for (let i = 0; i < terms.length; i++) {
-      const budget = (terminalId && terms[i] === terminalId && this.fleetTerminalSeeds().indexOf(terms[i]) < 0) ? 1 : 3;
-      for (let j = 0; j < Math.min(budget, stamps.length); j++) {
-        const hit = await this.fetchOfdAt(terms[i], receiptNo, stamps[j], fiscalSign);
+      const hit = await this.fetchOfdAt(terms[i], receiptNo, stamps[0], fiscalSign);
+      if (hit) return hit;
+    }
+    // Zaxira: 2-chi stamp faqat seed terminallarga
+    if (stamps[1]) {
+      for (let i = 0; i < Math.min(terms.length, this.fleetTerminalSeeds().length); i++) {
+        const hit = await this.fetchOfdAt(terms[i], receiptNo, stamps[1], fiscalSign);
         if (hit) return hit;
       }
     }
@@ -2101,65 +2107,59 @@ const VMCheks = {
     };
 
     const saveClientHit = async (hit) => {
+      const q = new URLSearchParams({
+        t: String(hit.terminalId || '').slice(0, 40),
+        r: String(hit.receiptNo || receiptNo).slice(0, 40),
+        c: String(hit.stamp || '').slice(0, 14),
+        s: String(hit.fiscalSign || fiscalSign).slice(0, 40)
+      });
       const body = {
         plate: this.openPlate,
         manualLookup: true,
         clientOfd: true,
+        skipServerOfd: true,
         receiptNo: hit.receiptNo || receiptNo,
         fiscalSign: hit.fiscalSign || fiscalSign,
         terminalId: hit.terminalId,
         fm: hit.terminalId,
         paidAt: hit.stamp,
+        qr: 'https://ofd.soliq.uz/check?' + q.toString(),
         ofd: hit.ofd,
         knownTerminals: pool
       };
       return vmApi('/api/office/cheks/scan', {
         method: 'POST',
         body: JSON.stringify(body),
-        timeoutMs: 20000
+        timeoutMs: 15000
       });
     };
 
     try {
-      // 1) Brauzerdan Soliq — server OFD sekin bo‘lsa ham ishlaydi
+      // Brauzerdan Soliq (tez) — server OFD chaqirmaydi
       const clientHit = await this.lookupManualClient(receiptNo, fiscalSign, terminalId, pool);
-      if (clientHit) {
-        this.setManualStatus('Topildi — saqlanmoqda…', 'busy');
-        const d = await saveClientHit(clientHit);
-        if (applyHit(d)) return;
-        if (d && d.error) {
-          this.setManualStatus(d.error, 'bad');
-          this.toast(d.error);
-          return;
+      if (!clientHit) {
+        this.setManualStatus(
+          'OFD topilmadi. Chek № / FB ni qog‘ozdan tekshiring yoki Terminal (14 belgi) ni yozing.',
+          'bad'
+        );
+        this.toast('OFD topilmadi');
+        const termEl = document.getElementById('chek-m-term');
+        if (termEl) {
+          termEl.value = terminalId || '';
+          termEl.focus();
         }
+        return;
       }
-
-      // 2) Server qidiruv (qisqa) — brauzer topmasa
-      this.setManualStatus('Server orqali OFD qidirilmoqda…', 'busy');
-      const d2 = await vmApi('/api/office/cheks/scan', {
-        method: 'POST',
-        body: JSON.stringify({
-          plate: this.openPlate,
-          manualLookup: true,
-          receiptNo,
-          fiscalSign,
-          knownTerminals: pool.concat(this.fleetTerminalSeeds())
-        }),
-        timeoutMs: 25000
-      });
-      if (applyHit(d2)) return;
-      let err = (d2 && d2.error) || 'OFD dan to‘liq chek topilmadi. Chek № va FB ni qog‘ozdan qayta tekshiring.';
-      if (d2 && d2.needFm) {
-        err = 'Bu Chek/FB topilmadi. Qog‘ozdagi Terminal (14 belgi LG…/VG…) ni yozib qayta bosing. «PAX» — KKM.';
-      }
+      this.setManualStatus('Topildi — saqlanmoqda…', 'busy');
+      const d = await saveClientHit(clientHit);
+      if (applyHit(d)) return;
+      const err = (d && d.error) || 'Topildi lekin saqlanmadi — qayta bosing.';
       this.setManualStatus(err, 'bad');
       this.toast(err);
-      const termEl = document.getElementById('chek-m-term');
-      if (termEl) termEl.focus();
     } catch (e) {
       let msg = (e && e.message) || 'OFD qidiruv xato';
       if (/sekin|abort|timeout/i.test(msg)) {
-        msg = 'Aloqa uzildi. Internetni tekshirib, faqat Chek № + FB bilan qayta bosing (FM bo‘sh).';
+        msg = 'Saqlash uzildi. Qayta bosing (faqat Chek № + FB).';
       }
       this.setManualStatus(msg, 'bad');
       this.toast(msg);
