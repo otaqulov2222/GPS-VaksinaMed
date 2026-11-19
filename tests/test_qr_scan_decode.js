@@ -109,6 +109,8 @@ function assertNoBadCameraCode() {
   assert.ok(!/#chek-scan-cam video, #chek-scan-cam canvas/.test(html), 'canvas CSS hali buzadi');
   assert.ok(/vendor\/jsQR\.min\.js/.test(html), 'jsQR preload yo‘q');
   assert.ok(/vendor\/html5-qrcode\.min\.js/.test(html), 'html5 preload yo‘q');
+  assert.ok(/#chek-scan-frame/.test(html), 'QR moslashuvchi ramka CSS yo‘q');
+  assert.ok(/snapScanFrameToQr|ensureScanFrame/.test(js), 'ramka moslashuv funksiyasi yo‘q');
 }
 
 async function main() {

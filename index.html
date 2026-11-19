@@ -2127,14 +2127,28 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   transform: none !important;
   filter: none !important;
 }
-#chek-scan-cam.is-on.chek-scan-native:after {
-  content: ""; position: absolute;
+/* Yashil ramka — QR topilganda o‘zi moslashadi */
+#chek-scan-frame {
+  position: absolute; z-index: 3; pointer-events: none;
   left: 50%; top: 50%;
   width: min(62vw, 250px); height: min(62vw, 250px);
   transform: translate(-50%, -50%);
-  border: 2.5px solid rgba(61, 255, 138, .95); border-radius: 16px; pointer-events: none;
-  box-shadow: 0 0 0 999px rgba(0,0,0,.25);
-  z-index: 2;
+  border: 2.5px solid rgba(61, 255, 138, .92);
+  border-radius: 14px;
+  box-shadow: 0 0 0 999px rgba(0,0,0,.28);
+  transition: left .12s ease-out, top .12s ease-out, width .12s ease-out, height .12s ease-out, border-color .12s, box-shadow .12s;
+}
+#chek-scan-frame.is-lock {
+  border-color: #3dff8a;
+  box-shadow: 0 0 0 999px rgba(0,0,0,.35), 0 0 0 3px rgba(61,255,138,.45);
+  border-radius: 10px;
+}
+#chek-scan-frame.is-hunt {
+  animation: chek-scan-pulse 1.4s ease-in-out infinite;
+}
+@keyframes chek-scan-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .82; }
 }
 .chek-scan-tools {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px;
@@ -3570,7 +3584,7 @@ input, select, textarea { max-width: 100%; }
       <button type="button" class="modal-close" id="chek-scan-close" aria-label="Yopish">×</button>
     </div>
     <div class="form-row">
-      <p class="chek-scan-help">Chekdagi <b>pastki QR</b> ni yashil ramka ichiga tuting — kamera o‘zi o‘qiydi.</p>
+      <p class="chek-scan-help">Chekdagi <b>pastki QR</b> ni tuting — yashil ramka QR ga moslashib, kamera o‘zi o‘qiydi.</p>
       <div class="chek-scan-status" id="chek-scan-status"></div>
       <div id="chek-scan-cam"><span class="chek-scan-ph">Kamera ochilmoqda…</span></div>
       <div class="chek-scan-tools">
@@ -3833,9 +3847,9 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=m144"></script>
-<script src="/vendor/jsQR.min.js?v=m150"></script>
-<script src="/vendor/html5-qrcode.min.js?v=m150"></script>
-<script src="cheks.js?v=32"></script>
+<script src="/vendor/jsQR.min.js?v=m151"></script>
+<script src="/vendor/html5-qrcode.min.js?v=m151"></script>
+<script src="cheks.js?v=33"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

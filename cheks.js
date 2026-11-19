@@ -1710,22 +1710,33 @@ const VMCheks = {
   },
 
   decodeJsQr(imageData) {
-    if (!imageData || typeof window.jsQR !== 'function') return '';
+    const hit = this.decodeJsQrEx(imageData);
+    return hit ? hit.text : '';
+  },
+
+  decodeJsQrEx(imageData) {
+    if (!imageData || typeof window.jsQR !== 'function') return null;
     try {
       const r = window.jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: 'attemptBoth'
       });
-      return (r && r.data) ? String(r.data).trim() : '';
+      if (!r || !r.data) return null;
+      return { text: String(r.data).trim(), location: r.location || null };
     } catch (e) {
-      return '';
+      return null;
     }
   },
 
   /** jsQR quiet-zone kerak — yaqin/katta QR uchun oq hoshiya + kichikroq nusxa */
   decodeJsQrRobust(imageData) {
-    let hit = this.decodeJsQr(imageData);
+    const hit = this.decodeJsQrRobustEx(imageData);
+    return hit ? hit.text : '';
+  },
+
+  decodeJsQrRobustEx(imageData) {
+    let hit = this.decodeJsQrEx(imageData);
     if (hit) return hit;
-    if (!imageData || !imageData.width) return '';
+    if (!imageData || !imageData.width) return null;
     try {
       if (!this._padCanvas) this._padCanvas = document.createElement('canvas');
       if (!this._srcCanvas) this._srcCanvas = document.createElement('canvas');
@@ -1735,7 +1746,7 @@ const VMCheks = {
       src.width = srcW;
       src.height = srcH;
       const sctx = src.getContext('2d');
-      if (!sctx) return '';
+      if (!sctx) return null;
       sctx.putImageData(imageData, 0, 0);
       const sizes = [400, 320, 520];
       for (let i = 0; i < sizes.length; i++) {
@@ -1751,23 +1762,98 @@ const VMCheks = {
         ctx.fillRect(0, 0, box, box);
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(src, 0, 0, srcW, srcH, pad, pad, inner, inner);
-        hit = this.decodeJsQr(ctx.getImageData(0, 0, box, box));
-        if (hit) return hit;
+        hit = this.decodeJsQrEx(ctx.getImageData(0, 0, box, box));
+        if (hit) return { text: hit.text, location: null };
       }
     } catch (e) {}
-    return '';
+    return null;
   },
 
-  /** Kadrdan QR — Html5 + jsQR; yaqin/katta QR uchun quiet-zone */
+  ensureScanFrame(host) {
+    if (!host) return null;
+    let frame = host.querySelector('#chek-scan-frame');
+    if (!frame) {
+      frame = document.createElement('div');
+      frame.id = 'chek-scan-frame';
+      frame.className = 'is-hunt';
+      frame.setAttribute('aria-hidden', 'true');
+      host.appendChild(frame);
+    }
+    return frame;
+  },
+
+  resetScanFrame(host) {
+    const frame = this.ensureScanFrame(host);
+    if (!frame) return;
+    frame.classList.add('is-hunt');
+    frame.classList.remove('is-lock');
+    frame.style.left = '50%';
+    frame.style.top = '50%';
+    frame.style.width = '';
+    frame.style.height = '';
+    frame.style.transform = 'translate(-50%, -50%)';
+  },
+
+  /** object-fit:cover — video nuqtani host koordinatasiga */
+  mapVideoPointToHost(video, host, vx, vy) {
+    const vw = video.videoWidth || 1;
+    const vh = video.videoHeight || 1;
+    const rect = host.getBoundingClientRect();
+    const elW = rect.width || host.clientWidth || 1;
+    const elH = rect.height || host.clientHeight || 1;
+    const scale = Math.max(elW / vw, elH / vh);
+    const dispW = vw * scale;
+    const dispH = vh * scale;
+    const ox = (elW - dispW) / 2;
+    const oy = (elH - dispH) / 2;
+    return { x: vx * scale + ox, y: vy * scale + oy };
+  },
+
+  snapScanFrameToQr(video, host, corners) {
+    const frame = this.ensureScanFrame(host);
+    if (!frame || !video || !corners) return;
+    const pts = [
+      corners.topLeftCorner,
+      corners.topRightCorner,
+      corners.bottomRightCorner,
+      corners.bottomLeftCorner
+    ].filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+    if (pts.length < 4) return;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    pts.forEach((p) => {
+      const m = this.mapVideoPointToHost(video, host, p.x, p.y);
+      minX = Math.min(minX, m.x);
+      minY = Math.min(minY, m.y);
+      maxX = Math.max(maxX, m.x);
+      maxY = Math.max(maxY, m.y);
+    });
+    const pad = 14;
+    const left = Math.max(4, minX - pad);
+    const top = Math.max(4, minY - pad);
+    const width = Math.max(48, Math.min((host.clientWidth || 300) - left - 4, maxX - minX + pad * 2));
+    const height = Math.max(48, Math.min((host.clientHeight || 300) - top - 4, maxY - minY + pad * 2));
+    frame.classList.remove('is-hunt');
+    frame.classList.add('is-lock');
+    frame.style.left = left + 'px';
+    frame.style.top = top + 'px';
+    frame.style.width = width + 'px';
+    frame.style.height = height + 'px';
+    frame.style.transform = 'none';
+  },
+
+  /** Kadrdan QR — tez markaz + quiet-zone; location saqlanadi */
   decodeFrameQr(video, det) {
     const v = video;
     if (!v || v.readyState < 2) return Promise.resolve('');
     const vw = v.videoWidth || 0;
     const vh = v.videoHeight || 0;
     if (vw < 40 || vh < 40) return Promise.resolve('');
+    this._lastQrLoc = null;
 
     const run = async () => {
-      // BarcodeDetector iPhone’da yo‘q; ba’zi Chrome stub bo‘sh qaytaradi — jsQR asosiy
       if (det) {
         try {
           const codes = await det.detect(v);
@@ -1778,7 +1864,7 @@ const VMCheks = {
       if (!this._scanCanvas) this._scanCanvas = document.createElement('canvas');
       if (!this._scanCanvas2) this._scanCanvas2 = document.createElement('canvas');
       const c = this._scanCanvas;
-      const maxW = 900;
+      const maxW = 960;
       const scale = Math.min(1, maxW / vw);
       const cw = Math.max(1, Math.round(vw * scale));
       const ch = Math.max(1, Math.round(vh * scale));
@@ -1787,10 +1873,39 @@ const VMCheks = {
       const ctx = c.getContext('2d', { willReadFrequently: true });
       if (!ctx) return '';
 
-      const tryCanvas = (canvas) => {
+      const accept = (hit, meta) => {
+        if (!hit || !hit.text) return '';
+        if (hit.location && meta) {
+          const mapCorner = (p) => {
+            if (!p) return null;
+            return {
+              x: meta.sx + (p.x / meta.outW) * meta.sw,
+              y: meta.sy + (p.y / meta.outH) * meta.sh
+            };
+          };
+          const loc = hit.location;
+          this._lastQrLoc = {
+            topLeftCorner: mapCorner(loc.topLeftCorner),
+            topRightCorner: mapCorner(loc.topRightCorner),
+            bottomRightCorner: mapCorner(loc.bottomRightCorner),
+            bottomLeftCorner: mapCorner(loc.bottomLeftCorner)
+          };
+        }
+        return hit.text;
+      };
+
+      const tryCanvas = (canvas, meta) => {
         const cctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!cctx) return '';
-        return this.decodeJsQrRobust(cctx.getImageData(0, 0, canvas.width, canvas.height));
+        const hit = this.decodeJsQrRobustEx(cctx.getImageData(0, 0, canvas.width, canvas.height));
+        return accept(hit, meta || {
+          sx: 0,
+          sy: 0,
+          sw: vw,
+          sh: vh,
+          outW: canvas.width,
+          outH: canvas.height
+        });
       };
 
       const drawCrop = (sx, sy, sw, sh, outW, filter) => {
@@ -1804,39 +1919,58 @@ const VMCheks = {
         ctx2.filter = filter || 'none';
         ctx2.drawImage(v, sx, sy, sw, sh, 0, 0, outW, outH);
         ctx2.filter = 'none';
-        return c2;
+        return { canvas: c2, meta: { sx, sy, sw, sh, outW, outH } };
       };
 
+      // 1) Avval markaz (yashil zona) — tezroq
+      const miss = this._scanMiss || 0;
+      const fastCrops = [
+        { f: 0.72, x: 0.5, y: 0.5 },
+        { f: 0.58, x: 0.5, y: 0.5 },
+        { f: 0.66, x: 0.5, y: 0.62 }
+      ];
+      for (let n = 0; n < 2; n++) {
+        const crop = fastCrops[(miss + n) % fastCrops.length];
+        const side = Math.min(vw, vh) * crop.f;
+        let sx = vw * crop.x - side / 2;
+        let sy = vh * crop.y - side / 2;
+        sx = Math.max(0, Math.min(vw - side, sx));
+        sy = Math.max(0, Math.min(vh - side, sy));
+        const drawn = drawCrop(sx, sy, side, side, 520, n === 0 ? 'none' : 'contrast(1.45) brightness(1.08) saturate(0)');
+        if (drawn) {
+          const found = tryCanvas(drawn.canvas, drawn.meta);
+          if (found) return found;
+        }
+      }
+
+      // 2) To‘liq kadr
       ctx.filter = 'none';
       ctx.drawImage(v, 0, 0, cw, ch);
-      let found = tryCanvas(c);
+      let found = tryCanvas(c, { sx: 0, sy: 0, sw: vw, sh: vh, outW: cw, outH: ch });
       if (found) return found;
 
       ctx.filter = 'contrast(1.55) brightness(1.1) saturate(0)';
       ctx.drawImage(v, 0, 0, cw, ch);
       ctx.filter = 'none';
-      found = tryCanvas(c);
+      found = tryCanvas(c, { sx: 0, sy: 0, sw: vw, sh: vh, outW: cw, outH: ch });
       if (found) return found;
 
-      const miss = this._scanMiss || 0;
-      // Katta f = kengroq (quiet-zone); kichik f = yaqin QR
+      // 3) Qo‘shimcha crop
       const crops = [
-        { f: 0.92, x: 0.5, y: 0.5 },
-        { f: 0.78, x: 0.5, y: 0.5 },
-        { f: 0.64, x: 0.5, y: 0.5 },
-        { f: 0.7, x: 0.5, y: 0.62 },
-        { f: 0.5, x: 0.5, y: 0.5 }
+        { f: 0.9, x: 0.5, y: 0.5 },
+        { f: 0.5, x: 0.5, y: 0.5 },
+        { f: 0.7, x: 0.5, y: 0.7 }
       ];
-      for (let n = 0; n < 3; n++) {
+      for (let n = 0; n < 2; n++) {
         const crop = crops[(miss + n) % crops.length];
         const side = Math.min(vw, vh) * crop.f;
         let sx = vw * crop.x - side / 2;
         let sy = vh * crop.y - side / 2;
         sx = Math.max(0, Math.min(vw - side, sx));
         sy = Math.max(0, Math.min(vh - side, sy));
-        const canvas = drawCrop(sx, sy, side, side, 480, 'contrast(1.4) brightness(1.08) saturate(0)');
-        if (canvas) {
-          found = tryCanvas(canvas);
+        const drawn = drawCrop(sx, sy, side, side, 480, 'contrast(1.4) brightness(1.08) saturate(0)');
+        if (drawn) {
+          found = tryCanvas(drawn.canvas, drawn.meta);
           if (found) return found;
         }
       }
@@ -2118,16 +2252,19 @@ const VMCheks = {
       this._scanMiss = 0;
       this._scanCanvas = document.createElement('canvas');
       this._scanCanvas2 = document.createElement('canvas');
+      this.ensureScanFrame(host);
+      this.resetScanFrame(host);
       const tick = async () => {
         if (!this.scanning || !this.nativeVideo) return;
         if (this._scanBusy) {
-          this.nativeLoop = setTimeout(tick, 40);
+          this.nativeLoop = setTimeout(tick, 24);
           return;
         }
         this._scanBusy = true;
         try {
           const found = await this.decodeFrameQr(this.nativeVideo, null);
           if (found) {
+            if (this._lastQrLoc) this.snapScanFrameToQr(this.nativeVideo, host, this._lastQrLoc);
             this._scanBusy = false;
             this.onQr(found);
             return;
@@ -2135,9 +2272,9 @@ const VMCheks = {
           this._scanMiss = (this._scanMiss || 0) + 1;
         } catch (e) {}
         this._scanBusy = false;
-        this.nativeLoop = setTimeout(tick, 50);
+        this.nativeLoop = setTimeout(tick, 36);
       };
-      this.nativeLoop = setTimeout(tick, 150);
+      this.nativeLoop = setTimeout(tick, 120);
     };
     tryFind();
   },
@@ -2174,6 +2311,8 @@ const VMCheks = {
       video.srcObject = stream;
       host.innerHTML = '';
       host.appendChild(video);
+      this.ensureScanFrame(host);
+      this.resetScanFrame(host);
       await video.play();
       const track = stream.getVideoTracks()[0];
       this._zoomLocked = false;
@@ -2189,28 +2328,29 @@ const VMCheks = {
       const tick = async () => {
         if (!this.scanning || !this.nativeVideo) return;
         if (this._scanBusy) {
-          this.nativeLoop = setTimeout(tick, 35);
+          this.nativeLoop = setTimeout(tick, 20);
           return;
         }
         this._scanBusy = true;
         try {
           const found = await this.decodeFrameQr(this.nativeVideo, null);
           if (found) {
+            if (this._lastQrLoc) this.snapScanFrameToQr(this.nativeVideo, host, this._lastQrLoc);
             this._scanBusy = false;
             this.onQr(found);
             return;
           }
           this._scanMiss = (this._scanMiss || 0) + 1;
-          if (this._scanMiss === 45) {
+          if (this._scanMiss === 50) {
             this.setStatus('Yashil ramkaga tuting — kerak bo‘lsa chiroqni yoqing');
-          } else if (this._scanMiss === 120) {
+          } else if (this._scanMiss === 130) {
             this.setStatus('O‘qilmasa «Rasmga olish» yoki qo‘lda kiritish');
           }
         } catch (e) {}
         this._scanBusy = false;
-        this.nativeLoop = setTimeout(tick, 45);
+        this.nativeLoop = setTimeout(tick, 32);
       };
-      this.nativeLoop = setTimeout(tick, 100);
+      this.nativeLoop = setTimeout(tick, 80);
       this._focusTimer = setInterval(() => {
         if (!this.scanning) return;
         const t = this.videoTrack();
@@ -2223,7 +2363,6 @@ const VMCheks = {
           }
         } catch (e) {}
       }, 2500);
-      this.setStatus('QR qidirilmoqda — yashil ramkaga tuting');
       return true;
     } catch (e) {
       this.stopNative();
