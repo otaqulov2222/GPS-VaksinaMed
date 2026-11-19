@@ -1,7 +1,7 @@
 /* VaksinaMed PWA — shell cache (API hech qachon keshlanmaydi). */
 /* v6: activate faqat ESKI keshni o‘chiradi (joriy precache saqlanadi).
    JS/CSS — network-first. */
-const CACHE = 'vm-shell-v12';
+const CACHE = 'vm-shell-v13';
 const PRECACHE = [
   '/offline.html',
   '/logo/apple-touch-icon.png?v=5',

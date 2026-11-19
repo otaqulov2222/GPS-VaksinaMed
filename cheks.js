@@ -1700,7 +1700,44 @@ const VMCheks = {
     }
   },
 
-  /** Kadrdan QR — standart markaz + kontrast (1× kamera uchun) */
+  /** jsQR quiet-zone kerak — yaqin/katta QR uchun oq hoshiya + kichikroq nusxa */
+  decodeJsQrRobust(imageData) {
+    let hit = this.decodeJsQr(imageData);
+    if (hit) return hit;
+    if (!imageData || !imageData.width) return '';
+    try {
+      if (!this._padCanvas) this._padCanvas = document.createElement('canvas');
+      if (!this._srcCanvas) this._srcCanvas = document.createElement('canvas');
+      const srcW = imageData.width;
+      const srcH = imageData.height;
+      const src = this._srcCanvas;
+      src.width = srcW;
+      src.height = srcH;
+      const sctx = src.getContext('2d');
+      if (!sctx) return '';
+      sctx.putImageData(imageData, 0, 0);
+      const sizes = [400, 320, 520];
+      for (let i = 0; i < sizes.length; i++) {
+        const box = sizes[i];
+        const pad = Math.round(box * 0.14);
+        const inner = box - pad * 2;
+        const c = this._padCanvas;
+        c.width = box;
+        c.height = box;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        if (!ctx) continue;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, box, box);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(src, 0, 0, srcW, srcH, pad, pad, inner, inner);
+        hit = this.decodeJsQr(ctx.getImageData(0, 0, box, box));
+        if (hit) return hit;
+      }
+    } catch (e) {}
+    return '';
+  },
+
+  /** Kadrdan QR — Html5 + jsQR; yaqin/katta QR uchun quiet-zone */
   decodeFrameQr(video, det) {
     const v = video;
     if (!v || v.readyState < 2) return Promise.resolve('');
@@ -1709,6 +1746,7 @@ const VMCheks = {
     if (vw < 40 || vh < 40) return Promise.resolve('');
 
     const run = async () => {
+      // BarcodeDetector iPhone’da yo‘q; ba’zi Chrome stub bo‘sh qaytaradi — jsQR asosiy
       if (det) {
         try {
           const codes = await det.detect(v);
@@ -1719,7 +1757,7 @@ const VMCheks = {
       if (!this._scanCanvas) this._scanCanvas = document.createElement('canvas');
       if (!this._scanCanvas2) this._scanCanvas2 = document.createElement('canvas');
       const c = this._scanCanvas;
-      const maxW = 1100;
+      const maxW = 900;
       const scale = Math.min(1, maxW / vw);
       const cw = Math.max(1, Math.round(vw * scale));
       const ch = Math.max(1, Math.round(vh * scale));
@@ -1728,16 +1766,10 @@ const VMCheks = {
       const ctx = c.getContext('2d', { willReadFrequently: true });
       if (!ctx) return '';
 
-      const tryCanvas = async (canvas) => {
-        if (det) {
-          try {
-            const codes = await det.detect(canvas);
-            if (codes && codes[0] && codes[0].rawValue) return String(codes[0].rawValue).trim();
-          } catch (e) {}
-        }
+      const tryCanvas = (canvas) => {
         const cctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!cctx) return '';
-        return this.decodeJsQr(cctx.getImageData(0, 0, canvas.width, canvas.height));
+        return this.decodeJsQrRobust(cctx.getImageData(0, 0, canvas.width, canvas.height));
       };
 
       const drawCrop = (sx, sy, sw, sh, outW, filter) => {
@@ -1756,21 +1788,23 @@ const VMCheks = {
 
       ctx.filter = 'none';
       ctx.drawImage(v, 0, 0, cw, ch);
-      let found = await tryCanvas(c);
+      let found = tryCanvas(c);
       if (found) return found;
 
-      ctx.filter = 'contrast(1.5) brightness(1.12) saturate(0)';
+      ctx.filter = 'contrast(1.55) brightness(1.1) saturate(0)';
       ctx.drawImage(v, 0, 0, cw, ch);
       ctx.filter = 'none';
-      found = await tryCanvas(c);
+      found = tryCanvas(c);
       if (found) return found;
 
       const miss = this._scanMiss || 0;
+      // Katta f = kengroq (quiet-zone); kichik f = yaqin QR
       const crops = [
-        { f: 0.68, x: 0.5, y: 0.5 },
-        { f: 0.55, x: 0.5, y: 0.5 },
-        { f: 0.6, x: 0.5, y: 0.66 },
-        { f: 0.48, x: 0.5, y: 0.72 }
+        { f: 0.92, x: 0.5, y: 0.5 },
+        { f: 0.78, x: 0.5, y: 0.5 },
+        { f: 0.64, x: 0.5, y: 0.5 },
+        { f: 0.7, x: 0.5, y: 0.62 },
+        { f: 0.5, x: 0.5, y: 0.5 }
       ];
       for (let n = 0; n < 3; n++) {
         const crop = crops[(miss + n) % crops.length];
@@ -1779,11 +1813,9 @@ const VMCheks = {
         let sy = vh * crop.y - side / 2;
         sx = Math.max(0, Math.min(vw - side, sx));
         sy = Math.max(0, Math.min(vh - side, sy));
-        const canvas = drawCrop(sx, sy, side, side, 560, n === 0
-          ? 'contrast(1.45) brightness(1.1) saturate(0)'
-          : 'contrast(1.7) brightness(1.05) saturate(0)');
+        const canvas = drawCrop(sx, sy, side, side, 480, 'contrast(1.4) brightness(1.08) saturate(0)');
         if (canvas) {
-          found = await tryCanvas(canvas);
+          found = tryCanvas(canvas);
           if (found) return found;
         }
       }
@@ -1979,40 +2011,61 @@ const VMCheks = {
     try {
       await this.stopCamera();
       const jsOk = await this.loadJsQr();
-      if (!jsOk && !window.BarcodeDetector) {
-        this.setStatus('QR moduli yuklanmadi. Internetni tekshiring yoki qo‘lda kiriting.', 'bad');
+      if (!jsOk) {
+        // CDN ham ishlamasa — Html5Qrcode o‘z dekoderiga tayanadi
+        this.setStatus('QR moduli sekin yuklanmoqda…', 'busy');
       }
-      // Native + jsQR/BarcodeDetector (iPhone Safari uchun asosiy yo‘l)
+
+      // 1) Html5Qrcode — mobil uchun asosiy (iPhone/Android)
+      try {
+        await this.loadLib();
+        const camId = await this.pickBackCameraId();
+        this.scanner = new window.Html5Qrcode('chek-scan-cam', { verbose: false });
+        const box = {
+          fps: 12,
+          qrbox(viewW, viewH) {
+            const edge = Math.floor(Math.min(viewW, viewH) * 0.7);
+            return { width: edge, height: edge };
+          },
+          aspectRatio: 1.777,
+          disableFlip: false,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          videoConstraints: this.scanVideoConstraints(camId)
+        };
+        const onOk = (text) => { this.onQr(text); };
+        try {
+          await this.scanner.start(camId || { facingMode: 'environment' }, box, onOk, () => {});
+        } catch (e1) {
+          await this.scanner.start(
+            { facingMode: 'environment' },
+            Object.assign({}, box, { videoConstraints: this.scanVideoConstraints(null) }),
+            onOk,
+            () => {}
+          );
+        }
+        this.scanning = true;
+        this.setStatus('QR qidirilmoqda — yashil ramkaga tuting');
+        // Parallel jsQR — Html5 o‘qimasa ham video kadridan o‘qiydi
+        this.startJsQrAssist(host);
+        return;
+      } catch (eHtml) {
+        try {
+          if (this.scanner) {
+            await this.scanner.stop().catch(() => {});
+            this.scanner.clear();
+          }
+        } catch (e2) {}
+        this.scanner = null;
+      }
+
+      // 2) Native fallback (faqat jsQR bilan)
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const ok = await this.startNativeCamera(host);
         if (ok) return;
       }
-      await this.loadLib();
-      const camId = await this.pickBackCameraId();
-      this.scanner = new window.Html5Qrcode('chek-scan-cam', { verbose: false });
-      const box = {
-        fps: 15,
-        qrbox(viewW, viewH) {
-          const edge = Math.floor(Math.min(viewW, viewH) * 0.62);
-          return { width: edge, height: edge };
-        },
-        aspectRatio: 1.777,
-        disableFlip: false,
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        videoConstraints: this.scanVideoConstraints(camId)
-      };
-      try {
-        await this.scanner.start(camId || { facingMode: 'environment' }, box, (text) => { this.onQr(text); }, () => {});
-      } catch (e1) {
-        await this.scanner.start(
-          { facingMode: 'environment' },
-          Object.assign({}, box, { videoConstraints: this.scanVideoConstraints(null) }),
-          (text) => { this.onQr(text); },
-          () => {}
-        );
-      }
-      this.scanning = true;
-      this.setStatus('QR qidirilmoqda — yashil kvadratga tuting');
+      host.classList.remove('is-on');
+      host.innerHTML = '<span class="chek-scan-ph">Kamera ochilmadi</span>';
+      this.setStatus('Kamera ochilmadi. «Rasmga olish» yoki qo‘lda kiritish.', 'bad');
     } catch (e) {
       host.classList.remove('is-on');
       host.innerHTML = '<span class="chek-scan-ph">Kamera ochilmadi</span>';
@@ -2020,18 +2073,52 @@ const VMCheks = {
     }
   },
 
+  /** Html5 video ustida qo‘shimcha jsQR (iPhone) */
+  startJsQrAssist(host) {
+    if (typeof window.jsQR !== 'function') return;
+    const tryFind = () => {
+      if (!this.scanning) return;
+      const video = host && host.querySelector ? host.querySelector('video') : null;
+      if (!video) {
+        this.nativeLoop = setTimeout(tryFind, 200);
+        return;
+      }
+      this.nativeVideo = video;
+      this._scanBusy = false;
+      this._scanMiss = 0;
+      this._scanCanvas = document.createElement('canvas');
+      this._scanCanvas2 = document.createElement('canvas');
+      const tick = async () => {
+        if (!this.scanning || !this.nativeVideo) return;
+        if (this._scanBusy) {
+          this.nativeLoop = setTimeout(tick, 40);
+          return;
+        }
+        this._scanBusy = true;
+        try {
+          const found = await this.decodeFrameQr(this.nativeVideo, null);
+          if (found) {
+            this._scanBusy = false;
+            this.onQr(found);
+            return;
+          }
+          this._scanMiss = (this._scanMiss || 0) + 1;
+        } catch (e) {}
+        this._scanBusy = false;
+        this.nativeLoop = setTimeout(tick, 50);
+      };
+      this.nativeLoop = setTimeout(tick, 150);
+    };
+    tryFind();
+  },
+
   async startNativeCamera(host) {
     try {
-      // Dekoder bo‘lmasa bo‘sh loop ochilmasin (iPhone bug)
       const hasJsQr = await this.loadJsQr();
-      let det = null;
-      if (window.BarcodeDetector) {
-        try { det = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; }
-      }
-      if (!det && !hasJsQr) return false;
+      // Faqat jsQR — BarcodeDetector yolg‘iz ishonchsiz (bo‘sh stub)
+      if (!hasJsQr) return false;
 
       let stream = null;
-      // Oddiy orqa kamera 1× — yuqori rezolyutsiya telefoto chaqirmasin
       const tries = [
         { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
         { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -2077,7 +2164,7 @@ const VMCheks = {
         }
         this._scanBusy = true;
         try {
-          const found = await this.decodeFrameQr(this.nativeVideo, det);
+          const found = await this.decodeFrameQr(this.nativeVideo, null);
           if (found) {
             this._scanBusy = false;
             this.onQr(found);
@@ -2094,7 +2181,6 @@ const VMCheks = {
         this.nativeLoop = setTimeout(tick, 45);
       };
       this.nativeLoop = setTimeout(tick, 100);
-      // Faqat continuous yo‘q telefonlarda — kam-kam single-shot (zoom qayta tegilmaydi)
       this._focusTimer = setInterval(() => {
         if (!this.scanning) return;
         const t = this.videoTrack();
