@@ -2595,25 +2595,7 @@ class OfficeStore:
                 t = str(t or "").strip()
                 if t and t not in known:
                     known.append(t)
-            built = chekmod.lookup_manual_chek(body, known_terminals=known, timeout=7, max_tries=32)
-            # Pending + aniq FM: bitta qisqa qayta urinish (timeoutning oldini olish uchun kam)
-            if built.get("ok") and isinstance(built.get("rec"), dict) and not built["rec"].get("ofdOk"):
-                rec0 = built["rec"]
-                term0 = str(rec0.get("terminalId") or body.get("terminalId") or body.get("fm") or "")
-                if chekmod.is_ofd_terminal(term0):
-                    retry = chekmod.lookup_manual_chek(
-                        {
-                            "receiptNo": rec0.get("receiptNo") or body.get("receiptNo"),
-                            "fiscalSign": rec0.get("fiscalSign") or body.get("fiscalSign") or body.get("fb"),
-                            "terminalId": term0,
-                            "paidAt": "",
-                        },
-                        known_terminals=[term0],
-                        timeout=8,
-                        max_tries=4,
-                    )
-                    if retry.get("ok") and isinstance(retry.get("rec"), dict) and retry["rec"].get("ofdOk"):
-                        built = retry
+            built = chekmod.lookup_manual_chek(body, known_terminals=known[:8], timeout=4, max_tries=10)
         else:
             built = chekmod.build_chek_record(body, body, fetch_ofd=False)
         if not built.get("ok"):
@@ -6445,14 +6427,15 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             if err:
                 if isinstance(err, dict):
+                    # 200: klient Abort/timeout deb o‘qimasin — needFm xabari ko‘rinsin
                     self.send_json({
                         "ok": False,
                         "error": err.get("error") or "Xato",
                         "needFm": bool(err.get("needFm")),
                         "sandbox": True,
-                    }, 400)
+                    })
                     return
-                self.send_json({"ok": False, "error": err, "sandbox": True}, 400)
+                self.send_json({"ok": False, "error": err, "sandbox": True, "needFm": False})
                 return
             self.send_json({"ok": True, "sandbox": True, "item": OFFICE._chek_pub(row), "items": OFFICE.cheks_public()})
             return

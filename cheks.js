@@ -1985,25 +1985,29 @@ const VMCheks = {
     this._busy = true;
     this.flash();
     const keep = { receiptNo, fiscalSign, terminalId, when };
-    try {
-      // Avval serverdan to‘liq javob — soxta «kutilmoqda» oynasi ochilmaydi
+    const pool = this.knownTerminalPool().slice(0, 8);
+
+    const doLookup = async (term, paidAt) => {
       const body = {
         plate: this.openPlate,
         manualLookup: true,
         receiptNo,
         fiscalSign,
-        paidAt: when || undefined,
-        knownTerminals: this.knownTerminalPool().slice(0, 28)
+        knownTerminals: pool
       };
-      if (terminalId) {
-        body.terminalId = terminalId;
-        body.fm = terminalId;
+      if (paidAt) body.paidAt = paidAt;
+      if (term) {
+        body.terminalId = term;
+        body.fm = term;
       }
-      const d = await vmApi('/api/office/cheks/scan', {
+      return vmApi('/api/office/cheks/scan', {
         method: 'POST',
         body: JSON.stringify(body),
-        timeoutMs: 120000
+        timeoutMs: 35000
       });
+    };
+
+    const applyHit = (d) => {
       if (d.item && d.item.ofdOk) {
         this.closeManual();
         this.beep();
@@ -2014,7 +2018,7 @@ const VMCheks = {
         this.rememberTerminal(this.openPlate, d.item.terminalId);
         this.openPaper(d.item, true, !!d.duplicate);
         this.toast('Topildi: ' + (this.money(d.item.amount) || d.item.merchant || 'chek'));
-        return;
+        return true;
       }
       if (d.item && d.duplicate && d.item.ofdOk) {
         this.closeManual();
@@ -2022,20 +2026,40 @@ const VMCheks = {
         this.render();
         this.openPaper(d.item, true, true);
         this.toast('Bu chek avval saqlangan');
-        return;
+        return true;
       }
-      const err = d.error || 'OFD dan to‘liq chek topilmadi. FM ni tekshiring.';
+      return false;
+    };
+
+    try {
+      let d = await doLookup(terminalId, when || undefined);
+      // Noto‘g‘ri FM (boshqa chekning) — FM va sanani tashlab faqat Chek+FB + known bilan qayta
+      if (!applyHit(d) && terminalId && (d.needFm || !d.ok)) {
+        this.setManualStatus('Noto‘g‘ri FM — faqat Chek № + FB bilan qayta qidirilmoqda…', 'busy');
+        const termEl = document.getElementById('chek-m-term');
+        const whenEl = document.getElementById('chek-m-when');
+        if (termEl) termEl.value = '';
+        if (whenEl) whenEl.value = '';
+        keep.terminalId = '';
+        keep.when = '';
+        d = await doLookup('', undefined);
+      }
+      if (applyHit(d)) return;
+      let err = d.error || 'OFD dan to‘liq chek topilmadi. Shu qog‘ozdagi FM (14 belgi) ni yozing.';
+      if (d.needFm) {
+        err = err + ' «PAX A-930» FM emas — Terminal satridagi 14 belgini yozing.';
+      }
       this.setManualStatus(err, 'bad');
       this.toast(err);
       const termEl = document.getElementById('chek-m-term');
       if (termEl) {
-        if (keep.terminalId) termEl.value = keep.terminalId;
+        termEl.value = keep.terminalId || '';
         termEl.focus();
       }
     } catch (e) {
       let msg = (e && e.message) || 'OFD qidiruv xato';
       if (/sekin|abort|timeout/i.test(msg)) {
-        msg = 'OFD qidiruv uzildi. FM (14 belgi) + Chek № + FB ni yozib qayta bosing.';
+        msg = 'OFD qidiruv uzildi. FM maydonini bo‘sh qoldirib faqat Chek № + FB bilan qayta bosing. Yoki shu qog‘ozdagi Terminal (14 belgi) ni yozing.';
       }
       this.setManualStatus(msg, 'bad');
       this.toast(msg);
@@ -2045,7 +2069,8 @@ const VMCheks = {
       const whenEl = document.getElementById('chek-m-when');
       if (rno) rno.value = keep.receiptNo;
       if (fb) fb.value = keep.fiscalSign;
-      if (term) term.value = keep.terminalId || '';
+      // Timeoutda noto‘g‘ri FM ni saqlamaymiz — keyingi bosish toza
+      if (term) term.value = '';
       if (whenEl) whenEl.value = keep.when || '';
       if (term) term.focus();
     } finally {

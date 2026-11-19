@@ -351,25 +351,24 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             "needFm": True,
         }
 
-    # Aniq FM — tez; noto‘g‘ri eslab qolingan FM (VG…) soxta «pending» bermasligi kerak
+    # Tez va qat’iy: noto‘g‘ri FM ni ko‘p marta urinib timeout qilmaymiz
     when_ok = bool(normalize_human_datetime(when)) if when else False
-    stamp_n = 8 if when_ok else (6 if user_exact else 12)
+    # Boshqa chekning sanasi chalkashtirilsa ham — kam stamp, tez fail
+    stamp_n = 3 if when_ok else 4
     stamps = expand_stamp_candidates(when if when_ok else "", max_n=stamp_n)
+    if not stamps:
+        stamps = expand_stamp_candidates("", max_n=4)
+    timeout = max(3, min(int(timeout or 4), 4))
     if user_exact:
-        timeout = max(timeout, 8)
-        # Avval yozilgan FM, keyin boshqa known — lekin barchasini aylanamiz
         terminals = [term_in] + [t for t in terminals if t != term_in]
-        terminals = terminals[:12]
-        max_tries = min(max(max_tries, 16), 24)
-    else:
-        timeout = max(4, min(timeout, 6))
-        terminals = expand_terminal_candidates(term_in, known_terminals, limit=16)
-        max_tries = min(max(max_tries, 20), 28)
+    terminals = [t for t in terminals if is_ofd_terminal(t)][:6]
+    max_tries = 8 if user_exact else 10
     tries = 0
+    dead = set()  # pending/noto‘g‘ri terminal — qayta urinilmaydi
 
     def try_one(term, stamp):
         nonlocal tries
-        if tries >= max_tries:
+        if tries >= max_tries or term in dead:
             return None
         parsed = build_ofd_url(term, receipt, stamp, sign)
         if not parsed.get("ok"):
@@ -378,35 +377,36 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
         ofd = fetch_ofd_api(parsed, timeout=timeout, attempts=1)
         if ofd.get("ofdOk") and _has_amount(ofd.get("amount")):
             return _manual_hit_rec(parsed, ofd, sign)
+        # Noto‘g‘ri FM / boshqa chek terminali — shu terminalni tashlaymiz
+        dead.add(term)
         return None
 
-    # Round-robin: har stamp bo‘yicha BARCHA terminallar — noto‘g‘ri FM birinchi turib
-    # barcha urinishni «pending» bilan yeb qo‘ymasligi uchun
-    for stamp in stamps[:4]:
+    # Avval: har terminalga 1 ta eng yaxshi stamp
+    for term in terminals:
+        hit = try_one(term, stamps[0])
+        if hit:
+            return {"ok": True, "rec": hit, "tries": tries}
+    # Keyin: qolgan stamp’lar (faqat tirik terminallar)
+    for stamp in stamps[1:]:
         for term in terminals:
             hit = try_one(term, stamp)
             if hit:
                 return {"ok": True, "rec": hit, "tries": tries}
         if tries >= max_tries:
             break
-    if tries < max_tries:
-        for stamp in stamps[4:]:
-            for term in terminals:
-                hit = try_one(term, stamp)
-                if hit:
-                    return {"ok": True, "rec": hit, "tries": tries}
-                if tries >= max_tries:
-                    break
-            if tries >= max_tries:
-                break
 
-    # Soft-pending YO‘Q — noto‘g‘ri terminal bilan «kutilmoqda» saqlanmasin
+    wrong = term_in if user_exact else ""
+    hint = (
+        ("«" + wrong + "» shu Chek/FB uchun mos emas. ")
+        if wrong
+        else ""
+    )
     return {
         "ok": False,
         "error": (
-            "OFD dan to‘liq chek topilmadi. Qog‘ozdagi FM ni tekshiring "
-            "(14 belgi, masalan LG420211628460) — Chek № va FB bilan birga yozing. "
-            "Eslab qolingan terminal noto‘g‘ri bo‘lishi mumkin."
+            hint
+            + "OFD topilmadi. Shu qog‘ozdagi Terminal/FM ni yozing (14 belgi: LG…/VG…/YZ…). "
+            "Boshqa chekning FM sini yozmang. Faqat Chek № + FB ham sinashing."
         ),
         "tries": tries,
         "needFm": True,

@@ -125,6 +125,9 @@ class ManualHardeningTest(unittest.TestCase):
         self.assertTrue(r.get("needFm"))
         self.assertIsNone(r.get("pending"))
         self.assertNotIn("rec", r)
+        # Noto‘g‘ri FM — bitta urinishdan keyin o‘lik, qayta stamp bilan cho‘zilmaydi
+        self.assertEqual(r["tries"], 1)
+        self.assertIn("VG544170024111", r.get("error") or "")
 
     @mock.patch("cheks.fetch_ofd_api")
     def test_exact_fm_and_dash_date_fast(self, fetch):
