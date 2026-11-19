@@ -103,29 +103,78 @@ def _clean_id(raw):
     return re.sub(r"\s+", "", str(raw or "")).strip()
 
 
-def expand_terminal_candidates(raw_term, known_terms=None, limit=20):
-    """12 xonali terminalga odatiy OFD prefikslarini qo‘shib 14 belgilikka yetkazadi."""
+# Soliq OFD terminal/FM odatda 14 belgi: 2 harf + 12 raqam (LG/VG/YZ/UZ…).
+OFD_TERM_PREFIXES = (
+    "LG", "VG", "YZ", "UZ", "EZ", "EP", "NZ", "AZ", "NG", "PG",
+    "Y2", "Y0", "Z0", "FM", "FC", "FS",
+)
+
+
+def is_ofd_terminal(raw):
+    t = _clean_id(raw)
+    if len(t) != 14:
+        return False
+    return bool(re.fullmatch(r"[A-Za-z0-9]{14}", t))
+
+
+def expand_terminal_candidates(raw_term, known_terms=None, limit=24):
+    """
+    Foydalanuvchi yozgan Terminal/FM + avvalgi 14 belgilik ID larni tartiblaydi.
+    Qisqa raqamga odatiy prefikslar qo‘shadi; known ichidan raqam mosligini ustun qo‘yadi.
+    """
     out = []
     seen = set()
 
-    def add(t):
+    def add(t, force=False):
         t = _clean_id(t)
         if not t or t in seen:
             return
+        # OFD faqat 14 belgini qabul qiladi — boshqalarini o‘tkazib yubormaymiz
+        # (lekin force=True: avval xom kiritishni saqlamaymiz, faqat variantlar).
+        if not force and len(t) != 14:
+            digits = re.sub(r"\D", "", t)
+            letters = re.sub(r"[^A-Za-z]", "", t)
+            if len(t) == 12 and digits == t:
+                for pref in OFD_TERM_PREFIXES:
+                    add(pref + t)
+            elif len(digits) == 12 and len(letters) <= 2:
+                core = digits[-12:]
+                if letters:
+                    add((letters.upper() + core)[:14])
+                for pref in OFD_TERM_PREFIXES:
+                    add(pref + core)
+            elif len(t) > 14:
+                if len(digits) >= 14 and re.fullmatch(r"[A-Za-z]{2}\d{12}", t[:14], re.I):
+                    add(t[:14])
+                elif len(digits) >= 12:
+                    core = digits[-12:]
+                    for pref in OFD_TERM_PREFIXES:
+                        add(pref + core)
+            return
+        if len(t) != 14:
+            return
         seen.add(t)
         out.append(t[:40])
-        digits = re.sub(r"\D", "", t)
-        if len(t) == 12 and digits == t:
-            for pref in ("YZ", "UZ", "EZ", "EP", "NZ", "AZ", "Y2", "Y0", "Z0"):
-                add(pref + t)
-        if len(t) > 14 and digits:
-            if len(digits) >= 12:
-                add(digits[-12:])
-            if len(digits) >= 14:
-                add(digits[-14:])
 
-    add(raw_term)
+    raw = _clean_id(raw_term)
+    if is_ofd_terminal(raw):
+        add(raw)
+    elif raw:
+        add(raw)  # prefiks/variatsiyalar chiqadi
+
+    digits = re.sub(r"\D", "", raw) if raw else ""
+    matching = []
+    other = []
     for t in known_terms or []:
+        t = _clean_id(t)
+        if not is_ofd_terminal(t):
+            continue
+        kd = re.sub(r"\D", "", t)
+        if digits and len(digits) >= 8 and digits in kd:
+            matching.append(t)
+        else:
+            other.append(t)
+    for t in matching + other:
         add(t)
         if len(out) >= limit:
             break
@@ -203,10 +252,36 @@ def build_ofd_url(terminal_id, receipt_no, paid_at_or_stamp, fiscal_sign=""):
     return parse_qr_payload(url)
 
 
+def _manual_hit_rec(parsed, ofd, sign):
+    return {
+        "qr": parsed["qr"],
+        "terminalId": parsed["terminalId"],
+        "receiptNo": parsed["receiptNo"],
+        "fiscalSign": parsed["fiscalSign"] or sign,
+        "paidAt": parsed["paidAt"],
+        "merchant": ofd.get("merchant") or "",
+        "inn": ofd.get("inn") or "",
+        "amount": ofd.get("amount"),
+        "items": ofd.get("items") or [],
+        "address": ofd.get("address") or "",
+        "cashTotal": ofd.get("cashTotal"),
+        "cardTotal": ofd.get("cardTotal"),
+        "payMethod": ofd.get("payMethod") or "",
+        "kkmName": ofd.get("kkmName") or "",
+        "cardType": ofd.get("cardType") or "",
+        "vatTotal": ofd.get("vatTotal"),
+        "ofdOk": True,
+        "ofdPending": False,
+        "ofdNote": public_ofd_note(True, False, ofd.get("ofdNote") or "", ofd.get("amount")),
+        "manualLookup": True,
+    }
+
+
 def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
     """
-    Minimal kiritish: Chek № + FB.
-    Terminal/sana bo‘lmasa — avvalgi cheklar + yaqin vaqtlar bilan OFD dan to‘liq chekni qidiradi.
+    Chek № + FB + FM/Terminal (14 belgi).
+    To‘g‘ri FM bo‘lsa — OFD dan to‘liq chekni tez topadi.
+    Noto‘g‘ri/eslab qolingan terminal bilan soxta «kutilmoqda» saqlamaydi.
     """
     fields = fields if isinstance(fields, dict) else {}
     receipt = _clean_id(
@@ -216,7 +291,11 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
         fields.get("fiscalSign") or fields.get("fb") or fields.get("s") or fields.get("fiscal")
     )
     term_in = _clean_id(
-        fields.get("terminalId") or fields.get("terminal") or fields.get("t")
+        fields.get("terminalId")
+        or fields.get("terminal")
+        or fields.get("fm")
+        or fields.get("FM")
+        or fields.get("t")
     )
     when = (
         fields.get("paidAt")
@@ -231,90 +310,61 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
     if not sign:
         return {"ok": False, "error": "FB (fiskal belgi) ni yozing"}
 
-    terminals = expand_terminal_candidates(term_in, known_terminals, limit=16)
+    user_exact = is_ofd_terminal(term_in)
+    # Foydalanuvchi qisqa/noto‘g‘ri ID yozgan bo‘lsa — known bilan chalg‘itmaymiz
+    if term_in and not user_exact and not expand_terminal_candidates(term_in, [], limit=6):
+        return {
+            "ok": False,
+            "error": "FM/Terminal 14 belgi bo‘lishi kerak (masalan LG420230610919). Qog‘ozdagi FM ni yozing — qisqa Terminal raqami emas.",
+            "needFm": True,
+        }
+    terminals = expand_terminal_candidates(term_in, known_terminals, limit=20)
     if not terminals:
         return {
             "ok": False,
-            "error": "Terminal noma’lum. Qog‘ozdagi Terminal ni bir marta yozing — keyin eslab qolamiz.",
+            "error": "FM/Terminal yo‘q. Qog‘ozdagi FM ni yozing (14 belgi: LG… / VG… / YZ…) — keyin eslab qolamiz.",
+            "needFm": True,
         }
 
-    stamps = expand_stamp_candidates(when, max_n=20 if when else 16)
+    # Aniq FM + sana → kam urinish, tez javob
+    stamp_n = 12 if (user_exact and when) else (18 if when else 14)
+    stamps = expand_stamp_candidates(when, max_n=stamp_n)
+    if user_exact and when:
+        max_tries = min(max_tries, 10)
+        timeout = max(timeout, 7)
     best_pending = None
     tries = 0
+
+    def try_one(term, stamp):
+        nonlocal tries, best_pending
+        if tries >= max_tries:
+            return None
+        parsed = build_ofd_url(term, receipt, stamp, sign)
+        if not parsed.get("ok"):
+            return None
+        tries += 1
+        ofd = fetch_ofd_api(parsed, timeout=timeout, attempts=1)
+        if ofd.get("ofdOk") and _has_amount(ofd.get("amount")):
+            return _manual_hit_rec(parsed, ofd, sign)
+        # Soxta pending: faqat foydalanuvchi o‘zi yozgan 14 belgilik FM da
+        if ofd.get("ofdPending") and user_exact and term == terminals[0] and best_pending is None:
+            best_pending = (parsed, ofd)
+        return None
+
     for term in terminals:
-        # Har terminal uchun avval eng yaxshi 4 ta stamp
-        for stamp in stamps[:4]:
-            if tries >= max_tries:
-                break
-            parsed = build_ofd_url(term, receipt, stamp, sign)
-            if not parsed.get("ok"):
-                continue
-            tries += 1
-            ofd = fetch_ofd_api(parsed, timeout=timeout, attempts=1)
-            if ofd.get("ofdOk") and _has_amount(ofd.get("amount")):
-                rec = {
-                    "qr": parsed["qr"],
-                    "terminalId": parsed["terminalId"],
-                    "receiptNo": parsed["receiptNo"],
-                    "fiscalSign": parsed["fiscalSign"] or sign,
-                    "paidAt": parsed["paidAt"],
-                    "merchant": ofd.get("merchant") or "",
-                    "inn": ofd.get("inn") or "",
-                    "amount": ofd.get("amount"),
-                    "items": ofd.get("items") or [],
-                    "address": ofd.get("address") or "",
-                    "cashTotal": ofd.get("cashTotal"),
-                    "cardTotal": ofd.get("cardTotal"),
-                    "payMethod": ofd.get("payMethod") or "",
-                    "kkmName": ofd.get("kkmName") or "",
-                    "cardType": ofd.get("cardType") or "",
-                    "vatTotal": ofd.get("vatTotal"),
-                    "ofdOk": True,
-                    "ofdPending": False,
-                    "ofdNote": public_ofd_note(True, False, ofd.get("ofdNote") or "", ofd.get("amount")),
-                    "manualLookup": True,
-                }
-                return {"ok": True, "rec": rec, "tries": tries}
-            if ofd.get("ofdPending") and best_pending is None:
-                best_pending = (parsed, ofd)
+        for stamp in stamps[: (6 if user_exact else 4)]:
+            hit = try_one(term, stamp)
+            if hit:
+                return {"ok": True, "rec": hit, "tries": tries}
         if tries >= max_tries:
             break
-        # Sana berilgan bo‘lsa — shu terminalda qolgan stamp’larni ham sinaymiz
         if when:
-            for stamp in stamps[4:]:
+            for stamp in stamps[6 if user_exact else 4 :]:
+                hit = try_one(term, stamp)
+                if hit:
+                    return {"ok": True, "rec": hit, "tries": tries}
                 if tries >= max_tries:
                     break
-                parsed = build_ofd_url(term, receipt, stamp, sign)
-                if not parsed.get("ok"):
-                    continue
-                tries += 1
-                ofd = fetch_ofd_api(parsed, timeout=timeout, attempts=1)
-                if ofd.get("ofdOk") and _has_amount(ofd.get("amount")):
-                    rec = {
-                        "qr": parsed["qr"],
-                        "terminalId": parsed["terminalId"],
-                        "receiptNo": parsed["receiptNo"],
-                        "fiscalSign": parsed["fiscalSign"] or sign,
-                        "paidAt": parsed["paidAt"],
-                        "merchant": ofd.get("merchant") or "",
-                        "inn": ofd.get("inn") or "",
-                        "amount": ofd.get("amount"),
-                        "items": ofd.get("items") or [],
-                        "address": ofd.get("address") or "",
-                        "cashTotal": ofd.get("cashTotal"),
-                        "cardTotal": ofd.get("cardTotal"),
-                        "payMethod": ofd.get("payMethod") or "",
-                        "kkmName": ofd.get("kkmName") or "",
-                        "cardType": ofd.get("cardType") or "",
-                        "vatTotal": ofd.get("vatTotal"),
-                        "ofdOk": True,
-                        "ofdPending": False,
-                        "ofdNote": public_ofd_note(True, False, ofd.get("ofdNote") or "", ofd.get("amount")),
-                        "manualLookup": True,
-                    }
-                    return {"ok": True, "rec": rec, "tries": tries}
-                if ofd.get("ofdPending") and best_pending is None:
-                    best_pending = (parsed, ofd)
 
     if best_pending:
         parsed, ofd = best_pending
@@ -334,8 +384,12 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
 
     return {
         "ok": False,
-        "error": "OFD dan topilmadi. Chek № / FB ni tekshiring yoki Terminal va sanani qo‘shing.",
+        "error": (
+            "OFD dan to‘liq chek topilmadi. Qog‘ozdagi FM ni tekshiring "
+            "(14 belgi, masalan LG420230610919) — Chek № va FB bilan birga yozing."
+        ),
         "tries": tries,
+        "needFm": True,
     }
 
 

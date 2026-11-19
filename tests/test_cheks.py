@@ -173,9 +173,26 @@ class CheksParseTest(unittest.TestCase):
 
     def test_terminal_prefix_expand(self):
         terms = cheks.expand_terminal_candidates("329090111713", known_terms=["Y2231006003520"])
-        self.assertIn("329090111713", terms)
+        self.assertNotIn("329090111713", terms)  # faqat 14 belgilik
         self.assertTrue(any(t.startswith("YZ") and t.endswith("329090111713") for t in terms))
+        self.assertTrue(any(t.startswith("LG") and t.endswith("329090111713") for t in terms))
         self.assertIn("Y2231006003520", terms)
+
+    def test_ofd_terminal_lg(self):
+        self.assertTrue(cheks.is_ofd_terminal("LG420230610919"))
+        self.assertFalse(cheks.is_ofd_terminal("1170389188"))
+        terms = cheks.expand_terminal_candidates("LG420230610919", known_terms=["VG544170000204"])
+        self.assertEqual(terms[0], "LG420230610919")
+        self.assertIn("VG544170000204", terms)
+
+    def test_short_terminal_needs_fm(self):
+        r = cheks.lookup_manual_chek(
+            {"receiptNo": "74226", "fiscalSign": "523840633382", "terminalId": "1170389188"},
+            known_terminals=[],
+        )
+        self.assertFalse(r["ok"])
+        self.assertTrue(r.get("needFm"))
+        self.assertIn("14", r.get("error") or "")
 
     def test_stamp_candidates_with_date(self):
         stamps = cheks.expand_stamp_candidates("27.10.2024 08:57", max_n=12)

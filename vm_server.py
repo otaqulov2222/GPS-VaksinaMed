@@ -2548,7 +2548,9 @@ class OfficeStore:
         return row
 
     def cheks_terminal_hints(self, plate=""):
-        """Shu mashina / parkdagi avvalgi terminallar — qo‘lda qidiruv uchun."""
+        """Shu mashina / parkdagi avvalgi 14 belgilik FM/Terminal — qo‘lda qidiruv uchun."""
+        import cheks as chekmod
+
         key = compact_plate(plate)
         same = []
         other = []
@@ -2556,8 +2558,11 @@ class OfficeStore:
         for row in self.cheks_list():
             if not isinstance(row, dict):
                 continue
+            # Faqat OFD muvaffaqiyatli bo‘lgan 14 belgilik ID — noto‘g‘ri eslatmani oldini oladi
+            if not row.get("ofdOk"):
+                continue
             term = str(row.get("terminalId") or "").strip()
-            if not term or term in seen:
+            if not term or term in seen or not chekmod.is_ofd_terminal(term):
                 continue
             seen.add(term)
             if key and compact_plate(row.get("plate") or "") == key:
@@ -2589,7 +2594,10 @@ class OfficeStore:
         else:
             built = chekmod.build_chek_record(body, body, fetch_ofd=False)
         if not built.get("ok"):
-            return None, built.get("error") or "QR o'qilmadi"
+            err = built.get("error") or "QR o'qilmadi"
+            if built.get("needFm"):
+                return None, {"error": err, "needFm": True}
+            return None, err
         row = built["rec"]
         with self.lock:
             items = self.cheks_list()
@@ -6308,6 +6316,14 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 })
                 return
             if err:
+                if isinstance(err, dict):
+                    self.send_json({
+                        "ok": False,
+                        "error": err.get("error") or "Xato",
+                        "needFm": bool(err.get("needFm")),
+                        "sandbox": True,
+                    }, 400)
+                    return
                 self.send_json({"ok": False, "error": err, "sandbox": True}, 400)
                 return
             self.send_json({"ok": True, "sandbox": True, "item": OFFICE._chek_pub(row), "items": OFFICE.cheks_public()})
