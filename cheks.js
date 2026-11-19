@@ -352,16 +352,38 @@ const VMCheks = {
     return /^[A-Za-z0-9]{14}$/.test(t);
   },
 
+  termStorageKey(plate) {
+    return 'vm_chek_fm_' + this.plateKey(plate || this.openPlate);
+  },
+
+  rememberTerminal(plate, term) {
+    const t = String(term || '').replace(/\s+/g, '').trim();
+    if (!this.isOfdTerminal(t)) return;
+    try { localStorage.setItem(this.termStorageKey(plate), t); } catch (e) {}
+  },
+
   lastTerminalFor(plate) {
     const list = this.forPlate(plate || this.openPlate);
     for (let i = 0; i < list.length; i++) {
       const row = list[i];
       if (!row || !row.ofdOk) continue;
       const t = String(row.terminalId || '').replace(/\s+/g, '').trim();
-      if (this.isOfdTerminal(t)) return t;
+      if (this.isOfdTerminal(t)) {
+        this.rememberTerminal(plate || this.openPlate, t);
+        return t;
+      }
     }
     const any = (this.items || []).find((x) => x && x.ofdOk && this.isOfdTerminal(x.terminalId));
-    return any ? String(any.terminalId).replace(/\s+/g, '').trim() : '';
+    if (any) {
+      const t = String(any.terminalId).replace(/\s+/g, '').trim();
+      this.rememberTerminal(plate || this.openPlate, t);
+      return t;
+    }
+    try {
+      const stored = String(localStorage.getItem(this.termStorageKey(plate)) || '').trim();
+      if (this.isOfdTerminal(stored)) return stored;
+    } catch (e) {}
+    return '';
   },
 
   parseManualPaste(text) {
@@ -493,6 +515,9 @@ const VMCheks = {
     const sig = merged.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join('|');
     const prev = (this.items || []).map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join('|');
     this.items = merged;
+    merged.forEach((x) => {
+      if (x && x.ofdOk) this.rememberTerminal(x.plate, x.terminalId);
+    });
     if (this.paperItem) {
       const freshPaper = merged.find((x) => String(x.id) === String(this.paperItem.id));
       if (freshPaper && (freshPaper.ofdOk !== this.paperItem.ofdOk || freshPaper.amount !== this.paperItem.amount || freshPaper.merchant !== this.paperItem.merchant)) {
@@ -1047,7 +1072,8 @@ const VMCheks = {
     </details>`;
     const qr = r.qr
       ? `<div class="chek-p-qrbox">
-          <img alt="OFD QR" width="168" height="168" src="https://api.qrserver.com/v1/create-qr-code/?size=168x168&amp;margin=2&amp;data=${encodeURIComponent(r.qr)}">
+          <canvas class="chek-ofd-qr" width="168" height="168" data-qrurl="${this.esc(r.qr)}" aria-label="OFD QR"></canvas>
+          <small>OFD QR</small>
         </div>`
       : '';
     const confirmed = r.ofdOk || (r.amount != null && r.amount !== '');
@@ -1442,6 +1468,16 @@ const VMCheks = {
     } catch (e) {}
   },
 
+  loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Skript yuklanmadi'));
+      document.head.appendChild(s);
+    });
+  },
+
   loadLib() {
     if (window.Html5Qrcode) return Promise.resolve();
     if (this.libPromise) return this.libPromise;
@@ -1453,13 +1489,7 @@ const VMCheks = {
       let last = null;
       for (const src of urls) {
         try {
-          await new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = src;
-            s.onload = () => resolve();
-            s.onerror = () => reject(new Error('QR modul yuklanmadi'));
-            document.head.appendChild(s);
-          });
+          await this.loadScript(src);
           if (window.Html5Qrcode) return;
         } catch (e) {
           last = e;
@@ -1468,6 +1498,58 @@ const VMCheks = {
       throw last || new Error('QR modul yuklanmadi');
     })();
     return this.libPromise;
+  },
+
+  loadQrDrawLib() {
+    if (window.QRCode && typeof window.QRCode.toCanvas === 'function') return Promise.resolve();
+    if (this.qrDrawPromise) return this.qrDrawPromise;
+    const urls = [
+      'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
+      'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js'
+    ];
+    this.qrDrawPromise = (async () => {
+      let last = null;
+      for (const src of urls) {
+        try {
+          await this.loadScript(src);
+          if (window.QRCode && typeof window.QRCode.toCanvas === 'function') return;
+        } catch (e) {
+          last = e;
+        }
+      }
+      throw last || new Error('QR chizish moduli yuklanmadi');
+    })();
+    return this.qrDrawPromise;
+  },
+
+  async paintOfdQr(root) {
+    const scope = root || document.getElementById('chek-paper') || document;
+    const nodes = scope.querySelectorAll ? scope.querySelectorAll('canvas.chek-ofd-qr[data-qrurl]') : [];
+    if (!nodes.length) return;
+    try {
+      await this.loadQrDrawLib();
+    } catch (e) {
+      nodes.forEach((c) => {
+        const wrap = c.parentNode;
+        if (wrap) wrap.innerHTML = '<small style="color:#9a1f1f">QR chizilmadi — PDF da havola bor</small>';
+      });
+      return;
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      const canvas = nodes[i];
+      const url = canvas.getAttribute('data-qrurl') || '';
+      if (!url) continue;
+      try {
+        await window.QRCode.toCanvas(canvas, url, {
+          width: 168,
+          margin: 1,
+          color: { dark: '#0b1f3a', light: '#ffffff' }
+        });
+      } catch (e) {
+        canvas.replaceWith(document.createTextNode('QR xato'));
+      }
+    }
   },
 
   openScan(plate) {
@@ -1648,16 +1730,13 @@ const VMCheks = {
       term.value = hintTerm;
     }
     this.setManualStatus(hintTerm
-      ? ('FM eslab qolindi: ' + hintTerm + ' — Chek № va FB yozing (sana bo‘lsa tezroq)')
-      : 'Qog‘ozdagi FM (14 belgi) + Chek № + FB yozing. Yoki butun matnni pastga joylang.');
+      ? ('Terminal eslab qolindi — skaner kabi faqat Chek № va FB yozing')
+      : 'Faqat Chek № + FB yozing. Topilmasa FM (14 belgi) ni qo‘shing yoki matnni joylang.');
     if (modal) {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
     }
-    setTimeout(() => {
-      if (hintTerm && rno) rno.focus();
-      else if (term) term.focus();
-    }, 50);
+    setTimeout(() => { if (rno) rno.focus(); }, 50);
   },
 
   closeManual() {
@@ -1677,6 +1756,8 @@ const VMCheks = {
     let terminalId = String(((document.getElementById('chek-m-term') || {}).value) || '').replace(/\s+/g, '').trim();
     let when = String(((document.getElementById('chek-m-when') || {}).value) || '').trim();
     const remembered = this.lastTerminalFor(this.openPlate);
+    // Qisqa/noto‘g‘ri terminalni tashlab, eslab qolingan 14 belgilikni ishlatamiz
+    if (terminalId && !this.isOfdTerminal(terminalId)) terminalId = '';
     if (!terminalId) terminalId = remembered;
     if (!receiptNo) {
       this.setManualStatus('Chek № ni yozing', 'bad');
@@ -1688,14 +1769,7 @@ const VMCheks = {
       this.toast('FB raqamini yozing');
       return;
     }
-    if (!terminalId || !this.isOfdTerminal(terminalId)) {
-      this.setManualStatus('FM/Terminal 14 belgi bo‘lsin (masalan LG420230610919)', 'bad');
-      this.toast('Qog‘ozdagi FM ni yozing');
-      const termEl = document.getElementById('chek-m-term');
-      if (termEl) termEl.focus();
-      return;
-    }
-    this.setManualStatus('OFD dan to‘liq chek qidirilmoqda…', 'busy');
+    this.setManualStatus('OFD dan to‘liq chek qidirilmoqda (skaner kabi)…', 'busy');
     this._busy = true;
     this.flash();
     this.beep();
@@ -1704,7 +1778,7 @@ const VMCheks = {
       plate: this.openPlate,
       receiptNo,
       fiscalSign,
-      terminalId,
+      terminalId: terminalId || '',
       paidAt: when || '',
       merchant: '',
       amount: null,
@@ -1722,10 +1796,12 @@ const VMCheks = {
         manualLookup: true,
         receiptNo,
         fiscalSign,
-        terminalId,
-        fm: terminalId,
         paidAt: when || undefined
       };
+      if (terminalId) {
+        body.terminalId = terminalId;
+        body.fm = terminalId;
+      }
       const d = await vmApi('/api/office/cheks/scan', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -1737,6 +1813,7 @@ const VMCheks = {
       if (d.item) {
         this.selectedId = String(d.item.id);
         this.highlightId = d.item.id;
+        if (d.item.ofdOk) this.rememberTerminal(this.openPlate, d.item.terminalId);
         this.openPaper(d.item, true, !!d.duplicate);
         if (!d.item.ofdOk) this.refreshOfd(true);
         this.toast(d.item.ofdOk
@@ -1755,6 +1832,10 @@ const VMCheks = {
       this.toast(msg);
       this.openManual(this.openPlate, true);
       this.setManualStatus(msg, 'bad');
+      if (/FM|Terminal|14/i.test(msg)) {
+        const termEl = document.getElementById('chek-m-term');
+        if (termEl) termEl.focus();
+      }
     } finally {
       this._busy = false;
     }
@@ -1792,7 +1873,9 @@ const VMCheks = {
     if (box && sig !== this._paperSig) {
       box.innerHTML = this.paperHtml(row);
       this._paperSig = sig;
+      this.paintOfdQr(box);
     }
+    if (row && row.ofdOk) this.rememberTerminal(row.plate || this.openPlate, row.terminalId);
     if (title) title.textContent = fromScan ? (dup ? 'Chek avval saqlangan' : 'Yangi fiskal chek') : 'Fiskal chek';
     if (again) again.style.display = '';
     if (modal) {

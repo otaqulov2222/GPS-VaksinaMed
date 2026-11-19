@@ -2514,8 +2514,14 @@ body.page-chek .vm-docs-badge {
 .chek-p-ok { text-align: center; margin-top: 12px; font-size: 12px; font-weight: 800; color: #0f7a3e; }
 .chek-p-warn { text-align: center; margin-top: 10px; font-size: 11px; color: #9a5b00; line-height: 1.45; background: #fff6e4; padding: 8px 10px; border-radius: 8px; }
 .chek-p-qrbox { text-align: center; margin: 12px 0 4px; }
-.chek-p-qrbox img { width: 148px; height: 148px; image-rendering: pixelated; background: #fff; }
-.chek-p-qrbox small { display: block; margin-top: 4px; font-size: 10px; color: #5c6573; }
+.chek-p-qrbox img,
+.chek-p-qrbox canvas.chek-ofd-qr {
+  width: 168px; height: 168px; max-width: 100%;
+  image-rendering: pixelated; background: #fff;
+  border: 1px solid #d5dbe3; border-radius: 8px;
+  display: inline-block; vertical-align: top;
+}
+.chek-p-qrbox small { display: block; margin-top: 6px; font-size: 10px; color: #5c6573; }
 .chek-p-bars {
   height: 36px; margin-top: 12px;
   background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 5px);
@@ -3522,31 +3528,31 @@ input, select, textarea { max-width: 100%; }
       <button type="button" class="modal-close" id="chek-manual-close" aria-label="Yopish">×</button>
     </div>
     <div class="form-row">
-      <p class="chek-manual-help"><b>FM</b> (14 belgi) + <b>Chek №</b> + <b>FB</b> — OFD dan summa, stansiya va mahsulot to‘liq tushadi. Qog‘ozdagi qisqa «Terminal» emas, <b>FM</b> ni yozing (LG… / VG… / YZ…).</p>
+      <p class="chek-manual-help">Skaner kabi: odatda faqat <b>Chek №</b> va <b>FB</b> yetadi — OFD dan summa, stansiya, mahsulot to‘liq tushadi. Birinchi marta yoki topilmasa <b>FM</b> (14 belgi: VG…/LG…/YZ…) ni qo‘shing.</p>
       <div class="chek-scan-status" id="chek-manual-status"></div>
       <div class="chek-manual-grid">
-        <div class="full">
-          <label for="chek-m-term">FM / Terminal (14 belgi)</label>
-          <input type="text" id="chek-m-term" inputmode="text" autocomplete="off" placeholder="LG420230610919" spellcheck="false">
-        </div>
         <div>
           <label for="chek-m-rno">Chek №</label>
-          <input type="text" id="chek-m-rno" inputmode="numeric" autocomplete="off" placeholder="74226">
+          <input type="text" id="chek-m-rno" inputmode="numeric" autocomplete="off" placeholder="15511">
         </div>
         <div>
           <label for="chek-m-fb">FB</label>
-          <input type="text" id="chek-m-fb" inputmode="numeric" autocomplete="off" placeholder="523840633382">
+          <input type="text" id="chek-m-fb" inputmode="numeric" autocomplete="off" placeholder="261543440015">
         </div>
         <div class="full">
-          <label for="chek-m-when">Sana va vaqt (ixtiyoriy, lekin tezlashtiradi)</label>
-          <input type="text" id="chek-m-when" autocomplete="off" placeholder="13.11.2026 22:18:14">
+          <label for="chek-m-term">FM / Terminal (ixtiyoriy — topilmasa 14 belgi)</label>
+          <input type="text" id="chek-m-term" inputmode="text" autocomplete="off" placeholder="VG544170024111" spellcheck="false">
+        </div>
+        <div class="full">
+          <label for="chek-m-when">Sana va vaqt (ixtiyoriy)</label>
+          <input type="text" id="chek-m-when" autocomplete="off" placeholder="15.11.2026 22:51">
         </div>
         <div class="full">
           <label for="chek-m-paste">Yoki chek matnini shu yerga joylang</label>
-          <textarea id="chek-m-paste" rows="3" placeholder="FM / Chek № / FB / sana — birga joylasangiz o‘zi to‘ldiradi" spellcheck="false"></textarea>
+          <textarea id="chek-m-paste" rows="3" placeholder="Chek № / FB / FM / sana — birga joylasangiz o‘zi to‘ldiradi" spellcheck="false"></textarea>
         </div>
       </div>
-      <p class="chek-manual-hint">FM bir marta to‘g‘ri topsa, shu mashina uchun keyingi safar eslab qolinadi. Noto‘g‘ri qisqa terminal bilan «kutilmoqda» qoldirmaydi.</p>
+      <p class="chek-manual-hint">Bir marta skaner yoki FM bilan topsa, keyin shu mashinada faqat Chek № + FB bilan ishlaydi.</p>
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-light" id="chek-manual-cancel">Bekor</button>

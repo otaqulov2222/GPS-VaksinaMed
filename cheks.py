@@ -326,12 +326,16 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             "needFm": True,
         }
 
-    # Aniq FM + sana → kam urinish, tez javob
-    stamp_n = 12 if (user_exact and when) else (18 if when else 14)
+    # Aniq FM + sana → kam urinish, tez javob (skaner kabi)
+    stamp_n = 12 if (user_exact and when) else (16 if when else (10 if user_exact else 14))
     stamps = expand_stamp_candidates(when, max_n=stamp_n)
-    if user_exact and when:
-        max_tries = min(max_tries, 10)
+    if user_exact:
+        max_tries = min(max_tries, 12 if when else 8)
         timeout = max(timeout, 7)
+    elif terminals:
+        # Faqat Chek № + FB: avvalgi terminal(lar) bilan tez qidiruv
+        max_tries = min(max_tries, 24)
+        timeout = max(3, min(timeout, 6))
     best_pending = None
     tries = 0
 
