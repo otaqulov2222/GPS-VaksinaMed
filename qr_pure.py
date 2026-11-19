@@ -58,15 +58,18 @@ def _rs_encode(data, nsym):
     return out[-nsym:]
 
 
-# ver: (modules, data_codewords, ecc_codewords) — faqat 1 ta RS blok (v2–4 M)
-_VER_M = {
-    2: (25, 28, 16),
-    3: (29, 44, 26),
-    4: (33, 64, 36),
+# ver: (modules, data_codewords, ecc_codewords, ecc_level)
+# ecc_level: 0=M, 1=L — faqat 1 ta RS blok (OFD URL uchun v5–6 L)
+_VER = {
+    2: (25, 28, 16, 0),
+    3: (29, 44, 26, 0),
+    4: (33, 64, 36, 0),
+    5: (37, 108, 26, 1),
+    6: (41, 136, 36, 1),
 }
 
-# Alignment center (row=col) for versions 2–4
-_ALIGN = {2: 18, 3: 22, 4: 26}
+# Alignment center (row=col)
+_ALIGN = {2: 18, 3: 22, 4: 26, 5: 26, 6: 30}
 
 
 def _bitbuf():
@@ -98,16 +101,16 @@ def _flush(buf):
 def _choose_version(nbytes):
     # byte mode: 4 + 8 + nbytes*8 (+ terminator up to 4)
     need_bytes = (4 + 8 + nbytes * 8 + 4 + 7) // 8
-    for ver in sorted(_VER_M):
-        _size, data_cw, _ecc = _VER_M[ver]
+    for ver in sorted(_VER):
+        _size, data_cw, _ecc, _lvl = _VER[ver]
         if data_cw >= need_bytes:
             return ver
-    raise ValueError("QR payload juda uzun (maks ~50 bayt)")
+    raise ValueError("QR payload juda uzun (maks ~120 bayt)")
 
 
 def _encode_data(text: str, ver: int):
     raw = text.encode("utf-8")
-    _size, data_cw, ecc_cw = _VER_M[ver]
+    _size, data_cw, ecc_cw, _lvl = _VER[ver]
     buf = _bitbuf()
     _put(buf, 0b0100, 4)  # byte mode
     _put(buf, len(raw), 8)  # char count (v1–9)
@@ -124,7 +127,7 @@ def _encode_data(text: str, ver: int):
         i += 1
     data = data[:data_cw]
     ecc = _rs_encode(data, ecc_cw)
-    return data + ecc, _VER_M[ver][0]
+    return data + ecc, _VER[ver][0]
 
 
 def _place_finders(mat, n):
@@ -215,9 +218,10 @@ def _fill_data(mat, n, codewords):
         upward = not upward
 
 
-def _format_bits(mask=0):
-    # ECC-M = 00
-    data = (0b00 << 3) | (mask & 7)
+def _format_bits(mask=0, ecc_level=0):
+    # ECC-M = 00, ECC-L = 01
+    ecc_bits = 0b01 if int(ecc_level) == 1 else 0b00
+    data = (ecc_bits << 3) | (mask & 7)
     rem = data << 10
     poly = 0b10100110111
     for i in range(14, 9, -1):
@@ -248,6 +252,7 @@ def encode_matrix(text: str):
     raw = text.encode("utf-8")
     ver = _choose_version(len(raw))
     codewords, n = _encode_data(text, ver)
+    ecc_level = _VER[ver][3]
     mat = [[None] * n for _ in range(n)]
     _place_finders(mat, n)
     _place_alignment(mat, n, ver)
@@ -260,7 +265,7 @@ def encode_matrix(text: str):
             if mat[y][x] is False:
                 mat[y][x] = 0
     _fill_data(mat, n, codewords)
-    _place_format(mat, n, _format_bits(0))
+    _place_format(mat, n, _format_bits(0, ecc_level=ecc_level))
     _place_dark(mat, n)  # format ustiga qayta — doim qora
     for y in range(n):
         for x in range(n):

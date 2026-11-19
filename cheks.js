@@ -1072,7 +1072,9 @@ const VMCheks = {
     </details>`;
     const qr = r.qr
       ? `<div class="chek-p-qrbox">
-          <canvas class="chek-ofd-qr" width="168" height="168" data-qrurl="${this.esc(r.qr)}" aria-label="OFD QR"></canvas>
+          <img class="chek-ofd-qr" alt="OFD QR" width="168" height="168"
+            src="/api/office/cheks/qr?s=5&amp;data=${encodeURIComponent(r.qr)}"
+            loading="lazy" decoding="async">
           <small>OFD QR</small>
         </div>`
       : '';
@@ -1873,7 +1875,6 @@ const VMCheks = {
     if (box && sig !== this._paperSig) {
       box.innerHTML = this.paperHtml(row);
       this._paperSig = sig;
-      this.paintOfdQr(box);
     }
     if (row && row.ofdOk) this.rememberTerminal(row.plate || this.openPlate, row.terminalId);
     if (title) title.textContent = fromScan ? (dup ? 'Chek avval saqlangan' : 'Yangi fiskal chek') : 'Fiskal chek';

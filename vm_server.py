@@ -5461,6 +5461,36 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "sandbox": True, "monitor": True, "items": OFFICE.cheks_public()})
             return
 
+        if path == "/api/office/cheks/qr":
+            # OFD QR PNG — tashqi CDN kerak emas (preview/modal)
+            sess = self.require_ops_read()
+            if not sess:
+                return
+            raw = ""
+            try:
+                raw = (qs.get("data") or qs.get("u") or qs.get("q") or [""])[0]
+            except Exception:
+                raw = ""
+            raw = str(raw or "").strip()[:500]
+            low = raw.lower()
+            ok_link = ("soliq.uz" in low) or ("ofd." in low) or ("t=" in low and "r=" in low and "c=" in low)
+            if not raw or not ok_link:
+                self.send_json({"ok": False, "error": "OFD havola kerak"}, 400)
+                return
+            try:
+                scale = int((qs.get("s") or qs.get("scale") or ["5"])[0])
+            except (TypeError, ValueError):
+                scale = 5
+            scale = max(3, min(10, scale))
+            try:
+                from qr_pure import make_qr_png
+                png = make_qr_png(raw, scale=scale)
+            except Exception as e:
+                self.send_json({"ok": False, "error": "QR: " + str(e)[:120]}, 500)
+                return
+            self.send_bytes(png, content_type="image/png", cache="private, max-age=3600")
+            return
+
         if path == "/api/office/fuel/docs-alerts":
             sess = self.require_user()
             if not sess:

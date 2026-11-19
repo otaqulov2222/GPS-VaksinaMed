@@ -1994,9 +1994,34 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .chek-preview-empty b { display: block; font-size: 15px; color: #0b1f3a; margin-bottom: 6px; }
 .chek-preview-empty p { margin: 0; max-width: 280px; font-size: 13px; line-height: 1.45; }
 .chek-preview-actions {
-  display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 14px;
+  align-items: stretch;
 }
-.chek-preview-actions .btn { min-width: 120px; }
+.chek-preview-actions .btn {
+  min-width: 0;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.25;
+  letter-spacing: .04em;
+}
+@media (min-width: 520px) {
+  .chek-preview-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+  .chek-preview-actions .btn:first-child {
+    grid-column: 1 / -1;
+  }
+}
 .chek-mini {
   display: block; width: 100%; text-align: left; cursor: pointer;
   background: transparent; border: 0; border-radius: 0;
@@ -2054,7 +2079,6 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   }
 }
 .chek-act-pdf { color: #0f7a3e !important; }
-.chek-preview-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .chek-mini-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .chek-mini-h b { font: 700 16px var(--mono); }
 .chek-mini-h small { color: var(--muted); font-size: 11px; }
@@ -2513,15 +2537,15 @@ body.page-chek .vm-docs-badge {
 .chek-p-total b { font-size: 22px; }
 .chek-p-ok { text-align: center; margin-top: 12px; font-size: 12px; font-weight: 800; color: #0f7a3e; }
 .chek-p-warn { text-align: center; margin-top: 10px; font-size: 11px; color: #9a5b00; line-height: 1.45; background: #fff6e4; padding: 8px 10px; border-radius: 8px; }
-.chek-p-qrbox { text-align: center; margin: 12px 0 4px; }
-.chek-p-qrbox img,
-.chek-p-qrbox canvas.chek-ofd-qr {
+.chek-p-qrbox { text-align: center; margin: 14px 0 6px; }
+.chek-p-qrbox img.chek-ofd-qr {
   width: 168px; height: 168px; max-width: 100%;
   image-rendering: pixelated; background: #fff;
   border: 1px solid #d5dbe3; border-radius: 8px;
   display: inline-block; vertical-align: top;
+  object-fit: contain;
 }
-.chek-p-qrbox small { display: block; margin-top: 6px; font-size: 10px; color: #5c6573; }
+.chek-p-qrbox small { display: block; margin-top: 6px; font-size: 10px; color: #5c6573; letter-spacing: .08em; }
 .chek-p-bars {
   height: 36px; margin-top: 12px;
   background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 5px);
