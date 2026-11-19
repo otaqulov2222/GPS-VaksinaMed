@@ -1645,7 +1645,10 @@ const VMCheks = {
   loadJsQr() {
     if (typeof window.jsQR === 'function') return Promise.resolve(true);
     if (this.jsQrPromise) return this.jsQrPromise;
+    // Avval lokal (CDN bloklansa ham iPhone ishlasin), keyin CDN
     const urls = [
+      '/vendor/jsQR.min.js',
+      'vendor/jsQR.min.js',
       'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
       'https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js',
       'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'
