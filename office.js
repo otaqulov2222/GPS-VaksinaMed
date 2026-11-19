@@ -899,7 +899,7 @@ const VMOffice = {
             const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(r.drv.car, 'fb-photo') : '';
             return `<tr class="rank-row${active}${empty ? ' is-empty' : ''}" data-car="${vmEsc(r.drv.car)}">
                 <td class="font-mono text-muted">${i + 1}</td>
-                <td><strong>${vmEsc(r.drv.shortName)}</strong>${this.depBadge(this.depOf(dateVal, r.drv.car))}</td>
+                <td class="fb-driver-cell"><strong class="fb-driver-name">${vmEsc(r.drv.fullName || r.drv.name || r.drv.shortName || '—')}</strong>${this.depBadge(this.depOf(dateVal, r.drv.car))}</td>
                 <td class="fb-car-cell"><div class="fb-car">
                     <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
                     <span class="fb-car-txt"><b class="font-mono">${vmEsc(r.drv.car)}</b><em>${vmEsc(minfo ? minfo.t : '—')}</em></span>

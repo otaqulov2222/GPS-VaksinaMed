@@ -113,8 +113,8 @@ function fleetPhotoHtml(plate, cls) {
   return `<img class="${esc(cls || 'fleet-photo')} m-${m}" src="${p.src}" alt="${esc(p.t)}" title="${esc(p.t + ' · Foto: ' + p.credit + ' / Wikimedia Commons')}" loading="lazy" decoding="async" draggable="false">`;
 }
 
-/** Buyruq matnidan '-га' va o'g'li/qizi qo'shimchalarini tozalash */
-function fleetNormalizePersonName(name) {
+/** Buyruq matnidan faqat '-га' qo'shimchasini tozalash. Ism/familiya/otchestvo saqlanadi. */
+function fleetNormalizePersonName(name, opts) {
   let s = String(name || '').replace(/\s+/g, ' ').trim();
   if (!s) return '';
   const parts = s.split(' ');
@@ -124,7 +124,10 @@ function fleetNormalizePersonName(name) {
     last = last.replace(/га$/, '');
     if (last) parts[parts.length - 1] = last;
   }
-  while (parts.length && fleetIsPatronymicToken(parts[parts.length - 1])) parts.pop();
+  // Qisqa ism uchun otchestvo (o'g'li/qizi) olib tashlash — ixtiyoriy
+  if (opts && opts.stripPatronymic) {
+    while (parts.length && fleetIsPatronymicToken(parts[parts.length - 1])) parts.pop();
+  }
   return parts.join(' ').trim() || s;
 }
 
@@ -142,9 +145,9 @@ function fleetIsPatronymicToken(tok) {
   return !!(bad[fold] || bad[t] || bad[String(tok || '').trim().toLowerCase()]);
 }
 
-/** Qisqa ism: boshidagi so'z — oxiridagi o'g'li emas */
+/** Qisqa ism: boshidagi so'z — oxiridagi o'g'li emas (tab/chip uchun) */
 function fleetShortFromName(name) {
-  const norm = fleetNormalizePersonName(name);
+  const norm = fleetNormalizePersonName(name, { stripPatronymic: true });
   const parts = norm.split(/\s+/).filter((p) => p && !fleetIsPatronymicToken(p));
   if (parts.length) return parts[0];
   const raw = String(name || '').trim().split(/\s+/).filter((p) => p && !fleetIsPatronymicToken(p));
