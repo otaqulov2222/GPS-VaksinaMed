@@ -280,7 +280,25 @@ const VMCheks = {
   },
 
   fleetTerminalSeeds() {
-    return ['LG420211628460', 'VG544170024111'];
+    const base = ['LG420211628460', 'VG544170024111', 'VG544170049533'];
+    const extra = [];
+    try {
+      const pool = JSON.parse(localStorage.getItem('vm_chek_fm_pool') || '[]');
+      if (Array.isArray(pool)) pool.slice(0, 20).forEach((t) => extra.push(t));
+    } catch (e) {}
+    (this.items || []).forEach((r) => {
+      if (r && r.ofdOk && r.terminalId) extra.push(r.terminalId);
+    });
+    if (this.paperItem && this.paperItem.terminalId) extra.push(this.paperItem.terminalId);
+    const out = [];
+    const seen = {};
+    base.concat(extra).forEach((t) => {
+      t = String(t || '').replace(/\s+/g, '').trim();
+      if (!this.isOfdTerminal(t) || seen[t]) return;
+      seen[t] = 1;
+      out.push(t);
+    });
+    return out;
   },
 
   ofdAmountOf(data) {
@@ -378,7 +396,7 @@ const VMCheks = {
     return hit ? hit.ofd : null;
   },
 
-  /** Brauzerdan Soliq OFD — server sekin/timeout bo‘lsa ham ishlaydi */
+  /** Brauzerdan Soliq OFD — parallel terminal urinishlari */
   async lookupManualClient(receiptNo, fiscalSign, terminalId, pool) {
     const terms = [];
     const seen = {};
@@ -388,20 +406,30 @@ const VMCheks = {
       seen[t] = 1;
       terms.push(t);
     };
-    this.fleetTerminalSeeds().forEach(add);
-    (pool || []).slice(0, 6).forEach(add);
+    // Avval foydalanuvchi FM, keyin ochiq qog‘oz, keyin pool/seed
     add(terminalId);
+    if (this.paperItem && this.paperItem.ofdOk) add(this.paperItem.terminalId);
+    (pool || []).slice(0, 10).forEach(add);
+    this.fleetTerminalSeeds().forEach(add);
     const stamps = this.stampCandidatesManual();
-    // Avval: har terminalga 1 stamp (FB bor — Soliq topadi)
-    for (let i = 0; i < terms.length; i++) {
-      const hit = await this.fetchOfdAt(terms[i], receiptNo, stamps[0], fiscalSign);
-      if (hit) return hit;
+    const stamp = stamps[0];
+    // Parallel: 4 tadan batch — tezroq
+    for (let i = 0; i < terms.length; i += 4) {
+      const batch = terms.slice(i, i + 4);
+      const hits = await Promise.all(
+        batch.map((t) => this.fetchOfdAt(t, receiptNo, stamp, fiscalSign))
+      );
+      const ok = hits.find((h) => h && h.ofd);
+      if (ok) return ok;
     }
-    // Zaxira: 2-chi stamp faqat seed terminallarga
     if (stamps[1]) {
-      for (let i = 0; i < Math.min(terms.length, this.fleetTerminalSeeds().length); i++) {
-        const hit = await this.fetchOfdAt(terms[i], receiptNo, stamps[1], fiscalSign);
-        if (hit) return hit;
+      for (let i = 0; i < Math.min(terms.length, 8); i += 4) {
+        const batch = terms.slice(i, i + 4);
+        const hits = await Promise.all(
+          batch.map((t) => this.fetchOfdAt(t, receiptNo, stamps[1], fiscalSign))
+        );
+        const ok = hits.find((h) => h && h.ofd);
+        if (ok) return ok;
       }
     }
     return null;
@@ -1677,7 +1705,7 @@ const VMCheks = {
     }
   },
 
-  /** Kadrdan QR — to‘liq + markaz crop + kontrast (iPhone/Safari uchun) */
+  /** Kadrdan QR — ko‘p crop/kontrast (chek pastki QR + iPhone) */
   decodeFrameQr(video, det) {
     const v = video;
     if (!v || v.readyState < 2) return Promise.resolve('');
@@ -1696,7 +1724,7 @@ const VMCheks = {
       if (!this._scanCanvas) this._scanCanvas = document.createElement('canvas');
       if (!this._scanCanvas2) this._scanCanvas2 = document.createElement('canvas');
       const c = this._scanCanvas;
-      const maxW = 720;
+      const maxW = 1100;
       const scale = Math.min(1, maxW / vw);
       const cw = Math.max(1, Math.round(vw * scale));
       const ch = Math.max(1, Math.round(vh * scale));
@@ -1705,7 +1733,7 @@ const VMCheks = {
       const ctx = c.getContext('2d', { willReadFrequently: true });
       if (!ctx) return '';
 
-      const tryCanvas = async (canvas, useFilter) => {
+      const tryCanvas = async (canvas) => {
         if (det) {
           try {
             const codes = await det.detect(canvas);
@@ -1714,41 +1742,53 @@ const VMCheks = {
         }
         const cctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!cctx) return '';
-        if (useFilter) {
-          // filter allaqachon chizilgan
-        }
-        const img = cctx.getImageData(0, 0, canvas.width, canvas.height);
-        return this.decodeJsQr(img);
+        return this.decodeJsQr(cctx.getImageData(0, 0, canvas.width, canvas.height));
+      };
+
+      const drawCrop = (sx, sy, sw, sh, outW, filter) => {
+        const c2 = this._scanCanvas2;
+        const outH = Math.max(1, Math.round(outW * (sh / sw)));
+        c2.width = outW;
+        c2.height = outH;
+        const ctx2 = c2.getContext('2d', { willReadFrequently: true });
+        if (!ctx2) return null;
+        ctx2.filter = filter || 'none';
+        ctx2.drawImage(v, sx, sy, sw, sh, 0, 0, outW, outH);
+        ctx2.filter = 'none';
+        return c2;
       };
 
       // 1) To‘liq kadr
       ctx.filter = 'none';
       ctx.drawImage(v, 0, 0, cw, ch);
-      let found = await tryCanvas(c, false);
+      let found = await tryCanvas(c);
       if (found) return found;
 
-      // 2) Kontrast
-      ctx.filter = 'contrast(1.45) brightness(1.15)';
+      // 2) Kontrast to‘liq
+      ctx.filter = 'contrast(1.55) brightness(1.18) saturate(0.2)';
       ctx.drawImage(v, 0, 0, cw, ch);
       ctx.filter = 'none';
-      found = await tryCanvas(c, true);
+      found = await tryCanvas(c);
       if (found) return found;
 
-      // 3) Markaz kvadrat crop (yashil ramka zonasi)
-      const side = Math.min(vw, vh) * 0.72;
-      const sx = (vw - side) / 2;
-      const sy = (vh - side) / 2;
-      const c2 = this._scanCanvas2;
-      const out = 480;
-      c2.width = out;
-      c2.height = out;
-      const ctx2 = c2.getContext('2d', { willReadFrequently: true });
-      if (ctx2) {
-        ctx2.filter = 'contrast(1.4) brightness(1.1)';
-        ctx2.drawImage(v, sx, sy, side, side, 0, 0, out, out);
-        ctx2.filter = 'none';
-        found = await tryCanvas(c2, true);
-        if (found) return found;
+      // 3–6) Markaz / pastki (chek QR pastida) / katta / kichik crop
+      const crops = [
+        { f: 0.78, y: 0.5 },   // markaz
+        { f: 0.62, y: 0.68 },  // pastga surilgan (chek QR)
+        { f: 0.5, y: 0.72 },
+        { f: 0.88, y: 0.5 }
+      ];
+      for (let i = 0; i < crops.length; i++) {
+        const f = crops[i].f;
+        const side = Math.min(vw, vh) * f;
+        const sx = (vw - side) / 2;
+        let sy = (vh - side) * crops[i].y;
+        sy = Math.max(0, Math.min(vh - side, sy));
+        const canvas = drawCrop(sx, sy, side, side, 560, 'contrast(1.5) brightness(1.12)');
+        if (canvas) {
+          found = await tryCanvas(canvas);
+          if (found) return found;
+        }
       }
       return '';
     };
@@ -2033,10 +2073,21 @@ const VMCheks = {
       this._scanCanvas2 = document.createElement('canvas');
       this._scanMiss = 0;
 
+      // iOS zoom (imkon bo‘lsa) — QR kattaroq
+      try {
+        const caps = track.getCapabilities ? (track.getCapabilities() || {}) : {};
+        if (caps.zoom) {
+          const zMin = Number(caps.zoom.min) || 1;
+          const zMax = Number(caps.zoom.max) || 1;
+          const z = Math.min(zMax, Math.max(zMin, zMin + (zMax - zMin) * 0.25));
+          await track.applyConstraints({ advanced: [{ zoom: z }] });
+        }
+      } catch (e) {}
+
       const tick = async () => {
         if (!this.scanning || !this.nativeVideo) return;
         if (this._scanBusy) {
-          this.nativeLoop = setTimeout(tick, 40);
+          this.nativeLoop = setTimeout(tick, 24);
           return;
         }
         this._scanBusy = true;
@@ -2048,14 +2099,16 @@ const VMCheks = {
             return;
           }
           this._scanMiss = (this._scanMiss || 0) + 1;
-          if (this._scanMiss === 45) {
-            this.setStatus('QR ni yashil kvadrat markaziga tuting — biroz yaqinroq');
+          if (this._scanMiss === 30) {
+            this.setStatus('QR ni yashil kvadratga tuting — chiroqni yoqing');
+          } else if (this._scanMiss === 90) {
+            this.setStatus('Yana yaqinroq tuting yoki «Rasmga olish» ni bosing');
           }
         } catch (e) {}
         this._scanBusy = false;
-        this.nativeLoop = setTimeout(tick, 50);
+        this.nativeLoop = setTimeout(tick, 28);
       };
-      this.nativeLoop = setTimeout(tick, 120);
+      this.nativeLoop = setTimeout(tick, 60);
       this._focusTimer = setInterval(() => {
         if (!this.scanning) return;
         const t = this.videoTrack();
@@ -2067,8 +2120,8 @@ const VMCheks = {
             t.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).catch(() => {});
           }
         } catch (e) {}
-      }, 1800);
-      this.setStatus('QR qidirilmoqda — yashil kvadratga tuting (o‘zi o‘qiydi)');
+      }, 1200);
+      this.setStatus('QR qidirilmoqda — yashil kvadratga tuting (tez o‘qiydi)');
       return true;
     } catch (e) {
       this.stopNative();
@@ -2213,10 +2266,8 @@ const VMCheks = {
     let terminalId = String(((document.getElementById('chek-m-term') || {}).value) || '').replace(/\s+/g, '').trim();
     let when = String(((document.getElementById('chek-m-when') || {}).value) || '').trim();
     if (terminalId && !this.isOfdTerminal(terminalId)) terminalId = '';
-    // Chalkash FM/sana — qidiruvni buzmasin
-    const termEl0 = document.getElementById('chek-m-term');
+    // Sana chalkashadi — tozalanadi; FM saqlanadi (shu chek terminali bo‘lishi mumkin)
     const whenEl0 = document.getElementById('chek-m-when');
-    if (termEl0) termEl0.value = '';
     if (whenEl0) whenEl0.value = '';
     if (!receiptNo) {
       this.setManualStatus('Chek № ni yozing', 'bad');
@@ -2231,8 +2282,9 @@ const VMCheks = {
     this.setManualStatus('OFD dan to‘liq chek qidirilmoqda…', 'busy');
     this._busy = true;
     this.flash();
-    const keep = { receiptNo, fiscalSign, terminalId: '', when: '' };
-    const pool = this.knownTerminalPool().slice(0, 8);
+    const keep = { receiptNo, fiscalSign, terminalId, when: '' };
+    const pool = this.knownTerminalPool().slice(0, 12);
+    if (this.paperItem && this.paperItem.terminalId) pool.unshift(this.paperItem.terminalId);
 
     const applyHit = (d) => {
       if (d && d.item && d.item.ofdOk) {
@@ -2287,38 +2339,55 @@ const VMCheks = {
     };
 
     try {
-      // Brauzerdan Soliq (tez) — server OFD chaqirmaydi
-      const clientHit = await this.lookupManualClient(receiptNo, fiscalSign, terminalId, pool);
-      if (!clientHit) {
-        this.setManualStatus(
-          'OFD topilmadi. Chek № / FB ni qog‘ozdan tekshiring yoki Terminal (14 belgi) ni yozing.',
-          'bad'
-        );
-        this.toast('OFD topilmadi');
-        const termEl = document.getElementById('chek-m-term');
-        if (termEl) {
-          termEl.value = terminalId || '';
-          termEl.focus();
-        }
-        return;
+      // 1) Brauzer Soliq (parallel terminallar)
+      let clientHit = await this.lookupManualClient(receiptNo, fiscalSign, terminalId, pool);
+      if (clientHit) {
+        this.setManualStatus('Topildi — saqlanmoqda…', 'busy');
+        const d = await saveClientHit(clientHit);
+        if (applyHit(d)) return;
       }
-      this.setManualStatus('Topildi — saqlanmoqda…', 'busy');
-      const d = await saveClientHit(clientHit);
-      if (applyHit(d)) return;
-      const err = (d && d.error) || 'Topildi lekin saqlanmadi — qayta bosing.';
+
+      // 2) Server zaxira (qisqa)
+      this.setManualStatus('Server orqali qidirilmoqda…', 'busy');
+      const d2 = await vmApi('/api/office/cheks/scan', {
+        method: 'POST',
+        body: JSON.stringify({
+          plate: this.openPlate,
+          manualLookup: true,
+          receiptNo,
+          fiscalSign,
+          terminalId: terminalId || undefined,
+          fm: terminalId || undefined,
+          knownTerminals: pool.concat(this.fleetTerminalSeeds()).slice(0, 16)
+        }),
+        timeoutMs: 20000
+      });
+      if (applyHit(d2)) return;
+
+      let err = (d2 && d2.error) || 'OFD topilmadi. Chek № + FB ni qog‘ozdan tekshiring. Eng yaxshisi — QR skaner.';
+      if (d2 && d2.needFm) {
+        err = 'Terminal kerak: qog‘ozdagi Terminal (14 belgi LG…/VG…) ni yozing — «PAX» emas.';
+      }
       this.setManualStatus(err, 'bad');
       this.toast(err);
+      const termEl = document.getElementById('chek-m-term');
+      if (termEl) {
+        termEl.value = terminalId || (this.paperItem && this.paperItem.terminalId) || '';
+        termEl.focus();
+      }
     } catch (e) {
       let msg = (e && e.message) || 'OFD qidiruv xato';
       if (/sekin|abort|timeout/i.test(msg)) {
-        msg = 'Saqlash uzildi. Qayta bosing (faqat Chek № + FB).';
+        msg = 'Aloqa uzildi. QR skaner yoki Terminal (14 belgi) bilan qayta urinib ko‘ring.';
       }
       this.setManualStatus(msg, 'bad');
       this.toast(msg);
       const rno = document.getElementById('chek-m-rno');
       const fb = document.getElementById('chek-m-fb');
+      const term = document.getElementById('chek-m-term');
       if (rno) rno.value = keep.receiptNo;
       if (fb) fb.value = keep.fiscalSign;
+      if (term) term.value = keep.terminalId || '';
     } finally {
       this._busy = false;
     }

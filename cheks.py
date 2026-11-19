@@ -25,8 +25,9 @@ OFD_HMAC = "thisIsPaymentSecretKey123@#"
 # Parkda tez-tez uchraydigan OFD terminallar — Chek № + FB yetarli bo‘lishi uchun
 # (noto‘g‘ri eslab qolingan VG bilan birinchi stansiya ham ishlasin).
 FLEET_TERMINAL_SEEDS = (
-    "LG420211628460",  # UNG PETRO va boshqa LG stansiyalar
+    "LG420211628460",  # UNG PETRO
     "VG544170024111",
+    "VG544170049533",  # DADANUR va boshqa VG
 )
 
 
