@@ -351,25 +351,24 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             "needFm": True,
         }
 
-    # Aniq FM bo‘lsa — tez yo‘l (1–6 urinish). Aks holda kengroq qidiruv.
+    # Aniq FM — tez; noto‘g‘ri eslab qolingan FM (VG…) soxta «pending» bermasligi kerak
     when_ok = bool(normalize_human_datetime(when)) if when else False
-    stamp_n = 10 if (user_exact and when_ok) else (16 if when_ok else (8 if user_exact else 20))
+    stamp_n = 8 if when_ok else (6 if user_exact else 12)
     stamps = expand_stamp_candidates(when if when_ok else "", max_n=stamp_n)
     if user_exact:
-        max_tries = 6 if when_ok else 8
         timeout = max(timeout, 8)
+        # Avval yozilgan FM, keyin boshqa known — lekin barchasini aylanamiz
         terminals = [term_in] + [t for t in terminals if t != term_in]
-        terminals = terminals[:4]
+        terminals = terminals[:12]
+        max_tries = min(max(max_tries, 16), 24)
     else:
-        # Faqat Chek № + FB — park terminallari bilan qidiruv (lekin timeout qisqa)
-        max_tries = min(max(max_tries, 24), 32)
-        timeout = max(4, min(timeout, 5))
+        timeout = max(4, min(timeout, 6))
         terminals = expand_terminal_candidates(term_in, known_terminals, limit=16)
-    best_pending = None
+        max_tries = min(max(max_tries, 20), 28)
     tries = 0
 
     def try_one(term, stamp):
-        nonlocal tries, best_pending
+        nonlocal tries
         if tries >= max_tries:
             return None
         parsed = build_ofd_url(term, receipt, stamp, sign)
@@ -379,23 +378,20 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
         ofd = fetch_ofd_api(parsed, timeout=timeout, attempts=1)
         if ofd.get("ofdOk") and _has_amount(ofd.get("amount")):
             return _manual_hit_rec(parsed, ofd, sign)
-        # Soxta pending: faqat foydalanuvchi o‘zi yozgan 14 belgilik FM da
-        if ofd.get("ofdPending") and user_exact and term == terminals[0] and best_pending is None:
-            best_pending = (parsed, ofd)
         return None
 
-    # Avval har terminalning eng yaxshi stamp’lari, keyin qolganlari
-    first_n = 8 if user_exact else 6
-    for term in terminals:
-        for stamp in stamps[:first_n]:
+    # Round-robin: har stamp bo‘yicha BARCHA terminallar — noto‘g‘ri FM birinchi turib
+    # barcha urinishni «pending» bilan yeb qo‘ymasligi uchun
+    for stamp in stamps[:4]:
+        for term in terminals:
             hit = try_one(term, stamp)
             if hit:
                 return {"ok": True, "rec": hit, "tries": tries}
         if tries >= max_tries:
             break
     if tries < max_tries:
-        for term in terminals:
-            for stamp in stamps[first_n:]:
+        for stamp in stamps[4:]:
+            for term in terminals:
                 hit = try_one(term, stamp)
                 if hit:
                     return {"ok": True, "rec": hit, "tries": tries}
@@ -404,27 +400,13 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             if tries >= max_tries:
                 break
 
-    if best_pending:
-        parsed, ofd = best_pending
-        shell = ofd_shell()
-        shell.update({
-            "qr": parsed["qr"],
-            "terminalId": parsed["terminalId"],
-            "receiptNo": parsed["receiptNo"],
-            "fiscalSign": parsed["fiscalSign"] or sign,
-            "paidAt": parsed["paidAt"],
-            "ofdOk": False,
-            "ofdPending": True,
-            "ofdNote": public_ofd_note(False, True, ofd.get("ofdNote") or "", None),
-            "manualLookup": True,
-        })
-        return {"ok": True, "rec": shell, "tries": tries, "pending": True}
-
+    # Soft-pending YO‘Q — noto‘g‘ri terminal bilan «kutilmoqda» saqlanmasin
     return {
         "ok": False,
         "error": (
             "OFD dan to‘liq chek topilmadi. Qog‘ozdagi FM ni tekshiring "
-            "(14 belgi, masalan LG420230610919) — Chek № va FB bilan birga yozing."
+            "(14 belgi, masalan LG420211628460) — Chek № va FB bilan birga yozing. "
+            "Eslab qolingan terminal noto‘g‘ri bo‘lishi mumkin."
         ),
         "tries": tries,
         "needFm": True,

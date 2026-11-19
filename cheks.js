@@ -1935,17 +1935,16 @@ const VMCheks = {
     const paste = document.getElementById('chek-m-paste');
     const hintTerm = this.lastTerminalFor(this.openPlate);
     if (!keepValues) {
-      if (term) term.value = hintTerm || '';
+      // FM ni avto-to‘ldirmaymiz — noto‘g‘ri eslab qolingan VG… soxta «kutilmoqda» qiladi
+      if (term) term.value = '';
       if (rno) rno.value = '';
       if (fb) fb.value = '';
       if (when) when.value = '';
       if (paste) paste.value = '';
-    } else if (term && !String(term.value || '').trim() && hintTerm) {
-      term.value = hintTerm;
     }
     this.setManualStatus(hintTerm
-      ? ('Terminal eslab qolindi — skaner kabi faqat Chek № va FB yozing')
-      : 'Faqat Chek № + FB yozing. Topilmasa FM (14 belgi) ni qo‘shing yoki matnni joylang.');
+      ? ('Faqat Chek № + FB yozing (eslab qolingan terminallar fonida sinanadi). Topilmasa FM ni yozing.')
+      : 'Faqat Chek № + FB yozing. Topilmasa qog‘ozdagi FM (14 belgi) ni qo‘shing.');
     if (modal) {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
@@ -1969,10 +1968,8 @@ const VMCheks = {
     let fiscalSign = String(((document.getElementById('chek-m-fb') || {}).value) || '').replace(/\s+/g, '').trim();
     let terminalId = String(((document.getElementById('chek-m-term') || {}).value) || '').replace(/\s+/g, '').trim();
     let when = String(((document.getElementById('chek-m-when') || {}).value) || '').trim();
-    const remembered = this.lastTerminalFor(this.openPlate);
-    // Qisqa/noto‘g‘ri terminalni tashlab, eslab qolingan 14 belgilikni ishlatamiz
+    // Faqat foydalanuvchi yozgan FM — eslab qolinganini majburan qo‘ymaymiz (noto‘g‘ri VG… xavfi)
     if (terminalId && !this.isOfdTerminal(terminalId)) terminalId = '';
-    if (!terminalId) terminalId = remembered;
     if (!receiptNo) {
       this.setManualStatus('Chek № ni yozing', 'bad');
       this.toast('Chek № ni yozing');
