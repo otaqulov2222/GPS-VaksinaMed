@@ -406,27 +406,22 @@ const VMCheks = {
       seen[t] = 1;
       terms.push(t);
     };
-    // Avval foydalanuvchi FM, keyin ochiq qog‘oz, keyin pool/seed
+    // Avval ochiq qog‘oz terminali, keyin foydalanuvchi FM, keyin pool/seed
+    if (this.paperItem && this.isOfdTerminal(this.paperItem.terminalId)) {
+      add(this.paperItem.terminalId);
+    }
     add(terminalId);
-    if (this.paperItem && this.paperItem.ofdOk) add(this.paperItem.terminalId);
-    (pool || []).slice(0, 10).forEach(add);
+    (pool || []).slice(0, 12).forEach(add);
     this.fleetTerminalSeeds().forEach(add);
     const stamps = this.stampCandidatesManual();
-    const stamp = stamps[0];
-    // Parallel: 4 tadan batch — tezroq
-    for (let i = 0; i < terms.length; i += 4) {
-      const batch = terms.slice(i, i + 4);
-      const hits = await Promise.all(
-        batch.map((t) => this.fetchOfdAt(t, receiptNo, stamp, fiscalSign))
-      );
-      const ok = hits.find((h) => h && h.ofd);
-      if (ok) return ok;
-    }
-    if (stamps[1]) {
-      for (let i = 0; i < Math.min(terms.length, 8); i += 4) {
-        const batch = terms.slice(i, i + 4);
+    // Parallel: 5 tadan batch — tezroq
+    for (let s = 0; s < stamps.length; s++) {
+      const stamp = stamps[s];
+      const limit = s === 0 ? terms.length : Math.min(terms.length, 10);
+      for (let i = 0; i < limit; i += 5) {
+        const batch = terms.slice(i, i + 5);
         const hits = await Promise.all(
-          batch.map((t) => this.fetchOfdAt(t, receiptNo, stamps[1], fiscalSign))
+          batch.map((t) => this.fetchOfdAt(t, receiptNo, stamp, fiscalSign))
         );
         const ok = hits.find((h) => h && h.ofd);
         if (ok) return ok;
@@ -1705,7 +1700,7 @@ const VMCheks = {
     }
   },
 
-  /** Kadrdan QR — ko‘p crop/kontrast (chek pastki QR + iPhone) */
+  /** Kadrdan QR — Soliq uslubi: ko‘p crop + kontrast + threshold (iPhone) */
   decodeFrameQr(video, det) {
     const v = video;
     if (!v || v.readyState < 2) return Promise.resolve('');
@@ -1724,7 +1719,7 @@ const VMCheks = {
       if (!this._scanCanvas) this._scanCanvas = document.createElement('canvas');
       if (!this._scanCanvas2) this._scanCanvas2 = document.createElement('canvas');
       const c = this._scanCanvas;
-      const maxW = 1100;
+      const maxW = 1400;
       const scale = Math.min(1, maxW / vw);
       const cw = Math.max(1, Math.round(vw * scale));
       const ch = Math.max(1, Math.round(vh * scale));
@@ -1733,7 +1728,24 @@ const VMCheks = {
       const ctx = c.getContext('2d', { willReadFrequently: true });
       if (!ctx) return '';
 
-      const tryCanvas = async (canvas) => {
+      const binarize = (imageData) => {
+        const d = imageData.data;
+        let sum = 0;
+        const n = d.length / 4;
+        for (let i = 0; i < d.length; i += 4) {
+          const g = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
+          sum += g;
+          d[i] = d[i + 1] = d[i + 2] = g;
+        }
+        const thr = Math.max(70, Math.min(190, (sum / n) * 0.92));
+        for (let i = 0; i < d.length; i += 4) {
+          const v0 = d[i] > thr ? 255 : 0;
+          d[i] = d[i + 1] = d[i + 2] = v0;
+        }
+        return imageData;
+      };
+
+      const tryCanvas = async (canvas, hard) => {
         if (det) {
           try {
             const codes = await det.detect(canvas);
@@ -1742,16 +1754,24 @@ const VMCheks = {
         }
         const cctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!cctx) return '';
-        return this.decodeJsQr(cctx.getImageData(0, 0, canvas.width, canvas.height));
+        const id = cctx.getImageData(0, 0, canvas.width, canvas.height);
+        let hit = this.decodeJsQr(id);
+        if (hit) return hit;
+        if (hard) {
+          hit = this.decodeJsQr(binarize(id));
+          if (hit) return hit;
+        }
+        return '';
       };
 
       const drawCrop = (sx, sy, sw, sh, outW, filter) => {
         const c2 = this._scanCanvas2;
-        const outH = Math.max(1, Math.round(outW * (sh / sw)));
+        const outH = Math.max(1, Math.round(outW * (sh / Math.max(1, sw))));
         c2.width = outW;
         c2.height = outH;
         const ctx2 = c2.getContext('2d', { willReadFrequently: true });
         if (!ctx2) return null;
+        ctx2.imageSmoothingEnabled = true;
         ctx2.filter = filter || 'none';
         ctx2.drawImage(v, sx, sy, sw, sh, 0, 0, outW, outH);
         ctx2.filter = 'none';
@@ -1761,32 +1781,46 @@ const VMCheks = {
       // 1) To‘liq kadr
       ctx.filter = 'none';
       ctx.drawImage(v, 0, 0, cw, ch);
-      let found = await tryCanvas(c);
+      let found = await tryCanvas(c, false);
       if (found) return found;
 
       // 2) Kontrast to‘liq
-      ctx.filter = 'contrast(1.55) brightness(1.18) saturate(0.2)';
+      ctx.filter = 'contrast(1.75) brightness(1.2) saturate(0)';
       ctx.drawImage(v, 0, 0, cw, ch);
       ctx.filter = 'none';
-      found = await tryCanvas(c);
+      found = await tryCanvas(c, true);
       if (found) return found;
 
-      // 3–6) Markaz / pastki (chek QR pastida) / katta / kichik crop
+      // 3+) Markaz / past (chek QR) / burchaklar / zoom
       const crops = [
-        { f: 0.78, y: 0.5 },   // markaz
-        { f: 0.62, y: 0.68 },  // pastga surilgan (chek QR)
-        { f: 0.5, y: 0.72 },
-        { f: 0.88, y: 0.5 }
+        { f: 0.72, x: 0.5, y: 0.5 },
+        { f: 0.55, x: 0.5, y: 0.72 },
+        { f: 0.48, x: 0.5, y: 0.78 },
+        { f: 0.42, x: 0.5, y: 0.82 },
+        { f: 0.58, x: 0.28, y: 0.72 },
+        { f: 0.58, x: 0.72, y: 0.72 },
+        { f: 0.4, x: 0.5, y: 0.5 },
+        { f: 0.9, x: 0.5, y: 0.5 }
       ];
-      for (let i = 0; i < crops.length; i++) {
-        const f = crops[i].f;
-        const side = Math.min(vw, vh) * f;
-        const sx = (vw - side) / 2;
-        let sy = (vh - side) * crops[i].y;
+      const filters = [
+        'contrast(1.6) brightness(1.15) saturate(0)',
+        'contrast(2.1) brightness(1.05) saturate(0)',
+        'contrast(1.4) brightness(1.35) saturate(0)'
+      ];
+      const miss = this._scanMiss || 0;
+      const start = miss % crops.length;
+      for (let n = 0; n < crops.length; n++) {
+        const crop = crops[(start + n) % crops.length];
+        const side = Math.min(vw, vh) * crop.f;
+        let sx = vw * crop.x - side / 2;
+        let sy = vh * crop.y - side / 2;
+        sx = Math.max(0, Math.min(vw - side, sx));
         sy = Math.max(0, Math.min(vh - side, sy));
-        const canvas = drawCrop(sx, sy, side, side, 560, 'contrast(1.5) brightness(1.12)');
+        const outW = side < Math.min(vw, vh) * 0.5 ? 720 : 640;
+        const filt = filters[n % filters.length];
+        const canvas = drawCrop(sx, sy, side, side, outW, filt);
         if (canvas) {
-          found = await tryCanvas(canvas);
+          found = await tryCanvas(canvas, n < 4);
           if (found) return found;
         }
       }
@@ -1988,9 +2022,9 @@ const VMCheks = {
       const camId = await this.pickBackCameraId();
       this.scanner = new window.Html5Qrcode('chek-scan-cam', { verbose: false });
       const box = {
-        fps: 24,
+        fps: 30,
         qrbox(viewW, viewH) {
-          const edge = Math.floor(Math.min(viewW, viewH) * 0.7);
+          const edge = Math.floor(Math.min(viewW, viewH) * 0.78);
           return { width: edge, height: edge };
         },
         aspectRatio: 1.777,
@@ -2073,21 +2107,24 @@ const VMCheks = {
       this._scanCanvas2 = document.createElement('canvas');
       this._scanMiss = 0;
 
-      // iOS zoom (imkon bo‘lsa) — QR kattaroq
+      // iOS/Android zoom — QR kattaroq (Soliq uslubi)
       try {
         const caps = track.getCapabilities ? (track.getCapabilities() || {}) : {};
         if (caps.zoom) {
           const zMin = Number(caps.zoom.min) || 1;
           const zMax = Number(caps.zoom.max) || 1;
-          const z = Math.min(zMax, Math.max(zMin, zMin + (zMax - zMin) * 0.25));
+          const z = Math.min(zMax, Math.max(zMin, zMin + (zMax - zMin) * 0.38));
           await track.applyConstraints({ advanced: [{ zoom: z }] });
+          this._scanZoom = z;
+          this._scanZoomMin = zMin;
+          this._scanZoomMax = zMax;
         }
       } catch (e) {}
 
       const tick = async () => {
         if (!this.scanning || !this.nativeVideo) return;
         if (this._scanBusy) {
-          this.nativeLoop = setTimeout(tick, 24);
+          this.nativeLoop = setTimeout(tick, 12);
           return;
         }
         this._scanBusy = true;
@@ -2099,16 +2136,25 @@ const VMCheks = {
             return;
           }
           this._scanMiss = (this._scanMiss || 0) + 1;
-          if (this._scanMiss === 30) {
+          // Zoom tebranadi — uzoq/yaqin QR uchun
+          if (this._scanZoomMax > this._scanZoomMin && this._scanMiss % 18 === 0) {
+            try {
+              const span = this._scanZoomMax - this._scanZoomMin;
+              const step = ((this._scanMiss / 18) % 3);
+              const z = this._scanZoomMin + span * (0.22 + step * 0.18);
+              await track.applyConstraints({ advanced: [{ zoom: Math.min(this._scanZoomMax, z) }] });
+            } catch (e2) {}
+          }
+          if (this._scanMiss === 25) {
             this.setStatus('QR ni yashil kvadratga tuting — chiroqni yoqing');
-          } else if (this._scanMiss === 90) {
-            this.setStatus('Yana yaqinroq tuting yoki «Rasmga olish» ni bosing');
+          } else if (this._scanMiss === 70) {
+            this.setStatus('Yaqinroq tuting yoki «Rasmga olish» / qo‘lda kiritish');
           }
         } catch (e) {}
         this._scanBusy = false;
-        this.nativeLoop = setTimeout(tick, 28);
+        this.nativeLoop = setTimeout(tick, 16);
       };
-      this.nativeLoop = setTimeout(tick, 60);
+      this.nativeLoop = setTimeout(tick, 40);
       this._focusTimer = setInterval(() => {
         if (!this.scanning) return;
         const t = this.videoTrack();
@@ -2120,7 +2166,7 @@ const VMCheks = {
             t.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).catch(() => {});
           }
         } catch (e) {}
-      }, 1200);
+      }, 700);
       this.setStatus('QR qidirilmoqda — yashil kvadratga tuting (tez o‘qiydi)');
       return true;
     } catch (e) {
@@ -2230,18 +2276,25 @@ const VMCheks = {
     const when = document.getElementById('chek-m-when');
     const fb = document.getElementById('chek-m-fb');
     const paste = document.getElementById('chek-m-paste');
-    const hintTerm = this.lastTerminalFor(this.openPlate);
+    const paperTerm = (this.paperItem && this.isOfdTerminal(this.paperItem.terminalId))
+      ? String(this.paperItem.terminalId).replace(/\s+/g, '')
+      : '';
+    const hintTerm = paperTerm || this.lastTerminalFor(this.openPlate);
     if (!keepValues) {
-      // FM ni avto-to‘ldirmaymiz — noto‘g‘ri eslab qolingan VG… soxta «kutilmoqda» qiladi
-      if (term) term.value = '';
+      // Faqat ochiq qog‘oz terminalini qo‘yamiz (shu chek). Eski VG… avto-to‘ldirilmaydi.
+      if (term) term.value = paperTerm || '';
       if (rno) rno.value = '';
       if (fb) fb.value = '';
       if (when) when.value = '';
       if (paste) paste.value = '';
+    } else if (term && !String(term.value || '').trim() && paperTerm) {
+      term.value = paperTerm;
     }
-    this.setManualStatus(hintTerm
-      ? ('Faqat Chek № + FB yozing (eslab qolingan terminallar fonida sinanadi). Topilmasa FM ni yozing.')
-      : 'Faqat Chek № + FB yozing. Topilmasa qog‘ozdagi FM (14 belgi) ni qo‘shing.');
+    this.setManualStatus(paperTerm
+      ? ('Chek № + FB yozing. Terminal: ' + paperTerm + ' (shu qog‘oz). Eng yaxshisi — QR.')
+      : (hintTerm
+        ? 'Faqat Chek № + FB. Topilmasa qog‘ozdagi Terminal (14 belgi). Eng yaxshisi — QR.'
+        : 'Faqat Chek № + FB. Topilmasa qog‘ozdagi Terminal (14 belgi). Eng yaxshisi — QR.'));
     if (modal) {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
