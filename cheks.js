@@ -2020,7 +2020,7 @@ const VMCheks = {
       const d = await vmApi('/api/office/cheks/scan', {
         method: 'POST',
         body: JSON.stringify(body),
-        timeoutMs: 90000
+        timeoutMs: 120000
       });
       if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));
       else if (Array.isArray(d.items)) this.applyItems(d.items);
@@ -2043,7 +2043,10 @@ const VMCheks = {
         if (termEl && (d.needFm || /FM|Terminal/i.test(err))) termEl.focus();
       }
     } catch (e) {
-      const msg = (e && e.message) || 'OFD qidiruv xato';
+      let msg = (e && e.message) || 'OFD qidiruv xato';
+      if (/sekin|abort|timeout/i.test(msg)) {
+        msg = 'OFD qidiruv uzildi. FM + Chek № + FB ni qoldirib qayta bosing (sana ixtiyoriy).';
+      }
       this.toast(msg);
       this.openManual(this.openPlate, true);
       this.setManualStatus(msg, 'bad');

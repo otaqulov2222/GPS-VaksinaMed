@@ -64,6 +64,12 @@ class CheksParseTest(unittest.TestCase):
         self.assertEqual(p["stamp"], "20261013131100")
         self.assertEqual(p["paidAt"], "2026-10-13 13:11:00")
 
+    def test_human_date_dash(self):
+        self.assertEqual(cheks.normalize_human_datetime("11-11-2026 20:04:41"), "20261111200441")
+        self.assertEqual(cheks.normalize_human_datetime("11.11.2026 20:04:41"), "20261111200441")
+        self.assertTrue(cheks._stamp_plausible("20261111200441"))
+        self.assertFalse(cheks._stamp_plausible("11112026200441"))
+
     def test_public_note_hides_urlerror(self):
         n = cheks.public_ofd_note(False, False, "OFD ochilmadi (URLError)", None)
         self.assertNotIn("URLError", n)

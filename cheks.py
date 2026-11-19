@@ -55,28 +55,25 @@ class _TextExtractor(HTMLParser):
         self.parts.append(t)
 
 
+def _stamp_plausible(stamp):
+    s = re.sub(r"\D", "", str(stamp or ""))
+    if len(s) < 8:
+        return False
+    try:
+        y = int(s[:4])
+        return 2020 <= y <= 2035
+    except ValueError:
+        return False
+
+
 def normalize_human_datetime(raw):
     """Qog'oz chekdagi sana/vaqtni OFD stamp (YYYYMMDDHHMMSS) ga aylantiradi."""
     s = str(raw or "").strip()
     if not s:
         return ""
-    # Avval odam formatlari (27.10.2024 08:57) — raqam-only dan oldin.
-    m = re.match(
-        r"^(\d{1,2})[./](\d{1,2})[./](\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?",
-        s,
-    )
-    if m:
-        dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        hh = int(m.group(4) or 0)
-        mi = int(m.group(5) or 0)
-        ss = int(m.group(6) or 0)
-        try:
-            datetime(yyyy, mm, dd, hh, mi, ss)
-        except ValueError:
-            return ""
-        return "%04d%02d%02d%02d%02d%02d" % (yyyy, mm, dd, hh, mi, ss)
+    # ISO YYYY-MM-DD avval (11-11-2026 bilan chalkashmasin)
     m2 = re.match(
-        r"^(\d{4})-(\d{2})-(\d{2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?",
+        r"^(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?",
         s,
     )
     if m2:
@@ -89,14 +86,39 @@ def normalize_human_datetime(raw):
         except ValueError:
             return ""
         return "%04d%02d%02d%02d%02d%02d" % (yyyy, mm, dd, hh, mi, ss)
+    # Odam formati: 11.11.2026 / 11-11-2026 / 11/11/2026 20:04:41
+    m = re.match(
+        r"^(\d{1,2})[-./](\d{1,2})[-./](\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?",
+        s,
+    )
+    if m:
+        dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        hh = int(m.group(4) or 0)
+        mi = int(m.group(5) or 0)
+        ss = int(m.group(6) or 0)
+        try:
+            datetime(yyyy, mm, dd, hh, mi, ss)
+        except ValueError:
+            return ""
+        return "%04d%02d%02d%02d%02d%02d" % (yyyy, mm, dd, hh, mi, ss)
     digits = re.sub(r"\D", "", s)
     if len(digits) >= 14:
-        return digits[:14]
+        stamp = digits[:14]
+        return stamp if _stamp_plausible(stamp) else ""
     if len(digits) == 12:
-        return digits + "00"
+        stamp = digits + "00"
+        return stamp if _stamp_plausible(stamp) else ""
     if len(digits) == 8:
-        return digits + "000000"
-    return ofd_payment_date(s)
+        # YYYYMMDD yoki DDMMYYYY
+        if _stamp_plausible(digits + "000000"):
+            return digits + "000000"
+        try:
+            dd, mm, yyyy = int(digits[:2]), int(digits[2:4]), int(digits[4:8])
+            datetime(yyyy, mm, dd)
+            return "%04d%02d%02d000000" % (yyyy, mm, dd)
+        except ValueError:
+            return ""
+    return ""
 
 
 def _clean_id(raw):
@@ -196,27 +218,26 @@ def expand_stamp_candidates(raw_when, max_n=24):
             stamp = ofd_payment_date(s)
         else:
             stamp = ofd_payment_date(normalize_human_datetime(s))
-        if not stamp or len(re.sub(r"\D", "", stamp)) < 8 or stamp in seen:
+        if not stamp or not _stamp_plausible(stamp) or stamp in seen:
             return
         seen.add(stamp)
         out.append(stamp)
 
     now = datetime.now()
-    if raw_when:
-        base = normalize_human_datetime(raw_when)
-        if base:
-            add(base)
-            try:
-                dt = datetime.strptime(base[:14], "%Y%m%d%H%M%S")
-                for delta in (0, -1, 1, -2, 2, -3, 3, -5, 5, -10, 10, -15, 15, -30, 30, -45, 45, -60, 60):
-                    add((dt + timedelta(minutes=delta)).strftime("%Y%m%d%H%M%S"))
-                    add((dt + timedelta(minutes=delta)).strftime("%Y%m%d%H%M00"))
-                add(dt.strftime("%Y%m%d%H0000"))
-                add(dt.strftime("%Y%m%d000000"))
-            except ValueError:
-                pass
+    base = normalize_human_datetime(raw_when) if raw_when else ""
+    if base:
+        add(base)
+        try:
+            dt = datetime.strptime(base[:14], "%Y%m%d%H%M%S")
+            for delta in (0, -1, 1, -2, 2, -3, 3, -5, 5, -10, 10, -15, 15, -30, 30, -45, 45, -60, 60):
+                add((dt + timedelta(minutes=delta)).strftime("%Y%m%d%H%M%S"))
+                add((dt + timedelta(minutes=delta)).strftime("%Y%m%d%H%M00"))
+            add(dt.strftime("%Y%m%d%H0000"))
+            add(dt.strftime("%Y%m%d000000"))
+        except ValueError:
+            pass
     else:
-        # Minimal kiritish: oxirgi 2 kun ichida zich qidiruv
+        # Sana yo‘q yoki noto‘g‘ri — oxirgi soatlar/kunlar
         add(now.strftime("%Y%m%d%H%M%S"))
         add(now.strftime("%Y%m%d%H%M00"))
         for delta_m in range(0, 360, 5):
@@ -330,20 +351,20 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
             "needFm": True,
         }
 
-    # Minimal kiritish (Chek № + FB) uchun kengroq qidiruv; aniq FM bo‘lsa — tez
-    stamp_n = 14 if (user_exact and when) else (22 if when else (16 if user_exact else 28))
-    stamps = expand_stamp_candidates(when, max_n=stamp_n)
-    if user_exact and when:
-        max_tries = min(max(max_tries, 12), 16)
-        timeout = max(timeout, 7)
-    elif user_exact:
-        max_tries = min(max(max_tries, 16), 20)
-        timeout = max(timeout, 6)
+    # Aniq FM bo‘lsa — tez yo‘l (1–6 urinish). Aks holda kengroq qidiruv.
+    when_ok = bool(normalize_human_datetime(when)) if when else False
+    stamp_n = 10 if (user_exact and when_ok) else (16 if when_ok else (8 if user_exact else 20))
+    stamps = expand_stamp_candidates(when if when_ok else "", max_n=stamp_n)
+    if user_exact:
+        max_tries = 6 if when_ok else 8
+        timeout = max(timeout, 8)
+        terminals = [term_in] + [t for t in terminals if t != term_in]
+        terminals = terminals[:4]
     else:
-        # Faqat Chek № + FB — park terminallari bilan maksimal urinish
-        max_tries = min(max(max_tries, 40), 48)
-        timeout = max(4, min(timeout, 6))
-        terminals = expand_terminal_candidates(term_in, known_terminals, limit=28)
+        # Faqat Chek № + FB — park terminallari bilan qidiruv (lekin timeout qisqa)
+        max_tries = min(max(max_tries, 24), 32)
+        timeout = max(4, min(timeout, 5))
+        terminals = expand_terminal_candidates(term_in, known_terminals, limit=16)
     best_pending = None
     tries = 0
 
