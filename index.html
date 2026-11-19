@@ -2121,19 +2121,20 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 #chek-scan-cam video, #chek-scan-cam canvas {
   width: 100% !important;
   height: min(58vh, 420px) !important;
-  object-fit: cover;
+  object-fit: contain; /* 1× keng ko‘rinish — zoom/crop yo‘q */
+  background: #0b1f3a;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
-  filter: contrast(1.12) brightness(1.06) saturate(1.05);
+  filter: none;
 }
 #chek-scan-cam.is-on:after {
-  /* Soliq.uz uslubidagi markaziy kvadrat ramka */
+  /* Markaziy skaner ramka — QR shu yerga */
   content: ""; position: absolute;
   left: 50%; top: 50%;
-  width: min(72vw, 280px); height: min(72vw, 280px);
+  width: min(58vw, 240px); height: min(58vw, 240px);
   transform: translate(-50%, -50%);
-  border: 2.5px solid rgba(61, 255, 138, .95); border-radius: 18px; pointer-events: none;
-  box-shadow: 0 0 0 999px rgba(0,0,0,.28);
+  border: 2.5px solid rgba(61, 255, 138, .95); border-radius: 16px; pointer-events: none;
+  box-shadow: 0 0 0 999px rgba(0,0,0,.22);
 }
 .chek-scan-tools {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px;
@@ -3569,7 +3570,7 @@ input, select, textarea { max-width: 100%; }
       <button type="button" class="modal-close" id="chek-scan-close" aria-label="Yopish">×</button>
     </div>
     <div class="form-row">
-      <p class="chek-scan-help">Chekdagi <b>pastki QR</b> ni yashil <b>kvadrat</b> markaziga tuting. 15–25 sm, yorug‘ joy — kamera o‘zi fokuslab o‘qiydi.</p>
+      <p class="chek-scan-help">Chekdagi <b>pastki QR</b> ni yashil <b>kvadrat</b> markaziga tuting (~25–40 sm). Oddiy kamera 1× — uzoqdan turib skaner qilmang.</p>
       <div class="chek-scan-status" id="chek-scan-status"></div>
       <div id="chek-scan-cam"><span class="chek-scan-ph">Kamera ochilmoqda…</span></div>
       <div class="chek-scan-tools">
@@ -3832,7 +3833,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=m144"></script>
-<script src="cheks.js?v=28"></script>
+<script src="cheks.js?v=29"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */
