@@ -2126,7 +2126,7 @@ const VMCheks = {
       const wait = this._ofdTries < 8 ? 2500 : 15000;
       this.pendingTimer = setTimeout(tick, wait);
     };
-    this.pendingTimer = setTimeout(tick, this.paperFromScan ? 600 : 2000);
+    this.pendingTimer = setTimeout(tick, 500);
   },
 
   closePaper() {

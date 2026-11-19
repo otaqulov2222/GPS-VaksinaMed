@@ -2596,6 +2596,22 @@ class OfficeStore:
                 if t and t not in known:
                     known.append(t)
             built = chekmod.lookup_manual_chek(body, known_terminals=known, timeout=6, max_tries=48)
+            # Pending qolsa — bitta uzun urinish (shu chek kabi OFD da bor, lekin kechikkan)
+            if built.get("ok") and isinstance(built.get("rec"), dict) and not built["rec"].get("ofdOk"):
+                rec0 = built["rec"]
+                retry = chekmod.lookup_manual_chek(
+                    {
+                        "receiptNo": rec0.get("receiptNo") or body.get("receiptNo"),
+                        "fiscalSign": rec0.get("fiscalSign") or body.get("fiscalSign") or body.get("fb"),
+                        "terminalId": rec0.get("terminalId") or body.get("terminalId") or body.get("fm"),
+                        "paidAt": rec0.get("paidAt") or body.get("paidAt") or "",
+                    },
+                    known_terminals=known,
+                    timeout=9,
+                    max_tries=12,
+                )
+                if retry.get("ok") and isinstance(retry.get("rec"), dict) and retry["rec"].get("ofdOk"):
+                    built = retry
         else:
             built = chekmod.build_chek_record(body, body, fetch_ofd=False)
         if not built.get("ok"):
@@ -2604,6 +2620,7 @@ class OfficeStore:
                 return None, {"error": err, "needFm": True}
             return None, err
         row = built["rec"]
+        dup_id = ""
         with self.lock:
             items = self.cheks_list()
             sig = str(row.get("fiscalSign") or "")
@@ -2616,16 +2633,35 @@ class OfficeStore:
                     or (qr and old.get("qr") == qr)
                     or (term and rno and old.get("terminalId") == term and old.get("receiptNo") == rno)
                 )
-                if same:
+                if not same:
+                    continue
+                # Pending dublikat + yangi to‘liq OFD → eski yozuvni to‘ldiramiz
+                if (not old.get("ofdOk")) and row.get("ofdOk"):
+                    self._apply_ofd_fields(old, row)
+                    for k in ("qr", "terminalId", "paidAt", "fiscalSign", "receiptNo"):
+                        if row.get(k):
+                            old[k] = row.get(k)
+                    old["ofdOk"] = True
+                    old["ofdPending"] = False
+                    old["manual"] = False
+                    self._cheks_put(items)
                     return old, "duplicate"
-            row["id"] = "chk_" + secrets.token_hex(8)
-            row["plate"] = plate
-            row["plateKey"] = key
-            row["createdAt"] = iso_now()
-            row["createdBy"] = str(username or "")[:40]
-            items = chekmod.merge_chek_items(items, [row])
-            self._cheks_put(items)
-            return row, ""
+                if not old.get("ofdOk"):
+                    dup_id = str(old.get("id") or "")
+                    break
+                return old, "duplicate"
+            if not dup_id:
+                row["id"] = "chk_" + secrets.token_hex(8)
+                row["plate"] = plate
+                row["plateKey"] = key
+                row["createdAt"] = iso_now()
+                row["createdBy"] = str(username or "")[:40]
+                items = chekmod.merge_chek_items(items, [row])
+                self._cheks_put(items)
+                return row, ""
+        # Eski pending — OFD dan qayta tortib to‘ldirish
+        filled, _err = self.cheks_refresh(dup_id)
+        return (filled or row), "duplicate"
 
     def cheks_delete(self, rec_id):
         rid = str(rec_id or "").strip()
@@ -2648,23 +2684,68 @@ class OfficeStore:
             row0 = next((x for x in known if str(x.get("id") or "") == rid), None)
             if not row0:
                 return None, "Chek topilmadi"
-            qr = row0.get("qr") or ""
+            snap = dict(row0)
+            qr = snap.get("qr") or ""
         ofd = None
+        hit_rec = None
         if isinstance(ofd_payload, dict) and ofd_payload:
             ofd = chekmod.ofd_from_payload(ofd_payload)
         if not ofd or not ofd.get("ofdOk"):
-            ofd_srv = chekmod.fetch_ofd_details(qr, timeout=6, attempts=1)
+            ofd_srv = chekmod.fetch_ofd_details(qr, timeout=8, attempts=2)
             if not ofd or ofd_srv.get("ofdOk"):
                 ofd = ofd_srv
+        # Pending/bo‘sh qolgan chek: Terminal+Chek+FB bilan qayta qidiruv (qo‘lda kiritilganlar)
+        if (not ofd or not ofd.get("ofdOk")) and snap.get("receiptNo") and snap.get("fiscalSign"):
+            hints = self.cheks_terminal_hints(snap.get("plate") or "")
+            term = str(snap.get("terminalId") or "").strip()
+            if term and term not in hints:
+                hints = [term] + list(hints)
+            looked = chekmod.lookup_manual_chek(
+                {
+                    "receiptNo": snap.get("receiptNo"),
+                    "fiscalSign": snap.get("fiscalSign"),
+                    "terminalId": term or None,
+                    "paidAt": snap.get("paidAt") or "",
+                },
+                known_terminals=hints,
+                timeout=7,
+                max_tries=24,
+            )
+            if looked.get("ok") and isinstance(looked.get("rec"), dict):
+                hit_rec = looked["rec"]
+                if hit_rec.get("ofdOk"):
+                    ofd = {
+                        "ofdOk": True,
+                        "ofdPending": False,
+                        "merchant": hit_rec.get("merchant"),
+                        "inn": hit_rec.get("inn"),
+                        "amount": hit_rec.get("amount"),
+                        "items": hit_rec.get("items"),
+                        "address": hit_rec.get("address"),
+                        "cashTotal": hit_rec.get("cashTotal"),
+                        "cardTotal": hit_rec.get("cardTotal"),
+                        "payMethod": hit_rec.get("payMethod"),
+                        "kkmName": hit_rec.get("kkmName"),
+                        "cardType": hit_rec.get("cardType"),
+                        "vatTotal": hit_rec.get("vatTotal"),
+                        "ofdNote": hit_rec.get("ofdNote") or "",
+                    }
         with self.lock:
             latest = self.cheks_list()
             items = chekmod.merge_chek_items(known, latest)
             row = next((x for x in items if str(x.get("id") or "") == rid), None)
             if not row:
                 return None, "Chek topilmadi"
-            self._apply_ofd_fields(row, ofd)
+            self._apply_ofd_fields(row, ofd or {})
+            if hit_rec and hit_rec.get("ofdOk"):
+                for k in ("qr", "terminalId", "receiptNo", "fiscalSign", "paidAt"):
+                    if hit_rec.get(k):
+                        row[k] = hit_rec.get(k)
+                row["ofdOk"] = True
+                row["ofdPending"] = False
+                row["manualLookup"] = bool(hit_rec.get("manualLookup"))
             row["ofdRefreshedAt"] = iso_now()
-            if ofd.get("ofdOk"):
+            if ofd and ofd.get("ofdOk"):
                 row["manual"] = False
             self._cheks_put(items)
             return row, ""
