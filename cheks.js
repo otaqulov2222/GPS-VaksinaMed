@@ -236,6 +236,34 @@ const VMCheks = {
     return '';
   },
 
+  /** Shu chekning OFD havolasi — boshqa chekdan emas, o‘ylab topilgan emas. */
+  ofdLinkOf(r) {
+    if (!r) return '';
+    const term = String(r.terminalId || '').replace(/\s+/g, '').trim();
+    const rno = String(r.receiptNo || '').replace(/\s+/g, '').trim();
+    const sig = String(r.fiscalSign || '').replace(/\s+/g, '').trim();
+    const stamp = this.ofdStamp(r);
+    const stored = String(r.qr || '').trim();
+    // Skanerdan saqlangan havola shu chekka tegishli bo‘lsa — aynan shuni ishlatamiz
+    if (stored && term && rno) {
+      const sameTerm = stored.indexOf(term) !== -1;
+      const sameR = new RegExp('[?&]r=' + rno.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:&|$)', 'i').test(stored);
+      const sameS = !sig || stored.indexOf(sig) !== -1;
+      if (sameTerm && sameR && sameS) return stored.slice(0, 500);
+    }
+    // Aks holda shu qatorning o‘z Terminal/Chek/FB/sana qiymatlaridan OFD havola
+    if (term && rno && stamp && sig) {
+      const q = new URLSearchParams({
+        t: term.slice(0, 40),
+        r: rno.slice(0, 40),
+        c: stamp.slice(0, 14),
+        s: sig.slice(0, 40)
+      });
+      return 'https://ofd.soliq.uz/check?' + q.toString();
+    }
+    return '';
+  },
+
   async ofdHmac(term, payno) {
     const ts = String(Math.floor(Date.now() / 1000));
     const enc = new TextEncoder();
@@ -1070,12 +1098,15 @@ const VMCheks = {
       <input type="text" id="chek-manual-mer" placeholder="Zapravka nomi" value="${this.esc(r.merchant || '')}">
       <button type="button" class="btn btn-gold chek-scan-alt" id="chek-manual-save">Saqlash</button>
     </details>`;
-    const qr = r.qr
+    const ofdLink = this.ofdLinkOf(r);
+    const qrId = String(r.id || r.fiscalSign || r.receiptNo || '').slice(0, 40);
+    const qr = ofdLink
       ? `<div class="chek-p-qrbox">
           <img class="chek-ofd-qr" alt="OFD QR" width="168" height="168"
-            src="/api/office/cheks/qr?s=5&amp;data=${encodeURIComponent(r.qr)}"
+            src="/api/office/cheks/qr?s=5&amp;id=${encodeURIComponent(qrId)}&amp;data=${encodeURIComponent(ofdLink)}"
             loading="lazy" decoding="async">
-          <small>OFD QR</small>
+          <small>Shu chekning OFD QR</small>
+          <a class="chek-ofd-link" href="${this.esc(ofdLink)}" target="_blank" rel="noopener noreferrer">${this.esc(ofdLink.length > 64 ? (ofdLink.slice(0, 56) + '…') : ofdLink)}</a>
         </div>`
       : '';
     const confirmed = r.ofdOk || (r.amount != null && r.amount !== '');
@@ -1956,10 +1987,11 @@ const VMCheks = {
     this.pingLive(draft);
     try {
       await this.closeScan();
-      this.openPaper(Object.assign({ id: 'tmp_scan' }, draft), true, false);
+      // draft.qr = skanerdan kelgan asl OFD havola
+      this.openPaper(Object.assign({ id: 'tmp_scan', qr: raw, qrSource: 'scan' }, draft), true, false);
       const d = await vmApi('/api/office/cheks/scan', {
         method: 'POST',
-        body: JSON.stringify({ plate: this.openPlate, qr: raw }),
+        body: JSON.stringify({ plate: this.openPlate, qr: raw, qrSource: 'scan' }),
         timeoutMs: 12000
       });
       if (d.item) this.applyItems([d.item].concat(Array.isArray(d.items) ? d.items : []));

@@ -5488,7 +5488,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             except Exception as e:
                 self.send_json({"ok": False, "error": "QR: " + str(e)[:120]}, 500)
                 return
-            self.send_bytes(png, content_type="image/png", cache="private, max-age=3600")
+            # no-store: har bir chek o‘z QR i — kesh boshqa chek rasmini qo‘ymasligi uchun
+            self.send_bytes(png, content_type="image/png", cache="no-store")
             return
 
         if path == "/api/office/fuel/docs-alerts":

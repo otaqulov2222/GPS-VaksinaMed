@@ -274,6 +274,7 @@ def _manual_hit_rec(parsed, ofd, sign):
         "ofdPending": False,
         "ofdNote": public_ofd_note(True, False, ofd.get("ofdNote") or "", ofd.get("amount")),
         "manualLookup": True,
+        "qrSource": "manual",
     }
 
 
@@ -941,8 +942,16 @@ def build_chek_record(qr_raw, extra=None, fetch_ofd=True):
     if isinstance(qr_raw, dict) and extra is None:
         extra = qr_raw
     ofd = fetch_ofd_details(parsed["qr"], parsed=parsed) if fetch_ofd else ofd_shell()
+    # Skaner matni bo‘lsa — aynan o‘sha OFD havolani saqlaymiz (qayta yasamaymiz)
+    raw_qr = ""
+    if isinstance(qr_raw, str):
+        raw_qr = qr_raw.strip()
+    elif isinstance(extra, dict):
+        raw_qr = str(extra.get("qr") or "").strip()
+    if not raw_qr:
+        raw_qr = str(parsed.get("qr") or "")
     rec = {
-        "qr": parsed["qr"],
+        "qr": raw_qr[:500] or parsed["qr"],
         "terminalId": parsed["terminalId"],
         "receiptNo": parsed["receiptNo"],
         "fiscalSign": parsed["fiscalSign"],
@@ -968,10 +977,16 @@ def build_chek_record(qr_raw, extra=None, fetch_ofd=True):
         ),
     }
     if isinstance(extra, dict):
+        if extra.get("qrSource"):
+            rec["qrSource"] = str(extra.get("qrSource"))[:20]
+        elif raw_qr:
+            rec["qrSource"] = "scan"
         if extra.get("amount") not in (None, ""):
             amt = _to_som(extra.get("amount"))
             if amt and amt > 0:
                 rec["amount"] = amt
         if extra.get("merchant"):
             rec["merchant"] = str(extra.get("merchant"))[:180]
+    elif raw_qr:
+        rec["qrSource"] = "scan"
     return {"ok": True, "rec": rec}
