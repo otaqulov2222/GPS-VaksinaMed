@@ -2114,26 +2114,27 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .chek-pill.ok { background: #e5f8ec; color: #0f7a3e; }
 .chek-pill.wait { background: #fff4d6; color: #9a5b00; }
 #chek-scan-cam {
-  display: block; width: 100%; min-height: min(58vh, 420px); background: #0b1f3a;
+  display: block; width: 100%; min-height: min(52vh, 380px); background: #0b1f3a;
   border-radius: 12px; overflow: hidden; position: relative; margin-bottom: 10px;
 }
 #chek-scan-cam.is-on { display: block; }
-#chek-scan-cam video, #chek-scan-cam canvas {
+/* Faqat video — canvasga tegilmaydi (Html5Qrcode buzilmasin) */
+#chek-scan-cam video {
   width: 100% !important;
-  height: min(58vh, 420px) !important;
-  object-fit: cover; /* oddiy telefon kamerasi ko‘rinishi */
+  height: min(52vh, 380px) !important;
+  object-fit: cover;
   background: #0b1f3a;
-  transform: none;
-  -webkit-transform: none;
-  filter: none;
+  transform: none !important;
+  filter: none !important;
 }
-#chek-scan-cam.is-on:after {
+#chek-scan-cam.is-on.chek-scan-native:after {
   content: ""; position: absolute;
   left: 50%; top: 50%;
-  width: min(64vw, 260px); height: min(64vw, 260px);
+  width: min(62vw, 250px); height: min(62vw, 250px);
   transform: translate(-50%, -50%);
   border: 2.5px solid rgba(61, 255, 138, .95); border-radius: 16px; pointer-events: none;
   box-shadow: 0 0 0 999px rgba(0,0,0,.25);
+  z-index: 2;
 }
 .chek-scan-tools {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px;
@@ -3832,7 +3833,9 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=m144"></script>
-<script src="cheks.js?v=31"></script>
+<script src="/vendor/jsQR.min.js?v=m150"></script>
+<script src="/vendor/html5-qrcode.min.js?v=m150"></script>
+<script src="cheks.js?v=32"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

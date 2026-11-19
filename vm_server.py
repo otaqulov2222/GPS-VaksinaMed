@@ -57,7 +57,7 @@ PUBLIC_PATHS = {
     "/offline.html",
     "/offline",
 }
-PUBLIC_PREFIX = ("/fonts/", "/logo/", "/assets/")
+PUBLIC_PREFIX = ("/fonts/", "/logo/", "/assets/", "/vendor/")
 # Frontend assetlar — cookie kutmasdan yuklansin (eski kesh / auth race yo'qoladi)
 PUBLIC_STATIC_EXT = {
     ".js",
@@ -134,7 +134,7 @@ HTML_CANONICAL = {
 }
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m149"
+VM_BUILD = "m150"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}

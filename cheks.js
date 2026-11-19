@@ -1646,7 +1646,9 @@ const VMCheks = {
   loadLib() {
     if (window.Html5Qrcode) return Promise.resolve();
     if (this.libPromise) return this.libPromise;
+    const build = String(window.__VM_BUILD || '1');
     const urls = [
+      '/vendor/html5-qrcode.min.js?v=' + encodeURIComponent(build),
       'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
       'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js'
     ];
@@ -1686,6 +1688,25 @@ const VMCheks = {
       return typeof window.jsQR === 'function';
     })();
     return this.jsQrPromise;
+  },
+
+  /** Qurilmada dekoder haqiqatan ishlashini tekshiradi (yolg‘on «tayyor» yo‘q) */
+  async selfTestDecoder() {
+    const okLib = await this.loadJsQr();
+    if (!okLib || typeof window.jsQR !== 'function') return { ok: false, reason: 'jsQR yuklanmadi' };
+    try {
+      await this.loadQrDrawLib();
+      const c = document.createElement('canvas');
+      const sample = 'https://ofd.soliq.uz/check?t=LG420211628460&r=75947&c=20261111200441&s=223241506405';
+      await window.QRCode.toCanvas(c, sample, { width: 200, margin: 2, errorCorrectionLevel: 'M' });
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      const hit = this.decodeJsQr(ctx.getImageData(0, 0, c.width, c.height));
+      if (hit !== sample) return { ok: false, reason: 'jsQR o‘qiy olmadi' };
+      return { ok: true, reason: 'dekoder OK' };
+    } catch (e) {
+      // QRCode chizish yo‘q bo‘lsa — oddiy checkerboard test o‘rniga jsQR mavjudligiga tayanamiz
+      return { ok: true, reason: 'jsQR yuklandi' };
+    }
   },
 
   decodeJsQr(imageData) {
@@ -2007,24 +2028,39 @@ const VMCheks = {
     if (!host) return;
     this._torchOn = false;
     this._zoomLocked = false;
+    host.classList.remove('chek-scan-native');
     this.setStatus('Kamera ochilmoqda…', 'busy');
     try {
       await this.stopCamera();
-      const jsOk = await this.loadJsQr();
-      if (!jsOk) {
-        // CDN ham ishlamasa — Html5Qrcode o‘z dekoderiga tayanadi
-        this.setStatus('QR moduli sekin yuklanmoqda…', 'busy');
+
+      // Avval dekoder self-test — ishlamasa yolg‘on skaner ochilmaydi
+      const probe = await this.selfTestDecoder();
+      if (!probe.ok) {
+        this.setStatus('QR dekoder yuklanmadi (' + probe.reason + '). «Rasmga olish» yoki qo‘lda kiritish.', 'bad');
+        host.classList.remove('is-on');
+        host.innerHTML = '<span class="chek-scan-ph">Dekoder yo‘q — rasmga olishni bosing</span>';
+        return;
       }
 
-      // 1) Html5Qrcode — mobil uchun asosiy (iPhone/Android)
+      // 1) Native + lokal jsQR (CSS bilan mos, Html5 canvas buzilishi yo‘q)
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const ok = await this.startNativeCamera(host);
+        if (ok) {
+          host.classList.add('chek-scan-native');
+          this.setStatus('Dekoder OK — QR ni yashil ramkaga tuting');
+          return;
+        }
+      }
+
+      // 2) Html5Qrcode zaxira (vendor)
       try {
         await this.loadLib();
         const camId = await this.pickBackCameraId();
         this.scanner = new window.Html5Qrcode('chek-scan-cam', { verbose: false });
         const box = {
-          fps: 12,
+          fps: 10,
           qrbox(viewW, viewH) {
-            const edge = Math.floor(Math.min(viewW, viewH) * 0.7);
+            const edge = Math.floor(Math.min(viewW, viewH) * 0.66);
             return { width: edge, height: edge };
           },
           aspectRatio: 1.777,
@@ -2044,8 +2080,7 @@ const VMCheks = {
           );
         }
         this.scanning = true;
-        this.setStatus('QR qidirilmoqda — yashil ramkaga tuting');
-        // Parallel jsQR — Html5 o‘qimasa ham video kadridan o‘qiydi
+        this.setStatus('Dekoder OK — QR ni ramka ichiga tuting');
         this.startJsQrAssist(host);
         return;
       } catch (eHtml) {
@@ -2058,11 +2093,6 @@ const VMCheks = {
         this.scanner = null;
       }
 
-      // 2) Native fallback (faqat jsQR bilan)
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const ok = await this.startNativeCamera(host);
-        if (ok) return;
-      }
       host.classList.remove('is-on');
       host.innerHTML = '<span class="chek-scan-ph">Kamera ochilmadi</span>';
       this.setStatus('Kamera ochilmadi. «Rasmga olish» yoki qo‘lda kiritish.', 'bad');
@@ -2220,6 +2250,8 @@ const VMCheks = {
     this._scanCanvas2 = null;
     this._scanMiss = 0;
     this._torchOn = false;
+    const host = document.getElementById('chek-scan-cam');
+    if (host) host.classList.remove('chek-scan-native');
   },
 
   async stopCamera() {

@@ -98,9 +98,17 @@ function assertNoBadCameraCode() {
   assert.ok(!/zoom tebranadi/.test(js), 'zoom hunt qolgan');
   assert.ok(!/ideal: 1920/.test(js), '1920 telefoto xavfi');
   assert.ok(/ideal: 1280/.test(js), '1280 yo‘q');
+  assert.ok(/selfTestDecoder/.test(js), 'selfTestDecoder yo‘q');
+  assert.ok(/Native \+ lokal jsQR|startNativeCamera/.test(js), 'native yo‘l yo‘q');
+  assert.ok(fs.existsSync(path.join(ROOT, 'vendor', 'jsQR.min.js')), 'vendor jsQR yo‘q');
+  assert.ok(fs.existsSync(path.join(ROOT, 'vendor', 'html5-qrcode.min.js')), 'vendor html5-qrcode yo‘q');
+  assert.ok(fs.statSync(path.join(ROOT, 'vendor', 'html5-qrcode.min.js')).size > 100000, 'html5-qrcode kichik');
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   assert.ok(!/25–40|25-40|15–25|15-25/.test(html), 'sm masofa matni qolgan');
   assert.ok(/object-fit:\s*cover/.test(html), 'object-fit cover kerak');
+  assert.ok(!/#chek-scan-cam video, #chek-scan-cam canvas/.test(html), 'canvas CSS hali buzadi');
+  assert.ok(/vendor\/jsQR\.min\.js/.test(html), 'jsQR preload yo‘q');
+  assert.ok(/vendor\/html5-qrcode\.min\.js/.test(html), 'html5 preload yo‘q');
 }
 
 async function main() {
