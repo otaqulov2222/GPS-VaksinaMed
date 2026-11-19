@@ -2548,30 +2548,58 @@ class OfficeStore:
         return row
 
     def cheks_terminal_hints(self, plate=""):
-        """Shu mashina / parkdagi avvalgi 14 belgilik FM/Terminal — qo‘lda qidiruv uchun."""
+        """Shu mashina / parkdagi avvalgi 14 belgilik Terminal — qo‘lda qidiruv uchun."""
         import cheks as chekmod
 
         key = compact_plate(plate)
         same = []
         other = []
         seen = set()
+
+        def add(term, to_same=False):
+            term = str(term or "").strip()
+            if not term or term in seen or not chekmod.is_ofd_terminal(term):
+                return
+            seen.add(term)
+            (same if to_same else other).append(term)
+
         for row in self.cheks_list():
-            if not isinstance(row, dict):
-                continue
-            # Faqat OFD muvaffaqiyatli bo‘lgan 14 belgilik ID — noto‘g‘ri eslatmani oldini oladi
-            if not row.get("ofdOk"):
+            if not isinstance(row, dict) or not row.get("ofdOk"):
                 continue
             term = str(row.get("terminalId") or "").strip()
-            if not term or term in seen or not chekmod.is_ofd_terminal(term):
-                continue
-            seen.add(term)
-            if key and compact_plate(row.get("plate") or "") == key:
-                same.append(term)
-            else:
-                other.append(term)
-            if len(same) + len(other) >= 24:
+            add(term, bool(key and compact_plate(row.get("plate") or "") == key))
+            if len(same) + len(other) >= 32:
                 break
+        # Doimiy katalog + park seed
+        cat = self._load("office:cheks-terminals", {})
+        for t in (cat.get("items") if isinstance(cat, dict) else None) or []:
+            add(t, False)
+            if len(same) + len(other) >= 40:
+                break
+        for t in getattr(chekmod, "FLEET_TERMINAL_SEEDS", ()) or ():
+            add(t, False)
         return same + other
+
+    def cheks_remember_terminal(self, terminal_id, locked=False):
+        import cheks as chekmod
+
+        term = str(terminal_id or "").strip()
+        if not chekmod.is_ofd_terminal(term):
+            return
+
+        def _write():
+            cat = self._load("office:cheks-terminals", {})
+            items = cat.get("items") if isinstance(cat, dict) else []
+            if not isinstance(items, list):
+                items = []
+            items = [term] + [x for x in items if str(x) != term]
+            self._save("office:cheks-terminals", {"items": items[:80]})
+
+        if locked:
+            _write()
+        else:
+            with self.lock:
+                _write()
 
     def cheks_add(self, plate, rec, username=""):
         import cheks as chekmod
@@ -2638,6 +2666,7 @@ class OfficeStore:
                     old["ofdPending"] = False
                     old["manual"] = False
                     self._cheks_put(items)
+                    self.cheks_remember_terminal(old.get("terminalId"), locked=True)
                     return old, "duplicate"
                 if not old.get("ofdOk"):
                     dup_id = str(old.get("id") or "")
@@ -2651,9 +2680,13 @@ class OfficeStore:
                 row["createdBy"] = str(username or "")[:40]
                 items = chekmod.merge_chek_items(items, [row])
                 self._cheks_put(items)
+                if row.get("ofdOk"):
+                    self.cheks_remember_terminal(row.get("terminalId"), locked=True)
                 return row, ""
         # Eski pending — OFD dan qayta tortib to‘ldirish
         filled, _err = self.cheks_refresh(dup_id)
+        if (filled or row) and (filled or row).get("ofdOk"):
+            self.cheks_remember_terminal((filled or row).get("terminalId"))
         return (filled or row), "duplicate"
 
     def cheks_delete(self, rec_id):

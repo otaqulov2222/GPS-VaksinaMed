@@ -22,6 +22,12 @@ UA = (
 OFD_API = "https://new-ofd.soliq.uz/api/payment"
 # ofd.soliq.uz chek sahifasi o'zi shu kalit bilan imzolaydi (ommaviy web).
 OFD_HMAC = "thisIsPaymentSecretKey123@#"
+# Parkda tez-tez uchraydigan OFD terminallar — Chek № + FB yetarli bo‘lishi uchun
+# (noto‘g‘ri eslab qolingan VG bilan birinchi stansiya ham ishlasin).
+FLEET_TERMINAL_SEEDS = (
+    "LG420211628460",  # UNG PETRO va boshqa LG stansiyalar
+    "VG544170024111",
+)
 
 
 class _TextExtractor(HTMLParser):
@@ -340,14 +346,23 @@ def lookup_manual_chek(fields, known_terminals=None, timeout=5, max_tries=36):
     if term_in and not user_exact and not expand_terminal_candidates(term_in, [], limit=6):
         return {
             "ok": False,
-            "error": "FM/Terminal 14 belgi bo‘lishi kerak (masalan LG420230610919). Qog‘ozdagi FM ni yozing — qisqa Terminal raqami emas.",
+            "error": "FM/Terminal 14 belgi bo‘lishi kerak (masalan LG420230610919). Qog‘ozdagi Terminal ni yozing — «PAX A-930» emas.",
             "needFm": True,
         }
-    terminals = expand_terminal_candidates(term_in, known_terminals, limit=20)
+    # Known + park seed — faqat Chek № + FB bilan topish uchun
+    pool = []
+    seen_pool = set()
+    for t in list(known_terminals or []) + list(FLEET_TERMINAL_SEEDS):
+        t = _clean_id(t)
+        if not is_ofd_terminal(t) or t in seen_pool:
+            continue
+        seen_pool.add(t)
+        pool.append(t)
+    terminals = expand_terminal_candidates(term_in, pool, limit=20)
     if not terminals:
         return {
             "ok": False,
-            "error": "FM/Terminal yo‘q. Qog‘ozdagi FM ni yozing (14 belgi: LG… / VG… / YZ…) — keyin eslab qolamiz.",
+            "error": "Terminal yo‘q. Qog‘ozdagi Terminal (14 belgi: LG… / VG… / YZ…) ni yozing — «PAX A-930» KKM modeli, Terminal emas.",
             "needFm": True,
         }
 

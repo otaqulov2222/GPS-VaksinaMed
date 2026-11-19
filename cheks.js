@@ -1026,8 +1026,8 @@ const VMCheks = {
         ['Mashina', row.plate || '—'],
         ['Haydovchi', d.shortName || d.fullName || '—'],
         ['STIR', row.inn || '—'],
-        ['FM', row.kkmName || '—'],
         ['Terminal', row.terminalId || '—'],
+        ['KKM', row.kkmName || '—'],
         ['Chek №', row.receiptNo || '—'],
         ['FB', row.fiscalSign || '—'],
         ['Holat', this.ofdLabel(row)]
@@ -1035,7 +1035,7 @@ const VMCheks = {
       setF('normal', 9);
       meta.forEach((pair) => {
         if (!pair[1] || pair[1] === '—') {
-          if (pair[0] === 'FM' || pair[0] === 'STIR') return;
+          if (pair[0] === 'KKM' || pair[0] === 'STIR') return;
         }
         doc.setTextColor(90, 100, 115);
         doc.text(T(pair[0]), 20, y);
@@ -1145,8 +1145,8 @@ const VMCheks = {
       <div class="chek-p-row"><span>Mashina</span><b>${this.esc(r.plate || '')}</b></div>
       <div class="chek-p-row"><span>Haydovchi</span><b>${this.esc(d.shortName || d.fullName || '—')}</b></div>
       <div class="chek-p-row"><span>STIR</span><b>${this.esc(r.inn || '—')}</b></div>
-      ${r.kkmName ? `<div class="chek-p-row"><span>FM</span><b>${this.esc(r.kkmName)}</b></div>` : ''}
       <div class="chek-p-row"><span>Terminal</span><b>${this.esc(r.terminalId || '—')}</b></div>
+      ${r.kkmName ? `<div class="chek-p-row"><span>KKM</span><b>${this.esc(r.kkmName)}</b></div>` : ''}
       <div class="chek-p-row"><span>Chek №</span><b>${this.esc(r.receiptNo || '—')}</b></div>
       <div class="chek-p-row"><span>FB</span><b>${this.esc(r.fiscalSign || '—')}</b></div>
       <div class="chek-pill ${kind}" style="margin:12px auto 0;">${this.esc(this.ofdLabel(r))}</div>
@@ -2035,7 +2035,7 @@ const VMCheks = {
       let d = await doLookup(terminalId, when || undefined);
       // Noto‘g‘ri FM (boshqa chekning) — FM va sanani tashlab faqat Chek+FB + known bilan qayta
       if (!applyHit(d) && terminalId && (d.needFm || !d.ok)) {
-        this.setManualStatus('Noto‘g‘ri FM — faqat Chek № + FB bilan qayta qidirilmoqda…', 'busy');
+        this.setManualStatus('Noto‘g‘ri Terminal — FM maydoni tozalandi, faqat Chek № + FB…', 'busy');
         const termEl = document.getElementById('chek-m-term');
         const whenEl = document.getElementById('chek-m-when');
         if (termEl) termEl.value = '';
@@ -2045,9 +2045,9 @@ const VMCheks = {
         d = await doLookup('', undefined);
       }
       if (applyHit(d)) return;
-      let err = d.error || 'OFD dan to‘liq chek topilmadi. Shu qog‘ozdagi FM (14 belgi) ni yozing.';
+      let err = d.error || 'OFD dan to‘liq chek topilmadi.';
       if (d.needFm) {
-        err = err + ' «PAX A-930» FM emas — Terminal satridagi 14 belgini yozing.';
+        err = 'FM maydonini BO‘SH qoldirib faqat Chek № + FB yozing. Yoki qog‘ozdagi Terminal (14 belgi LG…/VG…). «PAX A-930» — KKM, yozilmaydi.';
       }
       this.setManualStatus(err, 'bad');
       this.toast(err);

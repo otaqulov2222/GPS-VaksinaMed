@@ -67,13 +67,25 @@ class ManualHardeningTest(unittest.TestCase):
         self.assertTrue(r.get("needFm"))
         self.assertNotIn("pending", r)
 
-    def test_no_terminals_needs_fm(self):
+    @mock.patch("cheks.fetch_ofd_api")
+    def test_no_terminals_uses_fleet_seed(self, fetch):
+        """Known bo‘sh bo‘lsa ham park seed (LG…) bilan Chek+FB topiladi."""
+
+        def side_effect(parsed, timeout=5, attempts=1):
+            if (parsed or {}).get("terminalId") == "LG420211628460":
+                return _ok_ofd()
+            return _pending_ofd()
+
+        fetch.side_effect = side_effect
         r = cheks.lookup_manual_chek(
             {"receiptNo": "75947", "fiscalSign": "223241506405"},
             known_terminals=[],
+            timeout=2,
+            max_tries=8,
         )
-        self.assertFalse(r["ok"])
-        self.assertTrue(r.get("needFm"))
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["rec"]["terminalId"], "LG420211628460")
+        self.assertTrue(r["rec"]["ofdOk"])
 
     @mock.patch("cheks.fetch_ofd_api")
     def test_wrong_remembered_vg_then_correct_lg(self, fetch):
@@ -125,8 +137,9 @@ class ManualHardeningTest(unittest.TestCase):
         self.assertTrue(r.get("needFm"))
         self.assertIsNone(r.get("pending"))
         self.assertNotIn("rec", r)
-        # Noto‘g‘ri FM — bitta urinishdan keyin o‘lik, qayta stamp bilan cho‘zilmaydi
-        self.assertEqual(r["tries"], 1)
+        # Har terminal 1 marta (VG + seed LG…) — soft-pending yo‘q
+        self.assertGreaterEqual(r["tries"], 1)
+        self.assertLessEqual(r["tries"], 4)
         self.assertIn("VG544170024111", r.get("error") or "")
 
     @mock.patch("cheks.fetch_ofd_api")
