@@ -2105,9 +2105,13 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   filter: contrast(1.12) brightness(1.06) saturate(1.05);
 }
 #chek-scan-cam.is-on:after {
-  content: ""; position: absolute; left: 10%; right: 10%; top: 14%; bottom: 14%;
-  border: 2px solid rgba(61, 255, 138, .92); border-radius: 16px; pointer-events: none;
-  box-shadow: 0 0 0 999px rgba(0,0,0,.18);
+  /* Soliq.uz uslubidagi markaziy kvadrat ramka */
+  content: ""; position: absolute;
+  left: 50%; top: 50%;
+  width: min(72vw, 280px); height: min(72vw, 280px);
+  transform: translate(-50%, -50%);
+  border: 2.5px solid rgba(61, 255, 138, .95); border-radius: 18px; pointer-events: none;
+  box-shadow: 0 0 0 999px rgba(0,0,0,.28);
 }
 .chek-scan-tools {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px;
@@ -3541,7 +3545,7 @@ input, select, textarea { max-width: 100%; }
       <button type="button" class="modal-close" id="chek-scan-close" aria-label="Yopish">×</button>
     </div>
     <div class="form-row">
-      <p class="chek-scan-help">Chekdagi <b>pastki QR</b> ni yashil ramkaga tuting. Yorug‘ joyda, 15–25 sm masofada ushlang — kamera o‘zi o‘qiydi.</p>
+      <p class="chek-scan-help">Chekdagi <b>pastki QR</b> ni yashil <b>kvadrat</b> markaziga tuting. 15–25 sm, yorug‘ joy — kamera o‘zi fokuslab o‘qiydi.</p>
       <div class="chek-scan-status" id="chek-scan-status"></div>
       <div id="chek-scan-cam"><span class="chek-scan-ph">Kamera ochilmoqda…</span></div>
       <div class="chek-scan-tools">
@@ -3804,7 +3808,7 @@ input, select, textarea { max-width: 100%; }
 <script src="app-m96.js?v=m150"></script>
 
 <script src="office.js?v=32"></script>
-<script src="cheks.js?v=24"></script>
+<script src="cheks.js?v=25"></script>
 
 <script>
 /* Debug banner tozalash — pin timerlari olib tashlandi (tezlik) */

@@ -1642,6 +1642,117 @@ const VMCheks = {
     return this.libPromise;
   },
 
+  loadJsQr() {
+    if (typeof window.jsQR === 'function') return Promise.resolve(true);
+    if (this.jsQrPromise) return this.jsQrPromise;
+    const urls = [
+      'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
+      'https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'
+    ];
+    this.jsQrPromise = (async () => {
+      for (const src of urls) {
+        try {
+          await this.loadScript(src);
+          if (typeof window.jsQR === 'function') return true;
+        } catch (e) {}
+      }
+      return typeof window.jsQR === 'function';
+    })();
+    return this.jsQrPromise;
+  },
+
+  decodeJsQr(imageData) {
+    if (!imageData || typeof window.jsQR !== 'function') return '';
+    try {
+      const r = window.jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth'
+      });
+      return (r && r.data) ? String(r.data).trim() : '';
+    } catch (e) {
+      return '';
+    }
+  },
+
+  /** Kadrdan QR — to‘liq + markaz crop + kontrast (iPhone/Safari uchun) */
+  decodeFrameQr(video, det) {
+    const v = video;
+    if (!v || v.readyState < 2) return Promise.resolve('');
+    const vw = v.videoWidth || 0;
+    const vh = v.videoHeight || 0;
+    if (vw < 40 || vh < 40) return Promise.resolve('');
+
+    const run = async () => {
+      if (det) {
+        try {
+          const codes = await det.detect(v);
+          if (codes && codes[0] && codes[0].rawValue) return String(codes[0].rawValue).trim();
+        } catch (e) {}
+      }
+
+      if (!this._scanCanvas) this._scanCanvas = document.createElement('canvas');
+      if (!this._scanCanvas2) this._scanCanvas2 = document.createElement('canvas');
+      const c = this._scanCanvas;
+      const maxW = 720;
+      const scale = Math.min(1, maxW / vw);
+      const cw = Math.max(1, Math.round(vw * scale));
+      const ch = Math.max(1, Math.round(vh * scale));
+      c.width = cw;
+      c.height = ch;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return '';
+
+      const tryCanvas = async (canvas, useFilter) => {
+        if (det) {
+          try {
+            const codes = await det.detect(canvas);
+            if (codes && codes[0] && codes[0].rawValue) return String(codes[0].rawValue).trim();
+          } catch (e) {}
+        }
+        const cctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!cctx) return '';
+        if (useFilter) {
+          // filter allaqachon chizilgan
+        }
+        const img = cctx.getImageData(0, 0, canvas.width, canvas.height);
+        return this.decodeJsQr(img);
+      };
+
+      // 1) To‘liq kadr
+      ctx.filter = 'none';
+      ctx.drawImage(v, 0, 0, cw, ch);
+      let found = await tryCanvas(c, false);
+      if (found) return found;
+
+      // 2) Kontrast
+      ctx.filter = 'contrast(1.45) brightness(1.15)';
+      ctx.drawImage(v, 0, 0, cw, ch);
+      ctx.filter = 'none';
+      found = await tryCanvas(c, true);
+      if (found) return found;
+
+      // 3) Markaz kvadrat crop (yashil ramka zonasi)
+      const side = Math.min(vw, vh) * 0.72;
+      const sx = (vw - side) / 2;
+      const sy = (vh - side) / 2;
+      const c2 = this._scanCanvas2;
+      const out = 480;
+      c2.width = out;
+      c2.height = out;
+      const ctx2 = c2.getContext('2d', { willReadFrequently: true });
+      if (ctx2) {
+        ctx2.filter = 'contrast(1.4) brightness(1.1)';
+        ctx2.drawImage(v, sx, sy, side, side, 0, 0, out, out);
+        ctx2.filter = 'none';
+        found = await tryCanvas(c2, true);
+        if (found) return found;
+      }
+      return '';
+    };
+
+    return run();
+  },
+
   loadQrDrawLib() {
     if (window.QRCode && typeof window.QRCode.toCanvas === 'function') return Promise.resolve();
     if (this.qrDrawPromise) return this.qrDrawPromise;
@@ -1713,6 +1824,8 @@ const VMCheks = {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
     }
+    // iPhone: BarcodeDetector yo‘q — jsQR oldindan yuklanadi
+    this.loadJsQr().catch(() => {});
     this.startCamera();
   },
 
@@ -1822,7 +1935,8 @@ const VMCheks = {
     this.setStatus('Kamera ochilmoqda — QR ni ramkaga tuting', 'busy');
     try {
       await this.stopCamera();
-      // iPhone/Safari: native stream + fokus + BarcodeDetector (eng aniq)
+      await this.loadJsQr();
+      // Native + jsQR/BarcodeDetector (iPhone Safari uchun asosiy yo‘l)
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const ok = await this.startNativeCamera(host);
         if (ok) return;
@@ -1831,9 +1945,9 @@ const VMCheks = {
       const camId = await this.pickBackCameraId();
       this.scanner = new window.Html5Qrcode('chek-scan-cam', { verbose: false });
       const box = {
-        fps: 30,
+        fps: 24,
         qrbox(viewW, viewH) {
-          const edge = Math.floor(Math.min(viewW, viewH) * 0.78);
+          const edge = Math.floor(Math.min(viewW, viewH) * 0.7);
           return { width: edge, height: edge };
         },
         aspectRatio: 1.777,
@@ -1852,7 +1966,7 @@ const VMCheks = {
         );
       }
       this.scanning = true;
-      this.setStatus('QR qidirilmoqda — yashil ramkaga tuting (yorug‘ joy)');
+      this.setStatus('QR qidirilmoqda — yashil kvadratga tuting');
     } catch (e) {
       host.classList.remove('is-on');
       host.innerHTML = '<span class="chek-scan-ph">Kamera ochilmadi</span>';
@@ -1862,11 +1976,25 @@ const VMCheks = {
 
   async startNativeCamera(host) {
     try {
+      // Dekoder bo‘lmasa bo‘sh loop ochilmasin (iPhone bug)
+      const hasJsQr = await this.loadJsQr();
+      let det = null;
+      if (window.BarcodeDetector) {
+        try { det = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; }
+      }
+      if (!det && !hasJsQr) return false;
+
       let stream = null;
       const tries = [
-        this.scanVideoConstraints(null),
-        { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30 }
+        },
+        { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        { facingMode: 'environment' }
       ];
       for (let i = 0; i < tries.length; i++) {
         try {
@@ -1887,70 +2015,57 @@ const VMCheks = {
       await video.play();
       const track = stream.getVideoTracks()[0];
       await this.applyFocusBoost(track);
+      // iOS: continuous fokus qo‘llab-quvvatlanmasa — tez-tez single-shot
+      try {
+        const caps = track.getCapabilities ? (track.getCapabilities() || {}) : {};
+        if (caps.focusMode && caps.focusMode.indexOf('continuous') < 0 && caps.focusMode.indexOf('single-shot') >= 0) {
+          await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+        }
+      } catch (e) {}
       this.nativeStream = stream;
       this.nativeVideo = video;
       this.scanning = true;
       this._scanBusy = false;
       this._scanCanvas = document.createElement('canvas');
-      const hasDetector = !!(window.BarcodeDetector);
-      let det = null;
-      if (hasDetector) {
-        try { det = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; }
-      }
+      this._scanCanvas2 = document.createElement('canvas');
+      this._scanMiss = 0;
+
       const tick = async () => {
         if (!this.scanning || !this.nativeVideo) return;
         if (this._scanBusy) {
-          this.nativeLoop = requestAnimationFrame(tick);
+          this.nativeLoop = setTimeout(tick, 40);
           return;
         }
         this._scanBusy = true;
         try {
-          const v = this.nativeVideo;
-          if (v.readyState >= 2) {
-            let found = '';
-            if (det) {
-              try {
-                const codes = await det.detect(v);
-                if (codes && codes[0] && codes[0].rawValue) found = codes[0].rawValue;
-              } catch (e) {}
-            }
-            if (!found) {
-              // Kontrast kuchaytirilgan kadr — xira kamerada yordam beradi
-              const cw = Math.min(960, v.videoWidth || 640);
-              const ch = Math.round(cw * ((v.videoHeight || 480) / (v.videoWidth || 640)));
-              const c = this._scanCanvas;
-              c.width = cw;
-              c.height = ch;
-              const ctx = c.getContext('2d', { willReadFrequently: true });
-              if (ctx && cw > 0 && ch > 0) {
-                ctx.filter = 'contrast(1.35) brightness(1.12)';
-                ctx.drawImage(v, 0, 0, cw, ch);
-                if (det) {
-                  try {
-                    const codes2 = await det.detect(c);
-                    if (codes2 && codes2[0] && codes2[0].rawValue) found = codes2[0].rawValue;
-                  } catch (e2) {}
-                }
-              }
-            }
-            if (found) {
-              this._scanBusy = false;
-              this.onQr(found);
-              return;
-            }
+          const found = await this.decodeFrameQr(this.nativeVideo, det);
+          if (found) {
+            this._scanBusy = false;
+            this.onQr(found);
+            return;
+          }
+          this._scanMiss = (this._scanMiss || 0) + 1;
+          if (this._scanMiss === 45) {
+            this.setStatus('QR ni yashil kvadrat markaziga tuting — biroz yaqinroq');
           }
         } catch (e) {}
         this._scanBusy = false;
-        this.nativeLoop = requestAnimationFrame(tick);
+        this.nativeLoop = setTimeout(tick, 50);
       };
-      this.nativeLoop = requestAnimationFrame(tick);
-      // Har 2.5 soniyada fokusni yangilab turish (xira kameraga yordam)
+      this.nativeLoop = setTimeout(tick, 120);
       this._focusTimer = setInterval(() => {
-        if (this.scanning) this.applyFocusBoost(this.videoTrack());
-      }, 2500);
-      this.setStatus(det
-        ? 'QR qidirilmoqda — yashil ramkaga tuting'
-        : 'QR qidirilmoqda — chiroqni yoqing yoki yaqinroq tuting');
+        if (!this.scanning) return;
+        const t = this.videoTrack();
+        if (!t) return;
+        this.applyFocusBoost(t);
+        try {
+          const caps = t.getCapabilities ? (t.getCapabilities() || {}) : {};
+          if (caps.focusMode && caps.focusMode.indexOf('single-shot') >= 0) {
+            t.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).catch(() => {});
+          }
+        } catch (e) {}
+      }, 1800);
+      this.setStatus('QR qidirilmoqda — yashil kvadratga tuting (o‘zi o‘qiydi)');
       return true;
     } catch (e) {
       this.stopNative();
@@ -1974,6 +2089,8 @@ const VMCheks = {
     }
     this.nativeVideo = null;
     this._scanCanvas = null;
+    this._scanCanvas2 = null;
+    this._scanMiss = 0;
     this._torchOn = false;
   },
 
