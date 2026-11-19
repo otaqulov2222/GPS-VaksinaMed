@@ -1668,10 +1668,9 @@ const VMCheks = {
   loadJsQr() {
     if (typeof window.jsQR === 'function') return Promise.resolve(true);
     if (this.jsQrPromise) return this.jsQrPromise;
-    // Avval lokal (CDN bloklansa ham iPhone ishlasin), keyin CDN
+    const build = String(window.__VM_BUILD || '1');
     const urls = [
-      '/vendor/jsQR.min.js',
-      'vendor/jsQR.min.js',
+      '/vendor/jsQR.min.js?v=' + encodeURIComponent(build),
       'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
       'https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js',
       'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'
@@ -1683,6 +1682,7 @@ const VMCheks = {
           if (typeof window.jsQR === 'function') return true;
         } catch (e) {}
       }
+      this.jsQrPromise = null;
       return typeof window.jsQR === 'function';
     })();
     return this.jsQrPromise;
@@ -1700,7 +1700,7 @@ const VMCheks = {
     }
   },
 
-  /** Kadrdan QR — markaz (yashil kvadrat) + oddiy kontrast, og‘ir emas */
+  /** Kadrdan QR — standart markaz + kontrast (1× kamera uchun) */
   decodeFrameQr(video, det) {
     const v = video;
     if (!v || v.readyState < 2) return Promise.resolve('');
@@ -1719,7 +1719,7 @@ const VMCheks = {
       if (!this._scanCanvas) this._scanCanvas = document.createElement('canvas');
       if (!this._scanCanvas2) this._scanCanvas2 = document.createElement('canvas');
       const c = this._scanCanvas;
-      const maxW = 960;
+      const maxW = 1100;
       const scale = Math.min(1, maxW / vw);
       const cw = Math.max(1, Math.round(vw * scale));
       const ch = Math.max(1, Math.round(vh * scale));
@@ -1747,43 +1747,41 @@ const VMCheks = {
         c2.height = outH;
         const ctx2 = c2.getContext('2d', { willReadFrequently: true });
         if (!ctx2) return null;
-        ctx2.imageSmoothingEnabled = false;
+        ctx2.imageSmoothingEnabled = true;
         ctx2.filter = filter || 'none';
         ctx2.drawImage(v, sx, sy, sw, sh, 0, 0, outW, outH);
         ctx2.filter = 'none';
         return c2;
       };
 
-      // 1) To‘liq kadr
       ctx.filter = 'none';
       ctx.drawImage(v, 0, 0, cw, ch);
       let found = await tryCanvas(c);
       if (found) return found;
 
-      // 2) Kontrast
-      ctx.filter = 'contrast(1.45) brightness(1.1) saturate(0)';
+      ctx.filter = 'contrast(1.5) brightness(1.12) saturate(0)';
       ctx.drawImage(v, 0, 0, cw, ch);
       ctx.filter = 'none';
       found = await tryCanvas(c);
       if (found) return found;
 
-      // 3) Yashil kvadrat zonasi (markaz) + biroz past (chek QR)
       const miss = this._scanMiss || 0;
       const crops = [
-        { f: 0.7, x: 0.5, y: 0.5 },
-        { f: 0.55, x: 0.5, y: 0.55 },
-        { f: 0.62, x: 0.5, y: 0.68 },
-        { f: 0.45, x: 0.5, y: 0.5 }
+        { f: 0.68, x: 0.5, y: 0.5 },
+        { f: 0.55, x: 0.5, y: 0.5 },
+        { f: 0.6, x: 0.5, y: 0.66 },
+        { f: 0.48, x: 0.5, y: 0.72 }
       ];
-      // Har kadrda 2 ta crop — tez va barqaror
-      for (let n = 0; n < 2; n++) {
+      for (let n = 0; n < 3; n++) {
         const crop = crops[(miss + n) % crops.length];
         const side = Math.min(vw, vh) * crop.f;
         let sx = vw * crop.x - side / 2;
         let sy = vh * crop.y - side / 2;
         sx = Math.max(0, Math.min(vw - side, sx));
         sy = Math.max(0, Math.min(vh - side, sy));
-        const canvas = drawCrop(sx, sy, side, side, 520, 'contrast(1.4) brightness(1.08) saturate(0)');
+        const canvas = drawCrop(sx, sy, side, side, 560, n === 0
+          ? 'contrast(1.45) brightness(1.1) saturate(0)'
+          : 'contrast(1.7) brightness(1.05) saturate(0)');
         if (canvas) {
           found = await tryCanvas(canvas);
           if (found) return found;
@@ -1891,10 +1889,13 @@ const VMCheks = {
       else if (caps.focusMode && caps.focusMode.indexOf('single-shot') >= 0) adv.push({ focusMode: 'single-shot' });
       if (caps.exposureMode && caps.exposureMode.indexOf('continuous') >= 0) adv.push({ exposureMode: 'continuous' });
       if (caps.whiteBalanceMode && caps.whiteBalanceMode.indexOf('continuous') >= 0) adv.push({ whiteBalanceMode: 'continuous' });
-      // Zoom majburan 1× — telefoto/yaqin ochilmasin
-      if (caps.zoom) {
+      // Faqat bir marta 1× — telefoto ochilmasin, keyin qayta zoom qilinmasin
+      if (caps.zoom && !this._zoomLocked) {
         const zMin = Number(caps.zoom.min);
-        if (Number.isFinite(zMin)) adv.push({ zoom: zMin });
+        if (Number.isFinite(zMin)) {
+          adv.push({ zoom: zMin });
+          this._zoomLocked = true;
+        }
       }
       if (adv.length) await track.applyConstraints({ advanced: adv });
     } catch (e) {}
@@ -1973,10 +1974,14 @@ const VMCheks = {
     const host = this.camBox();
     if (!host) return;
     this._torchOn = false;
-    this.setStatus('Kamera ochilmoqda — QR ni ramkaga tuting', 'busy');
+    this._zoomLocked = false;
+    this.setStatus('Kamera ochilmoqda…', 'busy');
     try {
       await this.stopCamera();
-      await this.loadJsQr();
+      const jsOk = await this.loadJsQr();
+      if (!jsOk && !window.BarcodeDetector) {
+        this.setStatus('QR moduli yuklanmadi. Internetni tekshiring yoki qo‘lda kiriting.', 'bad');
+      }
       // Native + jsQR/BarcodeDetector (iPhone Safari uchun asosiy yo‘l)
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const ok = await this.startNativeCamera(host);
@@ -2054,7 +2059,7 @@ const VMCheks = {
       host.appendChild(video);
       await video.play();
       const track = stream.getVideoTracks()[0];
-      // Zoom 1× + autofokus (yaqin/telefoto ochilmasin)
+      this._zoomLocked = false;
       await this.applyFocusBoost(track);
       this.nativeStream = stream;
       this.nativeVideo = video;
@@ -2067,7 +2072,7 @@ const VMCheks = {
       const tick = async () => {
         if (!this.scanning || !this.nativeVideo) return;
         if (this._scanBusy) {
-          this.nativeLoop = setTimeout(tick, 40);
+          this.nativeLoop = setTimeout(tick, 35);
           return;
         }
         this._scanBusy = true;
@@ -2079,36 +2084,30 @@ const VMCheks = {
             return;
           }
           this._scanMiss = (this._scanMiss || 0) + 1;
-          if (this._scanMiss === 40) {
-            this.setStatus('QR ni yashil kvadrat markaziga tuting — chiroqni yoqing');
-          } else if (this._scanMiss === 100) {
-            this.setStatus('Yorug‘ joyda tuting yoki «Rasmga olish» / qo‘lda kiritish');
+          if (this._scanMiss === 45) {
+            this.setStatus('Yashil ramkaga tuting — kerak bo‘lsa chiroqni yoqing');
+          } else if (this._scanMiss === 120) {
+            this.setStatus('O‘qilmasa «Rasmga olish» yoki qo‘lda kiritish');
           }
         } catch (e) {}
         this._scanBusy = false;
-        this.nativeLoop = setTimeout(tick, 55);
+        this.nativeLoop = setTimeout(tick, 45);
       };
-      this.nativeLoop = setTimeout(tick, 120);
+      this.nativeLoop = setTimeout(tick, 100);
+      // Faqat continuous yo‘q telefonlarda — kam-kam single-shot (zoom qayta tegilmaydi)
       this._focusTimer = setInterval(() => {
         if (!this.scanning) return;
         const t = this.videoTrack();
-        if (!t) return;
+        if (!t || !t.getCapabilities) return;
         try {
-          const caps = t.getCapabilities ? (t.getCapabilities() || {}) : {};
-          if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) {
-            t.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
-          } else if (caps.focusMode && caps.focusMode.indexOf('single-shot') >= 0) {
+          const caps = t.getCapabilities() || {};
+          if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) return;
+          if (caps.focusMode && caps.focusMode.indexOf('single-shot') >= 0) {
             t.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).catch(() => {});
           }
-          if (caps.zoom) {
-            const zMin = Number(caps.zoom.min);
-            if (Number.isFinite(zMin)) {
-              t.applyConstraints({ advanced: [{ zoom: zMin }] }).catch(() => {});
-            }
-          }
         } catch (e) {}
-      }, 1600);
-      this.setStatus('QR qidirilmoqda — yashil kvadratga tuting');
+      }, 2500);
+      this.setStatus('QR qidirilmoqda — yashil ramkaga tuting');
       return true;
     } catch (e) {
       this.stopNative();
