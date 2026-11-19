@@ -885,7 +885,7 @@ const VMOffice = {
         }
         this.ensureDepartures(dateVal);
         if (!rows.length) {
-            el.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:22px;color:#8aa0b8;">Haydovchilar ro'yxati topilmadi.</td></tr>`;
+            el.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:22px;color:#8aa0b8;">Haydovchilar ro'yxati topilmadi.</td></tr>`;
             return;
         }
         el.innerHTML = rows.map((r, i) => {
@@ -897,9 +897,11 @@ const VMOffice = {
             const model = typeof fleetModelOf === 'function' ? fleetModelOf(r.drv.car) : '';
             const minfo = model && window.FLEET_MODELS ? window.FLEET_MODELS[model] : null;
             const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(r.drv.car, 'fb-photo') : '';
+            const depHtml = this.depBadge(this.depOf(dateVal, r.drv.car)) || '<span class="dep-empty">—</span>';
             return `<tr class="rank-row${active}${empty ? ' is-empty' : ''}" data-car="${vmEsc(r.drv.car)}">
                 <td class="font-mono text-muted">${i + 1}</td>
-                <td class="fb-driver-cell"><strong class="fb-driver-name">${vmEsc(r.drv.fullName || r.drv.name || r.drv.shortName || '—')}</strong>${this.depBadge(this.depOf(dateVal, r.drv.car))}</td>
+                <td class="fb-driver-cell"><strong class="fb-driver-name">${vmEsc(r.drv.fullName || r.drv.name || r.drv.shortName || '—')}</strong></td>
+                <td class="fb-dep-cell">${depHtml}</td>
                 <td class="fb-car-cell"><div class="fb-car">
                     <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
                     <span class="fb-car-txt"><b class="font-mono">${vmEsc(r.drv.car)}</b><em>${vmEsc(minfo ? minfo.t : '—')}</em></span>

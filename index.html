@@ -995,8 +995,8 @@ table.gtable tr.rank-row td { white-space: nowrap; }
 
 table.gtable tr.rank-row td.fb-driver-cell {
   white-space: normal;
-  min-width: 180px;
-  max-width: 280px;
+  min-width: 140px;
+  max-width: 220px;
   vertical-align: middle;
 }
 
@@ -1008,6 +1008,21 @@ table.gtable tr.rank-row .fb-driver-name {
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+table.gtable tr.rank-row td.fb-dep-cell {
+  white-space: nowrap;
+  vertical-align: middle;
+  min-width: 118px;
+}
+table.gtable tr.rank-row td.fb-dep-cell .dep-badge {
+  margin-left: 0;
+  vertical-align: middle;
+}
+table.gtable tr.rank-row td.fb-dep-cell .dep-empty {
+  color: #8aa0b8;
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 table.gtable tr.rank-row.is-active td { background: #e6edf4; }
@@ -3271,6 +3286,8 @@ input, select, textarea { max-width: 100%; }
 
               <th>Haydovchi</th>
 
+              <th>Yuk chiqishi</th>
+
               <th>Mashina</th>
 
               <th>Ball</th>
@@ -3291,7 +3308,7 @@ input, select, textarea { max-width: 100%; }
 
           <tbody id="fleet-board-body">
 
-            <tr><td colspan="9" style="text-align:center;padding:22px;color:#8aa0b8;">GPS yuklangandan so'ng reyting chiqadi.</td></tr>
+            <tr><td colspan="10" style="text-align:center;padding:22px;color:#8aa0b8;">GPS yuklangandan so'ng reyting chiqadi.</td></tr>
 
           </tbody>
 
@@ -3807,7 +3824,7 @@ input, select, textarea { max-width: 100%; }
 
 <script src="app-m96.js?v=m150"></script>
 
-<script src="office.js?v=32"></script>
+<script src="office.js?v=33"></script>
 <script src="cheks.js?v=26"></script>
 
 <script>
