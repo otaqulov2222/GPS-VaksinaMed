@@ -202,30 +202,41 @@ const VMOffice = {
         if (!dep) return '';
         const st = dep.status;
         const late = depLateTxt(dep.lateMin);
+        const lateMin = Math.max(0, Number(dep.lateMin) || 0);
+        const lateShort = lateMin
+            ? (lateMin >= 60 ? `+${Math.floor(lateMin / 60)}s` : `+${lateMin}`)
+            : '';
+        const t = String(dep.departAt || '').trim();
+        const dl = String(dep.deadline || '').trim();
         const noteIco = dep.note ? '<i class="dep-ico" aria-hidden="true"></i>' : '';
         let cls = '', txt = '';
+        // Jadval: faqat vaqt + rang (Yuk / Yuk kech yozilmaydi)
         if (dep.excused && dep.counted === false && ['late', 'waiting', 'no_trip', 'not_arrived', 'no_office'].includes(st)) {
             cls = 'dep-excused';
-            txt = 'Uzrli · ' + (st === 'late' ? 'yuk ' + (dep.departAt || '') : dep.label);
+            txt = t || 'uzr';
         } else if (st === 'late') {
-            cls = 'dep-late'; txt = `Yuk kech ${dep.departAt || ''} ${late}`;
+            cls = 'dep-late';
+            txt = (t + (lateShort ? ' ' + lateShort : '')).trim() || lateShort || '—';
         } else if (st === 'waiting') {
-            cls = 'dep-wait'; txt = `Yuk chiqmagan · ${late}`;
+            cls = 'dep-wait';
+            txt = lateShort || '…';
         } else if (st === 'no_trip') {
-            cls = 'dep-late'; txt = 'Yuk chiqmadi · kun bo\'yi hududda';
-        } else if (st === 'not_arrived') {
-            cls = 'dep-warn'; txt = 'Ofisga kelmagan';
-        } else if (st === 'no_office') {
-            cls = 'dep-warn'; txt = 'Ofisga kirmagan';
+            cls = 'dep-late';
+            txt = '×';
+        } else if (st === 'not_arrived' || st === 'no_office') {
+            cls = 'dep-warn';
+            txt = '—';
         } else if (st === 'ok') {
-            cls = 'dep-ok'; txt = `Yuk ${dep.departAt || ''}`;
+            cls = 'dep-ok';
+            txt = t || '✓';
         } else if (st === 'pending') {
-            cls = 'dep-pend'; txt = `Yuk ${dep.deadline} gacha`;
+            cls = 'dep-pend';
+            txt = dl || '…';
         } else {
             return '';
         }
-        const tip = `${dep.label}${dep.departAt ? ' · chiqdi ' + dep.departAt : ''} · muddat ${dep.deadline}${dep.note ? ' · Izoh: ' + dep.note : ''}`;
-        return `<button type="button" class="dep-badge ${cls}" data-dep="${vmEsc(dep.plate)}" title="${vmEsc(tip)}">${vmEsc(txt.trim())}${noteIco}</button>`;
+        const tip = `${dep.label}${t ? ' · chiqdi ' + t : ''} · muddat ${dl}${late ? ' · ' + late : ''}${dep.note ? ' · Izoh: ' + dep.note : ''}`;
+        return `<button type="button" class="dep-badge ${cls}" data-dep="${vmEsc(dep.plate)}" title="${vmEsc(tip)}">${vmEsc(txt)}${noteIco}</button>`;
     },
 
     depSummaryTxt(dateVal) {
