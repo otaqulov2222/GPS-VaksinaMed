@@ -134,7 +134,7 @@ HTML_CANONICAL = {
 }
 
 # Deploy/kesh tekshiruvi — /api/health da ko'rinadi
-VM_BUILD = "m142"
+VM_BUILD = "m143"
 
 # Login brute-force himoya (IP bo'yicha)
 _LOGIN_FAILS = {}
@@ -4527,10 +4527,31 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 1,
             )
 
+        # Keshlangan HTML ham yangi office/app skriptlarini olsin
+        html = re.sub(
+            r'(src=["\']office\.js)\?v=[^"\']*(["\'])',
+            r"\1?v=%s\2" % VM_BUILD,
+            html,
+            flags=re.I,
+        )
+        html = re.sub(
+            r'(src=["\']app-m96\.js)\?v=[^"\']*(["\'])',
+            r"\1?v=%s\2" % VM_BUILD,
+            html,
+            flags=re.I,
+        )
+        html = re.sub(
+            r'(src=["\']cheks\.js)\?v=[^"\']*(["\'])',
+            r"\1?v=%s\2" % VM_BUILD,
+            html,
+            flags=re.I,
+        )
+
         raw = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
         self.send_header("X-VM-Build", VM_BUILD)
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
