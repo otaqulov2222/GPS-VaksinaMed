@@ -3326,7 +3326,7 @@ input, select, textarea { max-width: 100%; }
         <div class="fb-toolbar" id="fb-toolbar">
           <label class="fb-search-wrap" aria-label="Mashina yoki haydovchi qidirish">
             <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/></svg>
-            <input type="search" id="fb-search" name="vm_fleet_filter_q" class="fb-search" placeholder="Haydovchi yoki raqam..." autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" readonly onfocus="this.removeAttribute('readonly')">
+            <input type="search" id="fb-search" name="vm_fleet_filter_q" class="fb-search" placeholder="Haydovchi yoki raqam..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" readonly onpointerdown="this.removeAttribute('readonly')" onkeydown="this.removeAttribute('readonly')">
           </label>
           <div class="fb-filters" id="fb-filters" role="group" aria-label="Tezkor filtrlar">
             <button type="button" class="fb-pill is-on" data-fb-filter="all">Hammasi <b id="fb-cnt-all">0</b></button>
@@ -3949,6 +3949,13 @@ input, select, textarea { max-width: 100%; }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scrub);
   else scrub();
+  /* Chrome autofill qilgan bo'lsa tozalash */
+  [100, 450, 1000].forEach(function (ms) {
+    setTimeout(function () {
+      var s = document.getElementById('fb-search');
+      if (s && document.activeElement !== s && s.value) s.value = '';
+    }, ms);
+  });
 })();
 </script>
 
