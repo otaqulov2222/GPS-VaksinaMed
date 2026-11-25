@@ -812,7 +812,7 @@ const VMOffice = {
                 weight: 1,
                 interactive: false
             });
-            mark.bindTooltip(typeof uzUi === 'function' ? uzUi(p.name) : p.name, { permanent: false, direction: 'top', sticky: true });
+            mark.bindTooltip(vmEsc(typeof uzUi === 'function' ? uzUi(p.name) : p.name), { permanent: false, direction: 'top', sticky: true });
             group.addLayer(mark);
         });
         group.addTo(map);
@@ -879,36 +879,206 @@ const VMOffice = {
         });
     },
 
+    _fbFilter: 'all',
+    _fbQuery: '',
+    _fbSort: 'score',
+    _fbDir: 'desc',
+    _fbUiBound: false,
+
+    bindFleetBoardUi() {
+        if (this._fbUiBound) return;
+        this._fbUiBound = true;
+        const search = document.getElementById('fb-search');
+        if (search) {
+            search.addEventListener('input', () => {
+                this._fbQuery = String(search.value || '').trim();
+                this.renderFleetBoard();
+            });
+        }
+        const filters = document.getElementById('fb-filters');
+        if (filters) {
+            filters.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-fb-filter]');
+                if (!btn) return;
+                this._fbFilter = btn.getAttribute('data-fb-filter') || 'all';
+                this.renderFleetBoard();
+            });
+        }
+        const alertCard = document.getElementById('fov-alert-card');
+        if (alertCard) {
+            alertCard.addEventListener('click', () => {
+                this._fbFilter = (this._fbFilter === 'issues') ? 'all' : 'issues';
+                this.renderFleetBoard();
+                document.getElementById('fleet-board')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+        }
+        const thead = document.querySelector('#fleet-board thead');
+        if (thead) {
+            thead.addEventListener('click', (e) => {
+                const th = e.target.closest('[data-fb-sort]');
+                if (!th) return;
+                const key = th.getAttribute('data-fb-sort');
+                if (this._fbSort === key) {
+                    this._fbDir = (this._fbDir === 'desc') ? 'asc' : 'desc';
+                } else {
+                    this._fbSort = key;
+                    this._fbDir = 'desc';
+                }
+                this.renderFleetBoard();
+            });
+        }
+    },
+
     renderFleetBoard() {
+        this.bindFleetBoardUi();
         const el = document.getElementById('fleet-board-body');
         const meta = document.getElementById('fleet-board-meta');
         if (!el) return;
         const dateVal = STATE.currentDate;
-        const rows = this.fleetRows(dateVal);
-        const loaded = rows.filter(r => r.rec).length;
-        const avg = rows.filter(r => r.rec && r.score != null);
-        const avgN = avg.length ? (avg.reduce((s, r) => s + r.score, 0) / avg.length) : 0;
-        const probs = rows.reduce((s, r) => s + (r.problem || 0), 0);
+        const allRows = this.fleetRows(dateVal);
+        const totalCars = allRows.length;
+        const loadedRows = allRows.filter(r => r.rec);
+        const loaded = loadedRows.length;
+        const avgRows = loadedRows.filter(r => r.score != null);
+        const avgN = avgRows.length ? (avgRows.reduce((s, r) => s + r.score, 0) / avgRows.length) : 0;
+        const probs = allRows.reduce((s, r) => s + (r.problem || 0), 0);
+        const totalKm = loadedRows.reduce((s, r) => s + (Number(r.km) || 0), 0);
+
+        const depOfRow = (r) => this.depOf(dateVal, r.drv.car);
+        const isLateRow = (r) => {
+            const dep = depOfRow(r);
+            return !!(dep && (dep.counted || dep.status === 'late' || dep.status === 'waiting' || dep.status === 'no_trip'));
+        };
+        const isIssueRow = (r) => !!((r.problem || 0) > 0 || (r.rec && r.score != null && r.score < 6.5) || isLateRow(r));
+        const isSpeedRow = (r) => (Number(r.speed) || 0) > 90;
+        const isTopRow = (r) => !!(r.rec && r.score != null && r.score >= 8);
+        const lateCount = allRows.filter(isLateRow).length;
+
+        // 4 KPI Summary Cards
+        const pct = totalCars ? Math.round((loaded / totalCars) * 100) : 0;
+        const setTxt = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+        setTxt('fov-park-val', `${loaded} / ${totalCars}`);
+        setTxt('fov-park-pct', `${pct}%`);
+        const parkBar = document.getElementById('fov-park-bar');
+        if (parkBar) parkBar.style.width = `${pct}%`;
+
+        setTxt('fov-km-val', loaded ? (typeof fmtKm === 'function' ? fmtKm(totalKm, 'km') : totalKm.toFixed(1) + ' km') : '—');
+        setTxt('fov-km-avg', loaded ? `${(totalKm / loaded).toFixed(1)} km/avto` : '—');
+
+        const scoreValEl = document.getElementById('fov-score-val');
+        if (scoreValEl) scoreValEl.innerHTML = avgRows.length ? `${avgN.toFixed(1)} <small>/ 10</small>` : '—';
+        const gradeEl = document.getElementById('fov-score-grade');
+        if (gradeEl) {
+            if (!avgRows.length) { gradeEl.textContent = '—'; gradeEl.className = 'fov-badge'; }
+            else if (avgN >= 8) { gradeEl.textContent = "A'lo"; gradeEl.className = 'fov-badge'; }
+            else if (avgN >= 6) { gradeEl.textContent = "O'rta"; gradeEl.className = 'fov-badge is-mid'; }
+            else { gradeEl.textContent = 'Nazorat'; gradeEl.className = 'fov-badge is-bad'; }
+        }
+
+        setTxt('fov-alert-val', `${probs} muammo`);
+        setTxt('fov-alert-sub', lateCount ? `${lateCount} ta yuk chiqishi kech` : (probs ? 'Tekshiruv talab' : 'Hammasi joyida'));
+        setTxt('fov-alert-cta', this._fbFilter === 'issues' ? 'Filtr faol ✓' : 'Filtrlash →');
+        document.getElementById('fov-alert-card')?.classList.toggle('is-filtering', this._fbFilter === 'issues');
+
+        // Filter pill counters + active pill
+        setTxt('fb-cnt-all', totalCars);
+        setTxt('fb-cnt-issues', allRows.filter(isIssueRow).length);
+        setTxt('fb-cnt-late', lateCount);
+        setTxt('fb-cnt-speed', allRows.filter(isSpeedRow).length);
+        setTxt('fb-cnt-top', allRows.filter(isTopRow).length);
+        document.querySelectorAll('#fb-filters [data-fb-filter]').forEach(btn => {
+            btn.classList.toggle('is-on', btn.getAttribute('data-fb-filter') === this._fbFilter);
+        });
+
         if (meta) {
             meta.textContent = loaded
                 ? `${loaded} mashina · o'rtacha ${avgN.toFixed(1)} ball · ${probs} muammo${this.depSummaryTxt(dateVal)}`
                 : 'Bu kunda ma\'lumot yo\'q';
         }
         this.ensureDepartures(dateVal);
-        if (!rows.length) {
+
+        // Apply filter & search
+        const qRaw = (this._fbQuery || '').toLowerCase();
+        const qCompact = plateCompact(this._fbQuery || '');
+        let rows = allRows.filter(r => {
+            if (this._fbFilter === 'issues' && !isIssueRow(r)) return false;
+            if (this._fbFilter === 'late' && !isLateRow(r)) return false;
+            if (this._fbFilter === 'speed' && !isSpeedRow(r)) return false;
+            if (this._fbFilter === 'top' && !isTopRow(r)) return false;
+            if (qRaw) {
+                const nm = String(r.drv.fullName || r.drv.name || r.drv.shortName || '').toLowerCase();
+                const car = String(r.drv.car || '').toLowerCase();
+                const carC = plateCompact(r.drv.car || '');
+                if (!nm.includes(qRaw) && !car.includes(qRaw) && (!qCompact || !carC.includes(qCompact))) return false;
+            }
+            return true;
+        });
+
+        // Apply sorting
+        const sortKey = this._fbSort || 'score';
+        const dir = this._fbDir === 'asc' ? 1 : -1;
+        rows = rows.slice().sort((a, b) => {
+            if (!!a.rec !== !!b.rec) return a.rec ? -1 : 1;
+            const valOf = (r) => {
+                if (sortKey === 'km') return Number(r.km) || 0;
+                if (sortKey === 'plan') return r.total ? (r.own / r.total) : -1;
+                if (sortKey === 'other') return Number(r.other) || 0;
+                if (sortKey === 'problem') return Number(r.problem) || 0;
+                if (sortKey === 'speed') return Number(r.speed) || 0;
+                return r.score == null ? -1 : Number(r.score);
+            };
+            return (valOf(a) - valOf(b)) * dir;
+        });
+
+        // Update sort header indicators
+        document.querySelectorAll('#fleet-board th[data-fb-sort]').forEach(th => {
+            const k = th.getAttribute('data-fb-sort');
+            const isCur = k === sortKey;
+            th.classList.toggle('is-sorted', isCur);
+            const arr = th.querySelector('.fb-sort-arr');
+            if (arr) arr.textContent = isCur ? (dir === -1 ? '↓' : '↑') : '';
+        });
+
+        if (!allRows.length) {
             el.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:22px;color:#8aa0b8;">Haydovchilar ro'yxati topilmadi.</td></tr>`;
+            return;
+        }
+        if (!rows.length) {
+            el.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:24px;color:#64748b;">Tanlangan filtr yoki qidiruv bo‘yicha mashina topilmadi.</td></tr>`;
             return;
         }
         el.innerHTML = rows.map((r, i) => {
             const active = r.drv.car === STATE.currentCar ? ' is-active' : '';
             const empty = !r.rec;
-            const scoreTxt = empty ? '—' : (r.score == null ? '—' : Number(r.score).toFixed(1));
-            const scoreCls = empty ? '' : (r.score >= 8 ? 'rk-ok' : r.score >= 5 ? 'rk-mid' : 'rk-bad');
-            const plan = r.total ? `${r.own}/${r.total}` : '—';
+            const scoreVal = r.score == null ? null : Number(r.score);
+            const scoreTxt = empty || scoreVal == null ? '—' : scoreVal.toFixed(1);
+            const scoreCls = empty || scoreVal == null ? '' : (scoreVal >= 8 ? 'is-good' : scoreVal >= 5 ? 'is-mid' : 'is-bad');
+            const scoreCell = empty || scoreVal == null
+                ? '<span class="text-muted">—</span>'
+                : `<span class="fb-score-pill ${scoreCls}">${scoreTxt}</span>`;
+
+            const planPct = r.total ? Math.min(100, Math.round((r.own / r.total) * 100)) : 0;
+            const planCell = empty || !r.total
+                ? '—'
+                : `<div class="fb-plan-cell"><span>${r.own}/${r.total}</span><span class="fb-plan-bar"><span style="width:${planPct}%"></span></span></div>`;
+
+            const otherN = Number(r.other) || 0;
+            const otherCell = empty ? '—' : `<span class="fb-cnt-pill ${otherN > 0 ? 'is-info' : 'is-zero'}">${otherN}</span>`;
+            const probN = Number(r.problem) || 0;
+            const probCls = probN >= 3 ? 'is-bad' : (probN > 0 ? 'is-warn' : 'is-zero');
+            const probCell = empty ? '—' : `<span class="fb-cnt-pill ${probCls}">${probN}</span>`;
+
+            const spdN = Number(r.speed) || 0;
+            const spdVal = empty || !spdN ? '—' : String(Math.round(spdN));
+            const spdCls = empty || !spdN ? 'is-zero' : (spdN > 90 ? 'is-over' : (spdN > 80 ? 'is-fast' : 'is-ok'));
+            const spdCell = (empty || !spdN)
+                ? '<span class="fb-spd-pill is-zero">—</span>'
+                : `<span class="fb-spd-pill ${spdCls}" title="${vmEsc(spdVal)} km/soat">${vmEsc(spdVal)}<small>km/s</small></span>`;
+
             const model = typeof fleetModelOf === 'function' ? fleetModelOf(r.drv.car) : '';
             const minfo = model && window.FLEET_MODELS ? window.FLEET_MODELS[model] : null;
             const photo = typeof fleetPhotoHtml === 'function' ? fleetPhotoHtml(r.drv.car, 'fb-photo') : '';
-            const depHtml = this.depBadge(this.depOf(dateVal, r.drv.car)) || '<span class="dep-empty">—</span>';
+            const depHtml = this.depBadge(depOfRow(r)) || '<span class="dep-empty">—</span>';
             return `<tr class="rank-row${active}${empty ? ' is-empty' : ''}" data-car="${vmEsc(r.drv.car)}">
                 <td class="font-mono text-muted">${i + 1}</td>
                 <td class="fb-driver-cell"><strong class="fb-driver-name">${vmEsc(r.drv.fullName || r.drv.name || r.drv.shortName || '—')}</strong></td>
@@ -917,12 +1087,12 @@ const VMOffice = {
                     <span class="fb-thumb${minfo ? ' cls-' + minfo.cls : ''}">${photo}</span>
                     <span class="fb-car-txt"><b class="font-mono">${vmEsc(r.drv.car)}</b><em>${vmEsc(minfo ? minfo.t : '—')}</em></span>
                 </div></td>
-                <td class="${scoreCls}">${scoreTxt}</td>
-                <td class="font-mono">${empty ? '—' : (typeof fmtKm === 'function' ? fmtKm(r.km) : r.km)}</td>
-                <td class="font-mono">${empty ? '—' : plan}</td>
-                <td class="font-mono">${empty ? '—' : r.other}</td>
-                <td class="font-mono">${empty ? '—' : r.problem}</td>
-                <td class="font-mono">${empty ? '—' : (typeof fmtSpd === 'function' ? fmtSpd(r.speed) : (r.speed || '—'))}</td>
+                <td class="fb-num">${scoreCell}</td>
+                <td class="font-mono fb-num">${empty ? '—' : (typeof fmtKm === 'function' ? fmtKm(r.km) : r.km)}</td>
+                <td class="font-mono fb-num">${planCell}</td>
+                <td class="fb-num">${otherCell}</td>
+                <td class="fb-num">${probCell}</td>
+                <td class="fb-num">${spdCell}</td>
             </tr>`;
         }).join('');
     },

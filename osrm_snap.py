@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import json
 import math
+import threading
+import time
 import urllib.error
 import urllib.request
 
 OSRM_BASE = "https://router.project-osrm.org"
 _UA = "VaksinaMed-GPS/1.0 (route-snap)"
+_LIVE_LOCK = threading.Lock()
+_NEAREST_CACHE: dict[tuple, tuple[float, list[float]]] = {}
+_ROUTE_SEG_CACHE: dict[tuple, tuple[float, list[list[float]]]] = {}
+_LIVE_CACHE_TTL = 90.0
+_LIVE_CACHE_MAX = 2500
 
 
 def _haversine_m(a, b):
@@ -231,3 +238,111 @@ def snap_track_to_roads(points, sample_m=65.0, batch_size=16):
             "km": round(road_len / 1000.0, 2),
         },
     }
+
+
+def _trim_cache(cache: dict):
+    if len(cache) > _LIVE_CACHE_MAX:
+        # Remove oldest third
+        for k in list(cache.keys())[: len(cache) // 3]:
+            cache.pop(k, None)
+
+
+def snap_point_to_road(lat, lng, course=None, max_dist_m=42.0, timeout=1.8):
+    """Bitta GPS nuqtani yo'nalish bo'yicha eng yaqin yo'l polosasiga yopishtiradi."""
+    try:
+        flat, flng = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return [lat, lng]
+    if not (37 <= flat <= 46 and 55 <= flng <= 74):
+        return [flat, flng]
+
+    crs_val = None
+    if course is not None:
+        try:
+            c = float(course)
+            if math.isfinite(c) and c >= 0:
+                crs_val = int(round(c)) % 360
+        except (TypeError, ValueError):
+            crs_val = None
+
+    crs_bucket = (crs_val // 20) if crs_val is not None else -1
+    key = (round(flat, 4), round(flng, 4), crs_bucket)
+    now = time.monotonic()
+    with _LIVE_LOCK:
+        hit = _NEAREST_CACHE.get(key)
+        if hit and (now - hit[0]) < _LIVE_CACHE_TTL:
+            return hit[1]
+
+    def _query(bearing_deg):
+        url = f"{OSRM_BASE}/nearest/v1/driving/{flng:.6f},{flat:.6f}?number=1"
+        if bearing_deg is not None:
+            url += f"&bearings={bearing_deg},55"
+        try:
+            data = _osrm_get(url, timeout=timeout)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, OSError):
+            return None
+        wps = (data or {}).get("waypoints") or []
+        if not wps or not isinstance(wps[0], dict):
+            return None
+        loc = wps[0].get("location") or []
+        if len(loc) < 2:
+            return None
+        slng, slat = float(loc[0]), float(loc[1])
+        dist = _haversine_m([flat, flng], [slat, slng])
+        return [slat, slng], dist
+
+    snapped = [flat, flng]
+    res = _query(crs_val)
+    if res and res[1] <= max_dist_m:
+        snapped = res[0]
+    elif crs_val is not None:
+        # Faqat 10m ichida bo'lsa yo'nalishsiz tekshiramiz (qarama-qarshi polosaga sakramaslik uchun)
+        res2 = _query(None)
+        if res2 and res2[1] <= min(10.0, max_dist_m):
+            snapped = res2[0]
+
+    with _LIVE_LOCK:
+        _trim_cache(_NEAREST_CACHE)
+        _NEAREST_CACHE[key] = (now, snapped)
+    return snapped
+
+
+def snap_live_segment(prev_pt, cur_pt, course=None, timeout=2.2):
+    """Live harakatda oldingi nuqtadan yangi nuqtagacha haqiqiy yo'l egriligini qaytaradi."""
+    try:
+        clat, clng = float(cur_pt[0]), float(cur_pt[1])
+    except (TypeError, ValueError, IndexError):
+        return {"ok": False, "error": "cur_pt noto'g'ri"}
+
+    snapped_cur = snap_point_to_road(clat, clng, course=course, max_dist_m=42.0, timeout=timeout)
+    if not prev_pt or not isinstance(prev_pt, (list, tuple)) or len(prev_pt) < 2:
+        return {"ok": True, "snapped": snapped_cur, "path": [snapped_cur]}
+
+    try:
+        plat, plng = float(prev_pt[0]), float(prev_pt[1])
+    except (TypeError, ValueError):
+        return {"ok": True, "snapped": snapped_cur, "path": [snapped_cur]}
+
+    direct_m = _haversine_m([plat, plng], snapped_cur)
+    if direct_m < 14.0 or direct_m > 900.0:
+        return {"ok": True, "snapped": snapped_cur, "path": [[plat, plng], snapped_cur]}
+
+    seg_key = (round(plat, 4), round(plng, 4), round(snapped_cur[0], 4), round(snapped_cur[1], 4))
+    now = time.monotonic()
+    with _LIVE_LOCK:
+        hit = _ROUTE_SEG_CACHE.get(seg_key)
+        if hit and (now - hit[0]) < _LIVE_CACHE_TTL:
+            return {"ok": True, "snapped": snapped_cur, "path": hit[1]}
+
+    road = _route_batch([[plat, plng], snapped_cur], timeout=timeout)
+    path = [[plat, plng], snapped_cur]
+    if road and len(road) >= 2:
+        rlen = _path_len(road)
+        if rlen <= direct_m * 2.35 + 80.0:
+            path = road
+
+    with _LIVE_LOCK:
+        _trim_cache(_ROUTE_SEG_CACHE)
+        _ROUTE_SEG_CACHE[seg_key] = (now, path)
+    return {"ok": True, "snapped": snapped_cur, "path": path}
+

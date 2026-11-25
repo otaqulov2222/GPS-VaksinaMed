@@ -30,6 +30,22 @@
   background: #1b6b35; padding: 2px 7px; border-radius: 4px;
   box-shadow: 0 1px 4px rgba(11, 31, 58, .3);
 }
+.vm-gz-label.is-sat span {
+  color: #fef08a; text-shadow: none;
+  background: rgba(11, 31, 58, .88);
+  border: 1px solid rgba(250, 204, 21, .78);
+  padding: 2px 8px; border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .48);
+}
+.vm-gz-label.is-sat.is-office span {
+  color: #7dd3fc;
+  border-color: rgba(56, 189, 248, .85);
+}
+.vm-gz-label.is-sat.is-own span {
+  color: #ffffff;
+  background: rgba(20, 83, 45, .94);
+  border: 1.5px solid #4ade80;
+}
 .vm-gz-toggle {
   display: flex; align-items: center; gap: 6px;
   background: #fff; border: 2px solid rgba(0, 0, 0, .2); border-radius: 4px;
@@ -144,7 +160,19 @@
         return html + '</div>';
     }
 
-    function zoneStyle(z, own) {
+    function zoneStyle(z, own, sat) {
+        if (sat) {
+            if (z.kind === 'office') {
+                return { color: '#38bdf8', weight: 2.2, fillColor: '#0ea5e9', fillOpacity: 0.22, opacity: 0.95 };
+            }
+            if (own) {
+                return { color: '#4ade80', weight: 2.8, fillColor: '#22c55e', fillOpacity: 0.30, opacity: 1 };
+            }
+            return {
+                color: '#facc15', weight: 2.0, fillColor: '#f59e0b', fillOpacity: 0.19, opacity: 0.95,
+                dashArray: z.src === 'vm' ? '5 4' : null
+            };
+        }
         if (z.kind === 'office') {
             return { color: '#1a5fb4', weight: 1.5, fillColor: '#1a5fb4', fillOpacity: 0.16, opacity: 0.8 };
         }
@@ -168,6 +196,7 @@
         ensurePanes(map);
         const o = opts || {};
         let car = o.car || '';
+        let sat = o.theme === 'sat';
         let visible = isVisiblePref();
         let zones = [];
         let items = [];
@@ -187,22 +216,31 @@
             items = zones.filter(z => Number.isFinite(Number(z.lat)) && Number.isFinite(Number(z.lng))).map(z => {
                 const own = isOwn(z);
                 const ll = L.latLng(Number(z.lat), Number(z.lng));
-                const circle = L.circle(ll, Object.assign({ radius: Number(z.radiusM) || 100, pane: ZONE_PANE }, zoneStyle(z, own)));
+                const circle = L.circle(ll, Object.assign({ radius: Number(z.radiusM) || 100, pane: ZONE_PANE }, zoneStyle(z, own, sat)));
+                circle.bindPopup(() => popupHtml(z, car), { maxWidth: 280 });
+                zoneLayer.addLayer(circle);
+                if (sat) {
+                    zoneLayer.addLayer(L.circleMarker(ll, {
+                        radius: 3.5, stroke: true, color: '#0b1f3a', weight: 1.2,
+                        fillColor: zoneStyle(z, own, sat).color, fillOpacity: 1,
+                        interactive: false, pane: ZONE_PANE,
+                    }));
+                }
                 circle.bindPopup(() => popupHtml(z, car), { maxWidth: 280 });
                 zoneLayer.addLayer(circle);
                 const linked = own ? (z.linked || []).filter(o => plate(o.car) === plate(car)) : [];
                 const text = [ui(z.name)].concat(linked.map(o => ui(o.name))).join(' + ');
-                const cls = 'vm-gz-label' + (own ? ' is-own' : '') + (z.kind === 'office' ? ' is-office' : '');
+                const cls = 'vm-gz-label' + (sat ? ' is-sat' : '') + (own ? ' is-own' : '') + (z.kind === 'office' ? ' is-office' : '');
                 const label = L.marker(ll, {
                     pane: LABEL_PANE,
                     interactive: false,
                     keyboard: false,
                     icon: L.divIcon({ className: cls, html: `<span>${esc(text)}</span>`, iconSize: [0, 0] })
                 });
-                const w = textWidth(text) + (own ? 16 : 6);
+                const w = textWidth(text) + (sat ? 18 : own ? 16 : 6);
                 return {
                     z, ll, label, own,
-                    w, h: own ? 20 : 16,
+                    w, h: (sat || own) ? 22 : 16,
                     prio: own ? 0 : (z.kind === 'office' ? 1 : 2)
                 };
             });
@@ -302,6 +340,12 @@
             setCar(next) {
                 if (plate(next) === plate(car)) return;
                 car = next || '';
+                build();
+            },
+            setTheme(nextTheme) {
+                const nextSat = nextTheme === 'sat';
+                if (nextSat === sat) return;
+                sat = nextSat;
                 build();
             },
             refresh(force) {

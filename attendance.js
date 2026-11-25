@@ -2871,32 +2871,32 @@
     app.innerHTML = `
       <div class="att-tabs" role="tablist" aria-label="Davomat bo‘limlari">
         <button type="button" class="att-tab ${uiTab === 'bugun' ? 'on' : ''}" data-tab="bugun" title="Bugun">
-          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v3M13 2v3"/></svg></span>
           <span class="att-tab-lbl">Bugun</span>
           <span class="att-tab-abbr">Bu</span>
         </button>
         ${staff ? `<button type="button" class="att-tab ${uiTab === 'dash' ? 'on' : ''}" data-tab="dash" title="Dashboard">
-          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg></span>
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="4" rx="1.5"/><rect x="11" y="9" width="6" height="8" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/></svg></span>
           <span class="att-tab-lbl">Dashboard</span>
           <span class="att-tab-abbr">Da</span>
         </button>` : ''}
         ${staff ? `<button type="button" class="att-tab ${uiTab === 'hisobot' ? 'on' : ''}" data-tab="hisobot" title="Hisobot">
-          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 15v-4M12 15V8M16 15v-7"/></svg></span>
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16V4M3 16h14"/><path d="M7 13V9M11 13V6M15 13V4"/></svg></span>
           <span class="att-tab-lbl">Hisobot</span>
           <span class="att-tab-abbr">Hi</span>
         </button>` : ''}
         ${staff ? `<button type="button" class="att-tab ${uiTab === 'shaxs' ? 'on' : ''}" data-tab="shaxs" title="Xodim">
-          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.8-3.2 4.2-4.8 7-4.8S17.2 15.8 19 19"/></svg></span>
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3"/><path d="M4 17c1.5-3 3.5-4 6-4s4.5 1 6 4"/></svg></span>
           <span class="att-tab-lbl">Xodim</span>
           <span class="att-tab-abbr">Xo</span>
         </button>` : ''}
         <button type="button" class="att-tab ${uiTab === 'tarix' ? 'on' : ''}" data-tab="tarix" title="Tarix">
-          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg></span>
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg></span>
           <span class="att-tab-lbl">Tarix</span>
           <span class="att-tab-abbr">Ta</span>
         </button>
         ${staff ? `<button type="button" class="att-tab ${uiTab === 'soz' ? 'on' : ''}" data-tab="soz" title="Sozlamalar">
-          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/></svg></span>
+          <span class="att-tab-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="3"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M5 5l1 1M14 14l1 1M5 15l1-1M14 6l1-1"/></svg></span>
           <span class="att-tab-lbl">Sozlamalar</span>
           <span class="att-tab-abbr">So</span>
         </button>` : ''}

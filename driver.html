@@ -11,7 +11,7 @@
 <link rel="dns-prefetch" href="https://tile.openstreetmap.org">
 <link rel="dns-prefetch" href="https://server.arcgisonline.com">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="shell.css?v=31"/>
+<link rel="stylesheet" href="shell.css?v=39"/>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scrollbar-width: thin; scrollbar-color: #9bb4d0 #eef3f9; }
@@ -482,10 +482,16 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
     </div>
     <nav class="nav-links">
       <a class="nav-link on" href="/driver" aria-current="page">Kabinet</a>
-      <a class="nav-link" href="/attendance" id="nav-davomat">Davomat</a>
+      <a class="nav-link" href="/attendance" id="nav-davomat">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v3M13 2v3M7 12l2 2 4-3"/></svg>
+        Davomat
+      </a>
     </nav>
     <div class="nav-foot">
-      <a class="nav-link" href="/profile">Profil</a>
+      <a class="nav-link" href="/profile">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="7" r="3"/><path d="M3 18a7 7 0 0 1 14 0"/></svg>
+        Profil
+      </a>
     </div>
   </aside>
 
@@ -493,7 +499,7 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
 
     <header class="topbar">
       <label for="nav-open" class="nav-burger" title="Menyu" aria-label="Menyu">
-        <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>
+        <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M3 5h14M3 10h14M3 15h14"/></svg></span>
         <span class="nav-burger-lbl">Menyu</span>
       </label>
       <div class="tb-page">
@@ -542,7 +548,7 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; }
   </div>
 
   <section class="att-strip" id="att-strip" hidden aria-live="polite">
-    <span class="att-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+    <span class="att-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg></span>
     <div>
       <div class="att-title" id="att-title">Davomat</div>
       <div class="att-sub" id="att-sub">Yuklanmoqda…</div>

@@ -1989,16 +1989,25 @@ function renderCalendar() {
     }
     grid.innerHTML = html;
 
-    // Tanlangan kun info
-    if (STATE.currentDate && selInfo) {
-        selInfo.style.display = 'block';
+    // Tanlangan kun info + Topbar date pill
+    const tbLbl = document.getElementById('tb-date-label');
+    const tbDot = document.getElementById('tb-date-dot');
+    const tbNext = document.getElementById('tb-date-next');
+    const tbToday = document.getElementById('tb-date-today');
+    if (STATE.currentDate) {
         const dd = new Date(STATE.currentDate + 'T00:00:00');
-        if (selLbl) selLbl.textContent = `${dd.getDate()} ${UZ_MONTHS[dd.getMonth()]} ${dd.getFullYear()}`;
+        const datePretty = `${dd.getDate()} ${UZ_MONTHS[dd.getMonth()]} ${dd.getFullYear()}`;
         const hd = STATE.history.includes(STATE.currentDate);
+        if (selInfo) selInfo.style.display = 'block';
+        if (selLbl) selLbl.textContent = datePretty;
         if (selSt) {
             selSt.textContent = hd ? "Ma'lumot bor" : "Ma'lumot yo'q";
             selSt.className = hd ? 'chip chip-green' : 'chip chip-gray';
         }
+        if (tbLbl) tbLbl.textContent = datePretty;
+        if (tbDot) tbDot.classList.toggle('has-data', hd);
+        if (tbNext) tbNext.disabled = STATE.currentDate >= todayStr;
+        if (tbToday) tbToday.hidden = STATE.currentDate === todayStr;
     }
 }
 
@@ -2435,10 +2444,10 @@ function renderSidebarStats() {
     const totalKm = Object.values(day).reduce((s, r) => s + ((r.stats && r.stats.probeg) || 0), 0);
     card.style.display = '';
     el.innerHTML = `
-        <div><b>${loaded}</b> / ${DRIVERS.length} mashina yuklangan</div>
-        <div>Jami km: <b>${typeof fmtKm === 'function' ? fmtKm(totalKm, 'km') : totalKm.toFixed(2)}</b></div>
-        <div>Sana: ${dateVal}</div>
-        <div>Saqlangan kunlar: ${STATE.history.length}</div>`;
+        <div class="ss-row"><span>Yuklangan</span><b>${loaded} / ${DRIVERS.length}</b></div>
+        <div class="ss-row"><span>Jami masofa</span><b>${typeof fmtKm === 'function' ? fmtKm(totalKm, 'km') : totalKm.toFixed(2)}</b></div>
+        <div class="ss-row"><span>Sana</span><b>${dateVal}</b></div>
+        <div class="ss-row"><span>Saqlangan kun</span><b>${STATE.history.length} ta</b></div>`;
 }
 
 // ── 9.1. BANNER ─────────────────────────────────────────────
@@ -3077,6 +3086,8 @@ function showToast(msg, type = 'info') {
 function setGpsUi(state, detail) {
     const chip = document.getElementById('gps-status-chip');
     const btn  = document.getElementById('btn-gps-sync-2');
+    const tbPill = document.getElementById('tb-gps-pill');
+    const tbText = document.getElementById('tb-gps-text');
     if (chip) {
         if (state === 'on') {
             chip.textContent = detail || 'Ulangan';
@@ -3091,6 +3102,19 @@ function setGpsUi(state, detail) {
             chip.textContent = 'Ulanmagan';
             chip.className = 'chip chip-gray';
         }
+    }
+    if (tbPill) {
+        tbPill.classList.remove('is-on', 'is-sync', 'is-partial', 'is-off');
+        tbPill.classList.add('is-' + (state || 'off'));
+    }
+    if (tbText) {
+        tbText.textContent = state === 'on'
+            ? ('GPS · ' + (detail || 'Tayyor'))
+            : state === 'sync'
+                ? (detail || 'Yuklanmoqda…')
+                : state === 'partial'
+                    ? ('GPS · ' + (detail || 'Qisman'))
+                    : 'GPS ulanmagan';
     }
     if (btn) btn.textContent = state === 'off' ? 'Ulanish' : 'Yangilash';
 }
@@ -3319,6 +3343,18 @@ function updateGpsLastSyncUi(iso, running, extra) {
         habit.textContent = total > 0
             ? ('Kunlik odat: avto ' + fetched + '/' + total + ' mashina')
             : 'Kunlik odat: server har ~2–5 daqiqada avto-yuklaydi';
+    }
+    const barFill = document.getElementById('gps-sync-bar-fill');
+    if (barFill) {
+        const pct = total > 0 ? Math.min(100, Math.round((fetched / total) * 100)) : (running ? 35 : 0);
+        barFill.style.width = pct + '%';
+    }
+    const tbText = document.getElementById('tb-gps-text');
+    if (tbText && (ratio || iso)) {
+        const clk = formatSyncClock(iso || STATE.gpsLastSync);
+        tbText.textContent = running
+            ? ('GPS yuklanmoqda' + (ratio ? ' ' + ratio : ''))
+            : ('GPS ' + (ratio || 'tayyor') + (clk ? ' · ' + clk : ''));
     }
     if (!el) return;
     if (running) {
@@ -4388,7 +4424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }, 800);
 
-    // ── Kalendar navigatsiya ───────────────────────────────
+    // ── Kalendar navigatsiya + Topbar sana / haydovchi navigatsiyasi ──
     document.getElementById('cal-prev')?.addEventListener('click', () => {
         CAL.m--; if (CAL.m < 0) { CAL.m = 11; CAL.y--; }
         renderCalendar();
@@ -4396,6 +4432,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('cal-next')?.addEventListener('click', () => {
         CAL.m++; if (CAL.m > 11) { CAL.m = 0; CAL.y++; }
         renderCalendar();
+    });
+
+    const stepSelectedDate = (delta) => {
+        const cur = STATE.currentDate || dateStr(new Date());
+        const d = new Date(cur + 'T00:00:00');
+        if (Number.isNaN(d.getTime())) return;
+        d.setDate(d.getDate() + delta);
+        const next = dateStr(d);
+        const today = dateStr(new Date());
+        if (next > today) return;
+        CAL.y = d.getFullYear();
+        CAL.m = d.getMonth();
+        selectDate(next);
+    };
+    document.getElementById('tb-date-prev')?.addEventListener('click', () => stepSelectedDate(-1));
+    document.getElementById('tb-date-next')?.addEventListener('click', () => stepSelectedDate(1));
+    document.getElementById('tb-date-today')?.addEventListener('click', () => {
+        const d = new Date();
+        CAL.y = d.getFullYear();
+        CAL.m = d.getMonth();
+        selectDate(dateStr(d));
+    });
+    document.getElementById('tb-date-pill')?.addEventListener('click', () => {
+        document.getElementById('cal-grid')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    document.getElementById('tb-gps-pill')?.addEventListener('click', () => {
+        document.getElementById('btn-gps-sync-2')?.click();
+    });
+
+    const stepDriver = (delta) => {
+        if (!Array.isArray(DRIVERS) || !DRIVERS.length) return;
+        const idx = DRIVERS.findIndex(d => d.car === STATE.currentCar);
+        const nextIdx = ((idx < 0 ? 0 : idx) + delta + DRIVERS.length) % DRIVERS.length;
+        selectDriver(DRIVERS[nextIdx].car);
+    };
+    document.getElementById('btn-drv-prev')?.addEventListener('click', () => stepDriver(-1));
+    document.getElementById('btn-drv-next')?.addEventListener('click', () => stepDriver(1));
+    document.getElementById('btn-drv-map')?.addEventListener('click', () => {
+        document.getElementById('map-frame')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
 
     // ── Fayl yuklash ──────────────────────────────────────

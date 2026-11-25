@@ -6203,6 +6203,25 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(e)[:160], "snapped": False}, 500)
             return
 
+        if path == "/api/map/snap-live":
+            sess = self.require_user()
+            if not sess:
+                return
+            cur_pt = body.get("cur")
+            prev_pt = body.get("prev")
+            course = body.get("course")
+            if not isinstance(cur_pt, list) or len(cur_pt) < 2:
+                self.send_json({"ok": False, "error": "cur kerak"}, 400)
+                return
+            try:
+                import osrm_snap
+
+                result = osrm_snap.snap_live_segment(prev_pt, cur_pt, course=course)
+                self.send_json(result)
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)[:160]}, 500)
+            return
+
         if path == "/api/office/analyze":
             # Yagona ball manbai — brauzer JS formulasini almashtiradi
             sess = self.require_user()

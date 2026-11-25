@@ -427,6 +427,181 @@ function vmApplyChrome(user) {
             panel.setAttribute('hidden', 'hidden');
         }
     }
+    vmEnhanceNavRail(user);
+}
+
+const VM_NAV_ICONS = {
+    dash: '<svg viewBox="0 0 20 20" width="20" height="20" fill="none" shape-rendering="geometricPrecision"><rect x="2" y="2" width="7" height="7" rx="2" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.65"/><rect x="11" y="2" width="7" height="7" rx="2" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.65"/><rect x="2" y="11" width="7" height="7" rx="2" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.65"/><rect x="11" y="11" width="7" height="7" rx="2" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.65"/></svg>',
+    fuel: '<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><path d="M3 17V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.65"/><path d="M2 17h12" stroke="currentColor" stroke-width="1.65"/><rect x="5" y="5" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M13 8h2a2 2 0 0 1 2 2v4a1.5 1.5 0 0 0 2 0V7l-2-2" stroke="currentColor" stroke-width="1.65"/></svg>',
+    live: '<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke-linecap="round" shape-rendering="geometricPrecision"><circle cx="10" cy="10" r="2.2" fill="currentColor"/><path d="M6.8 6.8a4.5 4.5 0 0 0 0 6.4M13.2 6.8a4.5 4.5 0 0 1 0 6.4" stroke="currentColor" stroke-width="1.65"/><path d="M4.2 4.2a8.2 8.2 0 0 0 0 11.6M15.8 4.2a8.2 8.2 0 0 1 0 11.6" stroke="currentColor" stroke-width="1.65"/></svg>',
+    att: '<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><rect x="3" y="4" width="14" height="13" rx="2.5" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="1.65"/><path d="M7 2v3M13 2v3M3 8h14" stroke="currentColor" stroke-width="1.65"/><path d="M7 12.5l2 2 4-4" stroke="currentColor" stroke-width="1.75"/></svg>',
+    admin: '<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><path d="M10 2L3.5 4.6v4.6c0 4.2 2.8 7.5 6.5 8.8 3.7-1.3 6.5-4.6 6.5-8.8V4.6L10 2z" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.65"/><path d="M7.2 10.2l2 2 3.8-4" stroke="currentColor" stroke-width="1.75"/></svg>',
+    chek: '<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><path d="M4 3h12v14.5l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3V3z" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="1.65"/><path d="M7 7h6M7 10h6M7 13h4" stroke="currentColor" stroke-width="1.6"/></svg>',
+    driver: '<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="10" cy="10" r="7.5" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="1.65"/><circle cx="10" cy="10" r="2" stroke="currentColor" stroke-width="1.6"/><path d="M10 12v5.5M3 8.5l5 1.3M17 8.5l-5 1.3" stroke="currentColor" stroke-width="1.6"/></svg>',
+    profile: '<svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="10" cy="6.5" r="3" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.65"/><path d="M3.5 17c1.4-2.8 3.8-4 6.5-4s5.1 1.2 6.5 4" fill="currentColor" fill-opacity="0.12" stroke="currentColor" stroke-width="1.65"/></svg>',
+    exit: '<svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><path d="M8 17H4.5A1.5 1.5 0 0 1 3 15.5v-11A1.5 1.5 0 0 1 4.5 3H8M13 14l4-4-4-4M17 10H8" stroke="currentColor" stroke-width="1.75"/></svg>',
+    collapse: '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><path d="M12.5 15l-5-5 5-5" stroke="currentColor" stroke-width="2"/></svg>'
+};
+
+function _vmNavIconKey(el) {
+    const href = (el.getAttribute('href') || '').toLowerCase();
+    const id = (el.id || '').toLowerCase();
+    if (href === '/' || href.endsWith('/index.html')) return 'dash';
+    if (href.includes('fuel') || id.includes('fuel')) return 'fuel';
+    if (href.includes('live') || id.includes('live')) return 'live';
+    if (href.includes('attendance') || href.includes('davomat') || id.includes('davomat')) return 'att';
+    if (href.includes('admin') || id.includes('admin')) return 'admin';
+    if (href.includes('chek') || id.includes('chek')) return 'chek';
+    if (href.includes('driver') || id.includes('driver')) return 'driver';
+    if (href.includes('profile')) return 'profile';
+    return 'dash';
+}
+
+function _vmDecorateNavLink(a) {
+    if (!a || a.nodeType !== 1) return;
+    if (a.classList.contains('nav-logout') || a.classList.contains('nav-user-exit')) return;
+    const isProfilRow = a.classList.contains('nav-profil-row');
+    if (a.querySelector('.nav-ico')) return;
+
+    const iconSvg = VM_NAV_ICONS[_vmNavIconKey(a)] || VM_NAV_ICONS.dash;
+    if (isProfilRow) {
+        const ico = document.createElement('span');
+        ico.className = 'nav-ico';
+        ico.setAttribute('aria-hidden', 'true');
+        ico.innerHTML = iconSvg;
+        a.insertBefore(ico, a.firstChild);
+        a.setAttribute('title', 'Profil');
+        return;
+    }
+    const labelTxt = (a.textContent || '').trim();
+    if (!labelTxt) return;
+    a.setAttribute('title', labelTxt);
+    a.textContent = '';
+    const ico = document.createElement('span');
+    ico.className = 'nav-ico';
+    ico.setAttribute('aria-hidden', 'true');
+    ico.innerHTML = iconSvg;
+    const lbl = document.createElement('span');
+    lbl.className = 'nav-lbl';
+    lbl.textContent = labelTxt;
+    a.appendChild(ico);
+    a.appendChild(lbl);
+}
+
+function vmEnhanceNavRail(user) {
+    try {
+        if (localStorage.getItem('vm_nav_collapsed') === '1' && window.innerWidth > 980) {
+            document.body.classList.add('nav-collapsed');
+        }
+    } catch (e) {}
+
+    document.querySelectorAll('.nav-rail').forEach((rail) => {
+        const brand = rail.querySelector('.nav-brand');
+        if (brand && !brand.querySelector('.nav-collapse-btn')) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'nav-collapse-btn';
+            btn.title = 'Menyuni yigʻish / ochish';
+            btn.setAttribute('aria-label', 'Menyuni yigʻish / ochish');
+            btn.innerHTML = VM_NAV_ICONS.collapse;
+            btn.addEventListener('click', () => {
+                const next = !document.body.classList.contains('nav-collapsed');
+                document.body.classList.toggle('nav-collapsed', next);
+                try { localStorage.setItem('vm_nav_collapsed', next ? '1' : '0'); } catch (e) {}
+            });
+            brand.appendChild(btn);
+        }
+
+        const navLinks = rail.querySelector('.nav-links');
+        if (navLinks) {
+            // Guruh sarlavhalari (Sahifalar bo'limi yo'q sahifalarda)
+            if (!navLinks.closest('.nav-section-pages') && !navLinks.querySelector('.nav-grp-lbl')) {
+                const first = navLinks.querySelector('a.nav-link:not([hidden])');
+                if (first) {
+                    const g1 = document.createElement('div');
+                    g1.className = 'nav-grp-lbl';
+                    g1.textContent = 'Asosiy';
+                    navLinks.insertBefore(g1, first);
+                }
+                const dav = navLinks.querySelector('#nav-davomat, a[href="/attendance"]');
+                if (dav) {
+                    const g2 = document.createElement('div');
+                    g2.className = 'nav-grp-lbl';
+                    g2.textContent = 'Tizim';
+                    navLinks.insertBefore(g2, dav);
+                }
+            }
+            navLinks.querySelectorAll('a.nav-link').forEach(_vmDecorateNavLink);
+            if (!navLinks.dataset.vmObs) {
+                navLinks.dataset.vmObs = '1';
+                const obs = new MutationObserver(() => {
+                    navLinks.querySelectorAll('a.nav-link').forEach(_vmDecorateNavLink);
+                });
+                obs.observe(navLinks, { childList: true, subtree: true });
+            }
+        }
+
+        const foot = rail.querySelector('.nav-foot');
+        if (foot) {
+            foot.querySelectorAll('a.nav-link').forEach(_vmDecorateNavLink);
+            if (user && !foot.querySelector('.nav-user-card')) {
+                const full = String(user.name || user.username || 'Foydalanuvchi').trim();
+                const parts = full.split(/\s+/).filter(Boolean);
+                const ini = (parts.length >= 2 ? (parts[0][0] + parts[1][0]) : full.slice(0, 2)).toUpperCase();
+                const roleMap = {
+                    admin_pro: 'Admin Pro',
+                    admin: 'Admin',
+                    viewer: 'Kuzatuvchi',
+                    driver: 'Haydovchi'
+                };
+                const roleTxt = roleMap[user.role] || user.role || '';
+                const card = document.createElement('div');
+                card.className = 'nav-user-card';
+
+                const ava = document.createElement('div');
+                ava.className = 'nav-user-ava';
+                ava.textContent = ini;
+
+                const meta = document.createElement('div');
+                meta.className = 'nav-user-meta';
+                const nm = document.createElement('div');
+                nm.className = 'nav-user-nm';
+                nm.textContent = full;
+                const rl = document.createElement('div');
+                rl.className = 'nav-user-rl';
+                rl.textContent = roleTxt;
+                meta.appendChild(nm);
+                if (roleTxt) meta.appendChild(rl);
+
+                const exitBtn = document.createElement('button');
+                exitBtn.type = 'button';
+                exitBtn.className = 'nav-user-exit';
+                exitBtn.title = 'Tizimdan chiqish';
+                exitBtn.setAttribute('aria-label', 'Tizimdan chiqish');
+                exitBtn.innerHTML = VM_NAV_ICONS.exit;
+                exitBtn.addEventListener('click', () => vmLogout());
+
+                card.appendChild(ava);
+                card.appendChild(meta);
+                card.appendChild(exitBtn);
+                foot.insertBefore(card, foot.firstChild);
+            }
+        }
+
+        if (!rail.dataset.vmCloseBind) {
+            rail.dataset.vmCloseBind = '1';
+            rail.addEventListener('click', (e) => {
+                if (window.innerWidth <= 980 && e.target.closest('a.nav-link, button.tab')) {
+                    const cb = document.getElementById('nav-open');
+                    if (cb) cb.checked = false;
+                }
+            });
+        }
+    });
+}
+
+if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', () => vmEnhanceNavRail(window.VM_USER || null));
 }
 
 /** Kuzatuvchi: saqlash / o'chirish / stamp tugmalarini yashirish */

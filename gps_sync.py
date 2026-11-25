@@ -7,6 +7,7 @@ import json
 import math
 import os
 import re
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1435,6 +1436,41 @@ class WialonClient:
 
 _LIVE_FLEET_CACHE = {"at": 0.0, "payload": None}
 _LIVE_FLEET_TTL = 4.0  # sekund — har 5s poll Wialon login stormini oldini oladi
+_LIVE_SESSION_LOCK = threading.Lock()
+_LIVE_SESSION = {"client": None, "sig": None}
+
+
+def _snap_live_units_to_roads(units):
+    """Harakatdagi va yo'l chetidagi mashinalarni parallel ravishda OSRM yo'liga yopishtiradi."""
+    targets = []
+    for u in units:
+        pos = u.get("pos")
+        if not pos:
+            continue
+        if u.get("status") == "moving" or (u.get("ageSec") is not None and u["ageSec"] <= 180):
+            targets.append(u)
+    if not targets:
+        return
+    try:
+        import osrm_snap
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _snap_one(u):
+            pos = u.get("pos")
+            if not pos:
+                return
+            lat, lng = pos.get("lat"), pos.get("lng")
+            is_mov = u.get("status") == "moving"
+            crs = pos.get("course") if is_mov else None
+            max_d = 50.0 if is_mov else 24.0
+            slat, slng = osrm_snap.snap_point_to_road(lat, lng, course=crs, max_dist_m=max_d, timeout=1.6)
+            pos["lat"] = slat
+            pos["lng"] = slng
+
+        with ThreadPoolExecutor(max_workers=min(6, len(targets))) as pool:
+            list(pool.map(_snap_one, targets, timeout=2.4))
+    except Exception:
+        pass
 
 
 def fetch_live_fleet(office, base_dir):
@@ -1450,14 +1486,52 @@ def fetch_live_fleet(office, base_dir):
     if not cfg.get("configured"):
         return {"ok": False, "error": "GPS sozlanmagan", "units": [], "configured": False}
 
-    client = WialonClient(
-        host=cfg.get("host") or "http://bms1.gpsavto.uz",
-        user=cfg.get("user") or "",
-        password=cfg.get("password") or "",
-        token=cfg.get("token") or "",
-    )
-    client.login()
-    raw = client.get_units_live()
+    host = cfg.get("host") or "http://bms1.gpsavto.uz"
+    user = cfg.get("user") or ""
+    password = cfg.get("password") or ""
+    token = cfg.get("token") or ""
+    cred_sig = (host, user, password, token)
+
+    with _LIVE_SESSION_LOCK:
+        # Lock kutayotganda boshqa so'rov allaqachon yangilagan bo'lsa keshni qaytarish
+        now_m2 = _time.monotonic()
+        cached2 = _LIVE_FLEET_CACHE.get("payload")
+        if cached2 and (now_m2 - float(_LIVE_FLEET_CACHE.get("at") or 0)) < _LIVE_FLEET_TTL:
+            return cached2
+
+        client = _LIVE_SESSION.get("client")
+        if client is None or _LIVE_SESSION.get("sig") != cred_sig or not getattr(client, "sid", None):
+            client = WialonClient(host=host, user=user, password=password, token=token)
+            try:
+                client.login()
+            except Exception:
+                if cached2 and (now_m2 - float(_LIVE_FLEET_CACHE.get("at") or 0)) < 45.0:
+                    return cached2
+                raise
+            _LIVE_SESSION["client"] = client
+            _LIVE_SESSION["sig"] = cred_sig
+
+        try:
+            raw = client.get_units_live()
+        except Exception as exc:
+            err_s = str(exc)
+            # Sessiya eskirgan (#1, #4) bo'lsa 1 marta qayta login
+            if any(code in err_s for code in ("#1", "#4", "Invalid session")):
+                try:
+                    client = WialonClient(host=host, user=user, password=password, token=token)
+                    client.login()
+                    _LIVE_SESSION["client"] = client
+                    _LIVE_SESSION["sig"] = cred_sig
+                    raw = client.get_units_live()
+                except Exception:
+                    if cached2 and (now_m2 - float(_LIVE_FLEET_CACHE.get("at") or 0)) < 45.0:
+                        return cached2
+                    raise
+            else:
+                if cached2 and (now_m2 - float(_LIVE_FLEET_CACHE.get("at") or 0)) < 45.0:
+                    return cached2
+                raise
+
     drivers = overlay_fuel_driver_names(office, load_fleet_drivers(base_dir))
     by_plate = {compact_car(d.get("car")): d for d in drivers if isinstance(d, dict)}
 
@@ -1496,6 +1570,8 @@ def fetch_live_fleet(office, base_dir):
             "status": status,
             "ageSec": age,
         })
+
+    _snap_live_units_to_roads(units)
 
     seen = {compact_car(x.get("car")) for x in units}
     for d in drivers:

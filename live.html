@@ -4,249 +4,486 @@
 <script src="canonical-url.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>GPS</title>
+<title>Live — VaksinaMed GPS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin>
 <link rel="dns-prefetch" href="https://tile.openstreetmap.org">
 <link rel="dns-prefetch" href="https://server.arcgisonline.com">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<link rel="stylesheet" href="shell.css?v=31"/>
+<link rel="stylesheet" href="shell.css?v=39"/>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 body.app-body {
   background:
-    radial-gradient(900px 420px at 12% -10%, rgba(26,95,180,.12), transparent 55%),
-    radial-gradient(700px 380px at 100% 0%, rgba(26,127,55,.08), transparent 50%),
+    radial-gradient(900px 420px at 12% -10%, rgba(26,95,180,.10), transparent 55%),
+    radial-gradient(700px 380px at 100% 0%, rgba(20,122,50,.06), transparent 50%),
     #e8eef6;
   color: #0b1f3a;
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
 }
+
+/* Desktop topbar shows navigation context without duplicating rail user card */
+@media (min-width: 1025px) {
+  body.live-page .topbar .tb-user-name {
+    display: none;
+  }
+}
+
 .live-main {
   display: grid;
-  grid-template-columns: minmax(300px, 360px) 1fr;
+  grid-template-columns: 356px minmax(0, 1fr);
   gap: 14px;
   padding: 14px;
-  height: calc(100vh - 64px);
-  min-height: 440px;
+  height: calc(100dvh - 64px);
+  min-height: 480px;
 }
-.live-side, .live-map-card {
-  background: rgba(255,255,255,.92);
-  border: 1px solid rgba(197,212,230,.9);
+
+/* Mobile view switcher hidden on desktop */
+.live-mob-bar {
+  display: none;
+}
+
+.live-side,
+.live-map-card {
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid #d5e1ef;
   border-radius: 18px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  box-shadow: 0 10px 30px rgba(11,31,58,.06);
-  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 28px rgba(11, 31, 58, .06);
 }
+
+/* ========== LEFT FLEET PANEL ========== */
 .live-side-head {
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid #e4edf6;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid #e5edf6;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  background: linear-gradient(180deg, #f8fbfe 0%, #fff 100%);
+  gap: 10px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+.live-side-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.live-side-title-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .live-side-head h2 {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: .14em;
+  letter-spacing: .13em;
   text-transform: uppercase;
-  color: #5a7190;
+  color: #526987;
 }
+.live-total-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #edf3fa;
+  border: 1px solid #d4e2f0;
+  font: 700 11px/1 'IBM Plex Mono', monospace;
+  color: #1e3a5f;
+}
+.live-filter-reset {
+  appearance: none;
+  background: #eef4fb;
+  border: 1px solid #c9daee;
+  color: #1a5fb4;
+  font: 600 11px/1 'IBM Plex Sans', sans-serif;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.live-filter-reset:hover {
+  background: #e1ecfa;
+  border-color: #9ec0e6;
+}
+.live-filter-reset[hidden] { display: none; }
+
+/* Interactive KPI filter cards */
 .live-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 7px;
 }
 .live-stat {
+  appearance: none;
+  position: relative;
   border-radius: 12px;
-  padding: 10px 8px;
+  padding: 9px 6px 8px;
   text-align: center;
   border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform .12s, box-shadow .15s, border-color .15s, opacity .15s, background .15s;
+  font-family: inherit;
 }
+.live-stat:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(11, 31, 58, .08);
+}
+.live-stat:active { transform: translateY(0); }
 .live-stat.is-move {
-  background: linear-gradient(160deg, #e8f7ee, #f4fbf6);
-  border-color: #c6e8d2;
+  background: linear-gradient(160deg, #e9f8ef 0%, #f5fcf7 100%);
+  border-color: #c5e8d1;
 }
 .live-stat.is-stop {
-  background: linear-gradient(160deg, #e8f0fa, #f5f8fc);
-  border-color: #c5d8ee;
+  background: linear-gradient(160deg, #ebf2fc 0%, #f7faff 100%);
+  border-color: #c7dbf1;
 }
 .live-stat.is-off {
-  background: #f3f6f9;
-  border-color: #e0e7ef;
+  background: linear-gradient(160deg, #f3f6fa 0%, #fafcfe 100%);
+  border-color: #dce4ee;
 }
-.live-stat i {
-  display: block;
-  font-style: normal;
-  font-size: 9px;
-  color: #5a7190;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  margin-bottom: 4px;
-  font-weight: 600;
+.live-stat.is-active.is-move {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, .18), 0 4px 12px rgba(22, 163, 74, .12);
 }
-.live-stat b { font-size: 18px; font-family: 'IBM Plex Mono', monospace; }
-.live-stat.is-move b { color: #147a32; }
-.live-stat.is-stop b { color: #1a5fb4; }
-.live-stat.is-off b { color: #7a8fa8; }
-.live-list {
-  overflow: auto;
-  flex: 1;
-  padding: 8px;
+.live-stat.is-active.is-stop {
+  border-color: #1a5fb4;
+  box-shadow: 0 0 0 2px rgba(26, 95, 180, .18), 0 4px 12px rgba(26, 95, 180, .12);
 }
-.live-row {
-  display: grid;
-  grid-template-columns: 40px 1fr auto;
-  gap: 10px;
+.live-stat.is-active.is-off {
+  border-color: #64748b;
+  box-shadow: 0 0 0 2px rgba(100, 116, 139, .18), 0 4px 12px rgba(100, 116, 139, .1);
+}
+.live-stats.has-filter .live-stat:not(.is-active) {
+  opacity: .56;
+}
+.live-stats.has-filter .live-stat:not(.is-active):hover {
+  opacity: .9;
+}
+.live-stat-lbl {
+  display: inline-flex;
   align-items: center;
-  padding: 11px 12px;
-  border-radius: 14px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: background .15s, border-color .15s, transform .15s;
+  justify-content: center;
+  gap: 5px;
+  font-size: 9.5px;
+  color: #526987;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 4px;
+  font-weight: 700;
 }
-.live-row:hover { background: #f3f7fb; }
-.live-row.on {
-  background: linear-gradient(120deg, #eaf2fb, #f7faff);
-  border-color: #b7cce4;
-  box-shadow: inset 0 0 0 1px rgba(26,95,180,.06);
+.live-stat-lbl i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
 }
-.live-row.is-moving {
-  background: linear-gradient(120deg, #eefaf2, #f8fcf9);
+.live-stat.is-move .live-stat-lbl i { background: #16a34a; }
+.live-stat.is-stop .live-stat-lbl i { background: #1a5fb4; }
+.live-stat.is-off .live-stat-lbl i { background: #94a3b8; }
+.live-stat b {
+  display: block;
+  font-size: 19px;
+  line-height: 1.05;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
-.live-row.is-moving.on {
-  border-color: #9fd4b0;
-}
-.live-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
+.live-stat.is-move b { color: #15803d; }
+.live-stat.is-stop b { color: #1a5fb4; }
+.live-stat.is-off b { color: #64748b; }
+
+/* Search */
+.live-search-wrap {
   position: relative;
 }
-.live-avatar svg { width: 22px; height: 34px; display: block; }
-.live-avatar .live-car-img.list {
-  width: 24px;
-  height: 36px;
-  object-fit: contain;
+.live-search-wrap .live-search-ico {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: #6b829e;
+  pointer-events: none;
+}
+.live-search {
+  width: 100%;
+  height: 38px;
+  border: 1px solid #cbd9e8;
+  border-radius: 11px;
+  padding: 0 34px 0 34px;
+  font: 13.5px/1 'IBM Plex Sans', sans-serif;
+  background: #ffffff;
+  color: #0b1f3a;
+  transition: border-color .15s, box-shadow .15s;
+}
+.live-search::placeholder { color: #8da2ba; }
+.live-search:focus {
+  outline: none;
+  border-color: #1a5fb4;
+  box-shadow: 0 0 0 3px rgba(26, 95, 180, .14);
+}
+.live-search::-webkit-search-cancel-button { display: none; }
+.live-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: #eef4fb;
+  color: #4a627e;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.live-search-clear:hover {
+  background: #dce8f6;
+  color: #0b1f3a;
+}
+.live-search-clear[hidden] { display: none; }
+
+/* Fleet Vehicle List */
+.live-list {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.live-list::-webkit-scrollbar { width: 5px; }
+.live-list::-webkit-scrollbar-track { background: transparent; }
+.live-list::-webkit-scrollbar-thumb {
+  background: #cbd9e8;
+  border-radius: 999px;
+}
+.live-list::-webkit-scrollbar-thumb:hover { background: #9db6d2; }
+
+.live-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 11px;
+  border-radius: 13px;
+  cursor: pointer;
+  border: 1px solid #eef3f9;
+  background: #ffffff;
+  transition: background .14s, border-color .14s, box-shadow .14s, transform .12s;
+}
+.live-row:hover {
+  background: #f6f9fd;
+  border-color: #d3e1f0;
+}
+.live-row.is-moving {
+  background: linear-gradient(115deg, #f3fcf6 0%, #ffffff 70%);
+  border-color: #d5efe0;
+}
+.live-row.is-moving:hover {
+  background: linear-gradient(115deg, #ebf9f0 0%, #f9fdfb 75%);
+  border-color: #aedec0;
+}
+.live-row.is-offline {
+  opacity: .84;
+}
+.live-row.on {
+  background: linear-gradient(115deg, #ebf3fd 0%, #f8fbff 85%) !important;
+  border-color: #7eb0e6 !important;
+  box-shadow: inset 3px 0 0 #1a5fb4, 0 4px 12px rgba(26, 95, 180, .10);
+  opacity: 1;
+}
+.live-row.is-moving.on {
+  border-color: #22a04a !important;
+  box-shadow: inset 3px 0 0 #16a34a, 0 4px 12px rgba(22, 163, 74, .12);
+}
+
+.live-avatar {
+  position: relative;
+  width: 52px;
+  height: 38px;
+  padding: 3px 4px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  overflow: visible;
 }
 .live-avatar.move {
-  background: linear-gradient(160deg, #e8f9ee, #f4fdf7);
-  box-shadow: 0 0 0 1px #b6e5c4, 0 4px 12px rgba(20,122,50,.12);
+  background: linear-gradient(160deg, #e7f8ee, #f8fdf9);
+  border: 1px solid #bce8ce;
 }
 .live-avatar.stop {
-  background: linear-gradient(160deg, #eaf2fb, #f6f9fc);
-  box-shadow: 0 0 0 1px #c5d8ee, 0 4px 12px rgba(26,95,180,.1);
+  background: linear-gradient(160deg, #ebf3fd, #f8fbff);
+  border: 1px solid #cadcf2;
 }
 .live-avatar.off {
-  background: #f1f4f8;
-  box-shadow: 0 0 0 1px #e0e7ef;
+  background: #f2f5f9;
+  border: 1px solid #dde5ef;
 }
-.live-avatar.move::after {
-  content: "";
+.live-avatar .live-list-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 2px 3px rgba(11, 31, 58, .18));
+}
+.live-avatar.off .live-list-photo {
+  filter: grayscale(.85) opacity(.72);
+}
+.live-avatar-dot {
   position: absolute;
-  inset: -3px;
-  border-radius: 14px;
-  border: 2px solid rgba(34,160,74,.35);
-  animation: livePulseRing 1.6s ease-out infinite;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(11, 31, 58, .22);
+}
+.live-avatar.move .live-avatar-dot {
+  background: #16a34a;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, .22);
+}
+.live-avatar.stop .live-avatar-dot { background: #1a5fb4; }
+.live-avatar.off .live-avatar-dot { background: #94a3b8; }
+
+.live-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.live-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .live-car {
   font-weight: 700;
   font-size: 13px;
+  line-height: 1.2;
+  color: #0b1f3a;
   font-family: 'IBM Plex Mono', monospace;
-}
-.live-drv {
-  font-size: 12px;
-  color: #5a7190;
-  margin-top: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  letter-spacing: -.01em;
+  white-space: nowrap;
 }
 .live-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
-  padding: 2px 7px;
+  padding: 2px 6px;
   border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.live-badge.move { background: #dff3e6; color: #147a32; }
-.live-badge.stop { background: #e3eef9; color: #1a5fb4; }
-.live-badge.off { background: #eef2f6; color: #6b7f96; }
+.live-badge.move { background: #dcf5e6; color: #15803d; }
+.live-badge.stop { background: #e3eefb; color: #1a5fb4; }
+.live-badge.off { background: #eef2f6; color: #64748b; }
 .live-badge.move .pulse {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #22a04a;
-  animation: liveBlink 1s ease-in-out infinite;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #16a34a;
+  animation: liveBlink 1.1s ease-in-out infinite;
 }
+.live-drv {
+  font-size: 12px;
+  line-height: 1.25;
+  color: #4f6682;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .live-meta {
   text-align: right;
-  font-size: 11px;
-  color: #5a7190;
-  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 .live-meta .spd {
-  font-weight: 700;
-  color: #0b1f3a;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334e6f;
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: #f1f5f9;
 }
-.live-meta .spd.hot { color: #147a32; }
+.live-meta .spd small {
+  font-size: 9.5px;
+  font-weight: 600;
+  opacity: .78;
+}
+.live-meta .spd.hot {
+  background: #dcf5e6;
+  color: #15803d;
+}
+.live-meta .spd.off {
+  background: transparent;
+  color: #94a3b8;
+  padding-right: 0;
+}
+.live-meta .age {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #7c92ac;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ========== MAP CARD & HEADER ========== */
 .live-map-head {
-  padding: 12px 16px;
+  padding: 9px 14px;
   border-bottom: 1px solid #e4edf6;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  background: linear-gradient(180deg, #f7fafd 0%, #ffffff 100%);
+  gap: 8px;
+  flex-wrap: nowrap;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
 }
 .live-map-head-left {
   display: flex;
   align-items: center;
-  gap: 14px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-.live-map-head h2 {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: #5a7190;
-  white-space: nowrap;
-}
-.live-map-actions {
-  display: flex;
-  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  margin-left: auto;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .live-status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 12px 0 10px;
+  gap: 7px;
+  height: 32px;
+  padding: 0 11px 0 9px;
   border-radius: 999px;
-  background: #f0f5fa;
+  background: #f2f7fc;
   border: 1px solid #d7e3ef;
-  color: #3d5674;
-  font: 500 12px/1 'IBM Plex Mono', monospace;
+  color: #2f4968;
+  font: 500 11.5px/1 'IBM Plex Mono', monospace;
   white-space: nowrap;
-  max-width: min(420px, 52vw);
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -254,50 +491,95 @@ body.app-body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #22a04a;
-  box-shadow: 0 0 0 3px rgba(34,160,74,.2);
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, .2);
   flex-shrink: 0;
-  animation: liveBlink 1.4s ease-in-out infinite;
+  animation: liveBlink 1.5s ease-in-out infinite;
 }
+.live-status-pill.is-err .dot {
+  background: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, .2);
+  animation: none;
+}
+
 .live-legend {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   align-items: center;
 }
 .live-legend span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
   border-radius: 999px;
-  background: #fff;
-  border: 1px solid #e0eaf3;
+  background: #ffffff;
+  border: 1px solid #e2ebf4;
   font-size: 11px;
   font-weight: 600;
   color: #4a627e;
 }
 .live-legend i {
-  width: 8px; height: 8px; border-radius: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   display: inline-block;
 }
-.live-legend .lg-move { background: #22a04a; box-shadow: 0 0 0 3px rgba(34,160,74,.2); }
+.live-legend .lg-move { background: #16a34a; box-shadow: 0 0 0 2px rgba(22, 163, 74, .2); }
 .live-legend .lg-stop { background: #1a5fb4; }
-.live-legend .lg-off { background: #a8bdd4; }
+.live-legend .lg-off { background: #94a3b8; }
 
-/* Live toolbar buttons — professional, not bare outline */
+.live-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Segmented layer switch (Xarita / Sun'iy) */
+.live-layer-seg {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 10px;
+  background: #eef3f9;
+  border: 1px solid #d5e1ee;
+  gap: 2px;
+}
+.live-layer-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #4b6482;
+  font: 600 11.5px/1 'IBM Plex Sans', sans-serif;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.live-layer-btn:hover { color: #0b1f3a; }
+.live-layer-btn.on {
+  background: #ffffff;
+  color: #0b1f3a;
+  box-shadow: 0 1px 3px rgba(11, 31, 58, .12);
+}
+
 .live-btn {
   appearance: none;
   -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 14px;
-  border-radius: 11px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 10px;
   border: 1px solid transparent;
-  font: 600 12.5px/1 'IBM Plex Sans', sans-serif;
+  font: 600 12px/1 'IBM Plex Sans', sans-serif;
   letter-spacing: .01em;
   cursor: pointer;
   transition: background .15s, border-color .15s, box-shadow .15s, transform .12s, color .15s;
@@ -305,88 +587,62 @@ body.app-body {
   user-select: none;
 }
 .live-btn svg {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
   flex-shrink: 0;
 }
 .live-btn:active { transform: translateY(1px); }
 .live-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(26,95,180,.22);
+  box-shadow: 0 0 0 3px rgba(26, 95, 180, .22);
 }
 .live-btn-ghost {
-  background: #fff;
-  border-color: #c9d8e8;
+  background: #ffffff;
+  border-color: #cbd9e8;
   color: #1a3a5c;
-  box-shadow: 0 1px 2px rgba(11,31,58,.04);
+  box-shadow: 0 1px 2px rgba(11, 31, 58, .04);
 }
 .live-btn-ghost:hover {
-  background: #f4f8fc;
-  border-color: #9eb6d0;
+  background: #f3f7fc;
+  border-color: #9cb6d2;
   color: #0b1f3a;
 }
 .live-btn-primary {
   background: linear-gradient(180deg, #2b74cf 0%, #1a5fb4 100%);
   border-color: #15539e;
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(26,95,180,.28);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(26, 95, 180, .26);
 }
 .live-btn-primary:hover {
   background: linear-gradient(180deg, #3480db 0%, #1f6ac4 100%);
-  box-shadow: 0 6px 16px rgba(26,95,180,.34);
-}
-.live-btn-primary:active {
-  background: linear-gradient(180deg, #1a5fb4 0%, #154f96 100%);
+  box-shadow: 0 6px 16px rgba(26, 95, 180, .34);
 }
 .live-btn.is-busy {
   pointer-events: none;
-  opacity: .72;
+  opacity: .75;
 }
 .live-btn.is-busy svg {
   animation: liveSpin .8s linear infinite;
 }
-@keyframes liveSpin {
-  to { transform: rotate(360deg); }
-}
+@keyframes liveSpin { to { transform: rotate(360deg); } }
+.live-btn-txt-short { display: none; }
 
-.live-search-wrap {
+/* Map viewport container */
+.live-map-stage {
   position: relative;
+  flex: 1;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
 }
-.live-search-wrap svg {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 15px;
-  height: 15px;
-  color: #7a92ad;
-  pointer-events: none;
-}
-.live-search {
-  width: 100%;
-  height: 40px;
-  border: 1px solid #c5d4e6;
-  border-radius: 12px;
-  padding: 0 14px 0 36px;
-  font: 14px/1 'IBM Plex Sans', sans-serif;
-  background: #fff;
-  color: #0b1f3a;
-}
-.live-search::placeholder { color: #8aa0b8; }
-.live-search:focus {
-  outline: none;
-  border-color: #1a5fb4;
-  box-shadow: 0 0 0 3px rgba(26,95,180,.14);
-}
-
 #live-map {
   flex: 1;
-  min-height: 280px;
-  background: #d5e0ec;
+  min-height: 260px;
+  background: #dbe5f0;
 }
 #live-map .leaflet-control-zoom {
-  border: none !important;
-  box-shadow: 0 8px 22px rgba(11,31,58,.14) !important;
+  border: 1px solid #cbd9e8 !important;
+  box-shadow: 0 8px 22px rgba(11, 31, 58, .12) !important;
   border-radius: 12px !important;
   overflow: hidden;
 }
@@ -397,284 +653,553 @@ body.app-body {
   color: #1a3a5c !important;
   border-bottom-color: #e4edf6 !important;
   font-size: 16px !important;
+  font-weight: 600 !important;
 }
 #live-map .leaflet-control-zoom a:hover {
   background: #f3f7fb !important;
   color: #1a5fb4 !important;
 }
+#live-map .vm-gz-toggle {
+  border: 1px solid #cbd9e8 !important;
+  border-radius: 10px !important;
+  padding: 6px 11px !important;
+  box-shadow: 0 6px 18px rgba(11, 31, 58, .12) !important;
+  font-size: 11.5px !important;
+}
+
+/* ========== MAP MARKERS & CLUSTERS ========== */
 .live-pin,
 .live-arrow-pin,
+.live-cluster-pin,
 .leaflet-div-icon.live-pin,
 .leaflet-div-icon.live-arrow-pin,
-.leaflet-marker-icon.live-pin,
-.leaflet-marker-icon.live-arrow-pin {
+.leaflet-div-icon.live-cluster-pin {
   background: transparent !important;
-  background-color: transparent !important;
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
 }
-.live-marker,
-.live-unit,
-.live-unit-img {
-  background: transparent !important;
-  background-color: transparent !important;
+
+/* Clean cluster pill */
+.live-cluster {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .96);
+  border: 2.5px solid #1a5fb4;
+  box-shadow: 0 8px 22px rgba(11, 31, 58, .22), 0 0 0 4px rgba(26, 95, 180, .14);
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s;
 }
+.live-cluster:hover {
+  transform: scale(1.08);
+  box-shadow: 0 10px 26px rgba(11, 31, 58, .28), 0 0 0 6px rgba(26, 95, 180, .18);
+}
+.live-cluster.has-move {
+  border-color: #16a34a;
+  box-shadow: 0 8px 22px rgba(11, 31, 58, .22), 0 0 0 4px rgba(22, 163, 74, .16);
+}
+.live-cluster-n {
+  font: 700 14px/1 'IBM Plex Mono', monospace;
+  color: #0b1f3a;
+}
+.live-cluster-move {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #16a34a;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  font: 700 10px/15px 'IBM Plex Mono', monospace;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, .38);
+}
+
+/* Vehicle marker on map — exact (22,22) center anchor, plate tag floats cleanly below */
 .live-marker {
   position: relative;
-  width: 72px;
-  height: 78px;
+  width: 44px;
+  height: 44px;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
   pointer-events: none;
-  background: transparent !important;
-  box-shadow: none !important;
 }
 .live-unit {
   position: relative;
-  width: 46px;
-  height: 60px;
-  display: grid;
-  place-items: center;
+  width: 24px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transform-origin: 50% 50%;
-  transition: transform .35s linear;
-  /* faqat soyasi — quti/fon yo‘q */
-  filter: drop-shadow(0 1px 2px rgba(11,31,58,.45)) drop-shadow(0 3px 8px rgba(11,31,58,.22));
-  background: transparent !important;
+  will-change: transform;
+  pointer-events: auto;
+  cursor: pointer;
 }
-.live-unit-img {
-  width: 42px;
-  height: 58px;
+.live-top-img {
+  width: 22px !important;
+  height: 42px !important;
+  max-width: none !important;
+  max-height: none !important;
   object-fit: contain;
   display: block;
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
-  background: transparent !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  /* PNG shaffof; qora fon qolsa ham aralashtirib yashirish */
-  mix-blend-mode: normal;
-  image-rendering: -webkit-optimize-contrast;
-  image-rendering: crisp-edges;
+  image-rendering: auto;
 }
-.live-unit-img.offline { filter: grayscale(.85) brightness(1.05); opacity: .88; }
-.live-unit-img.moving { filter: saturate(1.08) contrast(1.02); }
-.live-unit-img.stopped { filter: none; }
-.live-head {
+.live-marker.model-isuzu .live-unit,
+.live-marker.model-labo .live-unit,
+.live-marker.model-changan .live-unit,
+.live-marker.model-damas .live-unit {
+  width: 24px;
+  height: 44px;
+}
+.live-marker.model-isuzu .live-top-img,
+.live-marker.model-labo .live-top-img,
+.live-marker.model-changan .live-top-img,
+.live-marker.model-damas .live-top-img {
+  width: 22px !important;
+  height: 42px !important;
+}
+.live-marker.model-cobalt .live-unit,
+.live-marker.model-lacetti .live-unit,
+.live-marker.model-onix .live-unit {
+  width: 22px;
+  height: 38px;
+}
+.live-marker.model-cobalt .live-top-img,
+.live-marker.model-lacetti .live-top-img,
+.live-marker.model-onix .live-top-img {
+  width: 20px !important;
+  height: 36px !important;
+}
+
+/* Even more compact at overview / regional zoom */
+#live-map.live-zoom-far .live-marker { width: 44px; height: 44px; }
+#live-map.live-zoom-far .live-unit { width: 18px !important; height: 34px !important; }
+#live-map.live-zoom-far .live-top-img { width: 17px !important; height: 32px !important; }
+#live-map.live-zoom-far .live-marker.model-cobalt .live-unit,
+#live-map.live-zoom-far .live-marker.model-lacetti .live-unit,
+#live-map.live-zoom-far .live-marker.model-onix .live-unit {
+  width: 17px !important;
+  height: 30px !important;
+}
+#live-map.live-zoom-far .live-marker.model-cobalt .live-top-img,
+#live-map.live-zoom-far .live-marker.model-lacetti .live-top-img,
+#live-map.live-zoom-far .live-marker.model-onix .live-top-img {
+  width: 16px !important;
+  height: 28px !important;
+}
+
+.live-marker.moving .live-unit::before {
+  content: "";
   position: absolute;
   left: 50%;
-  top: -6px;
-  width: 14px;
-  height: 14px;
-  margin-left: -7px;
-  z-index: 3;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,.35));
-  animation: liveHeadPulse 1.1s ease-in-out infinite;
+  top: -13px;
+  width: 20px;
+  height: 16px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at 50% 100%, rgba(254, 240, 138, .55) 0%, rgba(254, 240, 138, .18) 52%, transparent 78%);
+  pointer-events: none;
+  z-index: -1;
 }
-.live-head-svg { width: 16px; height: 16px; display: block; }
-.live-plate-txt {
-  margin-top: 1px;
-  background: none !important;
-  border: none !important;
-  box-shadow: none !important;
-  color: #d4182a;
-  font: 800 11px/1.1 'IBM Plex Mono', monospace;
-  letter-spacing: .02em;
-  white-space: nowrap;
-  -webkit-text-stroke: 3px #fff;
-  paint-order: stroke fill;
-  text-shadow: 0 1px 2px rgba(0,0,0,.25);
-  z-index: 4;
-}
-.live-marker.moving .live-plate-txt { color: #c41224; }
-.live-marker.offline .live-plate-txt { color: #6b7280; -webkit-text-stroke: 2.5px #fff; }
-.live-marker .live-ring,
-.live-marker .live-ring2,
-.live-car-icon,
-.live-car-img,
-.live-marker .live-plate { display: none !important; }
-@keyframes liveHeadPulse {
-  0%, 100% { transform: translateY(0); opacity: 1; }
-  50% { transform: translateY(-2px); opacity: .85; }
-}
-.live-avatar .live-unit-img {
-  width: 30px;
-  height: 30px;
-  object-fit: contain;
-}
-.live-avatar {
-  background: transparent !important;
-  box-shadow: none !important;
-  overflow: visible;
-}
-.live-avatar.move,
-.live-avatar.stop,
-.live-avatar.off {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-.live-spd-chip {
-  margin-top: 2px;
-  font: 800 10px/1 'IBM Plex Mono', monospace;
-  color: #0f8a38;
-  background: rgba(255,255,255,.94);
-  border: 1px solid rgba(159,212,176,.85);
-  border-radius: 999px;
-  padding: 2px 7px;
-  white-space: nowrap;
-  box-shadow: 0 1px 4px rgba(11,31,58,.12);
-  z-index: 5;
-}
-/* holat — yumshoq yashil nur (quti emas) */
 .live-marker.moving .live-unit {
-  filter: drop-shadow(0 0 5px rgba(34,197,94,.5)) drop-shadow(0 1px 2px rgba(11,31,58,.4)) drop-shadow(0 3px 8px rgba(11,31,58,.2));
+  filter: drop-shadow(0 5px 10px rgba(11, 31, 58, .36)) drop-shadow(0 2px 3px rgba(0, 0, 0, .20));
 }
 .live-marker.stopped .live-unit {
-  filter: drop-shadow(0 0 4px rgba(26,95,180,.35)) drop-shadow(0 1px 2px rgba(11,31,58,.4)) drop-shadow(0 3px 8px rgba(11,31,58,.2));
+  filter: drop-shadow(0 4px 8px rgba(11, 31, 58, .30)) drop-shadow(0 1px 2px rgba(0, 0, 0, .18));
 }
 .live-marker.offline .live-unit {
-  filter: drop-shadow(0 1px 2px rgba(11,31,58,.3)) grayscale(.2);
+  filter: drop-shadow(0 2px 5px rgba(11, 31, 58, .22)) grayscale(.75) opacity(.82);
 }
-.live-marker {
-  width: 78px;
-  height: 92px;
+.live-marker.is-selected .live-unit {
+  filter: drop-shadow(0 8px 16px rgba(11, 31, 58, .44)) drop-shadow(0 0 8px rgba(26, 95, 180, .32));
 }
+
+/* Unified crisp map badge anchored below centered vehicle sprite */
+.live-map-tag {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid #cbd9e8;
+  box-shadow: 0 2px 8px rgba(11, 31, 58, .18);
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 5;
+}
+.live-map-tag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.live-marker.moving .live-map-tag { border-color: #86efac; }
+.live-marker.moving .live-map-tag-dot { background: #16a34a; }
+.live-marker.stopped .live-map-tag { border-color: #bfdbfe; }
+.live-marker.stopped .live-map-tag-dot { background: #1a5fb4; }
+.live-marker.offline .live-map-tag { border-color: #e2e8f0; opacity: .9; }
+.live-marker.offline .live-map-tag-dot { background: #94a3b8; }
+.live-marker.is-selected .live-map-tag {
+  background: #0b1f3a;
+  border-color: #0b1f3a;
+  box-shadow: 0 4px 14px rgba(11, 31, 58, .35);
+}
+.live-map-plate {
+  font: 700 10.5px/1.15 'IBM Plex Mono', monospace;
+  color: #0b1f3a;
+  letter-spacing: .01em;
+}
+.live-marker.is-selected .live-map-plate { color: #ffffff; }
+.live-map-spd {
+  font: 700 10px/1.1 'IBM Plex Mono', monospace;
+  color: #15803d;
+  background: #dcf5e6;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.live-marker.is-selected .live-map-spd {
+  background: #16a34a;
+  color: #ffffff;
+}
+
 .live-dir-arrow {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   display: grid;
   place-items: center;
-  filter: drop-shadow(0 1px 2px rgba(0,80,20,.4));
+  filter: drop-shadow(0 1px 2px rgba(0, 80, 20, .35));
 }
 .live-dir-arrow svg { width: 14px; height: 14px; display: block; }
+
+/* Dark sleek Leaflet tooltip for hover */
+#live-map .live-tip {
+  background: rgba(11, 31, 58, .94);
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 10px;
+  color: #ffffff;
+  font: 500 12px/1.35 'IBM Plex Sans', sans-serif;
+  padding: 7px 10px;
+  box-shadow: 0 10px 24px rgba(11, 31, 58, .28);
+}
+#live-map .live-tip::before { display: none; }
+
+/* ========== FLOATING TELEMETRY INSPECTOR ========== */
+.live-inspector {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 820;
+  width: min(508px, calc(100% - 24px));
+  background: rgba(255, 255, 255, .97);
+  border: 1px solid #c7d8ea;
+  border-radius: 15px;
+  padding: 10px 12px;
+  box-shadow: 0 14px 34px rgba(11, 31, 58, .20);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: liveInsIn .16s ease-out;
+}
+.live-inspector[hidden] { display: none; }
+@keyframes liveInsIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.live-ins-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.live-ins-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.live-ins-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.live-ins-plate {
+  font: 700 14px/1.15 'IBM Plex Mono', monospace;
+  color: #0b1f3a;
+}
+.live-ins-drv {
+  font-size: 12.5px;
+  color: #4f6682;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-ins-close {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #dce6f2;
+  background: #f5f8fc;
+  color: #4a627e;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.live-ins-close:hover {
+  background: #e9f0f8;
+  color: #0b1f3a;
+}
+
+.live-ins-grid {
+  display: grid;
+  grid-template-columns: 0.72fr 0.95fr 1.25fr 1.18fr;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  background: #f4f8fd;
+  border: 1px solid #e2ecf6;
+}
+.live-ins-cell span {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #6b829e;
+  margin-bottom: 2px;
+}
+.live-ins-cell b {
+  display: block;
+  font: 700 12.5px/1.2 'IBM Plex Mono', monospace;
+  color: #0b1f3a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-ins-cell b.hot { color: #15803d; }
+
+.live-ins-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.live-ins-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 9px;
+  border: 1px solid #cbd9e8;
+  background: #ffffff;
+  color: #1a3a5c;
+  font: 600 12px/1 'IBM Plex Sans', sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .14s, border-color .14s, color .14s;
+}
+.live-ins-btn:hover {
+  background: #f2f7fc;
+  border-color: #9bb6d2;
+}
+.live-ins-btn.on {
+  background: #1a5fb4;
+  border-color: #15539e;
+  color: #ffffff;
+}
+.live-ins-btn-link {
+  margin-left: auto;
+  background: #eef4fb;
+  border-color: #c5d9ef;
+  color: #1a5fb4;
+}
+.live-ins-btn-link:hover {
+  background: #e1ecfa;
+}
+
 .live-empty {
   padding: 28px 16px;
   text-align: center;
   color: #5a7190;
   font-size: 13px;
 }
-@keyframes livePulseRing {
-  0% { transform: scale(.55); opacity: .95; }
-  100% { transform: scale(1.55); opacity: 0; }
-}
-@keyframes livePlateGlow {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(34,200,90,.3), 0 2px 8px rgba(11,31,58,.3); }
-  50% { box-shadow: 0 0 0 4px rgba(34,200,90,.55), 0 2px 10px rgba(20,150,60,.4); }
+
+@keyframes liveHeadPulse {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(-2px); opacity: .82; }
 }
 @keyframes liveBlink {
   0%, 100% { opacity: 1; }
   50% { opacity: .35; }
 }
+
+/* ========== RESPONSIVE BREAKPOINTS ========== */
+@media (max-width: 1540px) {
+  .live-legend { display: none; }
+}
+
+@media (max-width: 1180px) {
+  .live-main {
+    grid-template-columns: 316px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+}
+
 @media (max-width: 900px) {
-  /* Live: viewport ichida — xarita + ro‘yxat, siqilmasin */
   body.app-body:has(.live-main) .app-main {
     padding-bottom: 0 !important;
     overflow: hidden !important;
     display: flex;
     flex-direction: column;
   }
-  body.app-body:has(.live-main) .topbar .top-sub {
-    display: none;
+  body.app-body:has(.live-main) .topbar .top-sub { display: none; }
+  body.live-page .topbar > div:has(.top-title) {
+    min-width: 0;
+    flex: 1 1 auto;
   }
+  body.live-page .topbar .top-title {
+    font-size: 15.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  body.live-page .topbar .acts {
+    flex-shrink: 0;
+    min-width: 0;
+  }
+
   .live-main {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    grid-template-columns: none;
     height: auto;
-    max-height: none;
     padding: 8px;
     gap: 8px;
     overflow: hidden;
   }
+
+  .live-mob-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 4px;
+    background: rgba(255, 255, 255, .94);
+    border: 1px solid #d5e1ef;
+    border-radius: 12px;
+    flex-shrink: 0;
+  }
+  .live-mob-btn {
+    appearance: none;
+    height: 32px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: #4b6482;
+    font: 600 12px/1 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+  }
+  .live-mob-btn.on {
+    background: #1a5fb4;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(26, 95, 180, .24);
+  }
+
   .live-map-card {
-    order: -1;
-    flex: 1.4 1 0;
+    order: 1;
+    flex: 1.35 1 0;
     min-height: 0;
-    border-radius: 16px;
+    border-radius: 15px;
   }
   .live-side {
-    order: 1;
-    flex: 0.95 1 0;
-    max-height: none;
+    order: 2;
+    flex: 1 1 0;
     min-height: 0;
-    border-radius: 16px;
+    border-radius: 15px;
   }
+  .live-main[data-mob-view="map"] .live-side { display: none; }
+  .live-main[data-mob-view="map"] .live-map-card { flex: 1 1 auto; }
+  .live-main[data-mob-view="list"] .live-map-card { display: none; }
+  .live-main[data-mob-view="list"] .live-side { flex: 1 1 auto; }
+
   .live-side-head {
-    padding: 10px 12px 10px;
+    padding: 10px 10px 8px;
     gap: 8px;
   }
-  .live-stats { gap: 6px; }
-  .live-stat {
-    padding: 8px 4px;
-    border-radius: 10px;
-  }
-  .live-stat i { font-size: 8px; margin-bottom: 2px; letter-spacing: .06em; }
+  .live-stat { padding: 7px 4px; border-radius: 10px; }
   .live-stat b { font-size: 16px; }
-  .live-search-wrap { border-radius: 12px; }
-  .live-search { font-size: 16px; height: 40px; }
+  .live-search { font-size: 16px; height: 38px; }
   .live-list { padding: 6px; }
-  .live-row {
-    padding: 9px 10px;
-    gap: 8px;
-    border-radius: 12px;
-  }
+  .live-row { padding: 8px 9px; gap: 8px; }
+
   .live-map-head {
     padding: 8px 10px;
-    gap: 8px;
-    align-items: stretch;
-    flex-direction: column;
+    gap: 6px;
+    flex-wrap: wrap;
   }
-  .live-map-head-left {
-    width: 100%;
-    justify-content: space-between;
+  .live-status-pill {
+    flex: 1 1 100%;
+    max-width: none;
+    height: 30px;
+    font-size: 11px;
   }
   .live-map-actions {
     width: 100%;
     margin-left: 0;
-    gap: 6px;
-    flex-wrap: nowrap;
+    justify-content: space-between;
   }
-  .live-status-pill {
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: none;
-    height: 34px;
-    font-size: 11px;
-    padding: 0 10px 0 8px;
-  }
-  .live-legend { display: none; }
   .live-btn {
-    height: 34px;
+    height: 32px;
     padding: 0 10px;
     font-size: 12px;
-    border-radius: 10px;
+    gap: 5px;
+  }
+  .live-btn-txt-long { display: none; }
+  .live-btn-txt-short { display: inline; }
+
+  .live-inspector {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    padding: 10px 11px;
+    gap: 8px;
+  }
+  .live-ins-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
-  }
-  .live-btn-ghost .live-btn-txt-long { display: none; }
-  .live-btn-ghost .live-btn-txt-short { display: inline; }
-  .live-btn-primary .live-btn-txt-long { display: none; }
-  .live-btn-primary .live-btn-txt-short { display: inline; }
-  #live-map {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: auto;
-  }
-  #live-map .leaflet-control-zoom a {
-    width: 36px !important;
-    height: 36px !important;
-    line-height: 36px !important;
+    padding: 7px 8px;
   }
 }
-.live-btn-txt-short { display: none; }
-
 </style>
 </head>
-<body class="app-body">
+<body class="app-body live-page">
 <input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
 <label for="nav-open" class="nav-scrim" aria-hidden="true"></label>
 
@@ -688,47 +1213,95 @@ body.app-body {
       </div>
     </div>
     <nav class="nav-links">
-      <a class="nav-link" href="/">Dashboard</a>
-      <a class="nav-link" href="/fuel">Boshqaruv</a>
-      <a class="nav-link on" href="/live" aria-current="page">Live</a>
-      <a class="nav-link" href="/attendance" id="nav-davomat">Davomat</a>
-      <a class="nav-link staff-only" href="/admin" id="btn-admin-panel" hidden>Panel</a>
-      <a class="nav-link staff-only" href="/chek" id="nav-chek" hidden>Chek</a>
+      <a class="nav-link" href="/">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>
+        Dashboard
+      </a>
+      <a class="nav-link" href="/fuel">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12"/><path d="M3 17h14M8 10h4"/></svg>
+        Boshqaruv
+      </a>
+      <a class="nav-link on" href="/live" aria-current="page">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="3"/><path d="M10 1v2M10 17v2M1 10h2M17 10h2M4.2 4.2l1.4 1.4M14.4 14.4l1.4 1.4M14.4 5.6l1.4-1.4M4.2 15.8l1.4-1.4"/></svg>
+        Live
+      </a>
+      <a class="nav-link" href="/attendance" id="nav-davomat">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v3M13 2v3M7 12l2 2 4-3"/></svg>
+        Davomat
+      </a>
+      <a class="nav-link staff-only" href="/admin" id="btn-admin-panel" hidden>
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/><path d="M3 18a7 7 0 0 1 14 0"/><circle cx="15.5" cy="13" r="2"/><path d="M15.5 10.5v1M15.5 15v1M13 13h1M17 13h1"/></svg>
+        Panel
+      </a>
+      <a class="nav-link staff-only" href="/chek" id="nav-chek" hidden>
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h10a1 1 0 0 1 1 1v13l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1z"/><path d="M8 8h4M8 11h3"/></svg>
+        Chek
+      </a>
     </nav>
     <div class="nav-foot">
-      <a class="nav-link" href="/profile">Profil</a>
+      <a class="nav-link" href="/profile">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="7" r="3"/><path d="M3 18a7 7 0 0 1 14 0"/></svg>
+        Profil
+      </a>
     </div>
   </aside>
 
   <div class="app-main">
     <header class="topbar">
       <label for="nav-open" class="nav-burger" title="Menyu" aria-label="Menyu">
-        <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>
+        <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M3 5h14M3 10h14M3 15h14"/></svg></span>
         <span class="nav-burger-lbl">Menyu</span>
       </label>
       <div>
-        <div class="top-title">Live</div>
-        <div class="top-sub">Park holati — harakat / to‘xtash / offline</div>
+        <div class="top-title">Live monitoring</div>
+        <div class="top-sub">Real vaqt GPS kuzatuvi · har 5 soniyada yangilanadi</div>
       </div>
       <div class="acts">
         <span id="tb-user-name" class="tb-user-name">—</span>
       </div>
     </header>
 
-    <div class="live-main">
+    <div class="live-main" id="live-main" data-mob-view="split">
+      <div class="live-mob-bar" id="live-mob-bar" role="tablist" aria-label="Ko'rinish">
+        <button type="button" class="live-mob-btn on" data-mob="split">Ikkalasi</button>
+        <button type="button" class="live-mob-btn" data-mob="map">Xarita</button>
+        <button type="button" class="live-mob-btn" data-mob="list">Ro‘yxat</button>
+      </div>
+
       <aside class="live-side">
         <div class="live-side-head">
-          <h2>Mashinalar</h2>
-          <div class="live-stats">
-            <div class="live-stat is-move"><i>Harakat</i><b id="live-n-move">0</b></div>
-            <div class="live-stat is-stop"><i>Turgan</i><b id="live-n-stop">0</b></div>
-            <div class="live-stat is-off"><i>Offline</i><b id="live-n-off">0</b></div>
+          <div class="live-side-title-row">
+            <div class="live-side-title-group">
+              <h2>Avtopark</h2>
+              <span class="live-total-chip" id="live-n-total">0 ta</span>
+            </div>
+            <button type="button" class="live-filter-reset" id="live-filter-reset" hidden>Barchasi</button>
           </div>
+
+          <div class="live-stats" id="live-stats">
+            <button type="button" class="live-stat is-move" data-filter="moving" aria-pressed="false" title="Faqat harakatdagi mashinalar">
+              <span class="live-stat-lbl"><i></i>Harakat</span>
+              <b id="live-n-move">0</b>
+            </button>
+            <button type="button" class="live-stat is-stop" data-filter="stopped" aria-pressed="false" title="Faqat turgan mashinalar">
+              <span class="live-stat-lbl"><i></i>Turgan</span>
+              <b id="live-n-stop">0</b>
+            </button>
+            <button type="button" class="live-stat is-off" data-filter="offline" aria-pressed="false" title="Faqat offline mashinalar">
+              <span class="live-stat-lbl"><i></i>Offline</span>
+              <b id="live-n-off">0</b>
+            </button>
+          </div>
+
           <div class="live-search-wrap">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <input class="live-search" id="live-q" type="search" placeholder="Qidiruv: raqam yoki haydovchi" autocomplete="off">
+            <svg class="live-search-ico" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="5" stroke="currentColor" stroke-width="1.75"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+            <input class="live-search" id="live-q" type="search" placeholder="Raqam yoki haydovchi..." autocomplete="off">
+            <button type="button" class="live-search-clear" id="live-q-clear" title="Tozalash" aria-label="Tozalash" hidden>
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 6L6 14M6 6l8 8"/></svg>
+            </button>
           </div>
         </div>
+
         <div class="live-list" id="live-list">
           <div class="live-empty">Yuklanmoqda…</div>
         </div>
@@ -737,28 +1310,77 @@ body.app-body {
       <section class="live-map-card">
         <div class="live-map-head">
           <div class="live-map-head-left">
-            <h2>Xarita</h2>
-            <div class="live-legend">
+            <span class="live-status-pill" id="live-clock" title="Oxirgi yangilanish">
+              <span class="dot" aria-hidden="true"></span>
+              <span class="live-clock-txt">Yuklanmoqda…</span>
+            </span>
+            <div class="live-legend" aria-hidden="true">
               <span><i class="lg-move"></i> Harakatda</span>
               <span><i class="lg-stop"></i> Turgan</span>
               <span><i class="lg-off"></i> Offline</span>
             </div>
           </div>
+
           <div class="live-map-actions">
-            <span class="live-status-pill" id="live-clock" title="Oxirgi yangilanish"><span class="dot" aria-hidden="true"></span><span class="live-clock-txt">—</span></span>
+            <div class="live-layer-seg" id="live-layer-seg" role="group" aria-label="Xarita turi">
+              <button type="button" class="live-layer-btn on" data-layer="street">Xarita</button>
+              <button type="button" class="live-layer-btn" data-layer="sat">Sun’iy</button>
+            </div>
             <button type="button" class="live-btn live-btn-ghost" id="live-fit" title="Barcha mashinalarni ko‘rish">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg viewBox="0 0 20 20" width="17" height="17" fill="none" aria-hidden="true"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <span class="live-btn-txt-long">Hammasini ko‘rish</span>
               <span class="live-btn-txt-short">Hammasi</span>
             </button>
             <button type="button" class="live-btn live-btn-primary" id="live-refresh" title="GPS ni yangilash">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg viewBox="0 0 20 20" width="17" height="17" fill="none" aria-hidden="true"><path d="M16 10a6 6 0 1 1-2-4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><path d="M16 4v4h-4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <span class="live-btn-txt-long">Yangilash</span>
               <span class="live-btn-txt-short">Yangila</span>
             </button>
           </div>
         </div>
-        <div id="live-map"></div>
+
+        <div class="live-map-stage">
+          <div id="live-map"></div>
+
+          <div class="live-inspector" id="live-inspector" hidden>
+            <div class="live-ins-top">
+              <div class="live-ins-id">
+                <div class="live-avatar stop" id="live-ins-av"></div>
+                <div style="min-width:0">
+                  <div class="live-ins-title-row">
+                    <span class="live-ins-plate" id="live-ins-plate">—</span>
+                    <span class="live-badge stop" id="live-ins-badge">Turgan</span>
+                  </div>
+                  <div class="live-ins-drv" id="live-ins-drv">—</div>
+                </div>
+              </div>
+              <button type="button" class="live-ins-close" id="live-ins-close" title="Yopish" aria-label="Yopish">
+                <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M15 5L5 15M5 5l10 10"/></svg>
+              </button>
+            </div>
+
+            <div class="live-ins-grid">
+              <div class="live-ins-cell"><span>Tezlik</span><b id="live-ins-spd">0 km/h</b></div>
+              <div class="live-ins-cell"><span>Yo‘nalish</span><b id="live-ins-crs">—</b></div>
+              <div class="live-ins-cell"><span>Oxirgi signal</span><b id="live-ins-sig">—</b></div>
+              <div class="live-ins-cell"><span>Rusumi</span><b id="live-ins-model">—</b></div>
+            </div>
+
+            <div class="live-ins-actions">
+              <button type="button" class="live-ins-btn" id="live-ins-follow">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6"/><circle cx="10" cy="10" r="2"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2"/></svg>
+                <span>Kuzatish</span>
+              </button>
+              <button type="button" class="live-ins-btn" id="live-ins-center">
+                <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/></svg>
+                <span>Markazga</span>
+              </button>
+              <a class="live-ins-btn live-ins-btn-link" id="live-ins-driver" href="/driver">
+                <span>Kabinet →</span>
+              </a>
+            </div>
+          </div>
+        </div>
       </section>
     </div>
   </div>
@@ -768,9 +1390,9 @@ body.app-body {
 <script>if (typeof L === 'undefined') { document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>'); }</script>
 <script src="uz-latin.js?v=5"></script>
 <script src="fleet-data.js?v=20"></script>
-<script src="auth.js?v=45"></script>
+<script src="auth.js?v=47"></script>
 <script src="map-tiles.js?v=8"></script>
-<script src="map-geozones.js?v=5"></script>
-<script src="live.js?v=20"></script>
+<script src="map-geozones.js?v=7"></script>
+<script src="live.js?v=28"></script>
 </body>
 </html>
