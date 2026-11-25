@@ -2095,11 +2095,34 @@ button.fov-card.fov-alert.is-filtering {
     gap: 6px;
   }
   body.nav-collapsed .nav-user-meta { display: none; }
+.nav-section-modules .tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-section-modules .tab svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  opacity: 0.78;
+}
+.nav-section-modules .tab.on svg {
+  opacity: 1;
+}
   body.nav-collapsed .nav-section-modules .tab {
-    padding: 6px 4px !important;
-    font-size: 9.5px !important;
-    text-align: center;
-    line-height: 1.15 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 8px !important;
+    gap: 0 !important;
+  }
+  body.nav-collapsed .nav-section-modules .tab .tab-lbl {
+    display: none !important;
+  }
+  body.nav-collapsed .nav-section-modules .tab svg {
+    width: 17px;
+    height: 17px;
+    flex-shrink: 0;
   }
 }
 

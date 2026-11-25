@@ -14,7 +14,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="shell.css?v=39"/>
+<link rel="stylesheet" href="shell.css?v=40"/>
 <link rel="stylesheet" href="ph-delete-btn.css?v=3"/>
 
 <style>
@@ -2314,21 +2314,54 @@ table.dtable td.day {
       </div>
       <nav class="tabs" id="tabs">
         <div class="nav-mod-label">Kunlik</div>
-        <button class="tab" type="button" data-tab="home">Bosh sahifa</button>
-        <button class="tab on" type="button" data-tab="daily">Kunlik kiritish</button>
+        <button class="tab" type="button" data-tab="home" title="Bosh sahifa">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5L10 3l7 6.5V17a1 1 0 0 1-1 1h-4v-5H8v5H4a1 1 0 0 1-1-1V9.5z"/></svg>
+          <span class="tab-lbl">Bosh sahifa</span>
+        </button>
+        <button class="tab on" type="button" data-tab="daily" title="Kunlik kiritish">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 3.5l4 4L7 17H3v-4l9.5-9.5z"/><path d="M10.5 5.5l4 4"/></svg>
+          <span class="tab-lbl">Kunlik kiritish</span>
+        </button>
 
         <div class="nav-mod-label">Hisobot</div>
-        <button class="tab" type="button" data-tab="dayrep">Kun hisoboti</button>
-        <button class="tab" type="button" data-tab="month">Oylik hisobot</button>
-        <button class="tab" type="button" data-tab="official">Rasmiy hisobot</button>
-        <button class="tab" type="button" data-tab="year">Yillik jamlanma</button>
+        <button class="tab" type="button" data-tab="dayrep" title="Kun hisoboti">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v3M13 2v3M7 12h6"/></svg>
+          <span class="tab-lbl">Kun hisoboti</span>
+        </button>
+        <button class="tab" type="button" data-tab="month" title="Oylik hisobot">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16V9M9 16V5M14 16v-4M2 16h16"/></svg>
+          <span class="tab-lbl">Oylik hisobot</span>
+        </button>
+        <button class="tab" type="button" data-tab="official" title="Rasmiy hisobot">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2h7l4 4v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M12 2v4h4M7 10h6M7 13.5h4"/></svg>
+          <span class="tab-lbl">Rasmiy hisobot</span>
+        </button>
+        <button class="tab" type="button" data-tab="year" title="Yillik jamlanma">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15l4.5-4.5 3.5 3.5L17 7"/><path d="M13 7h4v4"/></svg>
+          <span class="tab-lbl">Yillik jamlanma</span>
+        </button>
 
         <div class="nav-mod-label">Park</div>
-        <button class="tab" type="button" data-tab="stations">Zapravka reestri</button>
-        <button class="tab" type="button" data-tab="gasact">Gaz akti</button>
-        <button class="tab" type="button" data-tab="docs">Hujjat muddatlari</button>
-        <button class="tab" type="button" data-tab="journal">Haydovchilar jurnali</button>
-        <button class="tab" type="button" data-tab="cars">Mashina va narx</button>
+        <button class="tab" type="button" data-tab="stations" title="Zapravka reestri">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17s5-4.5 5-9a5 5 0 1 0-10 0c0 4.5 5 9 5 9z"/><circle cx="10" cy="8" r="1.8"/></svg>
+          <span class="tab-lbl">Zapravka reestri</span>
+        </button>
+        <button class="tab" type="button" data-tab="gasact" title="Gaz akti">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h10a1 1 0 0 1 1 1v13l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1z"/><path d="M7.5 8h5M7.5 11.5h3.5"/></svg>
+          <span class="tab-lbl">Gaz akti</span>
+        </button>
+        <button class="tab" type="button" data-tab="docs" title="Hujjat muddatlari">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/></svg>
+          <span class="tab-lbl">Hujjat muddatlari</span>
+        </button>
+        <button class="tab" type="button" data-tab="journal" title="Haydovchilar jurnali">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3h10a2 2 0 0 1 2 2v12H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M7 7h6M7 10.5h6M7 14h4"/></svg>
+          <span class="tab-lbl">Haydovchilar jurnali</span>
+        </button>
+        <button class="tab" type="button" data-tab="cars" title="Mashina va narx">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12l1.5-4.5A2 2 0 0 1 6.4 6h7.2a2 2 0 0 1 1.9 1.5L17 12v4a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H6v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4z"/><circle cx="6.5" cy="12" r="1"/><circle cx="13.5" cy="12" r="1"/></svg>
+          <span class="tab-lbl">Mashina va narx</span>
+        </button>
       </nav>
     </div>
 
