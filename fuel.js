@@ -1229,6 +1229,7 @@ function setMonthLabel() {
 }
 
 function readCarsTableToMeta() {
+  if (STATE.tab !== 'cars') return;
   document.querySelectorAll('#panel-cars tr[data-plate]').forEach(tr => {
     const plate = tr.getAttribute('data-plate');
     if (!plate) return;
