@@ -1127,6 +1127,41 @@ body { overflow-x: clip; }
   }
 }
 
+/* ========== ADMIN PANEL SAYQALLASH ========== */
+.stats { gap: 12px !important; }
+.stat {
+  border-radius: 14px !important;
+  border: 1px solid #d7e3f0 !important;
+  box-shadow: 0 4px 14px rgba(11, 31, 58, .04) !important;
+  transition: transform .15s, box-shadow .15s, border-color .15s !important;
+}
+.stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(11, 31, 58, .08) !important;
+  border-color: #9ec0e6 !important;
+}
+.stat-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;
+}
+.stat-ico {
+  width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0;
+}
+.stat-ico.blue { background: #e8f1fc; color: #1a5fb4; }
+.stat-ico.green { background: #e7f8ef; color: #16a34a; }
+.stat-ico.purple { background: #f3e8ff; color: #7c3aed; }
+.stat-ico.slate { background: #f1f5f9; color: #475569; }
+.add-win {
+  border-radius: 16px !important;
+  box-shadow: 0 8px 24px rgba(11, 31, 58, .06) !important;
+}
+.users-table .u-inp, .users-table select {
+  transition: border-color .15s, box-shadow .15s !important;
+}
+.users-table .u-inp:focus, .users-table select:focus {
+  outline: none !important;
+  border-color: #1a5fb4 !important;
+  box-shadow: 0 0 0 2px rgba(26, 95, 180, .18) !important;
+}
 </style>
 
 </head>
@@ -1234,15 +1269,22 @@ body { overflow-x: clip; }
   <div class="persist-note bad" id="persist-note">Saqlash holati yuklanmoqda...</div>
 
   <div class="stats">
-
-    <div class="stat"><i>Adminlar</i><b id="s-users">—</b></div>
-
-    <div class="stat"><i>Onlayn</i><b id="s-on">—</b></div>
-
-    <div class="stat"><i>Sessiyalar</i><b id="s-sess">—</b></div>
-
-    <div class="stat"><i>Sizning login</i><b style="font-size:16px" id="s-me">—</b></div>
-
+    <div class="stat">
+      <div class="stat-top"><i>Adminlar</i><span class="stat-ico blue"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/><path d="M4 17a6 6 0 0 1 12 0"/></svg></span></div>
+      <b id="s-users">—</b>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><i>Onlayn</i><span class="stat-ico green"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="6"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg></span></div>
+      <b id="s-on">—</b>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><i>Sessiyalar</i><span class="stat-ico purple"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="14" height="10" rx="2"/><path d="M7 17h6M10 14v3"/></svg></span></div>
+      <b id="s-sess">—</b>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><i>Sizning login</i><span class="stat-ico slate"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg></span></div>
+      <b style="font-size:16px" id="s-me">—</b>
+    </div>
   </div>
 
 
