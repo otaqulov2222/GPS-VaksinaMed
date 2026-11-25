@@ -2421,31 +2421,147 @@ function renderHome() {
   const t = fleetTotals();
   const alerts = collectDocAlerts();
   const missing = [];
+  const topCars = [];
   fleet().forEach(f => {
+    const car = getCar(f.car);
+    const rows = calcCar(car);
+    const cSum = totals(rows);
+    if (cSum.km > 0) {
+      topCars.push({ car: f.car, short: f.short, driver: f.driver || '', km: cSum.km });
+    }
     Object.keys(STATE.gpsKm).forEach(dt => {
       const km = gpsKmLookup(STATE.gpsKm[dt], f.car);
       if (!km) return;
       const day = Number(dt.slice(-2));
-      const row = dayRow(getCar(f.car), day);
+      const row = dayRow(car, day);
       if (!row.km) missing.push({ car: f.car, short: f.short, dt, km });
     });
   });
+  topCars.sort((a, b) => b.km - a.km);
+  const top5 = topCars.slice(0, 5);
+  const maxKm = top5.length ? top5[0].km : 1;
+
+  const avgKmPerCar = t.cars ? (t.km / t.cars) : 0;
+
   document.getElementById('panel-home').innerHTML = `
-    <div class="kpis">
-      <div class="kpi"><i>Mashina kiritilgan</i><b>${t.cars}</b><s>${fleet().length} ta park</s></div>
-      <div class="kpi"><i>Jami km</i><b>${fmt(t.km, 2)}</b><s>${esc(monthTitle(STATE.month))}</s></div>
-      <div class="kpi"><i>Gaz sarfi / olingan</i><b>${fmt(t.gasUsed, 2)} m³</b><s>olingan ${fmt(t.gasIn, 2)} m³</s></div>
-      <div class="kpi"><i>Benzin sarfi / olingan</i><b>${fmt(t.benUsed, 2)} l</b><s>olingan ${fmt(t.benzinIn, 2)} l</s></div>
-      <div class="kpi"><i>Yoqilg'i xarajati</i><b>${money(t.cost)}</b><s>qo'shimcha ${money(t.extra)}</s></div>
-      <div class="kpi"><i>GPS km tushmagan</i><b>${missing.length}</b><s>hisobot bor, kunlik yo'q</s></div>
-      <div class="kpi"><i>Hujjat muddati</i><b>${alerts.length}</b><s>45 kun ichida</s></div>
-      <div class="kpi"><i>Zapravka</i><b>${(STATE.meta.stations || []).length}</b><s>reestr</s></div>
+    <div class="hm-hero">
+      <div>
+        <div class="hm-hero-title">Boshqaruv markazi — ${esc(monthTitle(STATE.month))}</div>
+        <div class="hm-hero-sub">${fleet().length} ta avto parkda · ${t.cars} ta faol kiritilgan · o'rtacha ${fmt(avgKmPerCar, 0)} km/avto</div>
+      </div>
+      <div class="hm-hero-actions">
+        <button type="button" class="hm-hero-btn primary" onclick="setTab('daily')">Kunlik kiritish →</button>
+        <button type="button" class="hm-hero-btn" onclick="setTab('month')">Oylik hisobot</button>
+        <button type="button" class="hm-hero-btn" onclick="setTab('docs')">Hujjatlar (${alerts.length})</button>
+      </div>
     </div>
-    <div class="card"><div class="card-h"><h3>GPS bor — kunlik km tushmagan</h3></div>
-      <div class="card-b">${missing.length ? mobSwipeHint() + `<div class="scroll-x"><table class="gtable"><thead><tr><th>Sana</th><th>Mashina</th><th>GPS km</th></tr></thead><tbody>
-        ${missing.slice(0, 80).map(m => `<tr><td>${esc(m.dt)}</td><td>${esc(plateDisp(m.car))} ${esc(m.short)}</td><td class="num">${m.km}</td></tr>`).join('')}
-      </tbody></table></div>` : '<p class="note">Oy ochilganda GPS km avtomatik tushadi. Sariq katakni tahrirlash mumkin. Zapravka qo\'lda.</p>'}
-      </div></div>`;
+
+    <div class="hm-kpis">
+      <div class="hm-kpi clickable" onclick="setTab('daily')">
+        <div class="hm-kpi-top">
+          <span class="hm-kpi-lbl">Mashina kiritilgan</span>
+          <span class="hm-kpi-ico blue"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12l1.5-4.5A2 2 0 0 1 6.4 6h7.2a2 2 0 0 1 1.9 1.5L17 12v4a1 1 0 0 1-1 1h-1v-2H5v2H4a1 1 0 0 1-1-1v-4z"/></svg></span>
+        </div>
+        <div class="hm-kpi-val">${t.cars} <span style="font-size:13px;font-weight:500;color:#64748b">/ ${fleet().length}</span></div>
+        <div class="hm-kpi-sub">Faol park mashinalari</div>
+      </div>
+
+      <div class="hm-kpi clickable" onclick="setTab('month')">
+        <div class="hm-kpi-top">
+          <span class="hm-kpi-lbl">Jami masofa</span>
+          <span class="hm-kpi-ico green"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 15l4.5-4.5 3.5 3.5L17 7"/><path d="M13 7h4v4"/></svg></span>
+        </div>
+        <div class="hm-kpi-val">${fmt(t.km, 1)} <span style="font-size:13px;font-weight:500;color:#64748b">km</span></div>
+        <div class="hm-kpi-sub">${esc(monthTitle(STATE.month))}</div>
+      </div>
+
+      <div class="hm-kpi">
+        <div class="hm-kpi-top">
+          <span class="hm-kpi-lbl">Gaz sarfi / olingan</span>
+          <span class="hm-kpi-ico sky"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 2s5 5.2 5 9a5 5 0 1 1-10 0c0-3.8 5-9 5-9z"/></svg></span>
+        </div>
+        <div class="hm-kpi-val">${fmt(t.gasUsed, 1)} <span style="font-size:13px;font-weight:500;color:#64748b">m³</span></div>
+        <div class="hm-kpi-sub">Olingan: ${fmt(t.gasIn, 1)} m³</div>
+      </div>
+
+      <div class="hm-kpi">
+        <div class="hm-kpi-top">
+          <span class="hm-kpi-lbl">Benzin sarfi / olingan</span>
+          <span class="hm-kpi-ico amber"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 17V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12"/><path d="M3 17h14M8 10h4"/></svg></span>
+        </div>
+        <div class="hm-kpi-val">${fmt(t.benUsed, 2)} <span style="font-size:13px;font-weight:500;color:#64748b">l</span></div>
+        <div class="hm-kpi-sub">Olingan: ${fmt(t.benzinIn, 1)} l</div>
+      </div>
+
+      <div class="hm-kpi">
+        <div class="hm-kpi-top">
+          <span class="hm-kpi-lbl">Yoqilg'i xarajati</span>
+          <span class="hm-kpi-ico purple"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="5" width="16" height="10" rx="2"/><circle cx="10" cy="10" r="2"/></svg></span>
+        </div>
+        <div class="hm-kpi-val" style="font-size:19px">${money(t.cost)}</div>
+        <div class="hm-kpi-sub">Qo'shimcha: ${money(t.extra)}</div>
+      </div>
+
+      <div class="hm-kpi">
+        <div class="hm-kpi-top">
+          <span class="hm-kpi-lbl">GPS km tushmagan</span>
+          <span class="hm-kpi-ico ${missing.length ? 'amber' : 'green'}"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/></svg></span>
+        </div>
+        <div class="hm-kpi-val">${missing.length}</div>
+        <div class="hm-kpi-sub">${missing.length ? 'Hisobot bor, kunlik yo\'q' : 'Barcha kunlar kiritilgan'}</div>
+      </div>
+
+      <div class="hm-kpi clickable" onclick="setTab('docs')">
+        <div class="hm-kpi-top">
+          <span class="hm-kpi-lbl">Hujjat muddati</span>
+          <span class="hm-kpi-ico ${alerts.length ? 'red' : 'green'}"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 3L2 17h16L10 3z"/><path d="M10 9v4M10 15h.01"/></svg></span>
+        </div>
+        <div class="hm-kpi-val">${alerts.length}</div>
+        <div class="hm-kpi-sub">45 kun ichida tugaydi</div>
+      </div>
+
+      <div class="hm-kpi clickable" onclick="setTab('stations')">
+        <div class="hm-kpi-top">
+          <span class="hm-kpi-lbl">Zapravka reestri</span>
+          <span class="hm-kpi-ico slate"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 17s5-4.5 5-9a5 5 0 1 0-10 0c0 4.5 5 9 5 9z"/><circle cx="10" cy="8" r="1.5"/></svg></span>
+        </div>
+        <div class="hm-kpi-val">${(STATE.meta.stations || []).length}</div>
+        <div class="hm-kpi-sub">Ro'yxatdagi shoxobchalar</div>
+      </div>
+    </div>
+
+    <div class="hm-grid">
+      <div class="card">
+        <div class="card-h">
+          <h3>Eng ko'p yurgan mashinalar (Top 5)</h3>
+          <button type="button" class="btn btn-sm" onclick="setTab('month')">Barchasi →</button>
+        </div>
+        <div class="card-b">
+          ${top5.length ? `<div class="hm-top-list">${top5.map((c, idx) => `
+            <div class="hm-top-row">
+              <div class="hm-top-meta">
+                <div><span class="hm-top-car">${idx + 1}. ${esc(plateDisp(c.car))}</span><span class="hm-top-drv">${esc(c.driver)}</span></div>
+                <span class="hm-top-km">${fmt(c.km, 1)} km</span>
+              </div>
+              <div class="hm-top-bar"><div class="hm-top-fill" style="width:${Math.max(8, Math.round((c.km / maxKm) * 100))}%"></div></div>
+            </div>`).join('')}</div>` : '<p class="note">Hozircha masofa ma\'lumotlari kiritilmagan.</p>'}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <h3>GPS bor — kunlik km tushmagan</h3>
+        </div>
+        <div class="card-b">
+          ${missing.length ? mobSwipeHint() + `<div class="scroll-x" style="max-height:280px"><table class="gtable"><thead><tr><th>Sana</th><th>Mashina</th><th>GPS km</th></tr></thead><tbody>
+            ${missing.slice(0, 80).map(m => `<tr><td>${esc(m.dt)}</td><td>${esc(plateDisp(m.car))} ${esc(m.short)}</td><td class="num">${m.km}</td></tr>`).join('')}
+          </tbody></table></div>` : `<div class="hm-ok-box">
+            <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="8"/><path d="M6.5 10l2.5 2.5 4.5-4.5"/></svg>
+            <span>Hammasi joyida! Oy ochilganda GPS km avtomatik tushadi.</span>
+          </div>`}
+        </div>
+      </div>
+    </div>`;
 }
 
 function jamiRow(cells, label) {
@@ -2462,13 +2578,26 @@ function renderDayRep() {
     return Object.assign({ n: i + 1, plate: f.car, name: driverOnDay(f, car, day) }, r);
   });
   const sum = totals(rows);
+  const activeCount = rows.filter(r => r.km > 0).length;
   const [y, m] = STATE.month.split('-');
+  const modeBadge = (mode) => {
+    const lbl = esc(modeLabel(mode));
+    if (mode === 'aralash') return `<span class="dr-mode-badge mix">${lbl}</span>`;
+    if (mode === 'benzin' || mode === 'dizel') return `<span class="dr-mode-badge liq">${lbl}</span>`;
+    return `<span class="dr-mode-badge">${lbl}</span>`;
+  };
   document.getElementById('panel-dayrep').innerHTML = `
     <div class="card"><div class="card-h">
       <h3>Kun hisoboti — ${day}-${monthLow(STATE.month)} ${y}</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-dayrep">PDF yuklab olish</button>
     </div>
     <div class="card-b">
+      <div class="dr-kpis no-print">
+        <div class="dr-kpi"><span class="dr-kpi-lbl">Faol mashina</span><span class="dr-kpi-val">${activeCount} <span style="font-size:12px;font-weight:500;color:#64748b">/ ${rows.length}</span></span></div>
+        <div class="dr-kpi"><span class="dr-kpi-lbl">Kunlik masofa</span><span class="dr-kpi-val">${fmt(sum.km, 1)} <span style="font-size:12px;font-weight:500;color:#64748b">km</span></span></div>
+        <div class="dr-kpi"><span class="dr-kpi-lbl">Gaz sarfi</span><span class="dr-kpi-val">${fmt(sum.gasUsed, 2)} <span style="font-size:12px;font-weight:500;color:#64748b">m³</span></span></div>
+        <div class="dr-kpi"><span class="dr-kpi-lbl">Benzin sarfi</span><span class="dr-kpi-val">${fmt(sum.benUsed, 2)} <span style="font-size:12px;font-weight:500;color:#64748b">l</span></span></div>
+      </div>
       <div class="day-pills no-print">${Array.from({length: dim}, (_, i) => i + 1).map(d =>
         `<button type="button" class="day-pill${d === day ? ' on' : ''}" data-day="${d}">${d}</button>`
       ).join('')}</div>
@@ -2477,18 +2606,18 @@ function renderDayRep() {
       <table class="gtable">
         <thead><tr><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Yurdi (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Nimada</th><th>Zapravka</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Sarf gaz</th><th>Sarf benzin</th><th>Qo'shimcha</th><th>Izoh</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
-          <td>${r.n}</td><td>${esc(plateDisp(r.plate))}</td><td>${esc(r.name)}</td>
-          <td class="num">${r.km ? fmt(r.km, 2) : ''}</td>
+          <td>${r.n}</td><td><b>${esc(plateDisp(r.plate))}</b></td><td>${esc(r.name)}</td>
+          <td class="num"><b>${r.km ? fmt(r.km, 2) : ''}</b></td>
           <td class="num">${r.gasKm ? fmt(r.gasKm, 2) : ''}</td>
           <td class="num">${r.liqKm ? fmt(r.liqKm, 2) : ''}</td>
-          <td>${esc(modeLabel(r.mode))}</td><td>${esc(r.station || '')}</td>
+          <td>${r.km ? modeBadge(r.mode) : ''}</td><td>${esc(r.station || '')}</td>
           <td class="num">${r.gasIn ? fmt(r.gasIn, 4) : ''}</td><td class="num">${r.gasIn ? money(r.gasSum) : ''}</td>
           <td class="num">${r.benzinIn ? fmt(r.benzinIn, 4) : ''}</td><td class="num">${r.benzinIn ? money(r.benzinSum) : ''}</td>
           <td class="num">${r.gasUsed ? fmtNum(r.gasUsed) : ''}</td>
           <td class="num">${r.benUsed ? fmtNum(r.benUsed) : ''}</td>
           <td class="num">${r.extra ? money(r.extra) : ''}</td><td>${esc(r.note || r.extraWhy || '')}</td>
         </tr>`).join('')}
-        <tr><td colspan="3"><b>JAMI</b></td>
+        <tr class="dr-jami-row"><td colspan="3"><b>JAMI</b></td>
           <td class="num"><b>${fmt(sum.km, 2)}</b></td>
           <td class="num"><b>${fmt(sum.gasKm, 2)}</b></td>
           <td class="num"><b>${fmt(sum.liqKm, 2)}</b></td>
@@ -2624,23 +2753,30 @@ function renderMonth() {
     a.gasSum += r.gasSum || 0; a.benzinSum += r.benzinSum || 0; a.extra += r.extra || 0; a.cost += r.cost || 0;
     return a;
   }, { km: 0, gasKm: 0, liqKm: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, extra: 0, cost: 0 });
+  const zCls = (v) => (v ? '' : ' vm-zero');
   document.getElementById('panel-month').innerHTML = `
     <div class="card"><div class="card-h"><h3>Oylik jamlanma — ${esc(monthLow(STATE.month))} ${STATE.month.slice(0,4)}</h3>
       <button class="btn btn-sm no-print" type="button" id="btn-pdf-month" title="Jami + har mashina kunma-kun PDF">PDF · jami + kunma-kun</button></div>
     <div class="card-b">
-      <p class="note no-print" style="margin:0 0 10px;">Har qator — <b>shu mashinaning oylik jamisi</b>. Chapdagi <b>▶</b> yoki qatorga bosing — kunma-kun ochiladi; pastda yana shu mashina <b>JAMI</b> qatori bor. Eng pastda — barcha mashinalar jami.</p>
+      <div class="dr-kpis no-print">
+        <div class="dr-kpi"><span class="dr-kpi-lbl">Jami probeg</span><span class="dr-kpi-val">${fmt(sum.km, 1)} <span style="font-size:12px;font-weight:500;color:#64748b">km</span></span></div>
+        <div class="dr-kpi"><span class="dr-kpi-lbl">Olingan gaz</span><span class="dr-kpi-val">${fmt(sum.gasIn, 1)} <span style="font-size:12px;font-weight:500;color:#64748b">m³</span></span></div>
+        <div class="dr-kpi"><span class="dr-kpi-lbl">Olingan benzin</span><span class="dr-kpi-val">${fmt(sum.benzinIn, 1)} <span style="font-size:12px;font-weight:500;color:#64748b">l</span></span></div>
+        <div class="dr-kpi"><span class="dr-kpi-lbl">Umumiy xarajat</span><span class="dr-kpi-val" style="font-size:16px">${money(sum.cost)}</span></div>
+      </div>
+      <p class="note no-print" style="margin:0 0 10px;">Har qator — <b>shu mashinaning oylik jamisi</b>. Chapdagi <b>▶</b> yoki qatorga bosing — kunma-kun ochiladi.</p>
       ${mobSwipeHint()}<div class="scroll-x">
       <table class="gtable" id="month-summary-table">
         <thead><tr><th></th><th>№</th><th>Mashina</th><th>Haydovchi</th><th>Probeg (km)</th><th>Gaz km</th><th>Dizel/Benzin km</th><th>Olingan gaz (m³)</th><th>Gaz summa</th><th>Olingan benzin (l)</th><th>Benzin summa</th><th>Qo'shimcha</th><th>Umumiy xarajat</th><th>Gaz qoldiq</th><th>Benzin qoldiq</th></tr></thead>
         <tbody>${rows.map(r => `<tr class="month-sum-row" data-plate="${esc(r.plate)}" title="Kunma-kun ochish">
           <td class="month-caret" aria-hidden="true"><span class="month-caret-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span></td>
-          <td>${r.n}</td><td>${esc(plateDisp(r.plate))}</td><td>${esc(r.name)}</td>
-          <td class="num">${fmt(r.km, 2)}</td>
-          <td class="num">${fmt(r.gasKm, 2)}</td>
-          <td class="num">${fmt(r.liqKm, 2)}</td>
-          <td class="num">${fmt(r.gasIn, 4)}</td><td class="num">${money(r.gasSum)}</td>
-          <td class="num">${fmt(r.benzinIn, 4)}</td><td class="num">${money(r.benzinSum)}</td>
-          <td class="num">${money(r.extra)}</td><td class="num">${money(r.cost)}</td>
+          <td>${r.n}</td><td><b>${esc(plateDisp(r.plate))}</b></td><td>${esc(r.name)}</td>
+          <td class="num${zCls(r.km)}"><b>${fmt(r.km, 2)}</b></td>
+          <td class="num${zCls(r.gasKm)}">${fmt(r.gasKm, 2)}</td>
+          <td class="num${zCls(r.liqKm)}">${fmt(r.liqKm, 2)}</td>
+          <td class="num${zCls(r.gasIn)}">${fmt(r.gasIn, 4)}</td><td class="num${zCls(r.gasSum)}">${money(r.gasSum)}</td>
+          <td class="num${zCls(r.benzinIn)}">${fmt(r.benzinIn, 4)}</td><td class="num${zCls(r.benzinSum)}">${money(r.benzinSum)}</td>
+          <td class="num${zCls(r.extra)}">${money(r.extra)}</td><td class="num${zCls(r.cost)}">${money(r.cost)}</td>
           <td class="num ${remainClass(r.gasR)}">${fmt(r.gasR, 4)}</td>
           <td class="num ${remainClass(r.benR)}">${fmt(r.benR, 4)}</td>
         </tr>`).join('')}
@@ -2669,6 +2805,15 @@ function renderOfficial() {
   }).filter(x => x.t.km || x.t.gasIn || x.t.benzinIn || x.t.gasUsed || x.t.benUsed);
   const [y, mo] = STATE.month.split('-');
   const titleM = monthLow(STATE.month);
+  const zCls = (v) => (v ? '' : ' vm-zero');
+  const modelOfCar = (f) => {
+    if (f.brand) return f.brand;
+    if (typeof fleetModelOf === 'function' && typeof FLEET_MODELS !== 'undefined') {
+      const m = fleetModelOf(f.car);
+      if (m && FLEET_MODELS[m] && FLEET_MODELS[m].t) return FLEET_MODELS[m].t;
+    }
+    return '—';
+  };
   document.getElementById('panel-official').innerHTML = `
     <div class="card">
       <div class="card-h no-print"><h3>Rasmiy oylik hisobot — ${esc(titleM)} ${y}</h3>
@@ -2683,14 +2828,16 @@ function renderOfficial() {
           <div class="fld"><label>Direktor F.I.O.</label><input id="firm-director" value="${esc(firm.director || '')}" placeholder="masalan Karimov A.A."></div>
           <div class="fld"><label>Mexanik F.I.O.</label><input id="firm-mechanic" value="${esc(firm.mechanic || '')}" placeholder="masalan Rahimov B."></div>
         </div>
-        <div style="text-align:right;margin-bottom:10px;">
-          <div style="font-size:11px;letter-spacing:.12em;font-weight:700;">УТВЕРЖДАЮ</div>
-          <div>Bosh direktor ${esc(firm.director || '_______________')}</div>
-          <div class="muted">${esc(firm.name || 'VAKSINA HEALTHCARE MChJ')}</div>
-        </div>
-        <div style="text-align:center;margin:8px 0 12px;font-weight:700;">
-          ОТЧЕТ об израсходовании топлива автотранспортными средствами<br>
-          ${esc(firm.name || 'VAKSINA HEALTHCARE MChJ')} за ${esc(titleM)} ${y} г.
+        <div class="off-doc-head">
+          <div class="off-doc-title">
+            ОТЧЕТ об израсходовании топлива автотранспортными средствами<br>
+            <span style="color:#1a5fb4">${esc(firm.name || 'VAKSINA HEALTHCARE MChJ')}</span> · ${esc(titleM)} ${y} г.
+          </div>
+          <div class="off-doc-sign">
+            <div style="font-size:10.5px;letter-spacing:.12em;font-weight:700;color:#5a7190;">УТВЕРЖДАЮ</div>
+            <div><b>Bosh direktor</b> ${esc(firm.director || '_______________')}</div>
+            <div class="muted">${esc(firm.name || 'VAKSINA HEALTHCARE MChJ')}</div>
+          </div>
         </div>
         <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring.</p>
         <div class="scroll-x">
@@ -2701,31 +2848,31 @@ function renderOfficial() {
             <th>Probeg (km)</th><th>Sarflangan</th><th>Qoldiq (oy oxiri)</th><th>Pul sarfi (so'm)</th>
           </tr></thead>
           <tbody>${list.map((x, i) => {
-            const gNeg = x.t.gasR < -0.0001 ? 'neg' : '';
-            const bNeg = x.t.benR < -0.0001 ? 'neg' : '';
+            const gNeg = x.t.gasR < -0.0001 ? 'neg' : (x.t.gasR > 0.0001 ? 'pos' : 'vm-zero');
+            const bNeg = x.t.benR < -0.0001 ? 'neg' : (x.t.benR > 0.0001 ? 'pos' : 'vm-zero');
             const liqLabel = liquidFuelLabel(x.car.fuelType);
             return `<tr class="row-gaz">
               <td rowspan="2">${i + 1}</td>
-              <td rowspan="2">${esc(x.f.brand || '—')}</td>
-              <td rowspan="2">${esc(plateDisp(x.f.car))}</td>
+              <td rowspan="2" style="color:#334155;font-weight:500">${esc(modelOfCar(x.f))}</td>
+              <td rowspan="2"><b>${esc(plateDisp(x.f.car))}</b></td>
               <td rowspan="2">${esc(x.f.name)}</td>
-              <td>GAZ (m³)</td>
+              <td><span class="dr-mode-badge">GAZ (m³)</span></td>
               <td class="num">${fmt(x.car.gasNorm, 2)}</td>
-              <td class="num">${fmt(x.car.gasStart, 4)}</td>
-              <td class="num">${fmt(x.t.gasIn, 4)}</td>
-              <td class="num">${money(x.t.gasSum)}</td>
-              <td class="num" rowspan="2">${fmt(x.t.km, 2)}</td>
-              <td class="num">${fmt(x.t.gasUsed, 4)}</td>
+              <td class="num${zCls(x.car.gasStart)}">${fmt(x.car.gasStart, 4)}</td>
+              <td class="num${zCls(x.t.gasIn)}">${fmt(x.t.gasIn, 4)}</td>
+              <td class="num${zCls(x.t.gasSum)}">${money(x.t.gasSum)}</td>
+              <td class="num" rowspan="2"><b>${fmt(x.t.km, 2)}</b></td>
+              <td class="num${zCls(x.t.gasUsed)}">${fmt(x.t.gasUsed, 4)}</td>
               <td class="num ${gNeg}">${fmt(x.t.gasR, 4)}</td>
-              <td class="num" rowspan="2">${money(x.t.cost)}</td>
+              <td class="num${zCls(x.t.cost)}" rowspan="2"><b>${money(x.t.cost)}</b></td>
             </tr>
             <tr class="row-ben">
-              <td>${esc(liqLabel)}</td>
+              <td><span class="dr-mode-badge liq">${esc(liqLabel)}</span></td>
               <td class="num">${fmt(x.car.benzinNorm, 2)}</td>
-              <td class="num">${fmt(x.car.benzinStart, 4)}</td>
-              <td class="num">${fmt(x.t.benzinIn, 4)}</td>
-              <td class="num">${money(x.t.benzinSum)}</td>
-              <td class="num">${fmt(x.t.benUsed, 4)}</td>
+              <td class="num${zCls(x.car.benzinStart)}">${fmt(x.car.benzinStart, 4)}</td>
+              <td class="num${zCls(x.t.benzinIn)}">${fmt(x.t.benzinIn, 4)}</td>
+              <td class="num${zCls(x.t.benzinSum)}">${money(x.t.benzinSum)}</td>
+              <td class="num${zCls(x.t.benUsed)}">${fmt(x.t.benUsed, 4)}</td>
               <td class="num ${bNeg}">${fmt(x.t.benR, 4)}</td>
             </tr>`;
           }).join('')}</tbody>
@@ -2793,13 +2940,16 @@ function renderStations() {
         ${Object.keys(groups).map(p => {
           const g = groups[p];
           return `<div style="margin-bottom:14px;">
-            <div style="font-weight:700;margin:6px 0;overflow-wrap:anywhere;">${esc(plateDisp(g.plate))} — ${esc(g.name)}</div>
+            <div class="st-car-head">
+              <span>${esc(plateDisp(g.plate))} — <span style="font-weight:500;color:#475569">${esc(g.name)}</span></span>
+              <span class="st-car-meta">${g.gas ? fmt(g.gas, 2) + ' m³ ' : ''}${g.ben ? fmt(g.ben, 2) + ' l · ' : ''}${money(g.sum)}</span>
+            </div>
             <div class="scroll-x"><table class="gtable"><thead><tr><th>Kun</th><th>Zapravka</th><th>Tur</th><th>Miqdor</th><th>Narx</th><th>Summa</th></tr></thead>
             <tbody>${g.rows.map(r => `<tr>
-              <td>${r.d}</td><td>${esc(r.station)}</td><td>${esc(r.type)}</td>
-              <td class="num">${fmt(r.qty, 4)}</td><td class="num">${money(r.price)}</td><td class="num">${money(r.sum)}</td>
+              <td><b>${r.d}</b></td><td>${esc(r.station)}</td><td><span class="dr-mode-badge${r.kind === 'gaz' ? '' : ' liq'}">${esc(r.type)}</span></td>
+              <td class="num">${fmt(r.qty, 4)}</td><td class="num">${money(r.price)}</td><td class="num"><b>${money(r.sum)}</b></td>
             </tr>`).join('')}
-            <tr><td colspan="3"><b>Jami</b></td>
+            <tr class="dr-jami-row"><td colspan="3"><b>Jami</b></td>
               <td class="num"><b>${g.gas ? fmt(g.gas, 3) + ' m³' : ''} ${g.ben ? fmt(g.ben, 3) + ' l' : ''}</b></td>
               <td></td><td class="num"><b>${money(g.sum)}</b></td></tr>
             </tbody></table></div>
@@ -2866,12 +3016,24 @@ function renderGasAct() {
     a.start += n(r.car.gasStart); a.in += r.t.gasIn; a.km += r.t.gasKm; a.used += r.t.gasUsed; a.end += r.t.gasR;
     return a;
   }, { start: 0, in: 0, km: 0, used: 0, end: 0 });
+  const gasBrandOf = (f) => {
+    if (f.brand) return f.brand;
+    if (typeof fleetModelOf === 'function' && typeof FLEET_MODELS !== 'undefined') {
+      const m = fleetModelOf(f.car);
+      if (m && FLEET_MODELS[m] && FLEET_MODELS[m].t) return FLEET_MODELS[m].t;
+    }
+    return '—';
+  };
+  const zCls = (v) => (v ? '' : ' vm-zero');
   document.getElementById('panel-gasact').innerHTML = `
     <div class="card">
       <div class="card-h no-print"><h3>Gaz dalolatnomasi — ${esc(monthLow(STATE.month))} ${y}</h3>
         <button class="btn btn-gold btn-sm" type="button" id="btn-pdf-gasact">PDF yuklab olish</button></div>
       <div class="card-b">
-        <div style="text-align:center;font-weight:700;margin-bottom:12px;">GAZ DALOLATNOMASI</div>
+        <div class="off-doc-head">
+          <div class="off-doc-title">GAZ DALOLATNOMASI<br><span style="color:#1a5fb4;font-size:12.5px">${esc(monthLow(STATE.month))} ${y} · ${rows.length} ta mashina</span></div>
+          <div class="off-doc-sign">Jami sarf: <b>${fmt(sum.used, 3)} m³</b><br>Oxirgi qoldiq: <b>${fmt(sum.end, 3)} m³</b></div>
+        </div>
         <p class="mob-swipe-hint no-print">Jadvalni chap-o‘ng suring. Pastida <b>JAMI</b>.</p>
         <div class="scroll-x">
         <table class="gtable">
@@ -2881,15 +3043,15 @@ function renderGasAct() {
             <th>Gazda bosib o'tgan (km)</th><th>Meyyor bo'yicha sarf (m³)</th><th>${esc(nextStr)} qoldiq (m³)</th>
           </tr></thead>
           <tbody>${rows.map(r => `<tr>
-            <td>${r.n}</td><td>${esc(r.f.name)}</td><td>${esc(r.f.brand || '—')}</td><td>${esc(plateDisp(r.f.car))}</td>
-            <td class="num">${fmt(r.car.gasStart, 4)}</td>
-            <td class="num">${fmt(r.t.gasIn, 4)}</td>
+            <td>${r.n}</td><td>${esc(r.f.name)}</td><td style="color:#334155;font-weight:500">${esc(gasBrandOf(r.f))}</td><td><b>${esc(plateDisp(r.f.car))}</b></td>
+            <td class="num${zCls(r.car.gasStart)}">${fmt(r.car.gasStart, 4)}</td>
+            <td class="num${zCls(r.t.gasIn)}">${fmt(r.t.gasIn, 4)}</td>
             <td class="num">${fmt(r.car.gasNorm, 2)}</td>
-            <td class="num">${fmt(r.t.gasKm, 2)}</td>
-            <td class="num">${fmt(r.t.gasUsed, 4)}</td>
+            <td class="num${zCls(r.t.gasKm)}"><b>${fmt(r.t.gasKm, 2)}</b></td>
+            <td class="num${zCls(r.t.gasUsed)}">${fmt(r.t.gasUsed, 4)}</td>
             <td class="num ${remainClass(r.t.gasR)}">${fmt(r.t.gasR, 4)}</td>
           </tr>`).join('')}
-          <tr><td colspan="4"><b>JAMI</b></td>
+          <tr class="dr-jami-row"><td colspan="4"><b>JAMI</b></td>
             <td class="num"><b>${fmt(sum.start, 3)}</b></td>
             <td class="num"><b>${fmt(sum.in, 3)}</b></td><td></td>
             <td class="num"><b>${fmt(sum.km, 2)}</b></td>
@@ -2943,11 +3105,27 @@ async function renderYear() {
     return a;
   }, { km: 0, gasIn: 0, benzinIn: 0, gasSum: 0, benzinSum: 0, cost: 0 });
   document.getElementById('panel-year').innerHTML = `
-    <div class="kpis">
-      <div class="kpi"><i>Yillik gaz</i><b>${fmtNum(ysum.gasIn)} m³</b><s>xarajat ${money(ysum.gasSum)}</s></div>
-      <div class="kpi"><i>Yillik benzin</i><b>${fmtNum(ysum.benzinIn)} l</b><s>xarajat ${money(ysum.benzinSum)}</s></div>
-      <div class="kpi"><i>Umumiy xarajat</i><b>${money(ysum.cost)}</b><s>${esc(year)} yil</s></div>
-      <div class="kpi"><i>Yillik km</i><b>${fmtNum(ysum.km)}</b><s>probeg</s></div>
+    <div class="hm-kpis">
+      <div class="hm-kpi">
+        <div class="hm-kpi-top"><span class="hm-kpi-lbl">Yillik gaz</span><span class="hm-kpi-ico sky"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 2s5 5.2 5 9a5 5 0 1 1-10 0c0-3.8 5-9 5-9z"/></svg></span></div>
+        <div class="hm-kpi-val">${fmtNum(ysum.gasIn)} <span style="font-size:13px;font-weight:500;color:#64748b">m³</span></div>
+        <div class="hm-kpi-sub">Xarajat: ${money(ysum.gasSum)}</div>
+      </div>
+      <div class="hm-kpi">
+        <div class="hm-kpi-top"><span class="hm-kpi-lbl">Yillik benzin</span><span class="hm-kpi-ico amber"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 17V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12"/><path d="M3 17h14M8 10h4"/></svg></span></div>
+        <div class="hm-kpi-val">${fmtNum(ysum.benzinIn)} <span style="font-size:13px;font-weight:500;color:#64748b">l</span></div>
+        <div class="hm-kpi-sub">Xarajat: ${money(ysum.benzinSum)}</div>
+      </div>
+      <div class="hm-kpi">
+        <div class="hm-kpi-top"><span class="hm-kpi-lbl">Umumiy xarajat</span><span class="hm-kpi-ico purple"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="5" width="16" height="10" rx="2"/><circle cx="10" cy="10" r="2"/></svg></span></div>
+        <div class="hm-kpi-val" style="font-size:19px">${money(ysum.cost)}</div>
+        <div class="hm-kpi-sub">${esc(year)} yil jami</div>
+      </div>
+      <div class="hm-kpi">
+        <div class="hm-kpi-top"><span class="hm-kpi-lbl">Yillik masofa</span><span class="hm-kpi-ico green"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 15l4.5-4.5 3.5 3.5L17 7"/><path d="M13 7h4v4"/></svg></span></div>
+        <div class="hm-kpi-val">${fmtNum(ysum.km)} <span style="font-size:13px;font-weight:500;color:#64748b">km</span></div>
+        <div class="hm-kpi-sub">Jami probeg</div>
+      </div>
     </div>
     <div class="card"><div class="card-h"><h3>${esc(year)} yil — oyma-oy jamlanma</h3>
       <button class="btn btn-ink btn-sm no-print" type="button" id="btn-pdf-year">PDF yuklab olish</button></div>
@@ -2955,15 +3133,15 @@ async function renderYear() {
       <table class="gtable">
         <thead><tr><th>Oy</th><th>Probeg (km)</th><th>Gaz (m³)</th><th>Gaz summa</th><th>Benzin (l)</th><th>Benzin summa</th><th>Jami (so'm)</th></tr></thead>
         <tbody>${perMonth.map(r => `<tr>
-          <td>${esc(UZ_M[Number(r.ym.slice(5))-1])}</td>
-          <td class="num">${r.km ? fmtNum(r.km) : ''}</td>
-          <td class="num">${r.gasIn ? fmtNum(r.gasIn) : ''}</td>
-          <td class="num">${r.gasSum ? money(r.gasSum) : ''}</td>
-          <td class="num">${r.benzinIn ? fmtNum(r.benzinIn) : ''}</td>
-          <td class="num">${r.benzinSum ? money(r.benzinSum) : ''}</td>
-          <td class="num">${r.cost ? money(r.cost) : ''}</td>
+          <td><b>${esc(UZ_M[Number(r.ym.slice(5))-1])}</b></td>
+          <td class="num">${r.km ? fmtNum(r.km) : '<span class="vm-zero">—</span>'}</td>
+          <td class="num">${r.gasIn ? fmtNum(r.gasIn) : '<span class="vm-zero">—</span>'}</td>
+          <td class="num">${r.gasSum ? money(r.gasSum) : '<span class="vm-zero">—</span>'}</td>
+          <td class="num">${r.benzinIn ? fmtNum(r.benzinIn) : '<span class="vm-zero">—</span>'}</td>
+          <td class="num">${r.benzinSum ? money(r.benzinSum) : '<span class="vm-zero">—</span>'}</td>
+          <td class="num"><b>${r.cost ? money(r.cost) : '<span class="vm-zero">—</span>'}</b></td>
         </tr>`).join('')}
-        <tr><td><b>JAMI</b></td>
+        <tr class="dr-jami-row"><td><b>JAMI</b></td>
           <td class="num"><b>${fmtNum(ysum.km)}</b></td>
           <td class="num"><b>${fmtNum(ysum.gasIn)}</b></td>
           <td class="num"><b>${money(ysum.gasSum)}</b></td>
@@ -3221,6 +3399,12 @@ function renderDocs() {
       </div>
     </div>
       <div class="card-b">
+        <div class="dr-kpis no-print">
+          <div class="dr-kpi" style="border-color:${overdue.length ? '#fecaca' : '#d7e3f0'};background:${overdue.length ? '#fef2f2' : '#f7fafd'}"><span class="dr-kpi-lbl">Muddati o'tgan</span><span class="dr-kpi-val" style="color:${overdue.length ? '#dc2626' : '#0b1f3a'}">${overdue.length}</span></div>
+          <div class="dr-kpi" style="border-color:${hot.length ? '#fed7aa' : '#d7e3f0'};background:${hot.length ? '#fff7ed' : '#f7fafd'}"><span class="dr-kpi-lbl">15 kun ichida</span><span class="dr-kpi-val" style="color:${hot.length ? '#ea580c' : '#0b1f3a'}">${hot.length}</span></div>
+          <div class="dr-kpi"><span class="dr-kpi-lbl">30 kun ichida</span><span class="dr-kpi-val">${warn30.length}</span></div>
+          <div class="dr-kpi"><span class="dr-kpi-lbl">45 kun ichida</span><span class="dr-kpi-val">${warn45.length}</span></div>
+        </div>
         <div class="hint">
           <b>Sana = muddat tugash kuni.</b> Kalendardan tanlang — aynan shu sana saqlanadi, tizim oy qo‘shmaydi.
           Pastdagi kunlar faqat shu sanadan hisoblanadi (masalan 28.06.2027 → shu kungacha qolgan kun).
@@ -3336,8 +3520,8 @@ function renderCars() {
               return `<tr class="car-sum-row${STATE.carsOpenPlate === f.car ? ' open' : ''}" data-plate="${esc(f.car)}">
               <td class="car-caret" title="Buyruq tarixini ochish">${caretSvg}</td>
               <td>${i + 1}${hasHist ? ' <span style="color:#1a5fb4;font-size:10px;">●</span>' : ''}</td>
-              <td>${esc(plateDisp(f.car))}</td>
-              <td><input data-v="brand" value="${esc(f.brand)}"></td>
+              <td><b>${esc(plateDisp(f.car))}</b></td>
+              <td><input data-v="brand" value="${esc(f.brand)}" placeholder="Marka"></td>
               <td class="drv-name-cell"><div class="drv-name-inline">
                 <input data-v="name" value="${esc(f.name)}" readonly title="O‘zgartirish uchun «Almashtirish»">
                 <button type="button" class="btn btn-ink btn-sm drv-rename-btn">Almashtirish</button>

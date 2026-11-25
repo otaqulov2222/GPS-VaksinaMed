@@ -2245,6 +2245,155 @@ table.dtable td.day {
   .daily-primary #btn-save { grid-column: 1 / -1; min-height: 50px; }
 }
 
+/* ========== BOSHQARUV: BOSH SAHIFA (HOME DASHBOARD) ========== */
+.hm-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 18px 22px; margin-bottom: 16px; border-radius: 16px;
+  background: linear-gradient(135deg, #0b1f3a 0%, #163d6e 55%, #1a5fb4 100%);
+  color: #fff; box-shadow: 0 10px 28px rgba(11, 31, 58, .16);
+}
+.hm-hero-title { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+.hm-hero-sub { font-size: 12.5px; color: rgba(255,255,255,.78); margin-top: 3px; }
+.hm-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.hm-hero-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.12);
+  color: #fff; font: 600 12px/1 'IBM Plex Sans', sans-serif; cursor: pointer;
+  transition: background .15s, transform .12s;
+}
+.hm-hero-btn:hover { background: rgba(255,255,255,.22); transform: translateY(-1px); }
+.hm-hero-btn.primary { background: #fff; color: #0b1f3a; border-color: #fff; }
+.hm-hero-btn.primary:hover { background: #eef4fb; }
+
+.hm-kpis {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;
+}
+@media (max-width: 1180px) { .hm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .hm-kpis { grid-template-columns: 1fr; } }
+
+.hm-kpi {
+  position: relative; background: #fff; border: 1px solid #d7e3f0; border-radius: 14px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+  box-shadow: 0 4px 14px rgba(11, 31, 58, .04); transition: transform .15s, box-shadow .15s, border-color .15s;
+}
+.hm-kpi.clickable { cursor: pointer; }
+.hm-kpi.clickable:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(11, 31, 58, .08); border-color: #9ec0e6; }
+.hm-kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hm-kpi-lbl { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5a7190; }
+.hm-kpi-ico {
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0;
+}
+.hm-kpi-ico.blue { background: #e8f1fc; color: #1a5fb4; }
+.hm-kpi-ico.green { background: #e7f8ef; color: #16a34a; }
+.hm-kpi-ico.sky { background: #e6f6fe; color: #0284c7; }
+.hm-kpi-ico.amber { background: #fef3c7; color: #d97706; }
+.hm-kpi-ico.purple { background: #f3e8ff; color: #7c3aed; }
+.hm-kpi-ico.red { background: #fee2e2; color: #dc2626; }
+.hm-kpi-ico.slate { background: #f1f5f9; color: #475569; }
+.hm-kpi-val { font: 700 22px/1.15 'IBM Plex Mono', monospace; color: #0b1f3a; }
+.hm-kpi-sub { font-size: 11.5px; color: #64748b; }
+
+.hm-grid {
+  display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; align-items: start;
+}
+@media (max-width: 1024px) { .hm-grid { grid-template-columns: 1fr; } }
+
+.hm-top-list { display: flex; flex-direction: column; gap: 10px; }
+.hm-top-row { display: flex; flex-direction: column; gap: 5px; }
+.hm-top-meta { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }
+.hm-top-car { font-weight: 700; color: #0b1f3a; }
+.hm-top-drv { color: #5a7190; font-weight: 500; margin-left: 6px; font-size: 12px; }
+.hm-top-km { font: 700 12.5px/1 'IBM Plex Mono', monospace; color: #1a5fb4; }
+.hm-top-bar { height: 7px; border-radius: 999px; background: #edf3fa; overflow: hidden; }
+.hm-top-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #1a5fb4, #38bdf8); }
+
+.hm-alert-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.hm-alert-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 12px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12.5px;
+}
+.hm-alert-item.bad { background: #fef2f2; border-color: #fecaca; }
+.hm-alert-item.warn { background: #fffbeb; border-color: #fde68a; }
+.hm-ok-box {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 12px;
+  background: #ecfdf5; border: 1px solid #bbf7d0; color: #065f46; font-size: 13px; font-weight: 500;
+}
+
+/* ========== KUNLIK KIRITISH & JADVALLAR SAYQALLASH ========== */
+.vc-card {
+  border-radius: 16px !important;
+  border: 1px solid #d7e3f0 !important;
+  box-shadow: 0 4px 14px rgba(11, 31, 58, .04) !important;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease !important;
+}
+.vc-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(11, 31, 58, .09) !important;
+  border-color: #9ec0e6 !important;
+}
+.vc-card.on, .vc-card.active {
+  border-color: #1a5fb4 !important;
+  box-shadow: 0 0 0 2px rgba(26, 95, 180, .18), 0 10px 24px rgba(26, 95, 180, .12) !important;
+}
+.vc-stats {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  margin-top: 8px !important;
+}
+.vc-stat {
+  background: #f5f8fc !important;
+  border: 1px solid #e3ecf5 !important;
+  border-radius: 10px !important;
+  padding: 6px 8px !important;
+}
+.gtable tbody tr:hover td { background: #f4f8fd !important; }
+.gtable td input:focus, .gtable td select:focus {
+  outline: none;
+  border-color: #1a5fb4 !important;
+  box-shadow: 0 0 0 2px rgba(26, 95, 180, .18) !important;
+  background: #fff !important;
+}
+
+/* ========== KUN HISOBOTI (DAYREP) ========== */
+.dr-kpis {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px;
+}
+@media (max-width: 900px) { .dr-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.dr-kpi {
+  background: #f7fafd; border: 1px solid #d7e3f0; border-radius: 12px; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.dr-kpi-lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5a7190; }
+.dr-kpi-val { font: 700 18px/1.2 'IBM Plex Mono', monospace; color: #0b1f3a; }
+.dr-mode-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; background: #e8f1fc; color: #1a5fb4;
+}
+.dr-mode-badge.mix { background: #f3e8ff; color: #7c3aed; }
+.dr-mode-badge.liq { background: #fef3c7; color: #b45309; }
+.gtable tr.dr-jami-row td,
+.gtable tr.month-total-row td {
+  background: #edf3fa !important; border-top: 2px solid #9ec0e6 !important; font-weight: 700; color: #0b1f3a;
+}
+.gtable td.vm-zero { color: #94a3b8 !important; }
+.gtable td.neg, .gtable .neg { color: #dc2626 !important; font-weight: 600; }
+.gtable td.pos, .gtable .pos { color: #16a34a !important; font-weight: 600; }
+.gtable tr.row-ben td { border-bottom: 2px solid #cbd5e1 !important; }
+.off-doc-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 14px 18px; margin: 10px 0 14px; border-radius: 12px;
+  background: #f8fafd; border: 1px solid #d7e3f0;
+}
+.off-doc-title { text-align: left; font-weight: 700; font-size: 13.5px; color: #0b1f3a; line-height: 1.45; }
+.off-doc-sign { text-align: right; font-size: 12px; color: #334155; line-height: 1.45; }
+.st-car-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; margin: 10px 0 6px; border-radius: 10px;
+  background: #f3f7fc; border: 1px solid #d7e3f0; font-weight: 700; color: #0b1f3a;
+}
+.st-car-meta { font-size: 12px; font-weight: 600; color: #1a5fb4; font-family: 'IBM Plex Mono', monospace; }
+@media (min-width: 769px) { .mob-swipe-hint { display: none !important; } }
 </style>
 
 </head>
