@@ -2250,8 +2250,9 @@ function renderTripsAside() {
         const t1 = typeof vmTeleClock === 'function' ? vmTeleClock(tr.t1).slice(0, 5) : '';
         const durStr = typeof vmTeleDur === 'function' ? vmTeleDur(tr.durSec) : '';
         const isOnly = trips.filter(x => checked[x.index]).length === 1 && checked[tr.index];
-        const pFrom = tr.points && tr.points.length ? nearPlace(tr.points[0]) : '';
-        const pTo = tr.points && tr.points.length ? nearPlace(tr.points[tr.points.length - 1]) : '';
+        const tPts = tr.pts || tr.points || [];
+        const pFrom = tPts.length ? nearPlace(tPts[0]) : '';
+        const pTo = tPts.length ? nearPlace(tPts[tPts.length - 1]) : '';
         const routeHint = (pFrom && pTo && pFrom !== pTo) ? (pFrom + ' → ' + pTo) : (pTo || pFrom || '');
         return `<div class="mta-row${isOnly ? ' is-active' : ''}" data-trip-row="${tr.index}">
           <input type="checkbox" data-trip-chk="${tr.index}" ${checked[tr.index] ? 'checked' : ''} title="Xaritada ko'rsatish">

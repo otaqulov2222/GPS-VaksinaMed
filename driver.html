@@ -1186,10 +1186,11 @@ function refreshDriverMap(day) {
       const totKm = trips.reduce((s, t) => s + (t.km || 0), 0);
       let html = `<button type="button" class="drv-trip-pill${!activeTrip ? ' on' : ''}" data-trip-idx="">Barchasi <span class="drv-trip-km">${trips.length} reys · ${totKm.toFixed(1)} km</span></button>`;
       trips.forEach((tr) => {
+        const tPts = tr.pts || tr.points || [];
         const t0 = typeof vmTeleClock === 'function' ? vmTeleClock(tr.t0).slice(0, 5) : '';
         const t1 = typeof vmTeleClock === 'function' ? vmTeleClock(tr.t1).slice(0, 5) : '';
-        const pFrom = nearStopName(tr.points[0]);
-        const pTo = nearStopName(tr.points[tr.points.length - 1]);
+        const pFrom = tPts.length ? nearStopName(tPts[0]) : '';
+        const pTo = tPts.length ? nearStopName(tPts[tPts.length - 1]) : '';
         const routeLbl = (pFrom && pTo && pFrom !== pTo) ? (` · ${pFrom} → ${pTo}`) : (pTo ? ` → ${pTo}` : '');
         const shortLbl = routeLbl.length > 34 ? routeLbl.slice(0, 32) + '…' : routeLbl;
         html += `<button type="button" class="drv-trip-pill${activeTrip && activeTrip.index === tr.index ? ' on' : ''}" data-trip-idx="${tr.index}" title="${esc(tr.index + '-reys (' + t0 + '–' + t1 + ')' + routeLbl)}">` +
@@ -1214,7 +1215,7 @@ function refreshDriverMap(day) {
   }
 
   const numbered = NUMS.ordered.filter(s => validUz(s.lat, s.lng));
-  const activeTrack = activeTrip ? activeTrip.points : track;
+  const activeTrack = activeTrip ? (activeTrip.pts || activeTrip.points || []) : track;
   const activeColor = activeTrip ? activeTrip.color : null;
   const routeRaw = activeTrack.length >= 2 ? activeTrack.map(p => [p[0], p[1]]) : numbered.map(s => [Number(s.lat), Number(s.lng)]);
   if (routeRaw.length >= 2) {
