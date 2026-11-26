@@ -1514,7 +1514,7 @@ body { overflow-x: clip; }
         <div class="head">
           <h2>Foydalanuvchilar <span id="adm-u-cnt" style="font-size:11px;opacity:.75;font-weight:500;margin-left:4px"></span></h2>
           <div class="adm-filter-bar">
-            <input type="search" id="adm-user-q" class="adm-u-search" placeholder="Ism, login, mashina..." autocomplete="off">
+            <input type="search" id="adm-user-q" name="vm_adm_filter_q" class="adm-u-search" placeholder="Ism, login, mashina..." autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" readonly onfocus="this.removeAttribute('readonly')" onpointerdown="this.removeAttribute('readonly')">
             <select id="adm-user-role" class="adm-u-role" title="Rol bo'yicha filtr">
               <option value="all">Hammasi</option>
               <option value="driver">Haydovchilar</option>
@@ -3875,7 +3875,27 @@ window.filterAdminUsers = function () {
   const cnt = document.getElementById('adm-u-cnt');
   if (cnt) cnt.textContent = rows.length ? `(${shown}/${rows.length})` : '';
 };
-document.getElementById('adm-user-q')?.addEventListener('input', window.filterAdminUsers);
+(function () {
+  const inp = document.getElementById('adm-user-q');
+  if (!inp) return;
+  let userTouched = false;
+  const markTouched = () => { userTouched = true; inp.removeAttribute('readonly'); };
+  inp.addEventListener('keydown', markTouched);
+  inp.addEventListener('pointerdown', markTouched);
+  inp.addEventListener('input', () => {
+    if (!userTouched && inp.hasAttribute('readonly')) {
+      inp.value = '';
+      return;
+    }
+    window.filterAdminUsers();
+  });
+  [120, 450, 1000].forEach((ms) => setTimeout(() => {
+    if (!userTouched && inp.value) {
+      inp.value = '';
+      window.filterAdminUsers();
+    }
+  }, ms));
+})();
 document.getElementById('adm-user-role')?.addEventListener('change', window.filterAdminUsers);
 </script>
 </body>
