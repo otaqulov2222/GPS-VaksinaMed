@@ -35,8 +35,8 @@ body.app-body {
 }
 
 .att-main {
-  padding: 16px 16px 40px;
-  max-width: 1180px;
+  padding: 16px 20px 40px;
+  max-width: 1420px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -5365,3 +5365,55 @@ section.av-pulse-row > .av-pulse-card {
 }
 .av-map-wrap.is-active::before { display: none; }
 .av-map-wrap.is-active::after { box-shadow: inset 0 0 0 2px #1a5fb4; }
+
+/* ========== DAVOMAT PRO UI SAYQALLASH ========== */
+.att-tabs {
+  background: #f1f5fb !important;
+  border: 1px solid #d5e1ef !important;
+  border-radius: 14px !important;
+  padding: 4px !important;
+  gap: 4px !important;
+  box-shadow: 0 2px 8px rgba(11, 31, 58, .04) !important;
+}
+.att-tab {
+  border-radius: 10px !important;
+  transition: all .15s ease !important;
+}
+.att-tab:hover:not(.on) {
+  background: rgba(255, 255, 255, .85) !important;
+  color: #1a5fb4 !important;
+}
+.att-tab.on {
+  background: #1a5fb4 !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(26, 95, 180, .28) !important;
+}
+.att-card, .av-card, .av-banner {
+  border-radius: 16px !important;
+  border: 1px solid #d5e1ef !important;
+  box-shadow: 0 6px 20px rgba(11, 31, 58, .05) !important;
+}
+.av-banner {
+  background: linear-gradient(135deg, #ffffff 0%, #f5f9ff 100%) !important;
+}
+.av-stat-box, .av-stamp-box {
+  border-radius: 12px !important;
+  transition: transform .14s ease, box-shadow .14s ease !important;
+}
+.av-stat-box:hover, .av-stamp-box:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(11, 31, 58, .07) !important;
+}
+.att-table thead th {
+  background: #f4f8fd !important;
+  color: #0b1f3a !important;
+  border-bottom: 2px solid #d5e1ef !important;
+}
+.att-table tbody tr:hover td {
+  background: #f4f8fd !important;
+}
+.att-main input:focus, .att-main select:focus, .att-main textarea:focus {
+  outline: none !important;
+  border-color: #1a5fb4 !important;
+  box-shadow: 0 0 0 2px rgba(26, 95, 180, .16) !important;
+}
