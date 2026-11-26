@@ -150,7 +150,7 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; ba
 .kpi.is-stop::before { background: #0ea5e9; }
 .kpi.is-miss::before { background: var(--warn); }
 .kpi.is-bad::before { background: var(--bad); }
-.kpi i { display: block; font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.kpi i { display: block; font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding-right: 36px; line-height: 1.25; }
 .kpi b { display: block; font-size: clamp(19px, 2.3vw, 24px); font-weight: 700; margin-top: 6px; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); line-height: 1.1; overflow-wrap: anywhere; }
 .kpi s { display: block; text-decoration: none; font-size: 11.5px; color: var(--muted); margin-top: 5px; }
 .kpi .grade {
@@ -159,6 +159,15 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; ba
   display: inline-flex; align-items: center; justify-content: center;
   font: 700 14px/1 var(--mono); color: #fff; background: #94a3b8;
 }
+.kpi-ico {
+  position: absolute; top: 13px; right: 14px;
+  width: 30px; height: 30px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #eff6ff; color: var(--accent);
+}
+.kpi.is-stop .kpi-ico { background: #e0f2fe; color: #0284c7; }
+.kpi.is-bad .kpi-ico { background: #fef2f2; color: var(--bad); }
+.kpi.is-miss .kpi-ico { background: #fffbeb; color: var(--warn); }
 .grade.g-a { background: var(--ok); }
 .grade.g-b { background: var(--accent); }
 .grade.g-c { background: var(--warn); }
@@ -352,13 +361,11 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; ba
 .vm-pin-dot.is-focus { box-shadow: 0 0 0 4px rgba(37, 99, 235, .35), 0 3px 10px rgba(15, 23, 42, .3); }
 .vm-route-chev { background: none !important; border: none !important; }
 .vm-route-chev-inner {
-  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-  transform: rotate(var(--brg, 0deg)); filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .6));
+  width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+  transform: rotate(var(--brg, 0deg)); filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .45));
 }
-.vm-route-chev-inner svg { width: 17px; height: 17px; display: block; overflow: visible; }
-.vm-route-chev-inner path { fill: #fff; stroke: #0f172a; stroke-width: 2; stroke-linejoin: round; }
-.leaflet-container path.vm-route-flow { animation: vmRouteFlow 1.55s linear infinite; pointer-events: none; }
-@keyframes vmRouteFlow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -22; } }
+.vm-route-chev-inner svg { width: 11px; height: 11px; display: block; overflow: visible; }
+.vm-route-chev-inner path { fill: #ffffff; stroke: #1d4ed8; stroke-width: 1.8; stroke-linejoin: round; }
 
 /* ── Ikki ustun ── */
 .cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; align-items: start; }
@@ -557,11 +564,11 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; ba
   </section>
 
   <div class="kpis">
-    <div class="kpi"><i>Yurilgan</i><b id="k-km">—</b><s id="k-trips">reys</s></div>
+    <div class="kpi"><i>Yurilgan</i><span class="kpi-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15c2-4 4-6 6-6s4 2 6-4"/><circle cx="4" cy="15" r="2"/><circle cx="16" cy="5" r="2"/></svg></span><b id="k-km">—</b><s id="k-trips">reys</s></div>
     <div class="kpi is-score"><i>Kunlik ball</i><b id="k-score">—</b><s id="k-grade">Kunlik baho</s><span class="grade" id="k-grade-badge" hidden></span></div>
-    <div class="kpi is-stop"><i>To'xtashlar</i><b id="k-stops">—</b><s id="k-moto">harakat vaqti</s></div>
-    <div class="kpi is-bad"><i>Qoidabuzarlik</i><b id="k-bad">—</b><s id="k-prob">muammoli to'xtash</s></div>
-    <div class="kpi is-miss"><i>O'tkazib yuborilgan</i><b id="k-miss">—</b><s>dorixona</s></div>
+    <div class="kpi is-stop"><i>To'xtashlar</i><span class="kpi-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="9" r="3"/><path d="M10 18s6-5 6-9a6 6 0 1 0-12 0c0 4 6 9 6 9z"/></svg></span><b id="k-stops">—</b><s id="k-moto">harakat vaqti</s></div>
+    <div class="kpi is-bad"><i>Qoidabuzarlik</i><span class="kpi-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3l8 14H2L10 3z"/><path d="M10 9v3M10 14.5h.01"/></svg></span><b id="k-bad">—</b><s id="k-prob">muammoli to'xtash</s></div>
+    <div class="kpi is-miss"><i>O'tkazib yuborilgan</i><span class="kpi-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2.5"/></svg></span><b id="k-miss">—</b><s>dorixona</s></div>
   </div>
 
   <section class="att-strip" id="att-strip" hidden aria-live="polite">
@@ -609,6 +616,10 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; ba
         <h3>Marshrut xaritasi</h3>
       </div>
       <div class="map-head-meta">
+        <div class="seg" id="drv-basemap" role="group" aria-label="Xarita turi">
+          <button type="button" class="on" data-base="street">Xarita</button>
+          <button type="button" data-base="sat">Sun'iy</button>
+        </div>
         <div class="map-stat"><i>To'xtash</i><b id="map-stat-stops">0</b></div>
         <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
         <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
@@ -869,7 +880,33 @@ function initDriverMap() {
   else L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { subdomains: 'abc', maxZoom: 20, maxNativeZoom: 18 }).addTo(drvMap);
   if (window.vmGeozones) drvGeo = vmGeozones.attach(drvMap, { car: (ME && ME.car) || '' });
   drvLayer = L.layerGroup().addTo(drvMap);
+  if (window._drvApplyBasemap) window._drvApplyBasemap();
 }
+(function () {
+  let drvSatLayer = null;
+  let drvBaseMode = 'street';
+  const applyBase = () => {
+    if (!drvMap || typeof L === 'undefined') return;
+    if (!drvSatLayer) drvSatLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20 });
+    if (drvBaseMode === 'sat') {
+      if (!drvMap.hasLayer(drvSatLayer)) drvSatLayer.addTo(drvMap);
+    } else if (drvMap.hasLayer(drvSatLayer)) {
+      drvMap.removeLayer(drvSatLayer);
+    }
+    if (drvGeo && typeof drvGeo.setBasemap === 'function') drvGeo.setBasemap(drvBaseMode);
+  };
+  window._drvApplyBasemap = applyBase;
+  const baseWrap = document.getElementById('drv-basemap');
+  if (baseWrap) {
+    baseWrap.querySelectorAll('button[data-base]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        drvBaseMode = btn.getAttribute('data-base') || 'street';
+        baseWrap.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn));
+        applyBase();
+      });
+    });
+  }
+})();
 function pinIcon(label, color, isEnd) {
   const text = String(label);
   return L.divIcon({
@@ -897,15 +934,14 @@ function bearingDeg(a, b) {
   const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
-/** Dashboard uslubi: soya + ko'k chiziq + oqim + oq strelkalar */
+/** Zamonaviy GPS marshrut chizig'i: halo + yorqin ko'k + ixcham yo'nalish strelkalari */
 function drawRoute(latlngs) {
   if (drvRouteLayer) { try { drvMap.removeLayer(drvRouteLayer); } catch (e) {} drvRouteLayer = null; }
   const pts = (latlngs || []).filter(p => p && validUz(p[0], p[1])).map(p => [Number(p[0]), Number(p[1])]);
   if (pts.length < 2) return;
   const layers = [
-    L.polyline(pts, { color: '#0b1f3a', weight: 8, opacity: 0.18, lineJoin: 'round', lineCap: 'round', interactive: false }),
-    L.polyline(pts, { color: '#1a5fb4', weight: 4, opacity: 0.95, lineJoin: 'round', lineCap: 'round', interactive: false }),
-    L.polyline(pts, { color: '#ffffff', weight: 1.4, opacity: 0.4, dashArray: '5 12', className: 'vm-route-flow', interactive: false })
+    L.polyline(pts, { color: '#1e3a8a', weight: 8, opacity: 0.28, lineJoin: 'round', lineCap: 'round', interactive: false }),
+    L.polyline(pts, { color: '#2563eb', weight: 4.5, opacity: 0.96, lineJoin: 'round', lineCap: 'round', interactive: false })
   ];
   const dist = [0];
   let total = 0;
@@ -913,7 +949,7 @@ function drawRoute(latlngs) {
     total += L.latLng(pts[i - 1]).distanceTo(L.latLng(pts[i]));
     dist.push(total);
   }
-  const n = Math.min(120, Math.max(8, Math.round(total / 260)));
+  const n = Math.min(42, Math.max(4, Math.round(total / 680)));
   const spacing = total / (n + 1);
   let seg = 1;
   for (let k = 1; k <= n && total > 1; k++) {
@@ -927,8 +963,8 @@ function drawRoute(latlngs) {
       interactive: false, keyboard: false, zIndexOffset: 400,
       icon: L.divIcon({
         className: 'vm-route-chev',
-        html: `<div class="vm-route-chev-inner" style="--brg:${brg.toFixed(1)}deg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8L21 20.2l-9-4.2-9 4.2z"/></svg></div>`,
-        iconSize: [22, 22], iconAnchor: [11, 11]
+        html: `<div class="vm-route-chev-inner" style="--brg:${brg.toFixed(1)}deg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5L19.5 19.5l-7.5-3.8-7.5 3.8z"/></svg></div>`,
+        iconSize: [16, 16], iconAnchor: [8, 8]
       })
     }));
   }

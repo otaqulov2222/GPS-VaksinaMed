@@ -229,7 +229,15 @@ body.app-body {
   transition: transform 0.12s ease, filter 0.12s;
   box-sizing: border-box;
 }
-.att-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; }
+.att-btn:disabled {
+  opacity: 1;
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+  transform: none !important;
+}
 .att-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.04); }
 .att-btn-in {
   background: linear-gradient(160deg, #1a5fb4, #0f3a6e);
@@ -4511,10 +4519,14 @@ section.av-pulse-row > .av-pulse-card {
   border-color: #86efac !important;
 }
 .av-studio .av-pulse-card.navy {
-  background: linear-gradient(145deg, #0b1f3a, #123050) !important;
-  border-color: #0b1f3a !important;
-  color: #fff !important;
+  background: linear-gradient(145deg, #eff6ff 0%, #f8fbff 100%) !important;
+  border-color: #bfdbfe !important;
+  border-top: 3px solid #2563eb !important;
+  color: #0f172a !important;
 }
+.av-studio .av-pulse-card.navy .k { color: #2563eb !important; }
+.av-studio .av-pulse-card.navy .v { color: #0f172a !important; }
+.av-studio .av-pulse-card.navy .s { color: #475569 !important; }
 .av-pulse-card .k {
   font: 700 10px/1 'IBM Plex Mono', monospace;
   letter-spacing: 0.1em;
@@ -4530,7 +4542,7 @@ section.av-pulse-row > .av-pulse-card {
 .av-pulse-card .v-sm {
   margin-top: 8px;
   font: 650 14px/1.25 'IBM Plex Sans', system-ui, sans-serif;
-  color: #fff;
+  color: #1e3a8a;
 }
 .av-pulse-card .s {
   margin-top: 6px;
@@ -4540,9 +4552,9 @@ section.av-pulse-row > .av-pulse-card {
 .av-pulse-card.warn { background: #fffbeb; border-color: #f6d98a; }
 .av-pulse-card.ok { background: #f0fdf4; border-color: #a7f3d0; }
 .av-pulse-card.navy {
-  background: linear-gradient(145deg, #0b1f3a, #123050);
-  border-color: #0b1f3a;
-  color: #fff;
+  background: linear-gradient(145deg, #eff6ff 0%, #f8fbff 100%);
+  border-color: #bfdbfe;
+  color: #0f172a;
 }
 
 /* Week timeline */
@@ -5158,8 +5170,9 @@ section.av-pulse-row > .av-pulse-card {
   border-color: #86efac !important;
 }
 .av-studio.av-cmd .av-cmd-kpi > .av-pulse-card.navy {
-  background: linear-gradient(145deg, #0b1f3a, #123050) !important;
-  border-color: #0b1f3a !important;
+  background: linear-gradient(145deg, #eff6ff 0%, #f8fbff 100%) !important;
+  border-color: #bfdbfe !important;
+  border-top: 3px solid #2563eb !important;
 }
 
 .av-cmd-mid {
@@ -5194,13 +5207,13 @@ section.av-pulse-row > .av-pulse-card {
   border: 1px solid rgba(11, 31, 58, 0.08);
 }
 .av-cmd-dayline .node.focus {
-  background: linear-gradient(145deg, #0b1f3a, #123050);
-  border-color: #0b1f3a;
-  color: #fff;
+  background: linear-gradient(145deg, #eff6ff 0%, #f8fbff 100%);
+  border-color: #93c5fd;
+  color: #0f172a;
 }
 .av-cmd-dayline .node.focus .lab,
-.av-cmd-dayline .node.focus .meta { color: rgba(142, 182, 223, 0.9); }
-.av-cmd-dayline .node.focus .val { color: #6ee7b7; }
+.av-cmd-dayline .node.focus .meta { color: #475569; }
+.av-cmd-dayline .node.focus .val { color: #059669; }
 
 .av-cmd-steps {
   display: flex !important;
@@ -5258,12 +5271,14 @@ section.av-pulse-row > .av-pulse-card {
 .av-cmd-howto {
   border-radius: 16px !important;
   padding: 16px !important;
-  background: #0b1f3a !important;
-  color: #eef5fc !important;
-  box-shadow: none !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-left: 4px solid #2563eb !important;
+  color: #0f172a !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
 }
 .av-cmd-howto h3 {
-  color: #fff !important;
+  color: #0f172a !important;
   margin: 0 0 10px !important;
   font-size: 14px !important;
 }
@@ -5276,21 +5291,21 @@ section.av-pulse-row > .av-pulse-card {
 }
 .av-cmd-howto li {
   font-size: 13px;
-  line-height: 1.4;
-  color: rgba(238, 245, 252, 0.9);
+  line-height: 1.45;
+  color: #334155;
 }
 .av-cmd-howto b {
   display: inline-block;
   min-width: 1.2em;
-  color: #7dd3fc;
+  color: #2563eb;
   margin-right: 4px;
 }
 .av-cmd-howto .av-howto-note {
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid #e2e8f0;
   font-size: 11px;
-  color: rgba(238, 245, 252, 0.7);
+  color: #64748b;
 }
 .av-cmd-hist {
   border-radius: 16px !important;
@@ -5315,9 +5330,9 @@ section.av-pulse-row > .av-pulse-card {
   box-shadow: 0 6px 18px rgba(11, 31, 58, 0.05) !important;
 }
 .att-tab.on {
-  background: #0b1f3a !important;
+  background: #2563eb !important;
   color: #fff !important;
-  box-shadow: none !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22) !important;
   border-radius: 10px !important;
 }
 
