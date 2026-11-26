@@ -1041,3 +1041,122 @@ def build_chek_record(qr_raw, extra=None, fetch_ofd=True):
     elif raw_qr:
         rec["qrSource"] = "scan"
     return {"ok": True, "rec": rec}
+
+
+_GAZ_RE = re.compile(r"(metan|метан|gaz|газ|cng|spg|спг|propan|пропан|agzs|агзс|agnks|агнкс)", re.I)
+_BEN_RE = re.compile(r"(benzin|бензин|ai[\s\-_]?\d{2}|аи[\s\-_]?\d{2}|dizel|дизел|solyar|соляр|\bdt\b|\bдт\b)", re.I)
+
+
+def _chek_ymd(row):
+    """Chek sanasini YYYY-MM-DD ko'rinishida chiqaradi (avval paidAt/stamp, bo'lmasa createdAt)."""
+    for key in ("paidAt", "stamp", "paymentDate", "createdAt"):
+        raw = str((row or {}).get(key) or "").strip()
+        if not raw:
+            continue
+        m_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})", raw)
+        if m_iso:
+            return m_iso.group(0)
+        norm = normalize_human_datetime(raw)
+        if norm and len(norm) >= 8:
+            return f"{norm[0:4]}-{norm[4:6]}-{norm[6:8]}"
+    return ""
+
+
+def _num_val(v):
+    if v in (None, ""):
+        return 0.0
+    try:
+        return float(str(v).replace(",", ".").replace(" ", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def extract_fuel_from_chek(chek_row, vehicle_meta=None):
+    """OFD tasdiqlagan chekdan sana, zapravka, yoqilg'i turi, miqdor va narxni ajratadi."""
+    if not isinstance(chek_row, dict) or not chek_row.get("ofdOk"):
+        return {"ok": False, "reason": "ofd_not_ok"}
+    ymd = _chek_ymd(chek_row)
+    if not ymd:
+        return {"ok": False, "reason": "no_date"}
+    month = ymd[:7]
+    day = int(ymd[8:10])
+    if day < 1 or day > 31:
+        return {"ok": False, "reason": "bad_day"}
+
+    vm = vehicle_meta if isinstance(vehicle_meta, dict) else {}
+    ft = str(vm.get("fuelType") or "mixed").lower()
+    def_gas_p = _num_val(vm.get("gasPrice")) or 5200.0
+    def_ben_p = _num_val(vm.get("benzinPrice")) or 11000.0
+
+    merchant = str(chek_row.get("merchant") or chek_row.get("kkmName") or "").strip()[:80]
+    items = chek_row.get("items") if isinstance(chek_row.get("items"), list) else []
+
+    gas_in = 0.0
+    gas_sum = 0.0
+    ben_in = 0.0
+    ben_sum = 0.0
+    matched_any = False
+
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        nm = str(it.get("name") or "")
+        qty = _num_val(it.get("qty"))
+        sm = _num_val(it.get("sum"))
+        is_g = bool(_GAZ_RE.search(nm))
+        is_b = bool(_BEN_RE.search(nm))
+        if not is_g and not is_b:
+            continue
+        matched_any = True
+        if is_g and not is_b:
+            if qty <= 0 and sm > 0 and def_gas_p > 0:
+                qty = sm / def_gas_p
+            gas_in += qty
+            gas_sum += sm
+        else:
+            if qty <= 0 and sm > 0 and def_ben_p > 0:
+                qty = sm / def_ben_p
+            ben_in += qty
+            ben_sum += sm
+
+    if not matched_any:
+        amt = _num_val(chek_row.get("amount"))
+        if amt <= 0:
+            return {"ok": False, "reason": "no_amount"}
+        # Agar chek mahsulot nomi noaniq bo'lsa — shoxobcha nomi yoki mashina yoqilg'i turidan aniqlaymiz
+        m_gaz = bool(_GAZ_RE.search(merchant))
+        m_ben = bool(_BEN_RE.search(merchant))
+        if m_gaz and not m_ben:
+            kind = "gaz"
+        elif m_ben and not m_gaz:
+            kind = "benzin"
+        elif ft == "gaz":
+            kind = "gaz"
+        elif ft in ("benzin", "dizel"):
+            kind = "benzin"
+        else:
+            kind = "gaz"
+        # Agar items da bitta yozuv bo'lib miqdori berilgan bo'lsa — o'shani olamiz
+        raw_qty = _num_val(items[0].get("qty")) if len(items) == 1 and isinstance(items[0], dict) else 0.0
+        if kind == "gaz":
+            gas_in = raw_qty if raw_qty > 0 else (amt / def_gas_p if def_gas_p > 0 else 0.0)
+            gas_sum = amt
+        else:
+            ben_in = raw_qty if raw_qty > 0 else (amt / def_ben_p if def_ben_p > 0 else 0.0)
+            ben_sum = amt
+
+    if gas_in <= 0 and ben_in <= 0:
+        return {"ok": False, "reason": "zero_qty"}
+
+    gas_price = round(gas_sum / gas_in) if (gas_in > 0 and gas_sum > 0) else 0
+    ben_price = round(ben_sum / ben_in) if (ben_in > 0 and ben_sum > 0) else 0
+    return {
+        "ok": True,
+        "month": month,
+        "day": day,
+        "station": merchant,
+        "gasIn": round(gas_in, 4),
+        "gasPrice": gas_price,
+        "benzinIn": round(ben_in, 4),
+        "benzinPrice": ben_price,
+    }

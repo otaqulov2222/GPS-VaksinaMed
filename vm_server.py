@@ -2711,6 +2711,7 @@ class OfficeStore:
                     old["manual"] = False
                     self._cheks_put(items)
                     self.cheks_remember_terminal(old.get("terminalId"), locked=True)
+                    self.apply_chek_to_fuel(old.get("id"))
                     return old, "duplicate"
                 if not old.get("ofdOk"):
                     dup_id = str(old.get("id") or "")
@@ -2726,6 +2727,7 @@ class OfficeStore:
                 self._cheks_put(items)
                 if row.get("ofdOk"):
                     self.cheks_remember_terminal(row.get("terminalId"), locked=True)
+                    self.apply_chek_to_fuel(row.get("id"))
                 return row, ""
         # Eski pending — OFD dan qayta tortib to‘ldirish
         filled, _err = self.cheks_refresh(dup_id)
@@ -2737,13 +2739,150 @@ class OfficeStore:
         rid = str(rec_id or "").strip()
         if not rid:
             return False
+        removed = None
         with self.lock:
             items = self.cheks_list()
-            nxt = [x for x in items if str(x.get("id") or "") != rid]
-            if len(nxt) == len(items):
+            nxt = []
+            for x in items:
+                if str(x.get("id") or "") == rid:
+                    removed = x
+                else:
+                    nxt.append(x)
+            if removed is None:
                 return False
             self._cheks_put(nxt)
+        if removed and removed.get("fuelApplied"):
+            self.remove_chek_from_fuel(removed)
+        return True
+
+    def _find_vehicle_meta(self, meta, plate):
+        vehicles = (meta or {}).get("vehicles") if isinstance((meta or {}).get("vehicles"), dict) else {}
+        cp = compact_plate(plate)
+        for k, v in vehicles.items():
+            if compact_plate(k) == cp and isinstance(v, dict):
+                return k, v
+        return plate, {}
+
+    def apply_chek_to_fuel(self, rec_id):
+        import cheks as chekmod
+
+        rid = str(rec_id or "").strip()
+        if not rid:
+            return False
+        with self.lock:
+            items = self.cheks_list()
+            row = next((x for x in items if str(x.get("id") or "") == rid), None)
+            if not row or row.get("fuelApplied"):
+                return False
+            plate = str(row.get("plate") or "").strip()
+            if not plate:
+                return False
+            meta = self.fuel_meta()
+            meta_plate, vmeta = self._find_vehicle_meta(meta, plate)
+            ext = chekmod.extract_fuel_from_chek(row, vmeta)
+            if not ext.get("ok"):
+                return False
+
+            month = ext["month"]
+            day_k = str(ext["day"])
+            gas_add = as_num(ext.get("gasIn"))
+            ben_add = as_num(ext.get("benzinIn"))
+            if gas_add <= 0 and ben_add <= 0:
+                return False
+
+            cur_month = self.fuel_month(month) or {}
+            cars = dict(cur_month.get("cars") or {}) if isinstance(cur_month.get("cars"), dict) else {}
+            car_key = self._existing_plate_key(cars, meta_plate or plate)
+            car_rec = dict(cars.get(car_key) or {})
+            days = dict(car_rec.get("days") or {}) if isinstance(car_rec.get("days"), dict) else {}
+            drow = dict(days.get(day_k) or {})
+
+            if gas_add > 0:
+                drow["gasIn"] = round(as_num(drow.get("gasIn")) + gas_add, 4)
+                if ext.get("gasPrice") and ext["gasPrice"] > 0:
+                    drow["gasPrice"] = ext["gasPrice"]
+            if ben_add > 0:
+                drow["benzinIn"] = round(as_num(drow.get("benzinIn")) + ben_add, 4)
+                if ext.get("benzinPrice") and ext["benzinPrice"] > 0:
+                    drow["benzinPrice"] = ext["benzinPrice"]
+            st_name = str(ext.get("station") or "").strip()[:80]
+            if st_name:
+                old_st = str(drow.get("station") or "").strip()
+                if not old_st:
+                    drow["station"] = st_name
+                elif st_name.lower() not in old_st.lower():
+                    drow["station"] = (old_st + ", " + st_name)[:80]
+                stations = list(meta.get("stations") or [])
+                if st_name not in stations:
+                    stations.append(st_name)
+                    meta["stations"] = stations[:120]
+                    self._kv_put("fuel__meta", meta)
+
+            if "mode" not in drow:
+                drow["mode"] = "benzin" if (ben_add > 0 and gas_add <= 0) else "gaz"
+            days[day_k] = drow
+            car_rec["days"] = days
+            cars[car_key] = car_rec
+            cur_month["cars"] = cars
+            self._kv_put(f"fuel__month__{month}", cur_month)
+
+            row["fuelApplied"] = {
+                "month": month,
+                "day": ext["day"],
+                "plate": car_key,
+                "gasIn": gas_add,
+                "benzinIn": ben_add,
+            }
+            self._cheks_put(items)
             return True
+
+    def remove_chek_from_fuel(self, chek_row):
+        fa = chek_row.get("fuelApplied") if isinstance(chek_row, dict) else None
+        if not isinstance(fa, dict):
+            return False
+        month = str(fa.get("month") or "")
+        day_k = str(fa.get("day") or "")
+        plate = str(fa.get("plate") or "")
+        if not month or not day_k or not plate or not MONTH_RE.match(month):
+            return False
+        with self.lock:
+            cur_month = self.fuel_month(month) or {}
+            cars = dict(cur_month.get("cars") or {}) if isinstance(cur_month.get("cars"), dict) else {}
+            car_key = self._existing_plate_key(cars, plate)
+            if car_key not in cars:
+                return False
+            car_rec = dict(cars.get(car_key) or {})
+            days = dict(car_rec.get("days") or {}) if isinstance(car_rec.get("days"), dict) else {}
+            if day_k not in days:
+                return False
+            drow = dict(days.get(day_k) or {})
+            g_sub = as_num(fa.get("gasIn"))
+            b_sub = as_num(fa.get("benzinIn"))
+            if g_sub > 0:
+                drow["gasIn"] = max(0.0, round(as_num(drow.get("gasIn")) - g_sub, 4))
+            if b_sub > 0:
+                drow["benzinIn"] = max(0.0, round(as_num(drow.get("benzinIn")) - b_sub, 4))
+            days[day_k] = drow
+            car_rec["days"] = days
+            cars[car_key] = car_rec
+            cur_month["cars"] = cars
+            self._kv_put(f"fuel__month__{month}", cur_month)
+            return True
+
+    def sync_all_cheks_to_fuel(self, month=None):
+        items = self.cheks_list()
+        applied = 0
+        for row in items:
+            if not isinstance(row, dict) or not row.get("ofdOk") or row.get("fuelApplied"):
+                continue
+            if month:
+                import cheks as chekmod
+                ymd = chekmod._chek_ymd(row)
+                if not ymd or not ymd.startswith(str(month)):
+                    continue
+            if self.apply_chek_to_fuel(row.get("id")):
+                applied += 1
+        return applied
 
     def cheks_refresh(self, rec_id, ofd_payload=None):
         import cheks as chekmod
@@ -2818,7 +2957,9 @@ class OfficeStore:
             if ofd and ofd.get("ofdOk"):
                 row["manual"] = False
             self._cheks_put(items)
-            return row, ""
+        if row.get("ofdOk"):
+            self.apply_chek_to_fuel(row.get("id"))
+        return row, ""
 
     def cheks_update(self, rec_id, patch, username=""):
         import cheks as chekmod
@@ -2842,7 +2983,9 @@ class OfficeStore:
             row["updatedAt"] = iso_now()
             row["updatedBy"] = str(username or "")[:40]
             self._cheks_put(items)
-            return row, ""
+        if row.get("ofdOk"):
+            self.apply_chek_to_fuel(row.get("id"))
+        return row, ""
 
     def save_fuel_meta(self, body):
         cur = self.fuel_meta()
@@ -6594,6 +6737,17 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "Chek topilmadi", "sandbox": True}, 404)
                 return
             self.send_json({"ok": True, "sandbox": True, "items": OFFICE.cheks_public()})
+            return
+
+        if path == "/api/office/cheks/sync-fuel":
+            sess = self.require_user()
+            if not sess:
+                return
+            if self.deny_driver_write(sess):
+                return
+            month = str(body.get("month") or "").strip() or None
+            cnt = OFFICE.sync_all_cheks_to_fuel(month)
+            self.send_json({"ok": True, "applied": cnt, "items": OFFICE.cheks_public()})
             return
 
         if path == "/api/office/fuel/month":
