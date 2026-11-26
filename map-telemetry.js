@@ -11,22 +11,22 @@
     const STAY_SPEED = 3;
     const STAY_RADIUS_M = 35;
     const STAY_MIN_SEC = 90;
-    const MAX_LABELS = 160;
-    const DOT_MIN_PX = 7;
+    const MAX_LABELS = 24;
+    const DOT_MIN_PX = 9;
 
     const CSS = `
 .leaflet-tooltip.vm-tele-tip {
-  background: #1a5fb4 !important; border: 0 !important; color: #fff !important;
-  padding: 4px 8px !important; border-radius: 6px !important;
-  font: 600 11px/1.3 'IBM Plex Sans', system-ui, sans-serif;
-  box-shadow: 0 2px 6px rgba(11, 31, 58, 0.28) !important;
+  background: rgba(26, 95, 180, 0.94) !important; border: 1px solid rgba(255,255,255,0.28) !important; color: #fff !important;
+  padding: 2px 6px !important; border-radius: 6px !important;
+  font: 600 9.5px/1.2 'IBM Plex Sans', system-ui, sans-serif;
+  box-shadow: 0 2px 6px rgba(11, 31, 58, 0.24) !important;
   white-space: nowrap; pointer-events: none;
 }
-.leaflet-tooltip.vm-tele-tip b { display: block; font: 700 11.5px/1.25 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .01em; }
-.leaflet-tooltip.vm-tele-tip span { display: block; font-size: 10.5px; opacity: .92; }
-.leaflet-tooltip.vm-tele-tip.is-stay { background: #0b1f3a !important; }
+.leaflet-tooltip.vm-tele-tip b { display: inline; font: 700 10px/1.2 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .01em; margin-right: 4px; }
+.leaflet-tooltip.vm-tele-tip span { display: inline; font-size: 9.5px; opacity: .94; }
+.leaflet-tooltip.vm-tele-tip.is-stay { background: rgba(11, 31, 58, 0.94) !important; border-color: rgba(255, 209, 102, 0.45) !important; }
 .leaflet-tooltip.vm-tele-tip.is-stay span { color: #ffd166; opacity: 1; }
-.leaflet-tooltip.vm-tele-tip.is-edge { background: #123050 !important; }
+.leaflet-tooltip.vm-tele-tip.is-edge { background: rgba(18, 48, 80, 0.95) !important; }
 .leaflet-tooltip-right.vm-tele-tip::before { border-right-color: #1a5fb4 !important; }
 .leaflet-tooltip-left.vm-tele-tip::before { border-left-color: #1a5fb4 !important; }
 .leaflet-tooltip-top.vm-tele-tip::before { border-top-color: #1a5fb4 !important; }
@@ -148,9 +148,9 @@
     }
 
     function labelSize(s) {
-        const head = s.edge ? 76 : 0;
-        if (s.stay) return [Math.max(150, 96 + head), 36];
-        return [Math.max(80, 70 + head), 36];
+        const head = s.edge ? 62 : 0;
+        if (s.stay) return [Math.max(175, 130 + head), 24];
+        return [Math.max(105, 95 + head), 22];
     }
 
     const CANDS = [
@@ -263,6 +263,94 @@
         };
     }
 
+    const TRIP_COLORS = ['#1a5fb4', '#059669', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#b91c1c', '#4f46e5'];
+
+    /** Trekni faqat haqiqiy harakat reyslariga ajratadi (>= 0.35 km, 0 km li tungi turishlarsiz) */
+    function vmSplitTrips(track) {
+        const pts = normalize(track);
+        if (pts.length < 2) return [];
+        const trips = [];
+        let cur = [pts[0]];
+        let stayStartIdx = pts[0][3] < STAY_SPEED ? 0 : -1;
+
+        const flushTrip = (arr) => {
+            if (arr.length < 2) return;
+            // Boshi va oxiridagi barcha harakatsiz / turgan nuqtalarni qat'iy kesish (tungi drift kirmasin)
+            let s = 0;
+            while (s < arr.length - 1 && arr[s][3] < STAY_SPEED) s++;
+            if (s > 0) s--; // harakat boshlanishidan 1 nuqta oldingi nuqtani saqlaymiz
+            let e = arr.length - 1;
+            while (e > s + 1 && arr[e][3] < STAY_SPEED) e--;
+            if (e < arr.length - 1) e++; // to'xtash nuqtasigacha
+            const clean = arr.slice(s, e + 1);
+            if (clean.length < 2) return;
+
+            let meters = 0, maxSpd = 0, movePts = 0, spdSum = 0;
+            for (let k = 0; k < clean.length; k++) {
+                const spd = clean[k][3] || 0;
+                if (spd >= STAY_SPEED) { movePts++; spdSum += spd; }
+                if (spd > maxSpd) maxSpd = spd;
+                if (k > 0) meters += distM(clean[k - 1], clean[k]);
+            }
+            // Kamida 350 metr va kamida 2 ta harakat nuqtasi bo'lmasa — bu reys emas
+            if (meters < 350 || movePts < 2) return;
+            const idx = trips.length;
+            trips.push({
+                index: idx + 1,
+                color: TRIP_COLORS[idx % TRIP_COLORS.length],
+                pts: clean,
+                t0: clean[0][2],
+                t1: clean[clean.length - 1][2],
+                durSec: Math.max(0, clean[clean.length - 1][2] - clean[0][2]),
+                km: meters / 1000,
+                maxSpd: Math.round(maxSpd),
+                avgSpd: movePts ? Math.round(spdSum / movePts) : 0
+            });
+        };
+
+        for (let i = 1; i < pts.length; i++) {
+            const prev = pts[i - 1];
+            const p = pts[i];
+            const gap = p[2] - prev[2];
+            if (gap >= 300 && cur.length >= 2) {
+                flushTrip(cur);
+                cur = [p];
+                stayStartIdx = p[3] < STAY_SPEED ? 0 : -1;
+                continue;
+            }
+            if (p[3] < STAY_SPEED) {
+                if (stayStartIdx < 0) stayStartIdx = cur.length;
+                else if (distM(cur[stayStartIdx], p) > STAY_RADIUS_M) stayStartIdx = cur.length;
+                cur.push(p);
+            } else {
+                if (stayStartIdx >= 0 && cur.length > stayStartIdx) {
+                    const stayDur = prev[2] - cur[stayStartIdx][2];
+                    if (stayDur >= 180 && stayStartIdx >= 2) {
+                        const finished = cur.slice(0, stayStartIdx + 1);
+                        flushTrip(finished);
+                        cur = [cur[cur.length - 1], p];
+                        stayStartIdx = -1;
+                        continue;
+                    }
+                }
+                stayStartIdx = -1;
+                cur.push(p);
+            }
+        }
+        flushTrip(cur);
+        return trips;
+    }
+
+    function vmSpeedColor(spd) {
+        const s = Number(spd) || 0;
+        if (s >= 60) return '#dc2626';
+        if (s >= 30) return '#16a34a';
+        return '#1a5fb4';
+    }
+
     window.vmTrackTelemetry = vmTrackTelemetry;
     window.vmTeleClock = clock;
+    window.vmTeleDur = dur;
+    window.vmSplitTrips = vmSplitTrips;
+    window.vmSpeedColor = vmSpeedColor;
 })();

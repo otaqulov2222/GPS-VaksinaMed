@@ -23,7 +23,7 @@
 <link rel="dns-prefetch" href="https://tile.openstreetmap.org">
 <link rel="dns-prefetch" href="https://server.arcgisonline.com">
 
-<link rel="stylesheet" href="shell.css?v=41"/>
+<link rel="stylesheet" href="shell.css?v=42"/>
 
 <style>
 
@@ -1389,74 +1389,73 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
   z-index: 2; pointer-events: none;
 }
 .map-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 16px 18px 16px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 18px 12px 20px;
   background:
     radial-gradient(120% 140% at 100% 0%, rgba(26,95,180,.08), transparent 55%),
-    linear-gradient(180deg, #ffffff 0%, #f3f7fc 100%);
-  border-bottom: 1px solid #c5d4e6;
+    linear-gradient(180deg, #ffffff 0%, #f4f8fd 100%);
+  border-bottom: 1px solid #d5e1ef;
 }
 .map-kicker {
   font-size: 9px; font-weight: 700; color: #1a5fb4;
-  letter-spacing: .2em; text-transform: uppercase; margin-bottom: 5px;
+  letter-spacing: .18em; text-transform: uppercase; margin-bottom: 2px;
 }
 .map-head h3 {
-  font-size: 15px; font-weight: 700; color: #0b1f3a;
-  letter-spacing: .08em; text-transform: uppercase; margin: 0;
-  line-height: 1.2;
+  font-size: 14.5px; font-weight: 700; color: #0b1f3a;
+  letter-spacing: .06em; text-transform: uppercase; margin: 0;
+  line-height: 1.2; white-space: nowrap;
 }
-.map-head-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.map-tele-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 12px;
-  background: #fff;
-  border: 1px solid #c5d4e6;
-  border-radius: 12px;
-  font-size: 11px; font-weight: 700; color: #0b1f3a;
-  letter-spacing: .04em;
-  cursor: pointer; user-select: none;
-  box-shadow: 0 2px 6px rgba(11, 31, 58, 0.04);
-}
-.map-tele-toggle input { accent-color: #1a5fb4; margin: 0; cursor: pointer; }
+.map-head-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.map-tele-toggle,
 .map-stat {
-  min-width: 76px;
-  padding: 8px 12px;
-  background: #fff;
-  border: 1px solid #c5d4e6;
-  border-radius: 12px;
-  box-shadow: 0 2px 6px rgba(11, 31, 58, 0.04);
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 11px; min-width: 0;
+  background: #fff; border: 1px solid #cbd9e8; border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(11, 31, 58, 0.04);
 }
+.map-tele-toggle {
+  font-size: 11.5px; font-weight: 600; color: #0b1f3a;
+  cursor: pointer; user-select: none;
+  transition: border-color .15s, background .15s;
+}
+.map-tele-toggle:hover { border-color: #9ec0e6; background: #f8fbff; }
+.map-tele-toggle input { accent-color: #1a5fb4; margin: 0; cursor: pointer; }
 .map-stat i {
-  display: block; font-style: normal;
-  font-size: 8px; font-weight: 700; color: #5a7190;
-  letter-spacing: .12em; text-transform: uppercase;
+  display: inline; font-style: normal;
+  font-size: 9.5px; font-weight: 700; color: #5a7190;
+  letter-spacing: .06em; text-transform: uppercase;
 }
 .map-stat b {
-  display: block; font-family: var(--mono);
-  font-size: 17px; font-weight: 700; color: #0b1f3a; margin-top: 3px;
-  letter-spacing: -.02em;
+  display: inline; font-family: var(--mono);
+  font-size: 13.5px; font-weight: 700; color: #0b1f3a; margin-top: 0;
 }
 .map-stat.is-warn b { color: #1a5fb4; }
 .map-stat.is-bad {
-  border-color: #b8c9dc;
-  background: linear-gradient(180deg, #fff 0%, #eef3f9 100%);
+  border-color: #cbd9e8;
+  background: linear-gradient(180deg, #fff 0%, #f1f5fb 100%);
 }
 .map-stat.is-bad b { color: #0b1f3a; }
+#dash-layer-seg {
+  height: 34px !important; align-items: center !important; padding: 3px !important; border-radius: 10px !important;
+}
+#dash-layer-seg .dash-layer-btn { height: 26px !important; padding: 0 10px !important; font-size: 11.5px !important; }
+#btn-fit-map, #btn-refresh-map {
+  height: 34px !important; padding: 0 12px !important; border-radius: 10px !important;
+  font-size: 11.5px !important; font-weight: 600 !important; display: inline-flex !important; align-items: center !important;
+}
 .map-legend {
-  display: flex; flex-wrap: wrap; gap: 8px;
-  padding: 11px 18px 11px 22px;
-  background: #f6f9fc;
-  border-bottom: 1px solid #c5d4e6;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 8px 18px 8px 20px;
+  background: #f8fafd;
+  border-bottom: 1px solid #d5e1ef;
 }
 .leg-item {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 6px 11px;
-  font-size: 10px; font-weight: 600; color: #1a3558;
-  letter-spacing: .02em;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  font-size: 10.5px; font-weight: 600; color: #334155;
   background: #fff;
-  border: 1px solid #c5d4e6;
+  border: 1px solid #d5e1ef;
   border-radius: 999px;
-  box-shadow: 0 1px 2px rgba(11, 31, 58, 0.03);
 }
 .leg-dot {
   width: 9px; height: 9px; flex-shrink: 0;
@@ -1466,6 +1465,104 @@ table.gtable tr.rank-row.is-empty td { color: #8aa0b8; }
 .leg-dot.is-line {
   width: 14px; height: 2px; border-radius: 1px;
   box-shadow: none;
+}
+.map-stage-grid {
+  display: grid;
+  grid-template-columns: 295px minmax(0, 1fr);
+  background: #dce6f0;
+  border-bottom: 1px solid #d5e1ef;
+}
+.map-stage-grid.is-trips-closed {
+  grid-template-columns: 1fr;
+}
+.map-stage-grid.is-trips-closed .map-trips-aside {
+  display: none !important;
+}
+@media (max-width: 1024px) {
+  .map-stage-grid { grid-template-columns: 1fr; }
+  .map-trips-aside { max-height: 240px; border-right: 0 !important; border-bottom: 1px solid #d5e1ef; }
+}
+.map-trips-aside {
+  display: flex; flex-direction: column; min-height: 0; max-height: min(62vh, 580px);
+  background: #ffffff; border-right: 1px solid #d5e1ef;
+}
+.mta-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; background: #f8fafd; border-bottom: 1px solid #e2eaf3;
+}
+.mta-all-chk {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  font: 700 12px/1 'IBM Plex Sans', sans-serif; color: #0b1f3a; user-select: none;
+}
+.mta-all-chk input { accent-color: #1a5fb4; cursor: pointer; }
+.mta-total { font: 700 11.5px/1 'IBM Plex Mono', monospace; color: #1a5fb4; }
+.mta-list {
+  flex: 1 1 auto; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 4px;
+}
+.mta-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 10px;
+  border: 1px solid #e6eef6; background: #fafcff; cursor: pointer; transition: all .13s;
+}
+.mta-row:hover { border-color: #9ec0e6; background: #f0f6fd; }
+.mta-row.is-active { border-color: #1a5fb4; background: #e8f1fc; box-shadow: 0 2px 6px rgba(26,95,180,.1); }
+.mta-row input[type="checkbox"] { accent-color: #1a5fb4; cursor: pointer; flex-shrink: 0; }
+.mta-swatch { width: 4px; height: 28px; border-radius: 4px; flex-shrink: 0; }
+.mta-body { flex: 1 1 auto; min-width: 0; }
+.mta-time { font: 700 11.5px/1.25 'IBM Plex Mono', monospace; color: #0b1f3a; }
+.mta-sub { font-size: 10.5px; color: #5a7190; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mta-only {
+  border: 1px solid #cbd9e8; background: #fff; color: #1a5fb4; border-radius: 6px;
+  padding: 3px 6px; font: 700 10px/1 'IBM Plex Sans', sans-serif; cursor: pointer; flex-shrink: 0;
+  opacity: .75; transition: all .12s;
+}
+.mta-row:hover .mta-only { opacity: 1; }
+.mta-only:hover { background: #1a5fb4; color: #fff; border-color: #1a5fb4; }
+
+.map-speed-legend {
+  position: absolute; right: 14px; bottom: 14px; z-index: 450;
+  display: none; align-items: center; gap: 8px; padding: 6px 10px;
+  background: rgba(255,255,255,.95); border: 1px solid #c5d4e6; border-radius: 10px;
+  font: 600 10.5px/1 'IBM Plex Sans', sans-serif; color: #0b1f3a;
+  box-shadow: 0 4px 14px rgba(11,31,58,.12);
+}
+.map-speed-legend i { display: inline-block; width: 10px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 3px; }
+.map-color-sel {
+  height: 34px; padding: 0 8px; border-radius: 10px; border: 1px solid #cbd9e8;
+  background: #fff; color: #0b1f3a; font: 600 11.5px/1 'IBM Plex Sans', sans-serif; cursor: pointer;
+}
+.mpb-step {
+  height: 30px; min-width: 30px; padding: 0 7px; border-radius: 8px; border: 1px solid #cbd9e8;
+  background: #fff; color: #0b1f3a; font: 700 11px/1 'IBM Plex Mono', monospace; cursor: pointer; flex-shrink: 0;
+}
+.mpb-step:hover { border-color: #1a5fb4; color: #1a5fb4; }
+.mpb-spd.on { background: #0b1f3a; color: #fff; border-color: #0b1f3a; }
+
+.map-playback-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
+  padding: 9px 18px;
+  background: #f4f8fd;
+  border-top: 1px solid #d5e1ef;
+  border-bottom: 1px solid #d5e1ef;
+}
+.mpb-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #1a5fb4;
+  background: #1a5fb4; color: #fff; font: 600 11.5px/1 'IBM Plex Sans', sans-serif;
+  cursor: pointer; flex-shrink: 0; transition: background .15s;
+}
+.mpb-btn:hover { background: #144a8f; }
+.mpb-spd {
+  height: 30px; padding: 0 9px; border-radius: 8px; border: 1px solid #cbd9e8;
+  background: #fff; color: #0b1f3a; font: 700 11px/1 'IBM Plex Mono', monospace;
+  cursor: pointer; flex-shrink: 0;
+}
+.mpb-range {
+  flex: 1 1 auto; min-width: 120px; accent-color: #1a5fb4; cursor: pointer;
+}
+.mpb-info {
+  font: 700 11.5px/1 'IBM Plex Mono', monospace; color: #0b1f3a;
+  background: #fff; border: 1px solid #cbd9e8; border-radius: 8px;
+  padding: 6px 10px; white-space: nowrap; flex-shrink: 0;
 }
 .map-frame {
   position: relative;
@@ -3541,10 +3638,21 @@ input, select, textarea { max-width: 100%; }
           <div class="map-stat"><i>To'xtash</i><b id="map-stat-stops">0</b></div>
           <div class="map-stat"><i>Nuqta</i><b id="map-stat-pts">0</b></div>
           <div class="map-stat is-bad"><i>Muammo</i><b id="map-stat-prob">0</b></div>
-          <label class="map-tele-toggle" title="Boomerang uslubi: har bir nuqtada vaqt va tezlik">
+          <label class="map-tele-toggle" title="Har bir nuqtada aniq vaqt va tezlik">
             <input type="checkbox" id="chk-track-tele">
             <span>Vaqt / tezlik</span>
           </label>
+          <select id="map-color-mode" class="map-color-sel" title="Marshrut chizig'i rangi">
+            <option value="trips">Rang: Reyslar</option>
+            <option value="speed">Rang: Tezlik</option>
+            <option value="single">Rang: Oddiy</option>
+          </select>
+          <button type="button" class="btn btn-light btn-sm" id="btn-toggle-trips" style="height:34px;border-radius:10px;font-size:11.5px;font-weight:600;display:none">Reyslar (<span id="trips-btn-cnt">0</span>)</button>
+          <div class="live-layer-seg" id="dash-layer-seg" role="group" aria-label="Xarita turi" style="display:inline-flex;background:#eef3f9;border:1px solid #cbd9e8;border-radius:9px;padding:2px;gap:2px;">
+            <button type="button" class="dash-layer-btn on" data-layer="street" style="border:0;background:#fff;color:#0b1f3a;font:600 11px/1 'IBM Plex Sans',sans-serif;padding:5px 9px;border-radius:7px;cursor:pointer;box-shadow:0 1px 3px rgba(11,31,58,.1)">Xarita</button>
+            <button type="button" class="dash-layer-btn" data-layer="sat" style="border:0;background:transparent;color:#5a7190;font:600 11px/1 'IBM Plex Sans',sans-serif;padding:5px 9px;border-radius:7px;cursor:pointer">Sun’iy</button>
+          </div>
+          <button class="btn btn-light btn-sm" id="btn-fit-map" title="Butun marshrutni markazga keltirish">Markazga</button>
           <button class="btn btn-light btn-sm" id="btn-refresh-map">Yangilash</button>
         </div>
       </div>
@@ -3559,9 +3667,58 @@ input, select, textarea { max-width: 100%; }
         <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a;border-radius:4px"></span> A / B</span>
       </div>
 
-      <div class="map-frame" id="map-frame">
-        <div id="leaflet-map"></div>
-        <div id="map-overlay-info" class="map-overlay-info" style="display:none"></div>
+      <div class="map-stage-grid is-trips-closed" id="map-stage-grid">
+        <aside class="map-trips-aside" id="map-trips-aside">
+          <div class="mta-head">
+            <label class="mta-all-chk">
+              <input type="checkbox" id="mta-all-chk" checked>
+              <span>Barcha reyslar</span>
+            </label>
+            <span class="mta-total" id="mta-total">0 km</span>
+          </div>
+          <div class="mta-list" id="mta-list"></div>
+        </aside>
+        <div class="map-frame" id="map-frame">
+          <div id="leaflet-map"></div>
+          <div id="map-overlay-info" class="map-overlay-info" style="display:none"></div>
+          <div class="map-speed-legend" id="map-speed-legend">
+            <span><i style="background:#1a5fb4"></i>0–29</span>
+            <span><i style="background:#16a34a"></i>30–59</span>
+            <span><i style="background:#dc2626"></i>60+ km/h</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-playback-bar" id="map-playback-bar" style="display:none">
+        <button type="button" class="mpb-step" id="mpb-start" title="Boshiga">|&lt;&lt;</button>
+        <button type="button" class="mpb-step" id="mpb-prev" title="Oldingi nuqta">&lt;</button>
+        <button type="button" class="mpb-btn" id="mpb-play">▶ Ijro</button>
+        <button type="button" class="mpb-step" id="mpb-next" title="Keyingi nuqta">&gt;</button>
+        <button type="button" class="mpb-step" id="mpb-end" title="Oxiriga">&gt;&gt;|</button>
+        <select class="mpb-spd" id="mpb-spd" title="Ijro tezligi">
+          <option value="0.1">0.1x</option>
+          <option value="0.2">0.2x</option>
+          <option value="0.3">0.3x</option>
+          <option value="0.4">0.4x</option>
+          <option value="0.5">0.5x</option>
+          <option value="0.6">0.6x</option>
+          <option value="0.7">0.7x</option>
+          <option value="0.8">0.8x</option>
+          <option value="0.9">0.9x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+          <option value="3">3x</option>
+          <option value="4">4x</option>
+          <option value="5">5x</option>
+          <option value="10">10x</option>
+          <option value="20">20x</option>
+          <option value="30">30x</option>
+          <option value="40">40x</option>
+          <option value="50">50x</option>
+        </select>
+        <button type="button" class="mpb-spd" id="mpb-follow" title="Xaritani mashina ortidan surish">Kuzatish</button>
+        <input type="range" class="mpb-range" id="mpb-range" min="0" max="100" value="0">
+        <div class="mpb-info" id="mpb-info">— : — · 0 km/soat</div>
       </div>
 
       <div class="map-stops">
@@ -3928,10 +4085,10 @@ input, select, textarea { max-width: 100%; }
 
 <script src="map-tiles.js?v=8"></script>
 <script src="map-route.js?v=8"></script>
-<script src="map-telemetry.js?v=1"></script>
-<script src="map-geozones.js?v=5"></script>
+<script src="map-telemetry.js?v=5"></script>
+<script src="map-geozones.js?v=7"></script>
 
-<script src="app-m96.js?v=m150"></script>
+<script src="app-m96.js?v=m155"></script>
 
 <script src="office.js?v=m144"></script>
 <script src="/vendor/jsQR.min.js?v=m151"></script>

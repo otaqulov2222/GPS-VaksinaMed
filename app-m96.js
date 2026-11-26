@@ -1334,9 +1334,10 @@ function routeSegMeters(a, b) {
  * bitta ko'k chiziq + oq strelkalar (yo'nalish).
  * Ko'p rang / lane / chalkashlik YO'Q.
  */
-function drawMapRouteLayers(latlngs, lanePts) {
+function drawMapRouteLayers(latlngs, lanePts, customColor) {
     removeMapRouteLayers();
     if (!STATE.map || !latlngs || latlngs.length < 2) return;
+    const routeCol = customColor || '#1a5fb4';
 
     const pts = [];
     for (let i = 0; i < latlngs.length; i++) {
@@ -1363,7 +1364,7 @@ function drawMapRouteLayers(latlngs, lanePts) {
 
     const layers = [];
     layers.push(L.polyline(pts, {
-        color: '#1a5fb4',
+        color: routeCol,
         weight: 4,
         opacity: 0.95,
         lineJoin: 'round',
@@ -1391,8 +1392,8 @@ function drawMapRouteLayers(latlngs, lanePts) {
     }
     if (total < 1) total = 1;
 
-    // Butun marshrut bo'ylab teng: borish + qaytishda ham strelka (oldingi limit faqat boshini belgilardi)
-    const targetArrows = Math.min(140, Math.max(20, Math.round(total / 220)));
+    // Masofaga mutanosib strelkalar: qisqa yo'lda tiqilib ketmasin
+    const targetArrows = Math.min(65, Math.max(4, Math.round(total / 350)));
     const spacing = total / (targetArrows + 1);
 
     function pointAtDistance(meters) {
@@ -1860,11 +1861,12 @@ async function refreshMap(stops, points) {
         && STATE.data[STATE.currentDate][STATE.currentCar].stats
         ? Number(STATE.data[STATE.currentDate][STATE.currentCar].stats.probeg) || 0
         : 0;
-    if (routeLatlngs.length > 1 || markerStops.length) {
+    if (routeLatlngs.length > 1 || markerStops.length || officeMarks.length) {
         const bits = [];
         if (km > 0) bits.push(km.toFixed(2) + ' km');
         if (track.length) bits.push(track.length + ' GPS nuqta');
-        bits.push(markerStops.length + ' to\'xtash');
+        const totalStops = markerStops.length + officeMarks.length;
+        bits.push(totalStops + ' to\'xtash');
         if (STATE._routeSnapped) bits.push('yo‘l bo‘ylab');
         setMapOverlay(bits.join(' · '));
     }
@@ -1948,6 +1950,374 @@ async function refreshMap(stops, points) {
         const defer = typeof vmDefer === 'function' ? vmDefer : (fn, ms) => { setTimeout(fn, ms || 200); };
         defer(() => VMOffice.drawGeofences(STATE.map, STATE.currentCar), 220);
     }
+    if (typeof setupMapTripsAndPlayback === 'function') {
+        setupMapTripsAndPlayback(track, routeLatlngs);
+    }
+}
+
+// ── 6.5. BOOMERANG USLUBIDAGI REYSLAR, RANG VA PLEYER ────────
+function stopMapPlayback() {
+    if (STATE._pbTimer) { clearInterval(STATE._pbTimer); STATE._pbTimer = null; }
+    const btn = document.getElementById('mpb-play');
+    if (btn) btn.textContent = '▶ Ijro';
+}
+
+function clearMapPlaybackMarker() {
+    stopMapPlayback();
+    if (STATE._pbMarker && STATE.map) {
+        try { STATE.map.removeLayer(STATE._pbMarker); } catch (_) {}
+        STATE._pbMarker = null;
+    }
+    if (STATE._tripPreviewLayers && STATE.map) {
+        try { STATE.map.removeLayer(STATE._tripPreviewLayers); } catch (_) {}
+        STATE._tripPreviewLayers = null;
+    }
+}
+
+function updatePlaybackAt(idx) {
+    const pts = STATE._pbPts || [];
+    if (!pts.length || !STATE.map) return;
+    const i = Math.max(0, Math.min(pts.length - 1, Number(idx) || 0));
+    const p = pts[i];
+    const tStr = (typeof vmTeleClock === 'function' && p[2]) ? vmTeleClock(p[2]) : '—';
+    const spd = Math.round(Number(p[3]) || 0);
+    let tripPrefix = '';
+    if (STATE._trips && STATE._trips.length && p[2]) {
+        const hitTrip = STATE._trips.find(t => p[2] >= t.t0 && p[2] <= t.t1);
+        if (hitTrip) tripPrefix = hitTrip.index + '-reys · ';
+    }
+    const infoEl = document.getElementById('mpb-info');
+    if (infoEl) infoEl.textContent = tripPrefix + tStr + ' · ' + spd + ' km/soat';
+    const rangeEl = document.getElementById('mpb-range');
+    if (rangeEl && Number(rangeEl.value) !== i) rangeEl.value = String(i);
+
+    let brg = 0;
+    if (i < pts.length - 1) brg = routeBearingDeg(p, pts[i + 1]);
+    else if (i > 0) brg = routeBearingDeg(pts[i - 1], p);
+
+    const html = `<div style="width:26px;height:26px;border-radius:50%;background:#1a5fb4;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(11,31,58,.4);display:grid;place-items:center;transform:rotate(${Math.round(brg)}deg)"><svg viewBox="0 0 16 16" width="13" height="13" fill="#fff"><path d="M8 2l4.5 10.5L8 10.2l-4.5 2.3z"/></svg></div>`;
+    if (!STATE._pbMarker) {
+        STATE._pbMarker = L.marker([p[0], p[1]], {
+            zIndexOffset: 3000,
+            icon: L.divIcon({ className: '', html, iconSize: [26, 26], iconAnchor: [13, 13] })
+        }).addTo(STATE.map);
+    } else {
+        STATE._pbMarker.setLatLng([p[0], p[1]]);
+        STATE._pbMarker.setIcon(L.divIcon({ className: '', html, iconSize: [26, 26], iconAnchor: [13, 13] }));
+    }
+    STATE._pbMarker.bindTooltip('<b>' + tripPrefix + tStr + '</b> · ' + spd + ' km/soat', {
+        permanent: true, direction: 'top', offset: [0, -14], className: 'vm-tele-tip is-edge'
+    });
+    if (STATE._pbFollow) {
+        STATE.map.panTo([p[0], p[1]], { animate: false });
+    }
+}
+
+function setupMapPlayback(pts) {
+    stopMapPlayback();
+    const bar = document.getElementById('map-playback-bar');
+    if (!bar) return;
+    const valid = (pts || []).filter(p => p && p.length >= 3 && p[2] > 0);
+    if (valid.length < 2) {
+        bar.style.display = 'none';
+        STATE._pbPts = [];
+        return;
+    }
+    STATE._pbPts = valid;
+    bar.style.display = 'flex';
+    const rangeEl = document.getElementById('mpb-range');
+    if (rangeEl) {
+        rangeEl.min = '0';
+        rangeEl.max = String(valid.length - 1);
+        rangeEl.value = '0';
+    }
+    if (!bar._vmBound) {
+        bar._vmBound = true;
+        STATE._pbSpeed = 1;
+        STATE._pbFollow = false;
+        const stepTo = (nextIdx) => {
+            stopMapPlayback();
+            updatePlaybackAt(nextIdx);
+        };
+        document.getElementById('mpb-start')?.addEventListener('click', () => stepTo(0));
+        document.getElementById('mpb-end')?.addEventListener('click', () => stepTo((STATE._pbPts || []).length - 1));
+        document.getElementById('mpb-prev')?.addEventListener('click', () => {
+            const cur = Number(document.getElementById('mpb-range')?.value || 0);
+            stepTo(Math.max(0, cur - 1));
+        });
+        document.getElementById('mpb-next')?.addEventListener('click', () => {
+            const cur = Number(document.getElementById('mpb-range')?.value || 0);
+            stepTo(Math.min((STATE._pbPts || []).length - 1, cur + 1));
+        });
+        document.getElementById('mpb-range')?.addEventListener('input', (e) => {
+            stopMapPlayback();
+            updatePlaybackAt(e.target.value);
+        });
+        document.getElementById('mpb-spd')?.addEventListener('change', (e) => {
+            const next = Number(e.target.value) || 1;
+            STATE._pbSpeed = next;
+            if (STATE._pbTimer) {
+                document.getElementById('mpb-play')?.click();
+                document.getElementById('mpb-play')?.click();
+            }
+        });
+        document.getElementById('mpb-follow')?.addEventListener('click', (e) => {
+            STATE._pbFollow = !STATE._pbFollow;
+            e.target.classList.toggle('on', STATE._pbFollow);
+        });
+        document.getElementById('mpb-play')?.addEventListener('click', () => {
+            if (STATE._pbTimer) { stopMapPlayback(); return; }
+            const r = document.getElementById('mpb-range');
+            if (!r) return;
+            if (Number(r.value) >= (STATE._pbPts.length - 1)) r.value = '0';
+            document.getElementById('mpb-play').textContent = '⏸ Pauza';
+            const spd = Number(STATE._pbSpeed) || 1;
+            const stepMs = Math.max(25, Math.min(3500, Math.round(320 / spd)));
+            const jump = spd >= 40 ? 2 : 1;
+            STATE._pbTimer = setInterval(() => {
+                const cur = Number(r.value) || 0;
+                if (cur >= STATE._pbPts.length - 1) { stopMapPlayback(); return; }
+                const nxt = Math.min(STATE._pbPts.length - 1, cur + jump);
+                r.value = String(nxt);
+                updatePlaybackAt(nxt);
+            }, stepMs);
+        });
+    }
+    updatePlaybackAt(0);
+}
+
+function addArrowsForLine(latlngs, color, grp) {
+    if (!latlngs || latlngs.length < 2) return;
+    const dist = [0];
+    let total = 0;
+    for (let i = 1; i < latlngs.length; i++) {
+        total += routeSegMeters(latlngs[i - 1], latlngs[i]);
+        dist.push(total);
+    }
+    if (total < 200) return;
+    const count = Math.min(18, Math.max(2, Math.round(total / 900)));
+    const step = total / (count + 1);
+    for (let n = 1; n <= count; n++) {
+        const target = step * n;
+        for (let i = 1; i < dist.length; i++) {
+            if (dist[i] < target) continue;
+            const seg = dist[i] - dist[i - 1];
+            const f = seg > 0 ? (target - dist[i - 1]) / seg : 0;
+            const a = latlngs[i - 1], b = latlngs[i];
+            const lat = a[0] + (b[0] - a[0]) * f;
+            const lng = a[1] + (b[1] - a[1]) * f;
+            const brg = routeBearingDeg(a, b);
+            L.marker([lat, lng], {
+                interactive: false, keyboard: false, zIndexOffset: 420,
+                icon: L.divIcon({
+                    className: 'vm-route-arrow',
+                    html: `<div style="width:16px;height:16px;display:flex;align-items:center;justify-content:center;transform:rotate(${brg.toFixed(1)}deg)"><svg width="13" height="13" viewBox="0 0 16 16"><path d="M8 1.5L13.5 13.5L8 10.6L2.5 13.5Z" fill="#ffffff" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"/></svg></div>`,
+                    iconSize: [16, 16], iconAnchor: [8, 8]
+                })
+            }).addTo(grp);
+            break;
+        }
+    }
+}
+
+function drawSpeedColoredSegments(pts, grp) {
+    const colorFn = typeof vmSpeedColor === 'function' ? vmSpeedColor : (() => '#1a5fb4');
+    for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        L.polyline([[a[0], a[1]], [b[0], b[1]]], {
+            color: colorFn(b[3] != null ? b[3] : a[3]),
+            weight: 4.5, opacity: 0.92, lineJoin: 'round', lineCap: 'round', interactive: false
+        }).addTo(grp);
+    }
+}
+
+async function renderSelectedTripsOnMap(opts) {
+    if (!STATE.map) return;
+    const o = opts || {};
+    if (STATE._tripPreviewLayers) {
+        try { STATE.map.removeLayer(STATE._tripPreviewLayers); } catch (_) {}
+        STATE._tripPreviewLayers = null;
+    }
+    const trips = STATE._trips || [];
+    const checked = STATE._tripChecked || {};
+    const mode = STATE._mapColorMode || 'trips';
+    const spdLegend = document.getElementById('map-speed-legend');
+    if (spdLegend) spdLegend.style.display = mode === 'speed' ? 'flex' : 'none';
+
+    const activeTrips = trips.filter(t => checked[t.index]);
+    const activePts = [];
+    activeTrips.forEach(t => t.pts.forEach(p => activePts.push(p)));
+
+    // Agar barcha reyslar o'chirilgan bo'lsa — chiziqlarni yashiramiz
+    if (trips.length && !activeTrips.length) {
+        removeMapRouteLayers();
+        removeBoomerangTelemetry();
+        setupMapPlayback([]);
+        return;
+    }
+
+    // Faqat 1 ta reys tanlangan bo'lsa — uni OSRM bilan yo'lga snap qilamiz va strelka qo'yamiz
+    if (activeTrips.length === 1) {
+        const tr = activeTrips[0];
+        let pts = tr.pts.map(p => [p[0], p[1]]);
+        if (typeof vmPrepareRouteTrack === 'function') {
+            try {
+                const prep = await vmPrepareRouteTrack(pts, { simplifyM: 12, minStepM: 10, clusterRM: 22, snap: true });
+                if (prep && prep.points && prep.points.length >= 2) pts = prep.points;
+            } catch (_) {}
+        }
+        if (mode === 'speed') {
+            removeMapRouteLayers();
+            const grp = L.layerGroup();
+            drawSpeedColoredSegments(tr.pts, grp);
+            grp.addTo(STATE.map);
+            STATE._tripPreviewLayers = grp;
+        } else {
+            drawMapRouteLayers(pts, null, mode === 'single' ? '#1a5fb4' : tr.color);
+        }
+        if (STATE.showTrackTelemetry) drawBoomerangTelemetry(tr.pts);
+        setupMapPlayback(tr.pts);
+        if (o.fit && pts.length > 1) STATE.map.fitBounds(L.latLngBounds(pts), { padding: [44, 44], maxZoom: 16 });
+        return;
+    }
+
+    // Bir nechta reys tanlanganda
+    if (mode === 'single' && STATE._baseRouteLatlngs && STATE._baseRouteLatlngs.length > 1 && activeTrips.length === trips.length) {
+        drawMapRouteLayers(STATE._baseRouteLatlngs, null, '#1a5fb4');
+    } else {
+        removeMapRouteLayers();
+        const grp = L.layerGroup();
+        const listToDraw = trips.length ? activeTrips : [{ color: '#1a5fb4', pts: STATE._fullTrack || [] }];
+        listToDraw.forEach((tr) => {
+            const ll = tr.pts.map(p => [p[0], p[1]]);
+            if (mode === 'speed') drawSpeedColoredSegments(tr.pts, grp);
+            else {
+                const col = mode === 'single' ? '#1a5fb4' : tr.color;
+                L.polyline(ll, {
+                    color: col, weight: 4, opacity: 0.88, lineJoin: 'round', lineCap: 'round', interactive: false
+                }).addTo(grp);
+                addArrowsForLine(ll, col, grp);
+            }
+        });
+        grp.addTo(STATE.map);
+        STATE._tripPreviewLayers = grp;
+    }
+    const ptsForTele = trips.length ? activePts : (STATE._fullTrack || []);
+    if (STATE.showTrackTelemetry) drawBoomerangTelemetry(ptsForTele);
+    setupMapPlayback(ptsForTele);
+    if (o.fit && ptsForTele.length > 1) {
+        STATE.map.fitBounds(L.latLngBounds(ptsForTele.map(p => [p[0], p[1]])), { padding: [44, 44], maxZoom: 15 });
+    }
+}
+
+function renderTripsAside() {
+    const listEl = document.getElementById('mta-list');
+    const totalEl = document.getElementById('mta-total');
+    const allChk = document.getElementById('mta-all-chk');
+    const btnToggle = document.getElementById('btn-toggle-trips');
+    const cntSpan = document.getElementById('trips-btn-cnt');
+    const grid = document.getElementById('map-stage-grid');
+    const trips = STATE._trips || [];
+
+    if (cntSpan) cntSpan.textContent = String(trips.length);
+    if (btnToggle) btnToggle.style.display = trips.length >= 1 ? 'inline-flex' : 'none';
+    if (grid) {
+        const showAside = trips.length >= 2 && STATE._tripsAsideOpen !== false;
+        grid.classList.toggle('is-trips-closed', !showAside);
+    }
+    if (!listEl) return;
+
+    const totalKm = trips.reduce((s, t) => s + t.km, 0);
+    if (totalEl) totalEl.textContent = totalKm.toFixed(1) + ' km';
+    const checked = STATE._tripChecked || {};
+    if (allChk) allChk.checked = trips.length > 0 && trips.every(t => checked[t.index]);
+
+    listEl.innerHTML = trips.map((tr) => {
+        const t0 = typeof vmTeleClock === 'function' ? vmTeleClock(tr.t0).slice(0, 5) : '';
+        const t1 = typeof vmTeleClock === 'function' ? vmTeleClock(tr.t1).slice(0, 5) : '';
+        const durStr = typeof vmTeleDur === 'function' ? vmTeleDur(tr.durSec) : '';
+        const isOnly = trips.filter(x => checked[x.index]).length === 1 && checked[tr.index];
+        return `<div class="mta-row${isOnly ? ' is-active' : ''}" data-trip-row="${tr.index}">
+          <input type="checkbox" data-trip-chk="${tr.index}" ${checked[tr.index] ? 'checked' : ''} title="Xaritada ko'rsatish">
+          <span class="mta-swatch" style="background:${tr.color}"></span>
+          <div class="mta-body">
+            <div class="mta-time">${tr.index}-reys · ${t0}–${t1}</div>
+            <div class="mta-sub">${tr.km.toFixed(1)} km · maks ${tr.maxSpd} km/h · ${durStr}</div>
+          </div>
+          <button type="button" class="mta-only" data-trip-only="${tr.index}" title="Faqat shu reysni qoldirish">Faqat</button>
+        </div>`;
+    }).join('');
+}
+
+function setupMapTripsAndPlayback(track, baseRouteLatlngs) {
+    clearMapPlaybackMarker();
+    STATE._fullTrack = track || [];
+    STATE._baseRouteLatlngs = baseRouteLatlngs || [];
+    STATE._trips = (typeof vmSplitTrips === 'function' && track && track.length >= 2) ? vmSplitTrips(track) : [];
+    STATE._tripChecked = {};
+    STATE._trips.forEach(t => { STATE._tripChecked[t.index] = true; });
+    if (STATE._tripsAsideOpen === undefined) STATE._tripsAsideOpen = true;
+    if (!STATE._mapColorMode) STATE._mapColorMode = 'trips';
+
+    const selCol = document.getElementById('map-color-mode');
+    if (selCol) selCol.value = STATE._mapColorMode;
+
+    if (!document._vmTripsEventsBound) {
+        document._vmTripsEventsBound = true;
+        document.getElementById('btn-toggle-trips')?.addEventListener('click', () => {
+            STATE._tripsAsideOpen = !STATE._tripsAsideOpen;
+            const grid = document.getElementById('map-stage-grid');
+            if (grid) grid.classList.toggle('is-trips-closed', !STATE._tripsAsideOpen);
+            setTimeout(() => mapInvalidate(), 80);
+        });
+        document.getElementById('map-color-mode')?.addEventListener('change', (e) => {
+            STATE._mapColorMode = e.target.value || 'trips';
+            renderSelectedTripsOnMap({ fit: false });
+        });
+        document.getElementById('mta-all-chk')?.addEventListener('change', (e) => {
+            const on = !!e.target.checked;
+            (STATE._trips || []).forEach(t => { STATE._tripChecked[t.index] = on; });
+            renderTripsAside();
+            renderSelectedTripsOnMap({ fit: on });
+        });
+        document.getElementById('mta-list')?.addEventListener('click', (e) => {
+            const onlyBtn = e.target.closest('[data-trip-only]');
+            if (onlyBtn) {
+                e.stopPropagation();
+                const idx = Number(onlyBtn.getAttribute('data-trip-only'));
+                (STATE._trips || []).forEach(t => { STATE._tripChecked[t.index] = (t.index === idx); });
+                renderTripsAside();
+                renderSelectedTripsOnMap({ fit: true });
+                return;
+            }
+            const chk = e.target.closest('input[data-trip-chk]');
+            if (chk) {
+                e.stopPropagation();
+                const idx = Number(chk.getAttribute('data-trip-chk'));
+                STATE._tripChecked[idx] = !!chk.checked;
+                renderTripsAside();
+                renderSelectedTripsOnMap({ fit: false });
+                return;
+            }
+            const row = e.target.closest('[data-trip-row]');
+            if (row) {
+                const idx = Number(row.getAttribute('data-trip-row'));
+                (STATE._trips || []).forEach(t => { STATE._tripChecked[t.index] = (t.index === idx); });
+                renderTripsAside();
+                renderSelectedTripsOnMap({ fit: true });
+            }
+        });
+    }
+
+    renderTripsAside();
+    if (STATE._trips.length >= 2) {
+        renderSelectedTripsOnMap({ fit: false });
+    } else {
+        const spdLegend = document.getElementById('map-speed-legend');
+        if (spdLegend) spdLegend.style.display = 'none';
+        setupMapPlayback(track);
+    }
+    setTimeout(() => mapInvalidate(), 60);
 }
 
 // ── 7. KALENDAR ─────────────────────────────────────────────
@@ -3003,9 +3373,10 @@ function renderStops(stops) {
             showNum = typeof OFFICE_PIN !== 'undefined' ? OFFICE_PIN : 'Of';
         }
 
+        const hasCoord = Number.isFinite(Number(st.lat)) && Number.isFinite(Number(st.lng)) && Number(st.lat) !== 0;
         const canReview = true;
         html += `
-        <tr class="${rowCls}">
+        <tr class="${rowCls}"${hasCoord ? ` data-lat="${Number(st.lat)}" data-lng="${Number(st.lng)}" style="cursor:pointer" title="Xaritada ko'rish"` : ''}>
             <td class="font-mono text-muted">${showNum}</td>
             <td><strong>${uiTxt(st.place)}</strong>
                 ${st.phName && st.phName !== st.place ? `<br><small class="text-muted">${uiTxt(st.phName)}</small>` : ''}
@@ -3021,6 +3392,29 @@ function renderStops(stops) {
     });
     tbody.innerHTML = html;
     bindReviewClicks(tbody);
+    if (!tbody._vmMapFocusBound) {
+        tbody._vmMapFocusBound = true;
+        tbody.addEventListener('click', (ev) => {
+            if (ev.target.closest('button, a, input, select')) return;
+            const tr = ev.target.closest('tr[data-lat][data-lng]');
+            if (!tr || !STATE.map) return;
+            const lat = Number(tr.getAttribute('data-lat'));
+            const lng = Number(tr.getAttribute('data-lng'));
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+            document.getElementById('leaflet-map')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            STATE.map.setView([lat, lng], Math.max(STATE.map.getZoom(), 16), { animate: true });
+            (STATE.mapMarkers || []).some((m) => {
+                if (m && typeof m.getLatLng === 'function') {
+                    const ll = m.getLatLng();
+                    if (Math.abs(ll.lat - lat) < 0.0004 && Math.abs(ll.lng - lng) < 0.0004) {
+                        try { m.openPopup(); } catch (_) {}
+                        return true;
+                    }
+                }
+                return false;
+            });
+        });
+    }
 }
 
 // ── 9.6. BAHOLASH ───────────────────────────────────────────
@@ -4690,6 +5084,60 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderCalendar(); renderDriverTabs(); refreshUI();
             showToast('🗑️ Barcha ma\'lumotlar tozalandi.', 'warn');
             document.getElementById('modal-settings').classList.remove('open');
+        }
+    });
+
+    // ── Xarita turi (Xarita / Sun'iy) & Sig'dirish ──────────
+    document.getElementById('dash-layer-seg')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.dash-layer-btn[data-layer]');
+        if (!btn || !STATE.map) return;
+        const next = btn.getAttribute('data-layer') === 'sat' ? 'sat' : 'street';
+        document.querySelectorAll('#dash-layer-seg .dash-layer-btn').forEach((b) => {
+            const on = b.getAttribute('data-layer') === next;
+            b.classList.toggle('on', on);
+            b.style.background = on ? '#fff' : 'transparent';
+            b.style.color = on ? '#0b1f3a' : '#5a7190';
+            b.style.boxShadow = on ? '0 1px 3px rgba(11,31,58,.1)' : 'none';
+        });
+        if (next === 'sat') {
+            if (!STATE._satLayer) {
+                let fails = 0, fellBack = false;
+                const gSat = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&hl=uz&x={x}&y={y}&z={z}', {
+                    subdomains: ['0', '1', '2', '3'], maxZoom: 20, maxNativeZoom: 20, attribution: 'Google'
+                });
+                gSat.on('tileerror', () => {
+                    fails++;
+                    if (fails >= 6 && !fellBack && STATE.map) {
+                        fellBack = true;
+                        try { STATE.map.removeLayer(gSat); } catch (_) {}
+                        STATE._satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                            maxZoom: 20, maxNativeZoom: 18, attribution: 'Esri'
+                        });
+                        if (STATE._basemap === 'sat') STATE._satLayer.addTo(STATE.map);
+                    }
+                });
+                STATE._satLayer = gSat;
+            }
+            if (!STATE.map.hasLayer(STATE._satLayer)) STATE._satLayer.addTo(STATE.map);
+        } else if (STATE._satLayer && STATE.map.hasLayer(STATE._satLayer)) {
+            STATE.map.removeLayer(STATE._satLayer);
+        }
+        STATE._basemap = next;
+        if (STATE.mapGeo && typeof STATE.mapGeo.setTheme === 'function') STATE.mapGeo.setTheme(next);
+    });
+
+    document.getElementById('btn-fit-map')?.addEventListener('click', () => {
+        if (!STATE.map) return;
+        const pts = [];
+        if (STATE.mapLine && typeof STATE.mapLine.getLatLngs === 'function') {
+            STATE.mapLine.getLatLngs().forEach((ll) => pts.push(ll));
+        }
+        (STATE.mapMarkers || []).forEach((m) => {
+            if (m && typeof m.getLatLng === 'function') pts.push(m.getLatLng());
+        });
+        if (pts.length) {
+            const b = L.latLngBounds(pts);
+            if (b.isValid()) STATE.map.fitBounds(b, { padding: [36, 36], maxZoom: 16 });
         }
     });
 
