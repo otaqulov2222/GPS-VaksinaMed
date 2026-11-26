@@ -343,6 +343,28 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; ba
   padding: 10px 14px; border-radius: 10px; background: rgba(255, 255, 255, .96);
   border: 1px solid var(--line-2); font-size: 12px; font-weight: 600; color: var(--muted);
 }
+.drv-player {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 16px; background: #fff; border-top: 1px solid var(--line);
+}
+.drv-player[hidden] { display: none !important; }
+.drv-play-btn {
+  width: 34px; height: 34px; border-radius: 10px; border: 0;
+  background: var(--accent); color: #fff; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, .25);
+}
+.drv-play-btn:hover { background: var(--accent-2); }
+.drv-scrub { flex: 1 1 180px; min-width: 120px; accent-color: var(--accent); cursor: pointer; height: 6px; }
+.drv-spd-sel {
+  height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2);
+  background: var(--soft); font: 600 11.5px/1 var(--mono); color: var(--ink); cursor: pointer;
+}
+.drv-play-meta {
+  font: 600 11.5px/1 var(--mono); color: var(--muted); white-space: nowrap;
+  min-width: 118px; text-align: right;
+}
 
 .leaflet-container { font-family: var(--sans); width: 100%; height: 100%; background: #e2e8f0; }
 .leaflet-popup-content-wrapper { background: #0f172a; color: #f1f5f9; border-radius: 12px !important; box-shadow: 0 14px 28px rgba(15, 23, 42, .28) !important; }
@@ -616,6 +638,10 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; ba
         <h3>Marshrut xaritasi</h3>
       </div>
       <div class="map-head-meta">
+        <div class="seg" id="drv-pins-mode" role="group" aria-label="Nuqtalar">
+          <button type="button" class="on" data-pins="key" title="Faqat muhim nuqtalar: dorixona, ofis, muammo">Muhim</button>
+          <button type="button" data-pins="all" title="Barcha to'xtashlar">Hammasi</button>
+        </div>
         <div class="seg" id="drv-basemap" role="group" aria-label="Xarita turi">
           <button type="button" class="on" data-base="street">Xarita</button>
           <button type="button" data-base="sat">Sun'iy</button>
@@ -630,19 +656,30 @@ body.app-body { font-family: var(--sans); color: var(--ink); font-size: 13px; ba
       </div>
     </div>
     <div class="map-legend">
-      <span class="leg-item"><span class="leg-dot" style="background:#1a5fb4"></span> O'z dorixonasi / ruxsat</span>
-      <span class="leg-item"><span class="leg-dot" style="background:#5b9fe0"></span> Boshqa yo'nalish</span>
-      <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a"></span> Muammo</span>
-      <span class="leg-item"><span class="leg-dot" style="background:#8eb6df"></span> Shahardan tashqari</span>
-      <span class="leg-item"><span class="leg-dot" style="background:#123050"></span> Ofis / sklad</span>
-      <span class="leg-item"><span class="leg-dot is-line" style="background:#1a5fb4"></span> GPS marshrut</span>
-      <span class="leg-item"><span class="leg-dot is-chev"></span> Yo'nalish strelkasi</span>
-      <span class="leg-item"><span class="leg-dot" style="background:#0b1f3a;border-radius:4px"></span> A / B</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#059669"></span> O'z dorixonasi / ruxsat</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#0284c7"></span> Boshqa yo'nalish</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#dc2626"></span> Muammo</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#1d4ed8"></span> Ofis / sklad</span>
+      <span class="leg-item"><span class="leg-dot is-line" style="background:#0ea5e9"></span> Boshi</span>
+      <span class="leg-item"><span class="leg-dot is-line" style="background:#2563eb"></span> Kunduzi</span>
+      <span class="leg-item"><span class="leg-dot is-line" style="background:#7c3aed"></span> Oxiri</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#0f172a;border-radius:4px"></span> A / B</span>
     </div>
     <div class="map-frame" id="map-frame">
       <div id="driver-map"></div>
       <div class="map-info" id="map-info" hidden></div>
       <div class="map-empty" id="map-empty" hidden><span>Bu kun uchun GPS marshrut yo'q</span></div>
+    </div>
+    <div class="drv-player" id="drv-player" hidden>
+      <button type="button" class="drv-play-btn" id="drv-play" title="Marshrutni ketma-ket ko'rish">▶</button>
+      <input type="range" class="drv-scrub" id="drv-scrub" min="0" max="0" value="0">
+      <select class="drv-spd-sel" id="drv-play-spd" title="Tezlik">
+        <option value="1">1x</option>
+        <option value="5" selected>5x</option>
+        <option value="15">15x</option>
+        <option value="30">30x</option>
+      </select>
+      <span class="drv-play-meta" id="drv-play-meta">0 / 0</span>
     </div>
   </section>
 
@@ -734,14 +771,14 @@ function stopKind(st) {
   return ["To'xtash", 'badge-mute', ''];
 }
 function stopColor(st) {
-  if (st.reviewStatus === 'allowed') return '#1a5fb4';
-  if (st.reviewStatus === 'violation') return '#0b1f3a';
-  if (st.isOffice) return '#123050';
-  if (st.isOutside) return '#8eb6df';
-  if (st.isProblem) return '#0b1f3a';
-  if (st.matchType === 'own') return '#1a5fb4';
-  if (st.matchType === 'other') return '#5b9fe0';
-  return '#8aa0b8';
+  if (st.reviewStatus === 'allowed') return '#059669';
+  if (st.reviewStatus === 'violation') return '#dc2626';
+  if (st.isOffice) return '#1d4ed8';
+  if (st.isOutside) return '#d97706';
+  if (st.isProblem) return '#dc2626';
+  if (st.matchType === 'own') return '#059669';
+  if (st.matchType === 'other') return '#0284c7';
+  return '#64748b';
 }
 function stopIsProblem(st) {
   if (st.reviewStatus === 'allowed') return false;
@@ -906,6 +943,81 @@ function initDriverMap() {
       });
     });
   }
+  window._drvPinsMode = 'key';
+  const pinsWrap = document.getElementById('drv-pins-mode');
+  if (pinsWrap) {
+    pinsWrap.querySelectorAll('button[data-pins]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        window._drvPinsMode = btn.getAttribute('data-pins') || 'key';
+        pinsWrap.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === btn));
+        if (window._drvLastDay) refreshDriverMap(window._drvLastDay);
+      });
+    });
+  }
+  let playPts = [], playIdx = 0, playTimer = null, playMarker = null;
+  const stopPlay = () => {
+    if (playTimer) { clearInterval(playTimer); playTimer = null; }
+    const btn = document.getElementById('drv-play');
+    if (btn) btn.textContent = '▶';
+  };
+  const renderPlayAt = (idx) => {
+    const scrub = document.getElementById('drv-scrub');
+    const meta = document.getElementById('drv-play-meta');
+    if (!playPts.length || !drvMap) return;
+    playIdx = Math.max(0, Math.min(playPts.length - 1, idx));
+    if (scrub) scrub.value = String(playIdx);
+    const p = playPts[playIdx];
+    const nextP = playPts[Math.min(playPts.length - 1, playIdx + 1)];
+    const brg = (nextP && (nextP[0] !== p[0] || nextP[1] !== p[1])) ? bearingDeg(p, nextP) : 0;
+    const html = `<div style="width:22px;height:22px;border-radius:50%;background:#2563eb;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(37,99,235,.5);display:flex;align-items:center;justify-content:center;transform:rotate(${brg.toFixed(1)}deg)"><svg viewBox="0 0 24 24" width="12" height="12"><path fill="#fff" d="M12 3l7 15-7-3.5L5 18z"/></svg></div>`;
+    if (!playMarker) {
+      playMarker = L.marker([p[0], p[1]], { icon: L.divIcon({ className: 'vm-pin', html, iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 2000 }).addTo(drvMap);
+    } else {
+      playMarker.setLatLng([p[0], p[1]]);
+      playMarker.setIcon(L.divIcon({ className: 'vm-pin', html, iconSize: [22, 22], iconAnchor: [11, 11] }));
+    }
+    if (meta) {
+      let tStr = (playIdx + 1) + ' / ' + playPts.length;
+      if (p[2]) {
+        const dt = new Date(p[2] * 1000);
+        const hm = String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
+        tStr = hm + (p[3] != null ? (' · ' + Math.round(p[3]) + ' km/s') : '');
+      }
+      meta.textContent = tStr;
+    }
+  };
+  window._drvSyncPlayer = (pts) => {
+    stopPlay();
+    if (playMarker && drvMap) { try { drvMap.removeLayer(playMarker); } catch (e) {} playMarker = null; }
+    playPts = Array.isArray(pts) ? pts : [];
+    const bar = document.getElementById('drv-player');
+    const scrub = document.getElementById('drv-scrub');
+    const meta = document.getElementById('drv-play-meta');
+    if (bar) bar.hidden = playPts.length < 2;
+    if (scrub) { scrub.max = String(Math.max(0, playPts.length - 1)); scrub.value = '0'; }
+    if (meta) meta.textContent = playPts.length >= 2 ? ('1 / ' + playPts.length) : '0 / 0';
+  };
+  const playBtn = document.getElementById('drv-play');
+  const scrubEl = document.getElementById('drv-scrub');
+  const spdEl = document.getElementById('drv-play-spd');
+  if (playBtn) playBtn.addEventListener('click', () => {
+    if (!playPts.length) return;
+    if (playTimer) { stopPlay(); return; }
+    if (playIdx >= playPts.length - 1) playIdx = 0;
+    playBtn.textContent = '⏸';
+    const tick = () => {
+      const spd = Number(spdEl && spdEl.value) || 5;
+      const step = Math.max(1, Math.round(spd / 2));
+      if (playIdx >= playPts.length - 1) { stopPlay(); return; }
+      renderPlayAt(Math.min(playPts.length - 1, playIdx + step));
+    };
+    renderPlayAt(playIdx);
+    playTimer = setInterval(tick, 180);
+  });
+  if (scrubEl) scrubEl.addEventListener('input', () => {
+    stopPlay();
+    renderPlayAt(Number(scrubEl.value) || 0);
+  });
 })();
 function pinIcon(label, color, isEnd) {
   const text = String(label);
@@ -934,22 +1046,34 @@ function bearingDeg(a, b) {
   const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
-/** Zamonaviy GPS marshrut chizig'i: halo + yorqin ko'k + ixcham yo'nalish strelkalari */
+/** Vaqt fazasi bo'yicha marshrut: Boshi (#0ea5e9) -> Kunduzi (#2563eb) -> Oxiri (#7c3aed) */
 function drawRoute(latlngs) {
   if (drvRouteLayer) { try { drvMap.removeLayer(drvRouteLayer); } catch (e) {} drvRouteLayer = null; }
   const pts = (latlngs || []).filter(p => p && validUz(p[0], p[1])).map(p => [Number(p[0]), Number(p[1])]);
   if (pts.length < 2) return;
-  const layers = [
-    L.polyline(pts, { color: '#1e3a8a', weight: 8, opacity: 0.28, lineJoin: 'round', lineCap: 'round', interactive: false }),
-    L.polyline(pts, { color: '#2563eb', weight: 4.5, opacity: 0.96, lineJoin: 'round', lineCap: 'round', interactive: false })
+  const nPts = pts.length;
+  const i1 = Math.max(1, Math.floor(nPts / 3));
+  const i2 = Math.max(i1 + 1, Math.floor((nPts * 2) / 3));
+  const phases = [
+    { seg: pts.slice(0, i1 + 1), color: '#0ea5e9' },
+    { seg: pts.slice(i1, i2 + 1), color: '#2563eb' },
+    { seg: pts.slice(i2), color: '#7c3aed' }
   ];
+  const layers = [
+    L.polyline(pts, { color: '#0f172a', weight: 7.5, opacity: 0.22, lineJoin: 'round', lineCap: 'round', interactive: false })
+  ];
+  phases.forEach(ph => {
+    if (ph.seg.length >= 2) {
+      layers.push(L.polyline(ph.seg, { color: ph.color, weight: 4.5, opacity: 0.94, lineJoin: 'round', lineCap: 'round', interactive: false }));
+    }
+  });
   const dist = [0];
   let total = 0;
   for (let i = 1; i < pts.length; i++) {
     total += L.latLng(pts[i - 1]).distanceTo(L.latLng(pts[i]));
     dist.push(total);
   }
-  const n = Math.min(42, Math.max(4, Math.round(total / 680)));
+  const n = Math.min(28, Math.max(3, Math.round(total / 900)));
   const spacing = total / (n + 1);
   let seg = 1;
   for (let k = 1; k <= n && total > 1; k++) {
@@ -978,6 +1102,7 @@ function drawTelemetry() {
   drvTeleLayer = vmTrackTelemetry(drvMap, pts);
 }
 function refreshDriverMap(day) {
+  window._drvLastDay = day;
   initDriverMap();
   if (!drvMap) return;
   const gen = ++drvGen;
@@ -1037,10 +1162,19 @@ function refreshDriverMap(day) {
   }
 
   const seen = Object.create(null);
+  const seenOf = Object.create(null);
+  const pinsMode = window._drvPinsMode || 'key';
   stops.forEach(st => {
     const key = stopKey(st);
     const num = NUMS.byKey[key] || '·';
+    const isImportant = st.isOffice || st.isOutside || stopIsProblem(st) || st.reviewStatus === 'violation' || st.reviewStatus === 'allowed' || st.matchType === 'own' || st.matchType === 'other' || key === drvSelected;
+    if (pinsMode === 'key' && !isImportant) return;
     let lat = Number(st.lat), lng = Number(st.lng);
+    if (st.isOffice && pinsMode === 'key') {
+      const ofKey = Math.round(lat * 700) + ',' + Math.round(lng * 700);
+      if (seenOf[ofKey]) return;
+      seenOf[ofKey] = true;
+    }
     const ck = lat.toFixed(4) + ',' + lng.toFixed(4);
     const dup = seen[ck] || 0;
     seen[ck] = dup + 1;
@@ -1066,6 +1200,7 @@ function refreshDriverMap(day) {
   });
 
   drawTelemetry();
+  if (window._drvSyncPlayer) window._drvSyncPlayer(track);
 
   const fitPts = routeRaw.concat(stops.map(s => [Number(s.lat), Number(s.lng)])).concat(geos.filter(p => validUz(p.lat, p.lng)).map(p => [p.lat, p.lng]));
   const fitSig = [day.date, day.car, fitPts.length].join('|');
@@ -1568,6 +1703,7 @@ function startDayAutoRefresh() {
     showTele = tele.checked;
     try { localStorage.setItem('vm_drv_tele', showTele ? '1' : '0'); } catch (e) {}
     drawTelemetry();
+  if (window._drvSyncPlayer) window._drvSyncPlayer(track);
   });
 
   if (vmIsStaff(ME)) {
