@@ -2232,16 +2232,33 @@ function renderTripsAside() {
     const checked = STATE._tripChecked || {};
     if (allChk) allChk.checked = trips.length > 0 && trips.every(t => checked[t.index]);
 
+    const car = STATE.cars && STATE.selected ? STATE.cars[STATE.selected] : null;
+    const dayStops = (car && Array.isArray(car.stops)) ? car.stops.filter(s => s && s.lat != null && s.lng != null) : [];
+    const nearPlace = (pt) => {
+        if (!pt || !dayStops.length || typeof L === 'undefined') return '';
+        let best = null, bestD = 380;
+        const pLL = L.latLng(pt[0], pt[1]);
+        for (let i = 0; i < dayStops.length; i++) {
+            const d = pLL.distanceTo(L.latLng(dayStops[i].lat, dayStops[i].lng));
+            if (d < bestD) { bestD = d; best = dayStops[i]; }
+        }
+        return best ? String(best.place || best.phName || '').trim() : '';
+    };
+
     listEl.innerHTML = trips.map((tr) => {
         const t0 = typeof vmTeleClock === 'function' ? vmTeleClock(tr.t0).slice(0, 5) : '';
         const t1 = typeof vmTeleClock === 'function' ? vmTeleClock(tr.t1).slice(0, 5) : '';
         const durStr = typeof vmTeleDur === 'function' ? vmTeleDur(tr.durSec) : '';
         const isOnly = trips.filter(x => checked[x.index]).length === 1 && checked[tr.index];
+        const pFrom = tr.points && tr.points.length ? nearPlace(tr.points[0]) : '';
+        const pTo = tr.points && tr.points.length ? nearPlace(tr.points[tr.points.length - 1]) : '';
+        const routeHint = (pFrom && pTo && pFrom !== pTo) ? (pFrom + ' → ' + pTo) : (pTo || pFrom || '');
         return `<div class="mta-row${isOnly ? ' is-active' : ''}" data-trip-row="${tr.index}">
           <input type="checkbox" data-trip-chk="${tr.index}" ${checked[tr.index] ? 'checked' : ''} title="Xaritada ko'rsatish">
           <span class="mta-swatch" style="background:${tr.color}"></span>
           <div class="mta-body">
             <div class="mta-time">${tr.index}-reys · ${t0}–${t1}</div>
+            ${routeHint ? `<div class="mta-sub" style="color:#1e40af;font-weight:600">${esc(routeHint)}</div>` : ''}
             <div class="mta-sub">${tr.km.toFixed(1)} km · maks ${tr.maxSpd} km/h · ${durStr}</div>
           </div>
           <button type="button" class="mta-only" data-trip-only="${tr.index}" title="Faqat shu reysni qoldirish">Faqat</button>
