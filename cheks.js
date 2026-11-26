@@ -627,11 +627,18 @@ const VMCheks = {
     };
   },
 
+  cardBadge(r) {
+    if (!r) return '';
+    if (r.cardNumber) return String(r.cardNumber);
+    if (r.cardLast4) return '•••• ' + String(r.cardLast4);
+    return '';
+  },
+
   preferRow(old, neu) {
     if (!old) return neu;
     if (!neu) return old;
     const out = Object.assign({}, old, neu);
-    const keys = ['amount', 'merchant', 'inn', 'items', 'address', 'cardType', 'payMethod', 'kkmName', 'vatTotal', 'cardTotal', 'cashTotal', 'qr', 'terminalId', 'receiptNo', 'plate'];
+    const keys = ['amount', 'merchant', 'inn', 'items', 'address', 'cardType', 'cardNumber', 'cardLast4', 'cardSource', 'ofdLat', 'ofdLng', 'payMethod', 'kkmName', 'vatTotal', 'cardTotal', 'cashTotal', 'qr', 'terminalId', 'receiptNo', 'plate'];
     keys.forEach((k) => {
       const nv = neu[k];
       const ov = old[k];
@@ -980,6 +987,8 @@ const VMCheks = {
     const active = this.selectedId && String(this.selectedId) === String(r.id);
     const mer = r.merchant || r.kkmName || '';
     const amt = this.money(r.amount);
+    const cardStr = this.cardBadge(r);
+    const cardTag = cardStr ? (' · ' + (r.cardType ? r.cardType + ' ' : '') + cardStr) : '';
     return `<li class="chek-mini-wrap${neu ? ' is-new' : ''}${active ? ' is-active' : ''}${kind === 'ok' ? ' is-ok' : ' is-wait'}">
       <button type="button" class="chek-mini" data-id="${id}">
         <div class="chek-mini-h">
@@ -987,7 +996,7 @@ const VMCheks = {
           <small>${this.esc(this.when(r))}</small>
         </div>
         ${mer ? `<em>${this.esc(mer)}</em>` : ''}
-        <span>Chek № ${this.esc(r.receiptNo || '—')}${r.terminalId ? ' · ' + this.esc(r.terminalId) : ''}</span>
+        <span>Chek № ${this.esc(r.receiptNo || '—')}${r.terminalId ? ' · ' + this.esc(r.terminalId) : ''}${this.esc(cardTag)}</span>
         <i class="chek-pill ${kind}">${this.esc(this.ofdLabel(r))}</i>
       </button>
       <div class="chek-mini-acts">
@@ -1124,7 +1133,8 @@ const VMCheks = {
       y += 7;
       if (row.cardTotal != null && Number(row.cardTotal) > 0) {
         setF('normal', 9);
-        doc.text(T('PL.KARTA' + (row.cardType ? (' · ' + row.cardType) : '')), 20, y);
+        const cBadge = this.cardBadge(row);
+        doc.text(T('PL.KARTA' + (row.cardType ? (' · ' + row.cardType) : '') + (cBadge ? (' · ' + cBadge) : '')), 20, y);
         doc.text(T('= ' + this.som(row.cardTotal)), 190, y, { align: 'right' });
         y += 5;
       } else if (row.cashTotal != null && Number(row.cashTotal) > 0) {
@@ -1136,6 +1146,10 @@ const VMCheks = {
       line(y);
       y += 8;
 
+      const cBadgeMeta = this.cardBadge(row);
+      const cardMetaVal = cBadgeMeta
+        ? ((row.cardType ? row.cardType + ' · ' : '') + cBadgeMeta)
+        : (row.cardType || '—');
       const meta = [
         ['Mashina', row.plate || '—'],
         ['Haydovchi', d.shortName || d.fullName || '—'],
@@ -1144,6 +1158,7 @@ const VMCheks = {
         ['KKM', row.kkmName || '—'],
         ['Chek №', row.receiptNo || '—'],
         ['FB', row.fiscalSign || '—'],
+        ['Karta', cardMetaVal],
         ['Holat', this.ofdLabel(row)]
       ];
       setF('normal', 9);
@@ -1196,9 +1211,10 @@ const VMCheks = {
     const payName = r.cardType || r.payMethod || (cardN ? 'PL.KARTA' : (cashN ? 'NAQD' : ''));
     const vat = vatN != null
       ? `<div class="chek-p-row"><span>QQS 12.00%</span><b>= ${this.esc(this.som(vatN))}</b></div>` : '';
+    const cardStr = this.cardBadge(r);
     const payLine = (cardN || cashN)
-      ? `<div class="chek-p-row"><span>${this.esc(cardN ? ('PL.KARTA so\'m' + (r.cardType ? (' · ' + r.cardType) : '')) : 'NAQD so\'m')}</span><b>= ${this.esc(this.som(cardN || cashN))}</b></div>`
-      : (payName ? `<div class="chek-p-row"><span>To‘lov</span><b>${this.esc(payName)}</b></div>` : '');
+      ? `<div class="chek-p-row"><span>${this.esc(cardN ? ('PL.KARTA so\'m' + (r.cardType ? (' · ' + r.cardType) : '') + (cardStr ? (' · ' + cardStr) : '')) : 'NAQD so\'m')}</span><b>= ${this.esc(this.som(cardN || cashN))}</b></div>`
+      : (payName ? `<div class="chek-p-row"><span>To‘lov</span><b>${this.esc(payName + (cardStr ? (' · ' + cardStr) : ''))}</b></div>` : '');
     const vatJami = vatN != null
       ? `<div class="chek-p-row"><span>QQS qiymati</span><b>= ${this.esc(this.som(vatN))}</b></div>` : '';
     const kind = this.ofdKind(r);
@@ -1215,16 +1231,33 @@ const VMCheks = {
       : '';
     const amtVal = r.amount != null && r.amount !== '' && Number.isFinite(Number(r.amount))
       ? String(Math.round(Number(r.amount))) : '';
-    const manual = (forPreview || r.ofdOk) ? '' : `<details class="chek-p-manual" ${badTerm || kind === 'wait' ? 'open' : ''}>
-      <summary>OFD kechiksa — FM ni qayta yozish / summa</summary>
+    const cTypeVal = String(r.cardType || 'UZCARD').toUpperCase();
+    const cardEditFields = `
+      <label>Karta oxirgi 4 raqami (yoki 8600••••1234)</label>
+      <input type="text" id="chek-manual-card" maxlength="24" inputmode="numeric" placeholder="masalan 1234" value="${this.esc(r.cardLast4 || r.cardNumber || '')}">
+      <label>Karta turi</label>
+      <select id="chek-manual-cardtype" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:8px;font:inherit">
+        <option value="UZCARD"${cTypeVal === 'UZCARD' ? ' selected' : ''}>UZCARD</option>
+        <option value="HUMO"${cTypeVal === 'HUMO' ? ' selected' : ''}>HUMO</option>
+        <option value="VISA"${cTypeVal === 'VISA' ? ' selected' : ''}>VISA</option>
+        <option value="Mastercard"${cTypeVal === 'MASTERCARD' ? ' selected' : ''}>Mastercard</option>
+      </select>`;
+    const manual = forPreview ? '' : (r.ofdOk ? `<details class="chek-p-manual">
+      <summary>Karta raqamini kiritish / tahrirlash</summary>
+      <p>OFD chekida karta oxirgi 4 raqami bo‘lmasa, qog‘oz chekdagi karta raqamini shu yerga saqlang.</p>
+      ${cardEditFields}
+      <button type="button" class="btn btn-gold chek-scan-alt" id="chek-manual-save">Karta raqamini saqlash</button>
+    </details>` : `<details class="chek-p-manual" ${badTerm || kind === 'wait' ? 'open' : ''}>
+      <summary>OFD kechiksa — FM ni qayta yozish / summa / karta</summary>
       <p>Avvalo qog‘ozdagi <b>FM</b> (14 belgi) to‘g‘riligini tekshiring. Yoki summani qo‘lda saqlang.</p>
       <button type="button" class="btn btn-light chek-scan-alt" id="chek-retry-fm">FM bilan qayta kiritish</button>
       <label>Summa (so‘m)</label>
       <input type="number" id="chek-manual-amt" min="1" step="1" inputmode="numeric" placeholder="masalan 66500" value="${this.esc(amtVal)}">
       <label>Stansiya nomi</label>
       <input type="text" id="chek-manual-mer" placeholder="Zapravka nomi" value="${this.esc(r.merchant || '')}">
+      ${cardEditFields}
       <button type="button" class="btn btn-gold chek-scan-alt" id="chek-manual-save">Saqlash</button>
-    </details>`;
+    </details>`);
     const ofdLink = this.ofdLinkOf(r);
     const qrId = String(r.id || r.fiscalSign || r.receiptNo || '').slice(0, 40);
     const qr = ofdLink
@@ -1263,6 +1296,8 @@ const VMCheks = {
       ${r.kkmName ? `<div class="chek-p-row"><span>KKM</span><b>${this.esc(r.kkmName)}</b></div>` : ''}
       <div class="chek-p-row"><span>Chek №</span><b>${this.esc(r.receiptNo || '—')}</b></div>
       <div class="chek-p-row"><span>FB</span><b>${this.esc(r.fiscalSign || '—')}</b></div>
+      <div class="chek-p-row"><span>Karta</span><b>${this.esc(cardStr ? ((r.cardType ? r.cardType + ' · ' : '') + cardStr + (r.cardSource === 'ofd' ? ' (OFD)' : (r.cardSource === 'manual' ? ' (Qo‘lda)' : ''))) : (r.cardType ? (r.cardType + ' · kiritilmagan') : '—'))}</b></div>
+      ${(r.ofdLat != null && r.ofdLng != null) ? `<div class="chek-p-row"><span>Zapravka GPS</span><b><a href="https://maps.google.com/?q=${encodeURIComponent(r.ofdLat + ',' + r.ofdLng)}" target="_blank" rel="noopener noreferrer" style="color:#0369a1;text-decoration:underline">${this.esc(Number(r.ofdLat).toFixed(5) + ', ' + Number(r.ofdLng).toFixed(5))}</a></b></div>` : ''}
       <div class="chek-pill ${kind}" style="margin:12px auto 0;">${this.esc(this.ofdLabel(r))}</div>
       ${qr}
       ${warn}${saved}${manual}`;
@@ -2832,12 +2867,17 @@ const VMCheks = {
     const id = this.paperItem && this.paperItem.id;
     const amt = document.getElementById('chek-manual-amt');
     const mer = document.getElementById('chek-manual-mer');
+    const cardInp = document.getElementById('chek-manual-card');
+    const cardTypeSel = document.getElementById('chek-manual-cardtype');
     if (!id || String(id).indexOf('tmp') === 0) {
       this.toast('Avval chek saqlansin');
       return;
     }
-    const body = { id, merchant: mer && mer.value };
+    const body = { id };
+    if (mer) body.merchant = mer.value;
     if (amt && String(amt.value).trim()) body.amount = amt.value;
+    if (cardInp) body.cardNumber = String(cardInp.value || '').trim();
+    if (cardTypeSel && cardTypeSel.value) body.cardType = cardTypeSel.value;
     try {
       const d = await vmApi('/api/office/cheks/update', {
         method: 'POST',

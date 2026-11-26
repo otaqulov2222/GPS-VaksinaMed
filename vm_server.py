@@ -2531,6 +2531,13 @@ class OfficeStore:
             row["kkmName"] = ofd.get("kkmName")
         if ofd.get("cardType"):
             row["cardType"] = ofd.get("cardType")
+        if ofd.get("cardLast4"):
+            row["cardNumber"] = ofd.get("cardNumber") or ("•••• " + str(ofd.get("cardLast4")))
+            row["cardLast4"] = ofd.get("cardLast4")
+            row["cardSource"] = ofd.get("cardSource") or "ofd"
+        if ofd.get("ofdLat") is not None and ofd.get("ofdLng") is not None:
+            row["ofdLat"] = ofd.get("ofdLat")
+            row["ofdLng"] = ofd.get("ofdLng")
         if ofd.get("vatTotal") not in (None, ""):
             row["vatTotal"] = ofd.get("vatTotal")
         if ofd.get("ofdOk"):
@@ -2939,6 +2946,11 @@ class OfficeStore:
                         "payMethod": hit_rec.get("payMethod"),
                         "kkmName": hit_rec.get("kkmName"),
                         "cardType": hit_rec.get("cardType"),
+                        "cardNumber": hit_rec.get("cardNumber"),
+                        "cardLast4": hit_rec.get("cardLast4"),
+                        "cardSource": hit_rec.get("cardSource"),
+                        "ofdLat": hit_rec.get("ofdLat"),
+                        "ofdLng": hit_rec.get("ofdLng"),
                         "vatTotal": hit_rec.get("vatTotal"),
                         "ofdNote": hit_rec.get("ofdNote") or "",
                     }
@@ -2983,6 +2995,21 @@ class OfficeStore:
             if patch.get("merchant"):
                 row["merchant"] = str(patch.get("merchant"))[:180]
                 row["manual"] = True
+            if "cardNumber" in patch or "cardLast4" in patch:
+                raw_c = patch.get("cardNumber") if "cardNumber" in patch else patch.get("cardLast4")
+                if str(raw_c or "").strip() == "":
+                    row["cardNumber"] = ""
+                    row["cardLast4"] = ""
+                    row["cardSource"] = ""
+                else:
+                    c_mask, c_last4 = chekmod.normalize_card_number(raw_c)
+                    if not c_last4:
+                        return None, "Karta oxirgi 4 raqami noto'g'ri"
+                    row["cardNumber"] = c_mask
+                    row["cardLast4"] = c_last4
+                    row["cardSource"] = "manual"
+            if patch.get("cardType"):
+                row["cardType"] = str(patch.get("cardType"))[:40]
             row["updatedAt"] = iso_now()
             row["updatedBy"] = str(username or "")[:40]
             self._cheks_put(items)

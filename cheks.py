@@ -283,6 +283,22 @@ def build_ofd_url(terminal_id, receipt_no, paid_at_or_stamp, fiscal_sign=""):
     return parse_qr_payload(url)
 
 
+def normalize_card_number(raw):
+    """Karta raqami/maskasidan toza ko'rinish ('8600 •••• 1234' / '•••• 1234') va oxirgi 4 raqamni ajratadi."""
+    s = str(raw or "").strip()
+    if not s or s.lower() in ("null", "none", "undefined", "-"):
+        return "", ""
+    m_last = re.search(r"(\d{4})\D*$", s)
+    if not m_last:
+        return "", ""
+    last4 = m_last.group(1)
+    compact = re.sub(r"[^0-9*•xX]", "", s)
+    m_first = re.match(r"^(\d{4})", compact)
+    if m_first and len(compact) >= 10 and compact != last4:
+        return f"{m_first.group(1)} •••• {last4}", last4
+    return f"•••• {last4}", last4
+
+
 def _manual_hit_rec(parsed, ofd, sign):
     return {
         "qr": parsed["qr"],
@@ -300,6 +316,11 @@ def _manual_hit_rec(parsed, ofd, sign):
         "payMethod": ofd.get("payMethod") or "",
         "kkmName": ofd.get("kkmName") or "",
         "cardType": ofd.get("cardType") or "",
+        "cardNumber": ofd.get("cardNumber") or "",
+        "cardLast4": ofd.get("cardLast4") or "",
+        "cardSource": ofd.get("cardSource") or "",
+        "ofdLat": ofd.get("ofdLat"),
+        "ofdLng": ofd.get("ofdLng"),
         "vatTotal": ofd.get("vatTotal"),
         "ofdOk": True,
         "ofdPending": False,
@@ -708,6 +729,11 @@ def parse_ofd_payment(data):
         "payMethod": "",
         "kkmName": "",
         "cardType": "",
+        "cardNumber": "",
+        "cardLast4": "",
+        "cardSource": "",
+        "ofdLat": None,
+        "ofdLng": None,
         "vatTotal": None,
         "ofdPending": False,
     }
@@ -723,6 +749,27 @@ def parse_ofd_payment(data):
     raw_card = str(extra.get("cardType") or extra.get("card") or "").strip()
     card_map = {"1": "UZCARD", "2": "HUMO", "3": "VISA", "4": "Mastercard"}
     out["cardType"] = card_map.get(raw_card, raw_card[:40])
+    raw_cnum = (
+        extra.get("cardNumber")
+        or extra.get("taxiInfoCardNumber")
+        or blob.get("cardNumber")
+        or extra.get("pan")
+        or blob.get("pan")
+        or ""
+    )
+    c_mask, c_last4 = normalize_card_number(raw_cnum)
+    if c_last4:
+        out["cardNumber"] = c_mask
+        out["cardLast4"] = c_last4
+        out["cardSource"] = "ofd"
+    try:
+        lat_f = float(extra.get("latitude")) if extra.get("latitude") not in (None, "") else None
+        lng_f = float(extra.get("longitude")) if extra.get("longitude") not in (None, "") else None
+        if lat_f is not None and lng_f is not None and -90 <= lat_f <= 90 and -180 <= lng_f <= 180:
+            out["ofdLat"] = round(lat_f, 6)
+            out["ofdLng"] = round(lng_f, 6)
+    except (TypeError, ValueError):
+        pass
     vat = _ofd_som(blob.get("vatTotal"))
     out["vatTotal"] = vat
     tin = str(blob.get("tin") or extra.get("tin") or "").strip()
@@ -843,6 +890,7 @@ def prefer_chek_row(old, new):
     out.update(new)
     rich = (
         "amount", "merchant", "inn", "items", "address", "cardType",
+        "cardNumber", "cardLast4", "cardSource", "ofdLat", "ofdLng",
         "payMethod", "kkmName", "vatTotal", "cardTotal", "cashTotal",
         "fiscalSign", "qr", "terminalId", "receiptNo", "plate",
     )
@@ -979,6 +1027,11 @@ def ofd_shell():
         "payMethod": "",
         "kkmName": "",
         "cardType": "",
+        "cardNumber": "",
+        "cardLast4": "",
+        "cardSource": "",
+        "ofdLat": None,
+        "ofdLng": None,
         "vatTotal": None,
         "ofdOk": False,
         "ofdPending": True,
@@ -1017,6 +1070,11 @@ def build_chek_record(qr_raw, extra=None, fetch_ofd=True):
         "payMethod": ofd.get("payMethod") or "",
         "kkmName": ofd.get("kkmName") or "",
         "cardType": ofd.get("cardType") or "",
+        "cardNumber": ofd.get("cardNumber") or "",
+        "cardLast4": ofd.get("cardLast4") or "",
+        "cardSource": ofd.get("cardSource") or "",
+        "ofdLat": ofd.get("ofdLat"),
+        "ofdLng": ofd.get("ofdLng"),
         "vatTotal": ofd.get("vatTotal"),
         "ofdOk": bool(ofd.get("ofdOk")),
         "ofdPending": bool(ofd.get("ofdPending")),
