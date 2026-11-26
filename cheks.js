@@ -787,9 +787,10 @@ const VMCheks = {
         </div>
         <div class="cal-selected-box chek-cal-selected">
           <span id="chek-cal-selected-label">${this.esc(day ? label : ('Butun oy · ' + title))}</span>
-          <div class="chek-cal-selected-acts">
+          <div class="chek-cal-selected-acts" style="flex-wrap:wrap;gap:6px">
             <button type="button" class="btn btn-light btn-sm" id="chek-period-now">Bugun</button>
             <button type="button" class="btn btn-outline btn-sm" id="chek-cal-month" ${day ? '' : 'disabled'}>Butun oy</button>
+            <button type="button" class="btn btn-outline btn-sm" id="chek-refresh-all" style="flex:1 1 100%" title="Eski cheklarni Soliq OFD dan qayta tekshirish (karta va GPS)">OFD yangilash</button>
           </div>
         </div>
       </div>`;
@@ -812,7 +813,7 @@ const VMCheks = {
     const rows = day
       ? allDrivers.filter((d) => this.forPlatePeriod(d.car || '', ym, day).length > 0)
       : allDrivers;
-    const sig = [ym, day, this.openPlate, this.selectedId, this.highlightId, allDrivers.length, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant].join(':')).join(',')].join('|');
+    const sig = [ym, day, this.openPlate, this.selectedId, this.highlightId, allDrivers.length, rows.length, this.items.map((x) => [x.id, x.ofdOk, x.amount, x.merchant, x.cardLast4, x.cardType, x.ofdLat].join(':')).join(',')].join('|');
     if (sig === this._renderSig) return;
     this._renderSig = sig;
     this.renderPeriodBar(ym, day);
@@ -1362,6 +1363,10 @@ const VMCheks = {
           this.setDay('');
           return;
         }
+        if (e.target.closest('#chek-refresh-all')) {
+          this.refreshAllOfd();
+          return;
+        }
         const dayBtn = e.target.closest('[data-chek-day]');
         if (dayBtn) {
           const ds = dayBtn.getAttribute('data-chek-day');
@@ -1410,7 +1415,7 @@ const VMCheks = {
         const row = this.items.find(x => String(x.id) === String(id));
         if (row) {
           this.selectedId = String(row.id);
-          this.openPaper(row, false, false);
+          this.openPaper(row, false, false, { openEdit: true });
         }
         return;
       }
@@ -1553,6 +1558,12 @@ const VMCheks = {
             term.focus();
           }
           this.setManualStatus('Qog‘ozdagi FM (14 belgi, LG…/VG…/YZ…) ni yozing — Chek № va FB saqlangan', 'busy');
+        }
+      });
+      paper.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target && e.target.id === 'chek-manual-card') {
+          e.preventDefault();
+          this.saveManual();
         }
       });
     }
@@ -2695,10 +2706,10 @@ const VMCheks = {
 
   paperSig(r) {
     if (!r) return '';
-    return [r.id, r.ofdOk, r.amount, r.merchant, r.inn, (r.items || []).length, r.ofdNote, this.paperFromScan, this.paperDup].join('|');
+    return [r.id, r.ofdOk, r.amount, r.merchant, r.inn, r.cardNumber, r.cardLast4, r.cardType, r.cardSource, r.ofdLat, r.ofdLng, (r.items || []).length, r.ofdNote, this.paperFromScan, this.paperDup].join('|');
   },
 
-  openPaper(row, fromScan, dup) {
+  openPaper(row, fromScan, dup, opts) {
     this.paperItem = row;
     this.paperFromScan = !!fromScan;
     this.paperDup = !!dup;
@@ -2717,6 +2728,20 @@ const VMCheks = {
     if (modal) {
       modal.classList.add('open');
       modal.setAttribute('aria-hidden', 'false');
+    }
+    if (opts && opts.openEdit && box) {
+      const det = box.querySelector('.chek-p-manual');
+      if (det) {
+        det.open = true;
+        setTimeout(() => {
+          try { det.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+          const cardInp = document.getElementById('chek-manual-card');
+          if (cardInp) {
+            cardInp.focus();
+            if (cardInp.select) cardInp.select();
+          }
+        }, 60);
+      }
     }
     this.watchPendingPaper();
   },
@@ -2860,6 +2885,45 @@ const VMCheks = {
       if (!silent) this.toast(e.message || 'OFD ochilmadi');
     } finally {
       this._refBusyIds.delete(key);
+    }
+  },
+
+  async refreshAllOfd() {
+    if (this._refreshAllBusy) return;
+    this._refreshAllBusy = true;
+    const btn = document.getElementById('chek-refresh-all');
+    const prevTxt = btn ? btn.textContent : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'OFD tekshirilmoqda…';
+    }
+    try {
+      const d = await vmApi('/api/office/cheks/refresh-all', {
+        method: 'POST',
+        body: JSON.stringify({ month: this.currentYm() }),
+        timeoutMs: 45000
+      });
+      if (Array.isArray(d.items)) this.applyItems(d.items);
+      this._renderSig = '';
+      this.render();
+      const chk = Number(d.checked || 0);
+      const gps = Number(d.gpsFound || 0);
+      const crd = Number(d.cardsFound || 0);
+      const rem = Number(d.remaining || 0);
+      if (!chk) {
+        this.toast('Barcha cheklar allaqachon yangilangan');
+      } else {
+        this.toast(`${chk} ta chek tekshirildi: ${gps} ta GPS, ${crd} ta karta topildi${rem > 0 ? ` (yana ${rem} ta qoldi)` : ''}`);
+      }
+    } catch (e) {
+      this.toast((e && e.message) || 'OFD dan yangilab bo‘lmadi');
+    } finally {
+      this._refreshAllBusy = false;
+      const curBtn = document.getElementById('chek-refresh-all');
+      if (curBtn) {
+        curBtn.disabled = false;
+        curBtn.textContent = prevTxt || 'OFD yangilash';
+      }
     }
   },
 

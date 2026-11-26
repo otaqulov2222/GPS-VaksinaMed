@@ -2976,6 +2976,82 @@ class OfficeStore:
             self.apply_chek_to_fuel(row.get("id"))
         return row, ""
 
+    def cheks_refresh_all(self, month="", limit=50):
+        import concurrent.futures
+        import cheks as chekmod
+
+        ym = str(month or "").strip()[:7]
+        with self.lock:
+            items = self.cheks_list()
+            candidates = []
+            for r in items:
+                if not isinstance(r, dict):
+                    continue
+                if ym and chekmod._chek_ymd(r)[:7] != ym:
+                    continue
+                if not (r.get("qr") or (r.get("terminalId") and r.get("receiptNo") and r.get("fiscalSign"))):
+                    continue
+                missing_gps = r.get("ofdLat") is None or r.get("ofdLng") is None
+                missing_card = (not r.get("cardLast4")) and (r.get("cardSource") != "manual")
+                if missing_gps or missing_card or (not r.get("ofdOk")):
+                    candidates.append(dict(r))
+
+        total_cand = len(candidates)
+        batch = candidates[: max(1, int(limit or 50))]
+        remaining = max(0, total_cand - len(batch))
+        if not batch:
+            return {"checked": 0, "updated": 0, "cardsFound": 0, "gpsFound": 0, "remaining": 0}
+
+        def _fetch_one(snap):
+            qr = str(snap.get("qr") or "").strip()
+            if not qr:
+                built = chekmod.build_ofd_url(
+                    snap.get("terminalId"), snap.get("receiptNo"), snap.get("paidAt"), snap.get("fiscalSign") or ""
+                )
+                qr = built.get("qr") or ""
+            if not qr:
+                return str(snap.get("id") or ""), None
+            ofd = chekmod.fetch_ofd_details(qr, timeout=5, attempts=1)
+            return str(snap.get("id") or ""), ofd
+
+        results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            for rid, ofd in pool.map(_fetch_one, batch):
+                if rid and isinstance(ofd, dict) and ofd.get("ofdOk"):
+                    results[rid] = ofd
+
+        updated = 0
+        cards_found = 0
+        gps_found = 0
+        if results:
+            with self.lock:
+                latest = self.cheks_list()
+                changed = False
+                for row in latest:
+                    rid = str(row.get("id") or "")
+                    ofd = results.get(rid)
+                    if not ofd:
+                        continue
+                    had_card = bool(row.get("cardLast4"))
+                    had_gps = row.get("ofdLat") is not None and row.get("ofdLng") is not None
+                    self._apply_ofd_fields(row, ofd)
+                    row["ofdRefreshedAt"] = iso_now()
+                    if (not had_card) and row.get("cardLast4"):
+                        cards_found += 1
+                    if (not had_gps) and row.get("ofdLat") is not None and row.get("ofdLng") is not None:
+                        gps_found += 1
+                    updated += 1
+                    changed = True
+                if changed:
+                    self._cheks_put(latest)
+        return {
+            "checked": len(batch),
+            "updated": updated,
+            "cardsFound": cards_found,
+            "gpsFound": gps_found,
+            "remaining": remaining,
+        }
+
     def cheks_update(self, rec_id, patch, username=""):
         import cheks as chekmod
 
@@ -3016,6 +3092,82 @@ class OfficeStore:
         if row.get("ofdOk"):
             self.apply_chek_to_fuel(row.get("id"))
         return row, ""
+
+    def cheks_refresh_all(self, month="", limit=50):
+        import concurrent.futures
+        import cheks as chekmod
+
+        ym = str(month or "").strip()[:7]
+        with self.lock:
+            items = self.cheks_list()
+            candidates = []
+            for r in items:
+                if not isinstance(r, dict):
+                    continue
+                if ym and chekmod._chek_ymd(r)[:7] != ym:
+                    continue
+                if not (r.get("qr") or (r.get("terminalId") and r.get("receiptNo") and r.get("fiscalSign"))):
+                    continue
+                missing_gps = r.get("ofdLat") is None or r.get("ofdLng") is None
+                missing_card = (not r.get("cardLast4")) and (r.get("cardSource") != "manual")
+                if missing_gps or missing_card or (not r.get("ofdOk")):
+                    candidates.append(dict(r))
+
+        total_cand = len(candidates)
+        batch = candidates[: max(1, int(limit or 50))]
+        remaining = max(0, total_cand - len(batch))
+        if not batch:
+            return {"checked": 0, "updated": 0, "cardsFound": 0, "gpsFound": 0, "remaining": 0}
+
+        def _fetch_one(snap):
+            qr = str(snap.get("qr") or "").strip()
+            if not qr:
+                built = chekmod.build_ofd_url(
+                    snap.get("terminalId"), snap.get("receiptNo"), snap.get("paidAt"), snap.get("fiscalSign") or ""
+                )
+                qr = built.get("qr") or ""
+            if not qr:
+                return str(snap.get("id") or ""), None
+            ofd = chekmod.fetch_ofd_details(qr, timeout=5, attempts=1)
+            return str(snap.get("id") or ""), ofd
+
+        results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            for rid, ofd in pool.map(_fetch_one, batch):
+                if rid and isinstance(ofd, dict) and ofd.get("ofdOk"):
+                    results[rid] = ofd
+
+        updated = 0
+        cards_found = 0
+        gps_found = 0
+        if results:
+            with self.lock:
+                latest = self.cheks_list()
+                changed = False
+                for row in latest:
+                    rid = str(row.get("id") or "")
+                    ofd = results.get(rid)
+                    if not ofd:
+                        continue
+                    had_card = bool(row.get("cardLast4"))
+                    had_gps = row.get("ofdLat") is not None and row.get("ofdLng") is not None
+                    self._apply_ofd_fields(row, ofd)
+                    row["ofdRefreshedAt"] = iso_now()
+                    if (not had_card) and row.get("cardLast4"):
+                        cards_found += 1
+                    if (not had_gps) and row.get("ofdLat") is not None and row.get("ofdLng") is not None:
+                        gps_found += 1
+                    updated += 1
+                    changed = True
+                if changed:
+                    self._cheks_put(latest)
+        return {
+            "checked": len(batch),
+            "updated": updated,
+            "cardsFound": cards_found,
+            "gpsFound": gps_found,
+            "remaining": remaining,
+        }
 
     def save_fuel_meta(self, body):
         cur = self.fuel_meta()
@@ -6745,6 +6897,19 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": err, "sandbox": True}, 400)
                 return
             self.send_json({"ok": True, "sandbox": True, "item": OFFICE._chek_pub(row), "items": OFFICE.cheks_public()})
+            return
+
+        if path == "/api/office/cheks/refresh-all":
+            sess = self.require_user()
+            if not sess:
+                return
+            if self.deny_driver_write(sess):
+                return
+            month = str(body.get("month") or "").strip()
+            stats = OFFICE.cheks_refresh_all(month=month)
+            out = {"ok": True, "sandbox": True, "items": OFFICE.cheks_public()}
+            out.update(stats)
+            self.send_json(out)
             return
 
         if path == "/api/office/cheks/update":
