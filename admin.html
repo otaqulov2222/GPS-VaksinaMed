@@ -1162,6 +1162,21 @@ body { overflow-x: clip; }
   border-color: #1a5fb4 !important;
   box-shadow: 0 0 0 2px rgba(26, 95, 180, .18) !important;
 }
+.users-table td:first-child { min-width: 155px; font-weight: 600; color: #0b1f3a; }
+.adm-filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.adm-u-search {
+  height: 30px; width: 195px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.14);
+  color: #fff; font: 500 12px/1 'IBM Plex Sans', sans-serif;
+}
+.adm-u-search::placeholder { color: rgba(255,255,255,.68); }
+.adm-u-search:focus { outline: none; background: #fff; color: #0b1f3a; border-color: #fff; }
+.adm-u-role {
+  height: 30px; padding: 0 8px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.14);
+  color: #fff; font: 600 11.5px/1 'IBM Plex Sans', sans-serif; cursor: pointer;
+}
+.adm-u-role option { color: #0b1f3a; background: #fff; }
 </style>
 
 </head>
@@ -1497,15 +1512,17 @@ body { overflow-x: clip; }
       <div class="card">
 
         <div class="head">
-
-          <h2>Foydalanuvchilar</h2>
-
-          <div class="row-btns">
-
+          <h2>Foydalanuvchilar <span id="adm-u-cnt" style="font-size:11px;opacity:.75;font-weight:500;margin-left:4px"></span></h2>
+          <div class="adm-filter-bar">
+            <input type="search" id="adm-user-q" class="adm-u-search" placeholder="Ism, login, mashina..." autocomplete="off">
+            <select id="adm-user-role" class="adm-u-role" title="Rol bo'yicha filtr">
+              <option value="all">Hammasi</option>
+              <option value="driver">Haydovchilar</option>
+              <option value="admin">Adminlar</option>
+              <option value="viewer">Kuzatuvchilar</option>
+            </select>
             <button class="btn btn-sm" type="button" id="btn-reload">Yangilash</button>
-
           </div>
-
         </div>
 
         <div class="msg" id="msg-users" style="margin:12px 16px 0;"></div>
@@ -2161,7 +2178,7 @@ async function loadAll() {
             <button class="u-act u-act-copy" type="button" data-act="copy" data-id="${u.id}" title="Login va parolni nusxalash">Copy</button>
           </div>
         </div>`;
-    return `<tr data-uid="${esc(u.id)}">
+    return `<tr data-uid="${esc(u.id)}" data-role="${esc(u.role || 'driver')}" data-search="${esc((displayName + ' ' + u.username + ' ' + (u.car || '')).toLowerCase())}">
       <td>${nameCell}</td>
       <td>${loginCell}</td>
       <td>${pwCell}</td>
@@ -2174,6 +2191,18 @@ async function loadAll() {
   }).join('');
 
 
+
+  if (typeof window.filterAdminUsers === 'function') window.filterAdminUsers();
+
+  const fmtSessTz = (raw) => {
+    const s = String(raw || '').trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+    if (!m) return s || '—';
+    const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + 5 * 3600 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate()) + ' ' +
+      pad(dt.getUTCHours()) + ':' + pad(dt.getUTCMinutes()) + ':' + pad(dt.getUTCSeconds());
+  };
 
   const tbS = document.getElementById('tb-sess');
 
@@ -2193,9 +2222,9 @@ async function loadAll() {
 
         <td class="mono">${esc(s.ip)}</td>
 
-        <td class="mono">${esc(s.created)}</td>
+        <td class="mono">${esc(fmtSessTz(s.created))}</td>
 
-        <td class="mono">${esc(s.last_seen)}</td>
+        <td class="mono">${esc(fmtSessTz(s.last_seen))}</td>
 
         <td>${s.online ? '<span class="chip chip-on">Onlayn</span>' : '<span class="chip chip-idle">Idle</span>'}${mine ? ' <span class="chip chip-pro">Siz</span>' : ''}</td>
 
@@ -3828,6 +3857,27 @@ if (typeof vmInitPasswordEyes === 'function') vmInitPasswordEyes(document);
 
 <div class="ph-toast" id="ph-toast"></div>
 
+<script>
+window.filterAdminUsers = function () {
+  const q = (document.getElementById('adm-user-q')?.value || '').trim().toLowerCase();
+  const role = document.getElementById('adm-user-role')?.value || 'all';
+  const rows = document.querySelectorAll('#tb-users tr[data-uid]');
+  let shown = 0;
+  rows.forEach((tr) => {
+    const r = tr.getAttribute('data-role') || '';
+    const txt = tr.getAttribute('data-search') || '';
+    const okRole = role === 'all' || (role === 'admin' ? (r === 'admin' || r === 'pro') : r === role);
+    const okQ = !q || txt.includes(q);
+    const vis = okRole && okQ;
+    tr.style.display = vis ? '' : 'none';
+    if (vis) shown++;
+  });
+  const cnt = document.getElementById('adm-u-cnt');
+  if (cnt) cnt.textContent = rows.length ? `(${shown}/${rows.length})` : '';
+};
+document.getElementById('adm-user-q')?.addEventListener('input', window.filterAdminUsers);
+document.getElementById('adm-user-role')?.addEventListener('change', window.filterAdminUsers);
+</script>
 </body>
 
 </html>
