@@ -5839,6 +5839,10 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             if is_driver(sess):
                 self.send_json({"ok": False, "error": "Haydovchi faqat o'z kabinetidan ko'radi"}, 403)
                 return
+            try:
+                OFFICE.sync_all_cheks_to_fuel(month)
+            except Exception:
+                pass
             data = OFFICE.fuel_month(month)
             if data is None:
                 self.send_json({"ok": False, "error": "Oy noto'g'ri"}, 400)

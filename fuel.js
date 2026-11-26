@@ -6668,25 +6668,6 @@ function bind() {
     e.target.value = '';
   };
   document.getElementById('btn-reload').onclick = () => reloadOriginal().catch(err => toast(err.message));
-  const syncChekBtn = document.getElementById('btn-sync-cheks');
-  if (syncChekBtn) {
-    syncChekBtn.onclick = async () => {
-      syncChekBtn.disabled = true;
-      try {
-        const res = await vmApi('/api/office/cheks/sync-fuel', {
-          method: 'POST',
-          body: JSON.stringify({ month: STATE.month })
-        });
-        await reloadOriginal();
-        const cnt = Number(res && res.applied) || 0;
-        toast(cnt > 0 ? (cnt + ' ta chek yoqilg\'iga tushirildi') : 'Yangi tushiriladigan chek topilmadi');
-      } catch (err) {
-        toast(err.message || 'Cheklarni yuklashda xato');
-      } finally {
-        syncChekBtn.disabled = false;
-      }
-    };
-  }
   document.getElementById('docs-badge').onclick = () => setTab('docs');
   window.setTab = setTab;
   const logoutBtn = document.getElementById('btn-logout');
