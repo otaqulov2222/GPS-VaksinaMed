@@ -2816,7 +2816,7 @@ class OfficeStore:
                 if st_name not in stations:
                     stations.append(st_name)
                     meta["stations"] = stations[:120]
-                    self._kv_put("fuel__meta", meta)
+                    self._save("fuel:meta", meta)
 
             if "mode" not in drow:
                 drow["mode"] = "benzin" if (ben_add > 0 and gas_add <= 0) else "gaz"
@@ -2824,7 +2824,7 @@ class OfficeStore:
             car_rec["days"] = days
             cars[car_key] = car_rec
             cur_month["cars"] = cars
-            self._kv_put(f"fuel__month__{month}", cur_month)
+            self._save("fuel:month:" + month, cur_month)
 
             row["fuelApplied"] = {
                 "month": month,
@@ -2866,7 +2866,7 @@ class OfficeStore:
             car_rec["days"] = days
             cars[car_key] = car_rec
             cur_month["cars"] = cars
-            self._kv_put(f"fuel__month__{month}", cur_month)
+            self._save("fuel:month:" + month, cur_month)
             return True
 
     def sync_all_cheks_to_fuel(self, month=None):
