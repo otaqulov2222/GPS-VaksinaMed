@@ -464,21 +464,32 @@ function liveStartMotionLoop() {
           const samp = liveSamplePath(rs.pathInfo, clampedE);
           baseLat = samp.pos[0];
           baseLng = samp.pos[1];
-          if (samp.bearing != null && Math.abs(liveWrapDelta(rs.serverCourse, samp.bearing)) < 85) {
+          const segBearing = liveBearing([rs.animStartLat, rs.animStartLng], [rs.targetLat, rs.targetLng]);
+          if (samp.bearing != null && Math.abs(liveWrapDelta(segBearing, samp.bearing)) < 120) {
+            rs.motionHeading = samp.bearing;
             rs.targetAngle = rs.curAngle + liveWrapDelta(rs.curAngle, samp.bearing);
           }
         } else {
           baseLat = rs.animStartLat + (rs.targetLat - rs.animStartLat) * clampedE;
           baseLng = rs.animStartLng + (rs.targetLng - rs.animStartLng) * clampedE;
+          if (rs.status === 'moving') {
+            const segDist = liveDistMeters([rs.animStartLat, rs.animStartLng], [rs.targetLat, rs.targetLng]);
+            if (segDist >= 8) {
+              const segBearing = liveBearing([rs.animStartLat, rs.animStartLng], [rs.targetLat, rs.targetLng]);
+              rs.motionHeading = segBearing;
+              rs.targetAngle = rs.curAngle + liveWrapDelta(rs.curAngle, segBearing);
+            }
+          }
         }
       } else if (isCruising) {
         const driftElapsed = Math.max(0, (elapsed - rs.animDurMs) / 1000);
-        const maxSec = 4.2;
+        const maxSec = 3.6;
         const u = Math.min(1, driftElapsed / maxSec);
         const easedSec = maxSec * (1 - Math.pow(1 - u, 2));
-        const rawDist = (rs.speed * (1000 / 3600)) * 0.38 * easedSec;
-        const leadM = Math.min(18, rawDist);
-        const pt = liveOffsetByCourse(rs.targetLat, rs.targetLng, rs.serverCourse, leadM);
+        const rawDist = (rs.speed * (1000 / 3600)) * 0.35 * easedSec;
+        const leadM = Math.min(10, rawDist);
+        const cruiseHeading = Number.isFinite(rs.motionHeading) ? rs.motionHeading : rs.targetAngle;
+        const pt = liveOffsetByCourse(rs.targetLat, rs.targetLng, cruiseHeading, leadM);
         baseLat = pt[0];
         baseLng = pt[1];
       } else {
@@ -491,7 +502,7 @@ function liveStartMotionLoop() {
       if (isAnimating || isCruising || posChanged || angleDiff > 0.25) {
         rs.curLat = baseLat;
         rs.curLng = baseLng;
-        rs.curAngle = rs.curAngle + liveWrapDelta(rs.curAngle, rs.targetAngle) * 0.18;
+        rs.curAngle = rs.curAngle + liveWrapDelta(rs.curAngle, rs.targetAngle) * 0.24;
         m.setLatLng([baseLat, baseLng]);
         LIVE.renderedPos[key] = [baseLat, baseLng];
 
@@ -770,8 +781,15 @@ function liveRequestRoadSegment(key, fromLL, toLL, course, seqId) {
     // Keep strictly forward-advancing road curve waypoints — never snap backwards onto behind-car intersection nodes!
     let prevProj = 0;
     const forwardPts = [cur];
+    const maxLatOffset = Math.max(38, directM * 0.55);
+    const toRad = Math.PI / 180;
     for (let i = 0; i < res.path.length; i++) {
       const p = res.path[i];
+      if (directM < 160) {
+        const brngP = liveBearing(cur, p);
+        const latOff = Math.abs(liveDistMeters(cur, p) * Math.sin((brngP - fwdBearing) * toRad));
+        if (latOff > maxLatOffset) return;
+      }
       const proj = liveForwardProjMeters(cur, p, fwdBearing);
       if (proj > prevProj + 1.0 && proj <= directM + 18) {
         forwardPts.push(p);
@@ -783,7 +801,7 @@ function liveRequestRoadSegment(key, fromLL, toLL, course, seqId) {
     }
     if (forwardPts.length < 2) return;
     const info = liveBuildPathLookup(forwardPts);
-    if (info && info.total > 2 && info.total <= directM * 1.65 + 25) {
+    if (info && info.total > 2 && info.total <= directM * 1.45 + 25) {
       rs.pathInfo = info;
       rs.animStartLat = cur[0];
       rs.animStartLng = cur[1];
@@ -841,7 +859,9 @@ function liveUpsertUnitState(unit) {
     rs.speed = spd;
     rs.status = unit.status || 'offline';
     rs.serverCourse = rawCourse;
-    rs.targetAngle = rs.curAngle + liveWrapDelta(rs.curAngle, rawCourse);
+    if (!Number.isFinite(rs.motionHeading) || rs.status !== 'moving') {
+      rs.targetAngle = rs.curAngle + liveWrapDelta(rs.curAngle, rawCourse);
+    }
 
     if (hasNewFix) {
       const fixGapSec = (msgTime && rs.serverTime && msgTime > rs.serverTime)
@@ -866,6 +886,12 @@ function liveUpsertUnitState(unit) {
         rs.animDurMs = 0;
       } else {
         const startPt = [rs.curLat, rs.curLng];
+        const dispBearing = distFromCur >= 8 ? liveBearing(startPt, ll) : rawCourse;
+        const segHeading = (rs.status === 'moving' && distFromCur >= 10)
+          ? (Math.abs(liveWrapDelta(rawCourse, dispBearing)) <= 35 ? rawCourse : dispBearing)
+          : rawCourse;
+        rs.motionHeading = segHeading;
+        rs.targetAngle = rs.curAngle + liveWrapDelta(rs.curAngle, segHeading);
         const durMs = Math.max(4600, Math.min(8200, fixGapSec * 1020));
         rs.animStartLat = startPt[0];
         rs.animStartLng = startPt[1];
@@ -877,8 +903,8 @@ function liveUpsertUnitState(unit) {
         rs.animDurMs = durMs;
         rs.segTotalMs = durMs;
         rs.snapSeq = (rs.snapSeq || 0) + 1;
-        if (rs.status === 'moving' && distFromCur >= 28 && distFromCur <= 900) {
-          liveRequestRoadSegment(key, startPt, ll, rawCourse, rs.snapSeq);
+        if (rs.status === 'moving' && distFromCur >= 12 && distFromCur <= 900) {
+          liveRequestRoadSegment(key, startPt, ll, segHeading, rs.snapSeq);
         }
       }
     } else if (rs.status !== 'moving') {

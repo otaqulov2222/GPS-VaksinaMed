@@ -1072,8 +1072,10 @@ def _num_val(v):
 
 
 def extract_fuel_from_chek(chek_row, vehicle_meta=None):
-    """OFD tasdiqlagan chekdan sana, zapravka, yoqilg'i turi, miqdor va narxni ajratadi."""
-    if not isinstance(chek_row, dict) or not chek_row.get("ofdOk"):
+    """Tasdiqlangan yoki summasi kiritilgan chekdan sana, zapravka, yoqilg'i turi, miqdor va narxni ajratadi."""
+    if not isinstance(chek_row, dict):
+        return {"ok": False, "reason": "bad_row"}
+    if not chek_row.get("ofdOk") and _num_val(chek_row.get("amount")) <= 0:
         return {"ok": False, "reason": "ofd_not_ok"}
     ymd = _chek_ymd(chek_row)
     if not ymd:

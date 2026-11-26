@@ -2725,8 +2725,9 @@ class OfficeStore:
                 row["createdBy"] = str(username or "")[:40]
                 items = chekmod.merge_chek_items(items, [row])
                 self._cheks_put(items)
-                if row.get("ofdOk"):
-                    self.cheks_remember_terminal(row.get("terminalId"), locked=True)
+                if row.get("ofdOk") or as_num(row.get("amount")) > 0:
+                    if row.get("ofdOk"):
+                        self.cheks_remember_terminal(row.get("terminalId"), locked=True)
                     self.apply_chek_to_fuel(row.get("id"))
                 return row, ""
         # Eski pending — OFD dan qayta tortib to‘ldirish
@@ -2873,7 +2874,9 @@ class OfficeStore:
         items = self.cheks_list()
         applied = 0
         for row in items:
-            if not isinstance(row, dict) or not row.get("ofdOk") or row.get("fuelApplied"):
+            if not isinstance(row, dict) or row.get("fuelApplied"):
+                continue
+            if not row.get("ofdOk") and as_num(row.get("amount")) <= 0:
                 continue
             if month:
                 import cheks as chekmod
@@ -5841,8 +5844,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             try:
                 OFFICE.sync_all_cheks_to_fuel(month)
-            except Exception:
-                pass
+            except Exception as _sync_err:
+                print("[CHEK SYNC ERR]", _sync_err)
             data = OFFICE.fuel_month(month)
             if data is None:
                 self.send_json({"ok": False, "error": "Oy noto'g'ri"}, 400)
@@ -6055,8 +6058,8 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True}, clear_cookie=True)
             return
 
-        # Kuzatuvchi: faqat o'qish — barcha yozuv POST lar yopiq
-        _viewer_post_ok = {"/api/ping", "/api/support/chat"}
+        # Kuzatuvchi: faqat o'qish — barcha yozuv POST lar yopiq (xarita OSRM snap so'rovlari bundan mustasno)
+        _viewer_post_ok = {"/api/ping", "/api/support/chat", "/api/map/snap-live", "/api/map/snap-route"}
         if path not in _viewer_post_ok:
             _vs = self.current_session()
             if is_viewer(_vs):

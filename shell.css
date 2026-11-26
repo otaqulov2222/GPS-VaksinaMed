@@ -1574,10 +1574,33 @@ button.fov-card.fov-alert.is-filtering {
   flex-shrink: 0;
 }
 @media (min-width: 1180px) {
-  .fb-head { flex-wrap: nowrap; }
-  .fb-title-group { flex-wrap: nowrap; flex: 1 1 auto; overflow: hidden; }
-  .fb-title-group > *:not(h3) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .fb-toolbar { flex-wrap: nowrap; }
+  .sec-head.fb-head,
+  .fb-head {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+  }
+  .fb-title-group {
+    flex-wrap: nowrap !important;
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+  .fb-title-group .cnt,
+  .fb-title-group > *:not(h3) {
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  .fb-toolbar {
+    flex: 0 0 auto !important;
+    flex-wrap: nowrap !important;
+    width: auto !important;
+  }
 }
 .fb-search-wrap {
   position: relative;

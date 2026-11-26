@@ -117,17 +117,28 @@ def _osrm_get(url, timeout=18):
         return json.loads(resp.read().decode("utf-8", errors="replace"))
 
 
-def _route_batch(waypoints, timeout=18):
+def _route_batch(waypoints, timeout=18, bearings=None):
     """OSRM driving route — faqat yo'l geometriyasi. Muvaffaqiyatsiz → None."""
     if len(waypoints) < 2:
         return None
-    coords = ";".join("%.6f,%.6f" % (p[1], p[0]) for p in waypoints[:25])
+    pts = waypoints[:25]
+    coords = ";".join("%.6f,%.6f" % (p[1], p[0]) for p in pts)
     url = (
         OSRM_BASE
         + "/route/v1/driving/"
         + coords
         + "?overview=full&geometries=geojson&steps=false&continue_straight=true"
     )
+    if bearings and len(bearings) == len(pts):
+        b_parts = []
+        for b in bearings:
+            if b is None:
+                b_parts.append("")
+            else:
+                deg, tol = b
+                b_parts.append(f"{int(round(deg)) % 360},{int(tol)}")
+        if any(b_parts):
+            url += "&bearings=" + ";".join(b_parts)
     try:
         data = _osrm_get(url, timeout=timeout)
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, OSError):
@@ -273,10 +284,10 @@ def snap_point_to_road(lat, lng, course=None, max_dist_m=42.0, timeout=1.8):
         if hit and (now - hit[0]) < _LIVE_CACHE_TTL:
             return hit[1]
 
-    def _query(bearing_deg):
+    def _query(bearing_deg, tol=50):
         url = f"{OSRM_BASE}/nearest/v1/driving/{flng:.6f},{flat:.6f}?number=1"
         if bearing_deg is not None:
-            url += f"&bearings={bearing_deg},55"
+            url += f"&bearings={bearing_deg},{int(tol)}"
         try:
             data = _osrm_get(url, timeout=timeout)
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, OSError):
@@ -292,19 +303,42 @@ def snap_point_to_road(lat, lng, course=None, max_dist_m=42.0, timeout=1.8):
         return [slat, slng], dist
 
     snapped = [flat, flng]
-    res = _query(crs_val)
+    res = _query(crs_val, 50)
     if res and res[1] <= max_dist_m:
         snapped = res[0]
     elif crs_val is not None:
-        # Faqat 10m ichida bo'lsa yo'nalishsiz tekshiramiz (qarama-qarshi polosaga sakramaslik uchun)
+        # Faqat 4.5m ichida bo'lsa yo'nalishsiz tekshiramiz (qarama-qarshi polosaga sakramaslik uchun)
         res2 = _query(None)
-        if res2 and res2[1] <= min(10.0, max_dist_m):
+        if res2 and res2[1] <= min(4.5, max_dist_m):
             snapped = res2[0]
 
     with _LIVE_LOCK:
         _trim_cache(_NEAREST_CACHE)
         _NEAREST_CACHE[key] = (now, snapped)
     return snapped
+
+
+def _bearing_deg(a, b):
+    lat1, lat2 = math.radians(a[0]), math.radians(b[0])
+    dlng = math.radians(b[1] - a[1])
+    y = math.sin(dlng) * math.cos(lat2)
+    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlng)
+    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+
+
+def _angle_diff(a, b):
+    return ((b - a + 540.0) % 360.0) - 180.0
+
+
+def _lateral_offset_m(pt, a, b):
+    """Perpendicular distance in meters from pt to segment line a->b."""
+    ab = _haversine_m(a, b)
+    if ab < 1.0:
+        return _haversine_m(pt, a)
+    brng_ab = math.radians(_bearing_deg(a, b))
+    brng_ap = math.radians(_bearing_deg(a, pt))
+    ap = _haversine_m(a, pt)
+    return abs(ap * math.sin(brng_ap - brng_ab))
 
 
 def snap_live_segment(prev_pt, cur_pt, course=None, timeout=2.2):
@@ -314,31 +348,64 @@ def snap_live_segment(prev_pt, cur_pt, course=None, timeout=2.2):
     except (TypeError, ValueError, IndexError):
         return {"ok": False, "error": "cur_pt noto'g'ri"}
 
-    snapped_cur = snap_point_to_road(clat, clng, course=course, max_dist_m=42.0, timeout=timeout)
-    if not prev_pt or not isinstance(prev_pt, (list, tuple)) or len(prev_pt) < 2:
+    has_prev = prev_pt and isinstance(prev_pt, (list, tuple)) and len(prev_pt) >= 2
+    if not has_prev:
+        snapped_cur = snap_point_to_road(clat, clng, course=course, max_dist_m=32.0, timeout=timeout)
         return {"ok": True, "snapped": snapped_cur, "path": [snapped_cur]}
 
     try:
         plat, plng = float(prev_pt[0]), float(prev_pt[1])
     except (TypeError, ValueError):
+        snapped_cur = snap_point_to_road(clat, clng, course=course, max_dist_m=32.0, timeout=timeout)
         return {"ok": True, "snapped": snapped_cur, "path": [snapped_cur]}
 
-    direct_m = _haversine_m([plat, plng], snapped_cur)
-    if direct_m < 14.0 or direct_m > 900.0:
-        return {"ok": True, "snapped": snapped_cur, "path": [[plat, plng], snapped_cur]}
+    raw_dist_m = _haversine_m([plat, plng], [clat, clng])
+    disp_bearing = _bearing_deg([plat, plng], [clat, clng]) if raw_dist_m >= 12.0 else None
+    eff_course = course
+    try:
+        c_num = float(course) if course is not None else None
+    except (TypeError, ValueError):
+        c_num = None
+    if disp_bearing is not None:
+        if c_num is None or not (0.0 <= c_num <= 360.0) or abs(_angle_diff(c_num, disp_bearing)) > 45.0:
+            eff_course = disp_bearing
+        else:
+            eff_course = c_num
 
-    seg_key = (round(plat, 4), round(plng, 4), round(snapped_cur[0], 4), round(snapped_cur[1], 4))
+    snapped_prev = snap_point_to_road(plat, plng, course=eff_course, max_dist_m=24.0, timeout=timeout)
+    snapped_cur = snap_point_to_road(clat, clng, course=eff_course, max_dist_m=32.0, timeout=timeout)
+    direct_m = _haversine_m(snapped_prev, snapped_cur)
+    if direct_m < 10.0 or direct_m > 900.0:
+        return {"ok": True, "snapped": snapped_cur, "path": [snapped_prev, snapped_cur]}
+
+    crs_bucket = (int(round(float(eff_course))) % 360 // 20) if eff_course is not None else -1
+    seg_key = (round(snapped_prev[0], 4), round(snapped_prev[1], 4), round(snapped_cur[0], 4), round(snapped_cur[1], 4), crs_bucket)
     now = time.monotonic()
     with _LIVE_LOCK:
         hit = _ROUTE_SEG_CACHE.get(seg_key)
         if hit and (now - hit[0]) < _LIVE_CACHE_TTL:
             return {"ok": True, "snapped": snapped_cur, "path": hit[1]}
 
-    road = _route_batch([[plat, plng], snapped_cur], timeout=timeout)
-    path = [[plat, plng], snapped_cur]
+    brng_pair = None
+    if eff_course is not None:
+        try:
+            b_deg = int(round(float(eff_course))) % 360
+            brng_pair = [(b_deg, 50), (b_deg, 50)]
+        except (TypeError, ValueError):
+            brng_pair = None
+
+    road = _route_batch([snapped_prev, snapped_cur], timeout=timeout, bearings=brng_pair)
+    path = [snapped_prev, snapped_cur]
     if road and len(road) >= 2:
         rlen = _path_len(road)
-        if rlen <= direct_m * 2.35 + 80.0:
+        max_lat = max(38.0, direct_m * 0.55)
+        corridor_ok = True
+        if direct_m < 180.0:
+            for p in road:
+                if _lateral_offset_m(p, snapped_prev, snapped_cur) > max_lat:
+                    corridor_ok = False
+                    break
+        if corridor_ok and rlen <= direct_m * 1.45 + 25.0:
             path = road
 
     with _LIVE_LOCK:
