@@ -1553,23 +1553,31 @@ button.fov-card.fov-alert.is-filtering {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  padding: 11px 14px !important;
+  padding: 10px 14px !important;
 }
 .fb-title-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
 }
-.fb-title-group h3 { margin: 0; }
+.fb-title-group h3 { margin: 0; white-space: nowrap; flex-shrink: 0; }
 .fb-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   margin-left: auto;
+  flex-shrink: 0;
+}
+@media (min-width: 1180px) {
+  .fb-head { flex-wrap: nowrap; }
+  .fb-title-group { flex-wrap: nowrap; flex: 1 1 auto; overflow: hidden; }
+  .fb-title-group > *:not(h3) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fb-toolbar { flex-wrap: nowrap; }
 }
 .fb-search-wrap {
   position: relative;
@@ -1578,28 +1586,28 @@ button.fov-card.fov-alert.is-filtering {
 }
 .fb-search-wrap svg {
   position: absolute;
-  left: 10px;
-  width: 16px;
-  height: 16px;
+  left: 9px;
+  width: 15px;
+  height: 15px;
   color: #64748b;
   pointer-events: none;
 }
 .fb-search {
-  width: 196px;
-  height: 32px;
-  padding: 0 10px 0 32px;
+  width: 164px;
+  height: 30px;
+  padding: 0 8px 0 28px;
   border: 1px solid #cbd9e8;
   border-radius: 10px;
   background: #ffffff;
   color: #0b1f3a;
-  font: 500 12px/1 'IBM Plex Sans', system-ui, sans-serif;
+  font: 500 11.5px/1 'IBM Plex Sans', system-ui, sans-serif;
   transition: border-color .15s ease, box-shadow .15s ease, width .2s ease;
 }
 .fb-search:focus {
   outline: none;
   border-color: #1a5fb4;
   box-shadow: 0 0 0 3px rgba(26, 95, 180, 0.14);
-  width: 226px;
+  width: 196px;
 }
 .fb-filters {
   display: flex;
@@ -1610,14 +1618,15 @@ button.fov-card.fov-alert.is-filtering {
 .fb-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 10px;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid #d5e1ee;
   border-radius: 999px;
   background: #ffffff;
   color: #334155;
-  font: 600 11.5px/1 'IBM Plex Sans', system-ui, sans-serif;
+  font: 600 11px/1 'IBM Plex Sans', system-ui, sans-serif;
+  white-space: nowrap;
   cursor: pointer;
   transition: all .14s ease;
 }
