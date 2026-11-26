@@ -4146,8 +4146,10 @@ body.att-confirm-open { overflow: hidden; }
 }
 
 .att-main {
-  padding: 18px 18px 48px;
-  max-width: 1120px;
+  padding: 16px 20px 40px;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* ---- Tabs: segmented ---- */
@@ -4844,8 +4846,9 @@ section.av-pulse-row > .av-pulse-card {
 .av-studio.av-cmd {
   display: grid;
   gap: 14px;
-  max-width: 1180px;
-  margin: 0 auto;
+  max-width: 100%;
+  width: 100%;
+  margin: 0;
 }
 .av-cmd-head {
   display: grid;
@@ -5367,12 +5370,22 @@ section.av-pulse-row > .av-pulse-card {
 .av-map-wrap.is-active::after { box-shadow: inset 0 0 0 2px #1a5fb4; }
 
 /* ========== DAVOMAT PRO UI SAYQALLASH ========== */
+.att-main {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 16px 20px 36px !important;
+}
+.av-studio.av-cmd {
+  max-width: 100% !important;
+  width: 100% !important;
+}
 .att-tabs {
+  width: 100% !important;
   background: #f1f5fb !important;
   border: 1px solid #d5e1ef !important;
   border-radius: 14px !important;
-  padding: 4px !important;
-  gap: 4px !important;
+  padding: 5px !important;
+  gap: 6px !important;
   box-shadow: 0 2px 8px rgba(11, 31, 58, .04) !important;
 }
 .att-tab {
