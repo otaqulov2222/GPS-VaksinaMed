@@ -5538,7 +5538,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 "au.classList.toggle('on',/(^|\\/)audit(\\.html)?$/.test(location.pathname||''));}"
                 "});"
                 "}catch(e){}}go();"
-                "document.addEventListener('DOMContentLoaded',go);setInterval(go,30000);})();"
+                "document.addEventListener('DOMContentLoaded',go);setTimeout(go,400);setTimeout(go,1500);setTimeout(go,4000);setInterval(go,30000);})();"
             )
             raw = js.encode("utf-8")
             self.send_response(200)
