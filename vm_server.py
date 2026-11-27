@@ -5869,19 +5869,36 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "Faqat Admin Pro ko'ra oladi"}, 403)
                 return
             act_rows = OFFICE.activity_list(limit=600)
+            _leg_map = {
+                "login_ok": ("kirish", "Tizimga kirdi"),
+                "login_fail": ("kirish", "Muvaffaqiyatsiz kirish"),
+                "sso_ok": ("kirish", "HR Logistika orqali kirdi"),
+                "create_user": ("foydalanuvchi", "Foydalanuvchi yaratildi"),
+                "delete_user": ("foydalanuvchi", "Foydalanuvchi o'chirildi"),
+                "reset_pw": ("foydalanuvchi", "Parol tiklandi"),
+                "toggle_active": ("foydalanuvchi", "Foydalanuvchi holati o'zgartirildi"),
+                "seed": ("tizim", "Tizim ishga tushirildi"),
+            }
             leg_rows = []
             for a in (STORE.audit() or []):
                 if not isinstance(a, dict):
                     continue
+                raw_act = str(a.get("act") or "")
+                mapped = _leg_map.get(raw_act)
+                cat_u = mapped[0] if mapped else "foydalanuvchi"
+                act_u = mapped[1] if mapped else raw_act
+                det_u = str(a.get("detail") or "")
+                if det_u == "hr_logistics":
+                    det_u = "HR Logistika SSO"
                 leg_rows.append({
                     "t": a.get("t") or "",
                     "who": a.get("who") or "",
                     "name": a.get("who") or "",
                     "role": "",
-                    "cat": "foydalanuvchi",
-                    "act": a.get("act") or "",
-                    "detail": a.get("detail") or "",
-                    "ip": "",
+                    "cat": cat_u,
+                    "act": act_u,
+                    "detail": det_u,
+                    "ip": det_u if re.match(r"^\d+\.\d+\.\d+\.\d+$", det_u) else "",
                 })
             seen_sig = {(r.get("t"), r.get("who"), r.get("act")) for r in act_rows}
             merged = list(act_rows)

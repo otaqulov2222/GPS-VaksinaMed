@@ -21,7 +21,7 @@
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
 }
 body.app-body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 13px; }
-.au-wrap { max-width: 1280px; margin: 0 auto; padding: 16px 18px 40px; }
+.au-wrap { width: 100%; max-width: none; margin: 0; padding: 16px 20px 36px; }
 .au-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .au-kpi {
   background: var(--card); border: 1px solid var(--line); border-radius: 16px;
@@ -150,7 +150,8 @@ body.app-body { font-family: var(--sans); background: var(--bg); color: var(--in
               <option value="">Barcha foydalanuvchilar</option>
             </select>
             <select id="au-cat" class="au-sel" title="Bo'lim">
-              <option value="">Barcha bo‘limlar</option>
+              <option value="actions" selected>Faqat amallar (kirishsiz)</option>
+              <option value="">Barchasi (kirishlar bilan)</option>
               <option value="davomat">Davomat</option>
               <option value="yoqilgi">Yoqilg‘i</option>
               <option value="hujjat">Hujjat</option>
@@ -158,8 +159,8 @@ body.app-body { font-family: var(--sans); background: var(--bg); color: var(--in
               <option value="dorixona">Dorixona</option>
               <option value="foydalanuvchi">Foydalanuvchi</option>
               <option value="vazifa">Vazifa</option>
-              <option value="kirish">Kirish / Chiqish</option>
               <option value="tizim">Tizim</option>
+              <option value="kirish">Kirish / Chiqish</option>
             </select>
             <select id="au-when" class="au-sel" title="Davr">
               <option value="all">Barchasi</option>
@@ -214,6 +215,20 @@ function auFmtTime(t) {
   return s.slice(0, 19);
 }
 
+function auRoleLabel(r) {
+  const m = { admin_pro: 'Admin Pro', admin: 'Admin', viewer: 'Kuzatuvchi', driver: 'Haydovchi' };
+  return m[String(r || '')] || '';
+}
+
+function auCatLabel(c) {
+  const m = {
+    davomat: 'Davomat', yoqilgi: "Yoqilg'i", hujjat: 'Hujjat',
+    chek: 'Chek', dorixona: 'Dorixona', foydalanuvchi: 'Foydalanuvchi',
+    vazifa: 'Vazifa', kirish: 'Kirish', tizim: 'Tizim', eksport: 'Eksport'
+  };
+  return m[String(c || '').toLowerCase()] || 'Tizim';
+}
+
 function auRender() {
   const q = String(document.getElementById('au-q')?.value || '').trim().toLowerCase();
   const who = document.getElementById('au-who')?.value || '';
@@ -224,12 +239,17 @@ function auRender() {
 
   const list = AU_ROWS.filter((r) => {
     const dt = String(r.t || '').slice(0, 10);
+    const rCat = String(r.cat || 'tizim').toLowerCase();
     if (when === 'today' && dt !== today) return false;
     if (when === '7d' && dt < d7) return false;
     if (who && String(r.who || '') !== who) return false;
-    if (cat && String(r.cat || 'tizim') !== cat) return false;
+    if (cat === 'actions') {
+      if (rCat === 'kirish') return false;
+    } else if (cat && rCat !== cat) {
+      return false;
+    }
     if (q) {
-      const hay = [r.who, r.name, r.act, r.detail, r.ip, r.cat].join(' ').toLowerCase();
+      const hay = [r.who, r.name, r.act, r.detail, r.ip, rCat, auCatLabel(rCat)].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -247,12 +267,15 @@ function auRender() {
   tb.innerHTML = list.map((r) => {
     const c = String(r.cat || 'tizim').toLowerCase();
     const whoTitle = r.name && r.name !== r.who ? r.name : (r.who || '—');
-    const whoSub = r.who ? ('@' + r.who + (r.role ? ' · ' + r.role : '')) : '';
+    const roleUz = auRoleLabel(r.role);
+    const whoSub = r.who ? ('@' + r.who + (roleUz ? ' · ' + roleUz : '')) : '';
+    const actStr = String(r.act || '');
+    const actColor = /o['‘]chir/i.test(actStr) ? 'color:#dc2626' : (/tahrir|almashtir/i.test(actStr) ? 'color:#b45309' : (/saqlan|yaratil|belgilan|tiklan/i.test(actStr) ? 'color:#047857' : ''));
     return `<tr>
       <td class="au-time">${auEsc(auFmtTime(r.t))}</td>
       <td><div class="au-who"><b>${auEsc(whoTitle)}</b><span>${auEsc(whoSub)}</span></div></td>
-      <td><span class="au-cat c-${auEsc(c)}">${auEsc(c)}</span></td>
-      <td class="au-act">${auEsc(r.act || '')}</td>
+      <td><span class="au-cat c-${auEsc(c)}">${auEsc(auCatLabel(c))}</span></td>
+      <td class="au-act" style="${actColor}">${auEsc(actStr)}</td>
       <td class="au-det">${auEsc(r.detail || '—')}</td>
       <td class="au-ip">${auEsc(r.ip || '—')}</td>
     </tr>`;
