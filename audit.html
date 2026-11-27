@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<script src="canonical-url.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Oxirgi amallar — VaksinaMed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css?v=42"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f1f5f9;
+  --card: #ffffff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --accent: #2563eb;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+body.app-body { font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 13px; }
+.au-wrap { max-width: 1280px; margin: 0 auto; padding: 16px 18px 40px; }
+.au-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.au-kpi {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  padding: 14px 16px; border-top: 3px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .04), 0 8px 24px rgba(15, 23, 42, .04);
+}
+.au-kpi.is-ok { border-top-color: #059669; }
+.au-kpi.is-warn { border-top-color: #d97706; }
+.au-kpi.is-bad { border-top-color: #dc2626; }
+.au-kpi i { display: block; font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.au-kpi b { display: block; margin-top: 6px; font: 700 24px/1.1 var(--mono); color: var(--ink); }
+.au-kpi s { display: block; text-decoration: none; margin-top: 4px; font-size: 11.5px; color: var(--muted); }
+
+.au-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  overflow: hidden; box-shadow: 0 1px 3px rgba(15, 23, 42, .04), 0 8px 24px rgba(15, 23, 42, .04);
+}
+.au-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 14px 16px; background: #f8fafc; border-bottom: 1px solid var(--line);
+}
+.au-head h2 { font-size: 15px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.au-cnt { font: 600 12px/1 var(--mono); color: var(--muted); }
+.au-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.au-inp, .au-sel {
+  height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1;
+  background: #fff; font: 500 12.5px/1 var(--sans); color: var(--ink);
+}
+.au-inp { min-width: 220px; }
+.au-inp:focus, .au-sel:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
+.au-btn {
+  height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1;
+  background: #fff; color: var(--ink); font: 600 12.5px/1 var(--sans); cursor: pointer;
+}
+.au-btn:hover { border-color: var(--accent); color: var(--accent); }
+.au-btn.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.au-table-wrap { overflow-x: auto; }
+.au-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.au-table th {
+  text-align: left; padding: 11px 14px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  background: #f8fafc; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.au-table td { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.au-table tr:hover td { background: #f8fbff; }
+.au-time { font-family: var(--mono); font-size: 12px; color: #334155; white-space: nowrap; }
+.au-who { display: flex; flex-direction: column; gap: 2px; }
+.au-who b { font-size: 13px; color: var(--ink); }
+.au-who span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.au-cat {
+  display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; white-space: nowrap;
+}
+.au-cat.c-davomat { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.au-cat.c-yoqilgi { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.au-cat.c-hujjat { background: #fef3c7; color: #b45309; border-color: #fde68a; }
+.au-cat.c-chek { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+.au-cat.c-foydalanuvchi { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.au-cat.c-dorixona { background: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
+.au-cat.c-kirish { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+.au-act { font-weight: 600; color: var(--ink); }
+.au-det { color: #475569; max-width: 360px; overflow-wrap: anywhere; }
+.au-ip { font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.au-empty { padding: 32px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+@media (max-width: 900px) {
+  .au-kpis { grid-template-columns: 1fr 1fr; }
+  .au-inp { min-width: 160px; flex: 1; }
+}
+</style>
+</head>
+<body class="app-body">
+<input type="checkbox" id="nav-open" class="nav-open-cb" tabindex="-1" aria-hidden="true">
+<label for="nav-open" class="nav-scrim" aria-hidden="true"></label>
+<div class="app-shell">
+  <aside class="nav-rail">
+    <div class="nav-brand">
+      <img src="/logo/mark.svg?v=5" alt="">
+      <div>
+        <div class="tb-name">VAKSINA <span>MED</span></div>
+        <div class="tb-line">MACHINE CONTROL</div>
+      </div>
+    </div>
+    <nav class="nav-links">
+      <a class="nav-link" href="/fuel">Boshqaruv</a>
+      <a class="nav-link" href="/">Dashboard</a>
+      <a class="nav-link" href="/live">Live</a>
+      <a class="nav-link" href="/attendance">Davomat</a>
+      <a class="nav-link" href="/admin">Panel</a>
+      <a class="nav-link on" href="/audit" id="nav-audit" aria-current="page">Oxirgi amallar</a>
+      <a class="nav-link" href="/chek">Chek</a>
+    </nav>
+    <div class="nav-foot">
+      <a class="nav-link" href="/profile">Profil</a>
+    </div>
+  </aside>
+
+  <div class="app-main">
+    <header class="topbar">
+      <label for="nav-open" class="nav-burger" title="Menyu" aria-label="Menyu">
+        <span class="nav-burger-ico" aria-hidden="true"><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M3 5h14M3 10h14M3 15h14"/></svg></span>
+        <span class="nav-burger-lbl">Menyu</span>
+      </label>
+      <div class="tb-page">
+        <div class="tb-title">Oxirgi amallar (Audit)</div>
+        <div class="tb-sub">Faqat Admin Pro uchun · tizimdagi barcha o‘zgarishlar jurnali</div>
+      </div>
+      <div class="acts"></div>
+    </header>
+
+    <main class="au-wrap">
+      <div class="au-kpis">
+        <div class="au-kpi"><i>Jami amallar</i><b id="k-total">—</b><s>saqlangan jurnal</s></div>
+        <div class="au-kpi is-ok"><i>Bugungi amallar</i><b id="k-today">—</b><s>Toshkent vaqti bilan</s></div>
+        <div class="au-kpi is-warn"><i>Faol foydalanuvchilar</i><b id="k-users">—</b><s>oxirgi jurnal bo‘yicha</s></div>
+        <div class="au-kpi is-bad"><i>O‘chirish / Tahrir</i><b id="k-edits">—</b><s>muhim o‘zgarishlar</s></div>
+      </div>
+
+      <section class="au-card">
+        <div class="au-head">
+          <h2>Barcha amallar <span class="au-cnt" id="au-cnt"></span></h2>
+          <form class="au-filters" role="search" autocomplete="off" onsubmit="return false">
+            <input type="search" id="au-q" name="vm_au_q" class="au-inp" placeholder="Qidirish: ism, amal, izoh, IP..." autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" onpointerdown="this.removeAttribute('readonly')">
+            <select id="au-who" class="au-sel" title="Foydalanuvchi">
+              <option value="">Barcha foydalanuvchilar</option>
+            </select>
+            <select id="au-cat" class="au-sel" title="Bo'lim">
+              <option value="">Barcha bo‘limlar</option>
+              <option value="davomat">Davomat</option>
+              <option value="yoqilgi">Yoqilg‘i</option>
+              <option value="hujjat">Hujjat</option>
+              <option value="chek">Chek</option>
+              <option value="dorixona">Dorixona</option>
+              <option value="foydalanuvchi">Foydalanuvchi</option>
+              <option value="vazifa">Vazifa</option>
+              <option value="kirish">Kirish / Chiqish</option>
+              <option value="tizim">Tizim</option>
+            </select>
+            <select id="au-when" class="au-sel" title="Davr">
+              <option value="all">Barchasi</option>
+              <option value="today">Bugun</option>
+              <option value="7d">Oxirgi 7 kun</option>
+            </select>
+            <button type="button" class="au-btn is-on" id="au-reload">Yangilash</button>
+          </form>
+        </div>
+        <div class="au-table-wrap">
+          <table class="au-table">
+            <thead>
+              <tr>
+                <th>Vaqt</th>
+                <th>Kim</th>
+                <th>Bo‘lim</th>
+                <th>Amal</th>
+                <th>Tafsilotlar</th>
+                <th>IP</th>
+              </tr>
+            </thead>
+            <tbody id="au-tb">
+              <tr><td colspan="6" class="au-empty">Yuklanmoqda…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="auth.js?v=45"></script>
+<script>
+'use strict';
+let AU_ROWS = [];
+
+function auEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function auToday() {
+  const d = new Date(Date.now() + 5 * 3600 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+function auFmtTime(t) {
+  const s = String(t || '');
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}:\d{2}:\d{2})/);
+  if (m) return `${m[3]}.${m[2]}.${m[1]} ${m[4]}`;
+  return s.slice(0, 19);
+}
+
+function auRender() {
+  const q = String(document.getElementById('au-q')?.value || '').trim().toLowerCase();
+  const who = document.getElementById('au-who')?.value || '';
+  const cat = document.getElementById('au-cat')?.value || '';
+  const when = document.getElementById('au-when')?.value || 'all';
+  const today = auToday();
+  const d7 = new Date(Date.now() + 5 * 3600 * 1000 - 7 * 86400000).toISOString().slice(0, 10);
+
+  const list = AU_ROWS.filter((r) => {
+    const dt = String(r.t || '').slice(0, 10);
+    if (when === 'today' && dt !== today) return false;
+    if (when === '7d' && dt < d7) return false;
+    if (who && String(r.who || '') !== who) return false;
+    if (cat && String(r.cat || 'tizim') !== cat) return false;
+    if (q) {
+      const hay = [r.who, r.name, r.act, r.detail, r.ip, r.cat].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const cntEl = document.getElementById('au-cnt');
+  if (cntEl) cntEl.textContent = `(${list.length}/${AU_ROWS.length})`;
+
+  const tb = document.getElementById('au-tb');
+  if (!tb) return;
+  if (!list.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="au-empty">Mos yozuv topilmadi</td></tr>';
+    return;
+  }
+  tb.innerHTML = list.map((r) => {
+    const c = String(r.cat || 'tizim').toLowerCase();
+    const whoTitle = r.name && r.name !== r.who ? r.name : (r.who || '—');
+    const whoSub = r.who ? ('@' + r.who + (r.role ? ' · ' + r.role : '')) : '';
+    return `<tr>
+      <td class="au-time">${auEsc(auFmtTime(r.t))}</td>
+      <td><div class="au-who"><b>${auEsc(whoTitle)}</b><span>${auEsc(whoSub)}</span></div></td>
+      <td><span class="au-cat c-${auEsc(c)}">${auEsc(c)}</span></td>
+      <td class="au-act">${auEsc(r.act || '')}</td>
+      <td class="au-det">${auEsc(r.detail || '—')}</td>
+      <td class="au-ip">${auEsc(r.ip || '—')}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function auLoad() {
+  try {
+    const d = await vmApi('/api/audit');
+    AU_ROWS = Array.isArray(d.audit) ? d.audit : [];
+    const today = auToday();
+    const usersSet = new Set();
+    let todayCnt = 0, editCnt = 0;
+    AU_ROWS.forEach((r) => {
+      if (String(r.t || '').startsWith(today)) todayCnt++;
+      if (r.who) usersSet.add(String(r.who));
+      if (/o'chir|tahrir|saqlandi|belgilandi|tiklandi/i.test(String(r.act || ''))) editCnt++;
+    });
+    document.getElementById('k-total').textContent = String(AU_ROWS.length);
+    document.getElementById('k-today').textContent = String(todayCnt);
+    document.getElementById('k-users').textContent = String(usersSet.size);
+    document.getElementById('k-edits').textContent = String(editCnt);
+
+    const whoSel = document.getElementById('au-who');
+    if (whoSel) {
+      const prev = whoSel.value;
+      whoSel.innerHTML = '<option value="">Barcha foydalanuvchilar</option>' +
+        Array.from(usersSet).sort().map((u) => `<option value="${auEsc(u)}">${auEsc(u)}</option>`).join('');
+      whoSel.value = prev;
+    }
+    auRender();
+  } catch (e) {
+    const tb = document.getElementById('au-tb');
+    if (tb) tb.innerHTML = `<tr><td colspan="6" class="au-empty">${auEsc((e && e.message) || 'Kirish ruxsati yo‘q')}</td></tr>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const meRes = await vmApi('/api/me').catch(() => null);
+  const me = meRes && meRes.user;
+  if (!me || me.role !== 'admin_pro') {
+    location.replace('/');
+    return;
+  }
+  window.VM_USER = me;
+  await auLoad();
+  ['au-q', 'au-who', 'au-cat', 'au-when'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(id === 'au-q' ? 'input' : 'change', auRender);
+  });
+  document.getElementById('au-reload')?.addEventListener('click', auLoad);
+  setInterval(() => { if (!document.hidden) auLoad(); }, 12000);
+});
+</script>
+</body>
+</html>

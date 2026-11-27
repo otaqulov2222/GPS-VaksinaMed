@@ -117,6 +117,7 @@ PAGE_FILE = {
     "/attendance": "attendance.html",
     "/davomat": "attendance.html",
     "/admin": "admin.html",
+    "/audit": "audit.html",
     "/driver": "driver.html",
     "/profile": "profile.html",
     "/login": "login.html",
@@ -127,6 +128,7 @@ HTML_CANONICAL = {
     "live.html": "/live",
     "attendance.html": "/attendance",
     "admin.html": "/admin",
+    "audit.html": "/audit",
     "driver.html": "/driver",
     "profile.html": "/profile",
     "login.html": "/login",
@@ -238,6 +240,10 @@ def can_ops_read(sess):
 
 def is_driver(sess):
     return bool(sess) and sess.get("role") == "driver"
+
+
+def is_admin_pro(sess):
+    return bool(sess) and sess.get("role") == "admin_pro"
 
 
 def compact_plate(plate):
@@ -1558,6 +1564,7 @@ class OfficeStore:
         self.persist = persist
         self.seed_path = seed_path
         self.lock = threading.Lock()
+        self._activity_cache = None
         self._ensure_pharmacies()
         self._ensure_settings()
 
@@ -3169,6 +3176,38 @@ class OfficeStore:
             "remaining": remaining,
         }
 
+    def log_activity(self, who, name="", role="", cat="tizim", act="", detail="", ip=""):
+        try:
+            with self.lock:
+                if self._activity_cache is None:
+                    raw = self._load("office:activity-log", [])
+                    self._activity_cache = raw if isinstance(raw, list) else []
+                entry = {
+                    "t": iso_now(),
+                    "who": str(who or "")[:60],
+                    "name": str(name or who or "")[:80],
+                    "role": str(role or "")[:24],
+                    "cat": str(cat or "tizim")[:24],
+                    "act": str(act or "")[:120],
+                    "detail": str(detail or "")[:240],
+                    "ip": str(ip or "")[:64],
+                }
+                self._activity_cache.append(entry)
+                if len(self._activity_cache) > 1500:
+                    self._activity_cache = self._activity_cache[-1500:]
+                self._save("office:activity-log", self._activity_cache)
+        except Exception:
+            pass
+
+    def activity_list(self, limit=500):
+        with self.lock:
+            if self._activity_cache is None:
+                raw = self._load("office:activity-log", [])
+                self._activity_cache = raw if isinstance(raw, list) else []
+            rows = list(self._activity_cache)
+        rows.reverse()
+        return rows[: max(1, min(1500, int(limit or 500)))]
+
     def save_fuel_meta(self, body):
         cur = self.fuel_meta()
         if isinstance(body.get("vehicles"), dict):
@@ -4489,6 +4528,116 @@ def dispatch_http(method, path, headers, body=b"", client_ip="127.0.0.1"):
     return status, out_headers, out_body
 
 
+_ACTIVITY_SKIP = {"/api/ping", "/api/map/snap-live", "/api/map/snap-route", "/api/support/chat"}
+
+
+def _record_http_activity(handler, ctx, obj):
+    path = str((ctx or {}).get("path") or "")
+    if not path or path in _ACTIVITY_SKIP:
+        return
+    body = (ctx or {}).get("body") if isinstance((ctx or {}).get("body"), dict) else {}
+    sess = handler.current_session()
+    u = obj.get("user") if (path == "/api/login" and isinstance(obj.get("user"), dict)) else None
+    who = (sess or u or {}).get("username") or ""
+    name = (sess or u or {}).get("name") or who
+    role = (sess or u or {}).get("role") or ""
+    if not who:
+        return
+    ip = ""
+    try:
+        ip = handler.client_ip()
+    except Exception:
+        pass
+
+    cat, act, detail = "tizim", path, ""
+    if path == "/api/login":
+        cat, act = "kirish", "Tizimga kirdi"
+    elif path == "/api/logout":
+        cat, act = "kirish", "Tizimdan chiqdi"
+    elif path == "/api/password":
+        cat, act = "foydalanuvchi", "Parol almashtirildi"
+    elif path.startswith("/api/users"):
+        cat = "foydalanuvchi"
+        if path.endswith("/delete") or body.get("action") == "delete":
+            act = "Foydalanuvchi o'chirildi"
+        elif path.endswith("/reset") or body.get("password"):
+            act = "Foydalanuvchi tahrirlandi / parol"
+        else:
+            act = "Foydalanuvchi qo'shildi / yangilandi"
+        detail = str(body.get("username") or body.get("name") or body.get("id") or "")[:120]
+    elif path.startswith("/api/sessions"):
+        cat, act = "foydalanuvchi", "Sessiya bekor qilindi"
+        detail = str(body.get("sid") or body.get("id") or "")[:80]
+    elif path.startswith("/api/attendance/admin/override"):
+        cat, act = "davomat", "Davomat tahrirlandi (admin)"
+        detail = f"{body.get('username') or body.get('user_id') or ''} · {body.get('date') or ''} · {body.get('inTime') or body.get('in_time') or ''}–{body.get('outTime') or body.get('out_time') or ''}".strip(" ·–")
+    elif path.startswith("/api/attendance/admin/mark"):
+        cat, act = "davomat", "Davomat qo'lda belgilandi"
+        detail = f"{body.get('username') or body.get('user_id') or ''} · {body.get('date') or ''} · {body.get('kind') or body.get('status') or ''}".strip(" ·")
+    elif path.startswith("/api/attendance/admin/delete"):
+        cat, act = "davomat", "Davomat yozuvi o'chirildi"
+        detail = f"{body.get('username') or body.get('user_id') or ''} · {body.get('date') or ''}".strip(" ·")
+    elif path.startswith("/api/attendance/admin/schedule"):
+        cat, act = "davomat", "Davomat rejasi o'zgartirildi"
+    elif path == "/api/attendance/stamp":
+        cat, act = "davomat", f"Davomat belgilandi ({body.get('kind') or 'stamp'})"
+    elif path.startswith("/api/attendance/face"):
+        cat, act = "davomat", "Yuz biometriyasi yangilandi"
+    elif path == "/api/office/fuel/month":
+        cat, act = "yoqilgi", "Yoqilg'i oyi saqlandi"
+        detail = f"Oy: {body.get('month') or ''}"
+    elif path == "/api/office/fuel/meta":
+        if "docs" in str(body.keys()).lower():
+            cat, act = "hujjat", "Avtopark / Hujjatlar saqlandi"
+        else:
+            cat, act = "yoqilgi", "Yoqilg'i normalari / avtopark saqlandi"
+        v_cnt = len(body.get("vehicles") or {}) if isinstance(body.get("vehicles"), dict) else 0
+        if v_cnt:
+            detail = f"{v_cnt} ta mashina"
+    elif path == "/api/office/fuel/restore":
+        cat, act = "yoqilgi", "Zaxira nusxadan tiklandi"
+    elif path == "/api/office/fuel/import":
+        cat, act = "yoqilgi", "Excel dan import qilindi"
+        detail = str(body.get("month") or "")
+    elif path == "/api/office/cheks/scan":
+        cat, act = "chek", "Chek qo'shildi / skaner qilindi"
+        detail = f"{body.get('plate') or ''} · №{body.get('receiptNo') or ''}".strip(" ·№")
+    elif path == "/api/office/cheks/update":
+        cat, act = "chek", "Chek tahrirlandi"
+        detail = f"ID: {body.get('id') or ''} · {body.get('amount') or ''} {body.get('cardNumber') or ''}".strip(" ·")
+    elif path == "/api/office/cheks/delete":
+        cat, act = "chek", "Chek o'chirildi"
+        detail = f"ID: {body.get('id') or ''}"
+    elif path == "/api/office/cheks/sync-fuel":
+        cat, act = "chek", "Cheklar yoqilg'iga sinxronlandi"
+        detail = f"Oy: {body.get('month') or 'barchasi'}"
+    elif path == "/api/office/cheks/refresh-all":
+        cat, act = "chek", "Eski cheklar OFD dan yangilandi"
+        detail = f"Oy: {body.get('month') or ''}"
+    elif path == "/api/office/pharmacies":
+        cat, act = "dorixona", "Dorixonalar ro'yxati saqlandi"
+        items = body.get("pharmacies") if isinstance(body.get("pharmacies"), list) else []
+        detail = f"{len(items)} ta dorixona" if items else ""
+    elif path == "/api/office/review":
+        cat, act = "tizim", f"To'xtash holati o'zgartirildi ({body.get('status') or ''})"
+        detail = f"{body.get('car') or ''} · {body.get('date') or ''}".strip(" ·")
+    elif path == "/api/office/departure/note":
+        cat, act = "tizim", "Yuk chiqishi izohi saqlandi"
+        detail = f"{body.get('car') or ''} · {body.get('date') or ''}".strip(" ·")
+    elif path == "/api/office/gps/sync":
+        cat, act = "tizim", "GPS ma'lumotlar yangilandi"
+        detail = str(body.get("date") or "")
+    elif path == "/api/office/gps/config":
+        cat, act = "tizim", "GPS sozlamalari saqlandi"
+    elif path.startswith("/api/tasks"):
+        cat, act = "vazifa", "Kunlik vazifa yangilandi / o'chirildi"
+        detail = str(body.get("car") or body.get("text") or "")[:100]
+    else:
+        return
+
+    OFFICE.log_activity(who=who, name=name, role=role, cat=cat, act=act, detail=detail, ip=ip)
+
+
 class VaksinamedHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
@@ -4596,6 +4745,14 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
     def send_json(self, obj, code=200, set_cookie=None, clear_cookie=False):
+        try:
+            if code < 400 and isinstance(obj, dict) and obj.get("ok") is not False:
+                ctx = getattr(self, "_audit_ctx", None)
+                if ctx:
+                    self._audit_ctx = None
+                    _record_http_activity(self, ctx, obj)
+        except Exception:
+            pass
         raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -5227,6 +5384,15 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 return
             return self.serve_page_file("admin.html")
 
+        if path == "/audit":
+            if not sess:
+                self.redirect("/login")
+                return
+            if not is_admin_pro(sess):
+                self.redirect(home_for(sess))
+                return
+            return self.serve_page_file("audit.html")
+
         if path == "/driver":
             if not sess:
                 self.redirect("/login")
@@ -5361,6 +5527,15 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
                 "c.href='/chek';c.textContent='Chek';c.classList.add('staff-only');"
                 "c.removeAttribute('hidden');c.style.display='';c.style.visibility='visible';"
                 "c.classList.toggle('on',/(^|\\/)chek\\/?$/.test(location.pathname||''));}"
+                "var au=nav.querySelector('a[href=\"/audit\"],#nav-audit');"
+                "if(role!=='admin_pro'){if(au)au.remove();}"
+                "else{if(!au){au=document.createElement('a');au.href='/audit';au.id='nav-audit';"
+                "au.className='nav-link pro-only';au.textContent='Oxirgi amallar';"
+                "var p2=nav.querySelector('#btn-admin-panel,a[href=\"/admin\"]');"
+                "if(p2)p2.insertAdjacentElement('afterend',au);else nav.appendChild(au);}"
+                "au.href='/audit';au.textContent='Oxirgi amallar';au.classList.add('pro-only');"
+                "au.removeAttribute('hidden');au.style.display='';au.style.visibility='visible';"
+                "au.classList.toggle('on',/(^|\\/)audit(\\.html)?$/.test(location.pathname||''));}"
                 "});"
                 "}catch(e){}}go();"
                 "document.addEventListener('DOMContentLoaded',go);setInterval(go,30000);})();"
@@ -5687,10 +5862,35 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             })
             return
         if path == "/api/audit":
-            sess = self.require_ops_read()
+            sess = self.require_user()
             if not sess:
                 return
-            self.send_json({"ok": True, "audit": STORE.audit()})
+            if not is_admin_pro(sess):
+                self.send_json({"ok": False, "error": "Faqat Admin Pro ko'ra oladi"}, 403)
+                return
+            act_rows = OFFICE.activity_list(limit=600)
+            leg_rows = []
+            for a in (STORE.audit() or []):
+                if not isinstance(a, dict):
+                    continue
+                leg_rows.append({
+                    "t": a.get("t") or "",
+                    "who": a.get("who") or "",
+                    "name": a.get("who") or "",
+                    "role": "",
+                    "cat": "foydalanuvchi",
+                    "act": a.get("act") or "",
+                    "detail": a.get("detail") or "",
+                    "ip": "",
+                })
+            seen_sig = {(r.get("t"), r.get("who"), r.get("act")) for r in act_rows}
+            merged = list(act_rows)
+            for lr in leg_rows:
+                sig = (lr.get("t"), lr.get("who"), lr.get("act"))
+                if sig not in seen_sig:
+                    merged.append(lr)
+            merged.sort(key=lambda r: str(r.get("t") or ""), reverse=True)
+            self.send_json({"ok": True, "audit": merged[:800]})
             return
 
         qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -6198,6 +6398,7 @@ class VaksinamedHandler(SimpleHTTPRequestHandler):
             return
 
         body = self.read_json()
+        self._audit_ctx = {"path": path, "body": body if isinstance(body, dict) else {}, "method": "POST"}
 
         if path == "/api/login":
             ip = self.client_ip()
